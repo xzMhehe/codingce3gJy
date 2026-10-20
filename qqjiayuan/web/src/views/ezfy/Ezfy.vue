@@ -1097,6 +1097,10 @@ export default {
     },
     // ★ 玩家当前军衔等级 id（用于首页/统帅信息展示对应军衔星级图标）
     myRankId () { return this.rankIdByName(this.rankName) },
+    // ★★ 2026-10-20 统帅页「战争状态」：按宣战待生效 / 交战中分组
+    //   状态由后端按 effect_time 现算（库里 status 可能还没推进）。
+    pendingWars () { return (this.selfInfo.wars || []).filter(w => w.status === 1) },
+    activeWars () { return (this.selfInfo.wars || []).filter(w => w.status === 2) },
     // 改名提示：首次免费 / 之后消耗改名卡
     renameHint () {
       const d = this.selfInfo || {}
@@ -1154,7 +1158,9 @@ export default {
     //   **民居容量限制开 且 召集人口灵活配置关**。线上这两个开关是「开 + 开」，
     //   召集早已把人口顶到 7.8 万（民居只有 1.8 万），于是分母显得荒谬。
     //   这里改成**真正的有效上限**：召集人口上限（0 = 不限）与「生效中的民居容纳」取小；都不生效 = 0 = 不限。
-    //   ★ 与后端口径一一对应：召集/自然增长都按「min(convene_pop_max, pop_max 若生效)」封顶。
+    //   ★ 与后端 ezfyPopCapOf 完全同口径：min(召集人口上限, pop_max 若生效)。
+    //   ★★ 2026-10-20 后端已按同一把尺子**夹现有超限人口**：关掉「允许突破民居上限」后，
+    //      人口会在下一次结算（打开城市/刷新）时自动降到民居容量，不再是「显示 4.5 万上限、人口却 10 万」。
     popCap () {
       let cap = 0 // 0 = 不限
       if (this.convenePopMax > 0) cap = this.convenePopMax
@@ -1184,21 +1190,17 @@ export default {
       return this.queues
     },
     // ★ 2026-09-26：召集是否被上限挡住（挡不住才显示可点的 [召集]）
-    //   仅当「民居容量限制」开 且「召集人口灵活配置」关 时，召集才受民居上限约束。
     // ★★ 2026-10-09 修复「人口贴近上限时召集被整体挡住」：
     //   原来判的是 `pop + 单次召集人口 > 上限` —— 只要「这一次加完会超上限」就禁用按钮，
     //   于是 45 万~50 万人口之间（上限 50 万、单次 +5 万）**一次都点不了**，
     //   明明还差几十万才满（用户报的就是这个）。
     //   现在只在「人口**已经**达到/超过上限」时才禁用；否则允许点，
     //   后端会**按上限截断**（只补差额、粮食按比例收）。
+    // ★★ 2026-10-20 与后端 ezfyPopCapOf 完全同口径：有效上限 = min(召集上限, 生效中的民居容量)。
     conveneBlocked () {
       // 人口取本页展示的 city.pop（与页面上「当前人口」一致），cityPop 兜底
       const pop = (this.city && this.city.pop) || this.cityPop || 0
-      // ★ 2026-09-26 全局硬性人口上限（管理端配置，0 = 不限）：对召集永远生效
-      if (this.convenePopMax > 0 && pop >= this.convenePopMax) return true
-      // ★ 2026-09-26 民居上限：仅当「民居容量限制」开 且「召集人口灵活配置」关 时生效
-      if (!this.housePopLimitOn || this.conveneFlexibleOn) return false
-      return pop >= ((this.city && this.city.pop_max) || 0)
+      return this.popCap > 0 && pop >= this.popCap
     },
     // 当前建筑分区: 'm' 军事区 / 's' 资源区
     // 复刻原版 BuildingController: 军事区 = type 2/3/4, 资源区 = type 1

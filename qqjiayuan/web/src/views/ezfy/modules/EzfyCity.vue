@@ -82,23 +82,20 @@
     <template v-else-if="ezfy.cur === 'convene'">
         <div class="panel">
           <div class="panel-title">召集人口</div>
-          当前人口: {{ ezfy.city.pop }} / 民居容纳: {{ ezfy.housePopLimitOn ? ezfy.city.pop_max : '不限' }}<br/>
+          <!-- ★★ 2026-10-20 显示「有效上限」= min(召集人口上限, 生效中的民居容量)，与后端 ezfyPopCapOf 同口径。
+               原来只显示民居容纳，出生「人口 10 万 / 民居 4.5 万」时看不出到底哪个上限在生效。 -->
+          当前人口: {{ ezfy.city.pop }} / 有效上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '不限' }}<br/>
+          <span class="gray">民居容纳: {{ ezfy.housePopLimitOn ? ezfy.fmtBig(ezfy.city.pop_max) : '不限（民居不限制人口）' }}</span><br/>
           <!-- ★ 2026-09-26：全局硬性人口上限（管理端配置，0 表示不限），达到上限后无法召集 -->
           <!-- ★ 2026-10-09：改成「按上限截断」后，接近上限时只补差额、粮食按比例收，这里说清楚 -->
           <template v-if="ezfy.convenePopMax > 0">
-            召集人口上限: {{ ezfy.fmtBig(ezfy.convenePopMax) }}<span class="gray"></span><br/>
+            召集人口上限: {{ ezfy.fmtBig(ezfy.convenePopMax) }}<br/>
           </template>
-          <!-- ★ 2026-09-26：提示文案随「民居容量限制 / 召集人口灵活配置」两个开关变化，
-               花费粮食/获得人口都读管理端配置（默认各 10 万），勿再写死 -->
-          <template v-if="!ezfy.housePopLimitOn">
-            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
-          </template>
-          <template v-else-if="ezfy.conveneFlexibleOn">
-            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
-          </template>
-          <template v-else>
-            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
-          </template>
+          <span v-if="ezfy.housePopLimitOn && !ezfy.conveneFlexibleOn && ezfy.city.pop_max > 0" class="gray">
+            民居容量为硬上限，人口不会超过 {{ ezfy.fmtBig(ezfy.city.pop_max) }}
+          </span><br/>
+          <!-- 花费粮食/获得人口都读管理端配置（默认各 10 万），勿再写死 -->
+          花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
           <div class="old-line">{{ ezfy.resNames.food }}: {{ ezfy.city.food }}</div>
           <!-- ★ 2026-10-09 「去掉按钮样式」：改成与全站一致的 [链接] 写法
                （原来用 <button>，样式和别处不统一）；卡控由后端 + doConvene 3 秒双保险。 -->

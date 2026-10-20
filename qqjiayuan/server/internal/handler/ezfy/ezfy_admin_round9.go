@@ -837,11 +837,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if !setSwitch(in.MarchCapOn, &lim.MarchCapOn, "出征上限") {
 		return
 	}
-	// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0/1 都合法）
+	// ★ 2026-09-26：民居容量限制 / 允许超过民居上限（0/1 都合法）
+	// ★ 2026-10-20 字段名仍是 ConveneFlexibleOn，管理端显示为「允许超过民居上限」。
 	if !setSwitch(in.HousePopLimitOn, &lim.HousePopLimitOn, "民居容量限制") {
 		return
 	}
-	if !setSwitch(in.ConveneFlexibleOn, &lim.ConveneFlexibleOn, "召集人口灵活配置") {
+	if !setSwitch(in.ConveneFlexibleOn, &lim.ConveneFlexibleOn, "允许超过民居上限") {
 		return
 	}
 	// ★ 军官升星的功能开关（0/1 都合法）

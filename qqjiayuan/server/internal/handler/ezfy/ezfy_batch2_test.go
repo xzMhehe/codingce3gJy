@@ -116,13 +116,14 @@ func TestConveneClampToCap(t *testing.T) {
 	if strings.Contains(body, "popCap > 0 && city.Pop+popGain > popCap") {
 		t.Fatal("Convene 仍是「超上限就整单拒绝」，人口贴近上限的玩家一点也召集不了")
 	}
-	// 2) 硬性上限与民居上限都要按上限截断
+	// 2) ★★ 2026-10-20 改成「有效上限」一把尺子（min 召集上限 / 生效中的民居容量），
+	//    仍然按上限截断，不能整单拒绝。
 	for _, want := range []string{
+		"popCap := ezfyEffPopCap(city.PopMax)",
 		"popGain = popCap - city.Pop",
-		"popGain = city.PopMax - city.Pop",
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("Convene 未按上限截断（缺 %s）", want)
+			t.Fatalf("Convene 未按有效人口上限截断（缺 %s）", want)
 		}
 	}
 	// 3) 截断后粮食要按比例收，否则会出现「花 20 万粮只加 2 点人口」

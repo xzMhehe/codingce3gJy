@@ -1328,10 +1328,18 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 			city.Pop = 0
 		}
 	}
-	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限」：
-	//   全局硬性上限（管理端可配，0 = 不限）同样封顶自然增长，与召集门同一口径。
-	if hardCap := ezfyConvenePopMaxCfg(); hardCap > 0 && city.Pop > hardCap {
-		city.Pop = hardCap
+	// ★★ 2026-10-20 人口上限统一口径（用户报「关掉召集灵活配置后人口没降到民居上限」）：
+	//   有效上限 = min(召集人口上限, 民居容量（民居限制开 且 允许突破关 时）)，
+	//   见 ezfyPopCapOf。这里**每次结算都夹**（不再只在自然增长时夹）：
+	//   管理员关掉「允许突破民居上限」后，已有超限人口会在下一次结算（打开城市 / 刷新）时
+	//   自动降回民居容量 —— 否则玩家会看到「人口 10 万 / 上限 4.5 万」一直不降。
+	if cap := ezfyEffPopCap(city.PopMax); cap > 0 && city.Pop > cap {
+		city.Pop = cap
+		// 待恢复人口不能超过总人口，否则会出现「人口 4.5 万、待恢复 5.2 万」的怪状态
+		// （恢复量最终由 ezfyPopFree 的下限 0 兜底，这里只防数据本身自相矛盾）。
+		if city.PopRecover > city.Pop {
+			city.PopRecover = city.Pop
+		}
 	}
 	// ★ 2026-10-13 空闲人口「慢恢复」：把待恢复人口按小时线性减回 0
 	//   （用户规则：训练完不该立即恢复空闲人口，要一点一点恢复）。
@@ -3536,8 +3544,8 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 	//	也不会超过当前人口」。
 	//
 	//	阶段一（召集人口）：人口未到上限时直接加人口，上限与「人口召集」完全一致：
-	//	 ① 召集人口上限（convene_pop_max，管理端可配，0 = 不限）——永远生效；
-	//	 ② 民居容纳上限 pop_max（仅当「民居容量限制」开 且「召集人口灵活配置」关时生效）。
+	//	 有效上限 = min(召集人口上限（0 = 不限）, 生效中的民居容量)，
+	//	 见 ezfyPopCapOf（民居容量仅在「民居容量限制」开 且「允许超过民居上限」关时生效）。
 	//	 超上限部分截断，只加到上限为止（与召集同口径，2026-10-09 起不再整单拒绝）。
 	//	阶段二（召集空闲人口）：人口已到上限后，直接把「待恢复人口」扣掉恢复空闲人口
 	//	 （空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口，见 ezfyPopFree），
@@ -3547,19 +3555,13 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		// 先把旧账按时间结清，保证用的是「此刻」的待恢复人口
 		h.ezfySettlePopRecover(city)
 		// —— 阶段一：召集人口（人口未到上限）——
+		// ★★ 2026-10-20 与「人口召集」完全同口径：有效上限 = min(召集上限, 生效中的民居容量)。
 		gain := int64(param)
-		if popCap := ezfyConvenePopMaxCfg(); popCap > 0 {
+		if popCap := ezfyEffPopCap(city.PopMax); popCap > 0 {
 			if city.Pop >= popCap {
 				gain = 0
 			} else if city.Pop+gain > popCap {
 				gain = popCap - city.Pop
-			}
-		}
-		if gain > 0 && ezfyHousePopLimitOn() && !ezfyConveneFlexOn() {
-			if city.Pop >= city.PopMax {
-				gain = 0
-			} else if city.Pop+gain > city.PopMax {
-				gain = city.PopMax - city.Pop
 			}
 		}
 		if gain > 0 {
@@ -4912,27 +4914,21 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	//   只有「人口已经达到/超过上限」时才拒绝（那时确实一点也加不进去）。
 	//   ⚠️ 截断后粮食**按比例收**（见下），否则会出现「花 20 万粮只加 2 点人口」这种坑。
 	//
-	//   全局硬性上限（管理端「二战系统配置」可配，0 = 不限），对召集**永远**生效。
-	if popCap := ezfyConvenePopMaxCfg(); popCap > 0 {
+	// ★★ 2026-10-20 统一成「有效人口上限」一把尺子（见 ezfyPopCapOf）：
+	//   = min(召集人口上限, 民居容量（民居限制开 且 允许突破关 时）)。
+	//   两个上限不再各卡各的 —— 取小后按上限截断，粮食仍按比例收。
+	popCap := ezfyEffPopCap(city.PopMax)
+	if popCap > 0 {
 		if city.Pop >= popCap {
-			resp.ParamError(c, fmt.Sprintf("人口已达上限(%d), 无法继续召集", popCap))
+			hint := "人口已达上限"
+			if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() && city.PopMax > 0 && popCap == city.PopMax {
+				hint = "人口已达民居容纳上限"
+			}
+			resp.ParamError(c, fmt.Sprintf("%s(%d), 无法继续召集", hint, popCap))
 			return
 		}
 		if city.Pop+popGain > popCap {
 			popGain = popCap - city.Pop
-		}
-	}
-	// ★ 2026-09-26 加「民居容量限制 / 召集人口灵活配置」两个开关：
-	//   只有「民居容量限制」开着（民居上限才存在）且「召集人口灵活配置」关着时，
-	//   召集才受民居容量上限约束；任一条件不满足都维持原有的「可突破上限」行为。
-	// ★ 2026-10-09 与硬性上限同口径：改成按上限截断，而不是整单拒绝。
-	if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() {
-		if city.Pop >= city.PopMax {
-			resp.ParamError(c, fmt.Sprintf("人口已达民居容纳上限(%d), 无法继续召集", city.PopMax))
-			return
-		}
-		if city.Pop+popGain > city.PopMax {
-			popGain = city.PopMax - city.Pop
 		}
 	}
 	// ★ 2026-10-09 截断后粮食按比例折算：原价「foodCost 粮 = baseGain 人口」，

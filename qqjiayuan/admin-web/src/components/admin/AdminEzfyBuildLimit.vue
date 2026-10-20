@@ -342,14 +342,24 @@
               <template slot="label">出征油耗<el-tooltip placement="top" :content="tips.march_oil_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.march_oil_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
-            <!-- ★ 2026-09-26 「召集人口那里加民居容量限制、召集人口灵活配置两个开关」 -->
+            <!-- ★★ 2026-10-20 人口上限配置重整（用户口径）：
+                 ① 民居容量限制：民居是否决定人口上限；
+                 ② 允许超过民居上限：关 = 民居是硬上限（超限人口会在下次结算降下来）；
+                 ③ 召集人口上限：开关 + 数值（关 = 不限）。
+                 有效上限 = min(②③里生效的值)，与后端 ezfyPopCapOf / 前端 popCap 同口径。 -->
             <el-form-item>
               <template slot="label">民居容量限制<el-tooltip placement="top" :content="tips.house_pop_limit_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.house_pop_limit_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
             <el-form-item>
-              <template slot="label">召集人口灵活配置<el-tooltip placement="top" :content="tips.convene_flexible_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-switch v-model="form.convene_flexible_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+              <template slot="label">允许超过民居上限<el-tooltip placement="top" :content="tips.convene_flexible_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.convene_flexible_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" :disabled="form.house_pop_limit_on !== 1" @change="onFlexibleChange" />
+            </el-form-item>
+            <!-- ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」 -->
+            <el-form-item>
+              <template slot="label">召集人口上限<el-tooltip placement="top" :content="tips.convene_pop_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="conveneCapOn" active-text="开" inactive-text="关" @change="onConveneCapToggle" />
+              <el-input-number v-model="form.convene_pop_max" :min="0" :max="1000000000" :step="10000" :disabled="!conveneCapOn" controls-position="right" style="width: 200px; margin-left: 10px" />
             </el-form-item>
             <!-- ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」 -->
             <el-form-item>
@@ -359,11 +369,6 @@
             <el-form-item>
               <template slot="label">召集获得人口<el-tooltip placement="top" :content="tips.convene_pop_gain"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model="form.convene_pop_gain" :min="1" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
-            </el-form-item>
-            <!-- ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」 -->
-            <el-form-item>
-              <template slot="label">召集人口上限<el-tooltip placement="top" :content="tips.convene_pop_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model="form.convene_pop_max" :min="0" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
             </el-form-item>
             <!-- ★ 2026-10-13 「训练完人口不再瞬间归还，一点点恢复到当前人口」：恢复速率配置 -->
             <el-form-item>
@@ -422,6 +427,10 @@ export default {
   data () {
     return {
       saving: false,
+      // ★ 2026-10-20 「召集人口上限」开关：DB 里 convene_pop_max = 0 表示不限，
+      //   界面上用独立开关展示（开 = 用下面的数值，关 = 提交 0）。
+      conveneCapOn: false,
+      lastConvenePopMax: 100000,
       // ★ 2026-09-25：配置按类别分了 tab，记住当前在哪个 tab（刷新页面回到第一个）
       activeTab: 'build',
       form: {
@@ -618,11 +627,17 @@ export default {
         recruit_cost_on: '开 = 征兵消耗资源并占用空闲人口；关 = 不消耗资源、也不占人口',
         food_upkeep_on: '开 = 城内军队每小时扣除粮食；关 = 不扣',
         march_oil_on: '开 = 出征消耗石油；关 = 不消耗',
-        house_pop_limit_on: '开 = 民居容量决定人口上限 pop_max，人口自然增长到上限就停；关 = 民居不限制人口，人口可无限增长',
-        convene_flexible_on: '开 = 召集人口不受民居容量上限限制，可突破 pop_max；关 = 召集人口同样受民居上限约束（民居容量限制关掉时此项无意义）',
+        house_pop_limit_on: '开 = 民居容量（pop_max）参与限制人口；关 = 民居完全不限制人口，人口可无限增长。' +
+          '具体是「软上限」还是「硬上限」由下面的「允许超过民居上限」决定',
+        convene_flexible_on: '仅当「民居容量限制」开着时有效。' +
+          '开 = 允许人口超过民居容量（召集可突破，已有的超限人口保持不变）；' +
+          '关 = 民居容量是硬上限：召集不能超过，**已有的超限人口会在下一次结算（打开城市/刷新）时自动降到 pop_max**。' +
+          '⚠️ 关之前请确认：全服所有城市都会按各自民居容量下调人口',
         convene_food_cost: '玩家点一次「召集」消耗的粮食数，默认 10 万（=100000）',
         convene_pop_gain: '玩家点一次「召集」获得的人口数，默认 10 万（=100000）',
-        convene_pop_max: '玩家城市人口硬性上限，超过则禁止召集（0 = 不限）。即使「召集人口灵活配置」开着也受此限制',
+        convene_pop_max: '城市人口硬上限（自然增长、召集、空闲人口都不会超过）。开关关掉 = 不限。' +
+          '与「民居容量」同时生效时取较小值：例：民居 4.5 万 + 本项 10 万 → 实际上限 4.5 万（走民居）；' +
+          '若「允许超过民居上限」开着，则民居不参与取小，只受本项限制',
         pop_recover_per_hour: '训练完的士兵占用的空闲人口不再瞬间归还，而是按此速率每小时慢慢恢复（默认 1 万）。' +
           '填 0 = 按默认 1 万/小时。玩家可用「移民法案」道具（2 钻石）瞬间恢复 10 万空闲人口',
         pvp_rank_on: '开 = 玩家对战结算按自然周写入风云榜（现行为）；关 = 完全不统计（榜单为空，历史周榜保留，重新开启即继续累计）。' +
@@ -750,10 +765,41 @@ export default {
             // ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%）
             recruit_five_star_rate: pos(r.data.recruit_five_star_rate, 1),
           }
+          // ★ 2026-10-20 召集人口上限开关：0 = 不限（关），>0 = 开
+          this.conveneCapOn = Number(this.form.convene_pop_max) > 0
+          if (this.conveneCapOn) this.lastConvenePopMax = this.form.convene_pop_max
         } else this.$message.error(r.msg)
       })
     },
+    // ★ 2026-10-20 「召集人口上限」开关：关 = 提交 0（不限）；开 = 保证有一个正数
+    onConveneCapToggle (on) {
+      if (on) {
+        if (!this.form.convene_pop_max || this.form.convene_pop_max <= 0) {
+          this.form.convene_pop_max = this.lastConvenePopMax || 100000
+        }
+      } else {
+        if (this.form.convene_pop_max > 0) this.lastConvenePopMax = this.form.convene_pop_max
+        this.form.convene_pop_max = 0
+      }
+    },
+    // ★ 2026-10-20 关闭「允许超过民居上限」= 民居变成硬上限，全服超限人口会下调，先确认
+    onFlexibleChange (on) {
+      if (on) return
+      this.$confirm('关闭后，民居容量会变成硬上限：所有城市超过民居容量的人口，会在下一次结算（打开城市/刷新）时自动降到各城的民居上限。确定关闭？',
+        '提示', { type: 'warning' })
+        .then(() => {})
+        .catch(() => { this.form.convene_flexible_on = 1 })
+    },
     saveTab (tab) {
+      // ★ 2026-10-20 保存前归一「召集人口上限」：开关关掉必须写 0（0 = 不限），
+      //   打开但输入框清成 0 时回落到上一次的值/默认 10 万，避免「开了却等于没开」。
+      if (tab === 'switch') {
+        if (!this.conveneCapOn) {
+          this.form.convene_pop_max = 0
+        } else if (!this.form.convene_pop_max || this.form.convene_pop_max <= 0) {
+          this.form.convene_pop_max = this.lastConvenePopMax || 100000
+        }
+      }
       // ★ 2026-10-18 分 tab 保存：只提交当前 tab 所属字段，后端逐字段判空 → 天然支持部分更新
       const payload = {}
       ;(this.fieldGroups[tab] || []).forEach(k => { payload[k] = this.form[k] })
