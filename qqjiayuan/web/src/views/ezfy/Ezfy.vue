@@ -1157,10 +1157,10 @@ export default {
     //   原来分母恒取「民居容纳(pop_max)」，但民居只在一个前提下才真正限制人口 ——
     //   **民居容量限制开 且 召集人口灵活配置关**。线上这两个开关是「开 + 开」，
     //   召集早已把人口顶到 7.8 万（民居只有 1.8 万），于是分母显得荒谬。
-    //   这里改成**真正的有效上限**：召集人口上限（0 = 不限）与「生效中的民居容纳」取小；都不生效 = 0 = 不限。
-    //   ★ 与后端 ezfyPopCapOf 完全同口径：min(召集人口上限, pop_max 若生效)。
-    //   ★★ 2026-10-20 后端已按同一把尺子**夹现有超限人口**：关掉「允许突破民居上限」后，
-    //      人口会在下一次结算（打开城市/刷新）时自动降到民居容量，不再是「显示 4.5 万上限、人口却 10 万」。
+    //   这里改成展示口径：召集人口上限（0 = 不限）与「生效中的民居软上限」取小；都不生效 = 0 = 不限。
+    //   ★ 与后端 ezfyPopCapOf 完全同口径：min(召集人口上限, 民居软上限)。
+    //   ★★ 2026-10-20 民居容量是**软上限**：超过后仍可继续召集（超出部分缓慢回落），
+    //      所以这里的 cap 只用于展示/回落目标，**不再用来禁用召集按钮**（见 conveneBlocked）。
     popCap () {
       let cap = 0 // 0 = 不限
       if (this.convenePopMax > 0) cap = this.convenePopMax
@@ -1169,6 +1169,25 @@ export default {
         if (pm > 0) cap = cap > 0 ? Math.min(cap, pm) : pm
       }
       return cap
+    },
+    // 民居软上限是否生效（= 后端 ezfyHouseSoftCap）：生效后超过部分会缓慢回落。
+    houseSoftCapActive () {
+      const pm = (this.city && this.city.pop_max) || 0
+      return this.housePopLimitOn && !this.conveneFlexibleOn && pm > 0
+    },
+    // 当前人口是否已超过民居软上限（用于展示「超出部分回落中」）。
+    popOverHouseCap () {
+      if (!this.houseSoftCapActive) return false
+      const pm = (this.city && this.city.pop_max) || 0
+      const pop = (this.city && this.city.pop) || this.cityPop || 0
+      return pop > pm
+    },
+    // 召集冷却：普通 3 秒；人口达到/超过民居软上限时 5 分钟（与后端 Convene 同口径）。
+    conveneCooldownMs () {
+      const pm = (this.city && this.city.pop_max) || 0
+      const pop = (this.city && this.city.pop) || this.cityPop || 0
+      if (this.houseSoftCapActive && pop >= pm) return 5 * 60 * 1000
+      return 3000
     },
     // ★ 2026-10-15 免战保护令文案（城市状态页）：「[免战保护中] 剩余 2小时30分」。
     //   剩余时间每秒随 gatherNow 重算（全站统一做法：后端下发绝对到点时间戳，前端本地倒计时）；
@@ -1194,13 +1213,13 @@ export default {
     //   原来判的是 `pop + 单次召集人口 > 上限` —— 只要「这一次加完会超上限」就禁用按钮，
     //   于是 45 万~50 万人口之间（上限 50 万、单次 +5 万）**一次都点不了**，
     //   明明还差几十万才满（用户报的就是这个）。
-    //   现在只在「人口**已经**达到/超过上限」时才禁用；否则允许点，
-    //   后端会**按上限截断**（只补差额、粮食按比例收）。
-    // ★★ 2026-10-20 与后端 ezfyPopCapOf 完全同口径：有效上限 = min(召集上限, 生效中的民居容量)。
+    //   现在只在「人口**已经**达到硬顶」时才禁用；否则允许点，后端按硬顶截断。
+    // ★★ 2026-10-20 民居容量是软上限：超过后**仍然可以召集**（超出部分缓慢回落），
+    //   所以这里只按「召集人口上限」这个硬顶禁用；popCap（含民居软上限）只用于展示。
     conveneBlocked () {
       // 人口取本页展示的 city.pop（与页面上「当前人口」一致），cityPop 兜底
       const pop = (this.city && this.city.pop) || this.cityPop || 0
-      return this.popCap > 0 && pop >= this.popCap
+      return this.convenePopMax > 0 && pop >= this.convenePopMax
     },
     // 当前建筑分区: 'm' 军事区 / 's' 资源区
     // 复刻原版 BuildingController: 军事区 = type 2/3/4, 资源区 = type 1
@@ -5079,7 +5098,12 @@ export default {
     // ---- 城市操作 ----
     doConvene () {
       // ★ 2026-10-09 ：卡控 5 秒 → **3 秒**（与后端 /city/convene 双保险，防连点刷人口）
-      if (Date.now() - (this.lastConveneAt || 0) < 3000) { this.notify('操作过于频繁, 请 3 秒后再试'); return }
+      // ★ 2026-10-20 ：人口达到/超过民居软上限时改为 **5 分钟**（仍可召集，超出部分缓慢回落）
+      const cd = this.conveneCooldownMs
+      if (Date.now() - (this.lastConveneAt || 0) < cd) {
+        this.notify(cd >= 60000 ? '操作过于频繁, 请 5 分钟后再试' : '操作过于频繁, 请 3 秒后再试')
+        return
+      }
       api.post('/games/ezfy/city/convene', {}).then(r => {
         if (r.code === 0) this.lastConveneAt = Date.now()
         this.alert(r, '召集完成')

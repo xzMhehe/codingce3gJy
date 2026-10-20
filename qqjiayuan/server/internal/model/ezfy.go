@@ -546,11 +546,14 @@ type EzfyCfgLimit struct {
 	// ★ 2026-09-26 「召集人口那里加『民居容量限制』『召集人口灵活配置』两个开关」：
 	//   ① HousePopLimitOn 民居容量限制：1 开（默认）= 民居容量决定人口上限 pop_max，
 	//      人口自然增长到 pop_max 封顶；0 关 = 民居不再限制人口，人口可无限增长。
-	//   ② ConveneFlexibleOn 召集人口灵活配置：1 开（默认）= 召集人口不受民居上限限制、
-	//      可突破 pop_max（原有行为）；0 关 = 召集同样受民居容量上限约束。
+	//   ② ConveneFlexibleOn 允许长期超过民居上限（原名召集人口灵活配置）：
+	//      1 开（默认）= 召集可突破 pop_max，且不回落（原有行为）；
+	//      0 关 = 民居容量是**软上限**：仍然可以继续召集超过 pop_max，
+	//      但超出部分会按 ezfyPopOverCapDecayPct（默认 10%/小时）缓慢回落到 pop_max，
+	//      且人口达到/超过民居容量时召集冷却为 5 分钟（见 Convene）。
 	//   ⚠️ 两个都是开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
 	HousePopLimitOn   int `gorm:"comment:民居容量限制开关（关 = 民居不限制人口上限）" json:"house_pop_limit_on"`
-	ConveneFlexibleOn int `gorm:"comment:召集人口灵活配置（关 = 召集同样受民居上限约束）" json:"convene_flexible_on"`
+	ConveneFlexibleOn int `gorm:"comment:允许长期超过民居上限（关 = 超限部分缓慢回落）" json:"convene_flexible_on"`
 
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」：
 	//   召集消耗粮食 + 召集获得人口，默认各 10 万。0 无意义 → 回落默认（seed 走 addLimitCol）。
@@ -1099,6 +1102,11 @@ type EzfyCity struct {
 	PopRecover int64 `gorm:"comment:待恢复人口(训练已消耗、还没回到空闲)" json:"pop_recover"`
 	// ★ 2026-10-13 待恢复人口上次结算时间戳(ms)，0 = 还没结算过（首次结算只记时间、不恢复）。
 	PopRecoverAt int64 `gorm:"comment:待恢复人口上次结算时间戳(ms)" json:"pop_recover_at"`
+	// ★ 2026-10-20 超出民居上限的人口回落上次结算时间戳(ms)，0 = 当前未超限/刚进入超限。
+	//   仅当「民居容量限制开 + 允许长期超过民居上限关」时生效：
+	//   超出部分按 ezfyPopOverCapDecayPct（默认 10%/小时）缓慢回落到 pop_max，
+	//   不是立刻夹平（用户规则）。详见 calcResourceD。
+	PopOverCapAt int64 `gorm:"comment:超限人口回落上次结算时间戳(ms,0=未超限)" json:"pop_over_cap_at"`
 	Gold         int64 `gorm:"comment:黄金" json:"gold"`
 	Food         int64 `gorm:"comment:粮食" json:"food"`
 	Steel        int64 `gorm:"comment:钢铁" json:"steel"`

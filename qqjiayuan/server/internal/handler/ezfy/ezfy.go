@@ -1328,18 +1328,25 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 			city.Pop = 0
 		}
 	}
-	// ★★ 2026-10-20 人口上限统一口径（用户报「关掉召集灵活配置后人口没降到民居上限」）：
-	//   有效上限 = min(召集人口上限, 民居容量（民居限制开 且 允许突破关 时）)，
-	//   见 ezfyPopCapOf。这里**每次结算都夹**（不再只在自然增长时夹）：
-	//   管理员关掉「允许突破民居上限」后，已有超限人口会在下一次结算（打开城市 / 刷新）时
-	//   自动降回民居容量 —— 否则玩家会看到「人口 10 万 / 上限 4.5 万」一直不降。
-	if cap := ezfyEffPopCap(city.PopMax); cap > 0 && city.Pop > cap {
-		city.Pop = cap
-		// 待恢复人口不能超过总人口，否则会出现「人口 4.5 万、待恢复 5.2 万」的怪状态
-		// （恢复量最终由 ezfyPopFree 的下限 0 兜底，这里只防数据本身自相矛盾）。
-		if city.PopRecover > city.Pop {
-			city.PopRecover = city.Pop
-		}
+	// ★★ 2026-10-20 用户口径（修正）：民居容量是**软上限**，不是立刻夹平。
+	//   ① 召集人口上限（> 0）仍是硬顶：自然增长最多到它，不会超过；
+	//   ② 民居容量（仅「民居容量限制」开 + 「允许长期超过民居上限」关 + pop_max > 0 时生效）
+	//      是**软上限**：超过后仍可继续召集，但超出部分按 ezfyPopOverCapDecayPct
+	//      （默认 10%/小时）缓慢回落到民居容量 —— 见 ezfySettlePopOverCap。
+	//   这样管理员关掉「允许长期超过民居上限」后，已有的 10 万人口不会瞬间消失，
+	//   而是慢慢回落到 4.5 万；玩家在此期间仍能召集（5 分钟一次，见 Convene）。
+	if hard := ezfyConvenePopMaxCfg(); hard > 0 && city.Pop > hard {
+		city.Pop = hard
+	}
+	if soft := ezfyHouseSoftCap(city.PopMax); soft > 0 {
+		city.Pop, city.PopOverCapAt = ezfySettlePopOverCap(city.Pop, soft, city.PopOverCapAt, now)
+	} else {
+		city.PopOverCapAt = 0
+	}
+	// 待恢复人口不能超过总人口，否则会出现「人口 4.5 万、待恢复 5.2 万」的怪状态
+	// （恢复量最终由 ezfyPopFree 的下限 0 兜底，这里只防数据本身自相矛盾）。
+	if city.PopRecover > city.Pop {
+		city.PopRecover = city.Pop
 	}
 	// ★ 2026-10-13 空闲人口「慢恢复」：把待恢复人口按小时线性减回 0
 	//   （用户规则：训练完不该立即恢复空闲人口，要一点一点恢复）。
@@ -1487,7 +1494,9 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 			"pop": city.Pop, "pop_max": city.PopMax,
 			// ★ 2026-10-13 空闲人口慢恢复的两个字段一起写（与上面的内存结算同口径）
 			"pop_recover": city.PopRecover, "pop_recover_at": city.PopRecoverAt,
-			"gold": city.Gold, "food": city.Food, "steel": city.Steel,
+			// ★ 2026-10-20 超限人口回落时间戳（与上面 ezfySettlePopOverCap 同口径）
+			"pop_over_cap_at": city.PopOverCapAt,
+			"gold":            city.Gold, "food": city.Food, "steel": city.Steel,
 			"oil": city.Oil, "rare": city.Rare,
 			"gold_cap": city.GoldCap, "food_cap": city.FoodCap,
 			"steel_cap": city.SteelCap, "oil_cap": city.OilCap, "rare_cap": city.RareCap,
@@ -2734,6 +2743,50 @@ func (h *EzfyHandler) ezfySettlePopRecover(city *model.EzfyCity) {
 	city.PopRecoverAt += dec * 3600000 / rate // 只推进真正用掉的时间，余量留给下次
 }
 
+// ezfyPopOverCapDecayPct 超出民居软上限的人口每小时回落百分比（按当前超出量计算）。
+//
+// ★ 2026-10-20 用户规则：超过民居上限还可以继续召集，但超出部分要「慢慢回落」到民居上限。
+//
+//	10%/小时 ≈ 6.6 小时回落一半；想调快/调慢改这里即可。
+const ezfyPopOverCapDecayPct = 10
+
+// ezfySettlePopOverCap 超限人口缓慢回落结算（纯函数，方便单测）。
+//
+//	pop/cap 为总人口/回落目标，at 为上次结算时间戳(ms)，now 为当前时间戳(ms)。
+//	返回新人口 + 新时间戳；时间戳 0 表示当前已不超限。
+//
+// 时间推进与 ezfySettlePopRecover 同口径：只推进「真正兑换成人头」的那部分时间，
+// 不足 1 人的时间余量留给下次 —— 否则高频 /view 会把余量反复丢弃，超限人口永远不回落。
+func ezfySettlePopOverCap(pop, cap, at, now int64) (int64, int64) {
+	if cap <= 0 || pop <= cap {
+		return pop, 0
+	}
+	// 首次进入超限（老数据 at=0）或时间戳异常：只记时间，本次不回落
+	if at <= 0 || at > now {
+		return pop, now
+	}
+	excess := pop - cap
+	elapsed := now - at
+	// 速率 = 当前超出量 × pct% / 小时，再折算到毫秒
+	rate := float64(excess) * float64(ezfyPopOverCapDecayPct) / 100.0 / 3600000.0
+	// +1e-9 抵消浮点误差（例：10 人 ×10%/小时 ×1 小时 = 0.9999999999999999 → 应算 1 人）
+	dec := int64(rate*float64(elapsed) + 1e-9)
+	if dec <= 0 {
+		return pop, at // 还不足 1 人：保留时间余量，下次继续攒
+	}
+	if dec >= excess {
+		return cap, 0
+	}
+	used := int64(float64(dec) / rate)
+	if used <= 0 {
+		used = elapsed
+	}
+	if used > elapsed {
+		used = elapsed
+	}
+	return pop - dec, at + used
+}
+
 // ezfyPopFree 空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（下限 0）。
 //
 // ★ 上限口径（用户 2026-10-13 确认）：
@@ -3544,9 +3597,9 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 	//	也不会超过当前人口」。
 	//
 	//	阶段一（召集人口）：人口未到上限时直接加人口，上限与「人口召集」完全一致：
-	//	 有效上限 = min(召集人口上限（0 = 不限）, 生效中的民居容量)，
-	//	 见 ezfyPopCapOf（民居容量仅在「民居容量限制」开 且「允许超过民居上限」关时生效）。
-	//	 超上限部分截断，只加到上限为止（与召集同口径，2026-10-09 起不再整单拒绝）。
+	//	 只看「召集人口上限」（0 = 不限）这个硬顶；民居容量是软上限，
+	//	 超过后仍可加人口，超出部分由 calcResourceD 缓慢回落（2026-10-20 用户口径）。
+	//	 到硬顶部分截断，只加到硬顶为止（2026-10-09 起不再整单拒绝）。
 	//	阶段二（召集空闲人口）：人口已到上限后，直接把「待恢复人口」扣掉恢复空闲人口
 	//	 （空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口，见 ezfyPopFree），
 	//	 空闲人口**天然不会超过** 当前人口 与 召集人口上限（双上限）。
@@ -3554,10 +3607,11 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 	case 31:
 		// 先把旧账按时间结清，保证用的是「此刻」的待恢复人口
 		h.ezfySettlePopRecover(city)
-		// —— 阶段一：召集人口（人口未到上限）——
-		// ★★ 2026-10-20 与「人口召集」完全同口径：有效上限 = min(召集上限, 生效中的民居容量)。
+		// —— 阶段一：召集人口（人口未到硬顶）——
+		// ★★ 2026-10-20 与「人口召集」完全同口径：只受召集人口上限硬顶限制；
+		//   民居容量是软上限，超了也能加，超出部分由 calcResourceD 缓慢回落。
 		gain := int64(param)
-		if popCap := ezfyEffPopCap(city.PopMax); popCap > 0 {
+		if popCap := ezfyConvenePopMaxCfg(); popCap > 0 {
 			if city.Pop >= popCap {
 				gain = 0
 			} else if city.Pop+gain > popCap {
@@ -4368,6 +4422,12 @@ var (
 
 // ★ 2026-10-05 人口召集卡控（与训练一键加速一致）
 // ★ 2026-10-09  5 秒 → **3 秒**（前端 doConvene 同步改）
+// ★ 2026-10-20 人口达到/超过民居软上限时改为 5 分钟一次（仍可继续召集，超出部分缓慢回落）
+const (
+	ezfyConveneCooldownMs        = 3000
+	ezfyConveneOverCapCooldownMs = 5 * 60 * 1000
+)
+
 var (
 	ezfyConveneMu   sync.Mutex
 	ezfyConveneMemo = map[uint]int64{}
@@ -4873,21 +4933,6 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 召集人口 → 资源详情缓存失效
-	// ★ 2026-10-05 卡控（防连点刷人口）；★ 2026-10-09  5 秒 → 3 秒
-	{
-		nowCd := time.Now().UnixMilli()
-		ezfyConveneMu.Lock()
-		if last, ok := ezfyConveneMemo[uid]; ok && nowCd-last < 3000 {
-			ezfyConveneMu.Unlock()
-			resp.ParamError(c, "操作过于频繁, 请 3 秒后再试")
-			return
-		}
-		if len(ezfyConveneMemo) > 16384 {
-			ezfyConveneMemo = map[uint]int64{}
-		}
-		ezfyConveneMemo[uid] = nowCd
-		ezfyConveneMu.Unlock()
-	}
 	var req struct {
 		CityId int64 `json:"city_id"`
 	}
@@ -4898,6 +4943,14 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	city := h.bodyCity(uid, req.CityId)
 	if city == nil {
 		resp.ParamError(c, "城市不存在")
+		return
+	}
+	// ★★ 2026-10-20 召集只看「召集人口上限」这个**硬顶**；民居容量是软上限，
+	//   超过后仍可继续召集（超出部分由 calcResourceD 缓慢回落）。
+	//   先判硬顶，避免玩家已经到硬顶却收到「请 5 分钟后再试」的误导提示。
+	popCap := ezfyConvenePopMaxCfg()
+	if popCap > 0 && city.Pop >= popCap {
+		resp.ParamError(c, fmt.Sprintf("人口已达上限(%d), 无法继续召集", popCap))
 		return
 	}
 	// ★★ 2026-09-26 修复「召集只该耗粮食，结果其他/更多粮食也被一起扣了」：
@@ -4914,22 +4967,10 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	//   只有「人口已经达到/超过上限」时才拒绝（那时确实一点也加不进去）。
 	//   ⚠️ 截断后粮食**按比例收**（见下），否则会出现「花 20 万粮只加 2 点人口」这种坑。
 	//
-	// ★★ 2026-10-20 统一成「有效人口上限」一把尺子（见 ezfyPopCapOf）：
-	//   = min(召集人口上限, 民居容量（民居限制开 且 允许突破关 时）)。
-	//   两个上限不再各卡各的 —— 取小后按上限截断，粮食仍按比例收。
-	popCap := ezfyEffPopCap(city.PopMax)
-	if popCap > 0 {
-		if city.Pop >= popCap {
-			hint := "人口已达上限"
-			if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() && city.PopMax > 0 && popCap == city.PopMax {
-				hint = "人口已达民居容纳上限"
-			}
-			resp.ParamError(c, fmt.Sprintf("%s(%d), 无法继续召集", hint, popCap))
-			return
-		}
-		if city.Pop+popGain > popCap {
-			popGain = popCap - city.Pop
-		}
+	// ★★ 2026-10-20 只按「召集人口上限」硬顶截断；民居容量是软上限，不在这里截断 ——
+	//   超过民居上限也能继续加人口（对应空闲人口同步增加），超出部分之后缓慢回落。
+	if popCap > 0 && city.Pop+popGain > popCap {
+		popGain = popCap - city.Pop
 	}
 	// ★ 2026-10-09 截断后粮食按比例折算：原价「foodCost 粮 = baseGain 人口」，
 	//   本次只加 popGain 人口 → 只收 foodCost × popGain / baseGain（向下取整，至少 1）。
@@ -4942,6 +4983,32 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	if city.Food < foodCost {
 		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集%d人口需要%d粮食", popGain, foodCost))
 		return
+	}
+	// ★ 2026-10-20 卡控：普通 3 秒；人口达到/超过民居软上限时 5 分钟一次
+	//   （用户规则：民居上限条件下召集 5 分钟才能点一次，但超过上限仍可召集）。
+	//   放在粮食校验之后：粮食不足等失败不占用冷却，避免玩家被白白锁 5 分钟。
+	//   仍在校验/写库之前 set 时间戳，保证并发双击只有一个请求能走到写库。
+	cdMs := int64(ezfyConveneCooldownMs)
+	if soft := ezfyHouseSoftCap(city.PopMax); soft > 0 && city.Pop >= soft {
+		cdMs = ezfyConveneOverCapCooldownMs
+	}
+	{
+		nowCd := time.Now().UnixMilli()
+		ezfyConveneMu.Lock()
+		if last, ok := ezfyConveneMemo[uid]; ok && nowCd-last < cdMs {
+			ezfyConveneMu.Unlock()
+			if cdMs >= 60000 {
+				resp.ParamError(c, "操作过于频繁, 请 5 分钟后再试")
+			} else {
+				resp.ParamError(c, "操作过于频繁, 请 3 秒后再试")
+			}
+			return
+		}
+		if len(ezfyConveneMemo) > 16384 {
+			ezfyConveneMemo = map[uint]int64{}
+		}
+		ezfyConveneMemo[uid] = nowCd
+		ezfyConveneMu.Unlock()
 	}
 	city.Food -= foodCost
 	city.Pop += popGain
@@ -4957,7 +5024,7 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 		"pop":  city.Pop,
 	})
 	// ★ 2026-10-11 活动监测埋点：召集成功才写（best-effort，失败不影响玩家响应）。
-	//   popGain 是已按硬上限/民居上限截断后的**实际加入人口**，一次召集一行。
+	//   popGain 是已按召集硬上限截断后的**实际加入人口**，一次召集一行。
 	if err := h.DB.Create(&model.EzfyConveneLog{
 		UserId: uid, CityId: int64(city.ID), PopGain: popGain,
 	}).Error; err != nil {

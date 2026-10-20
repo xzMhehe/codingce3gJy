@@ -61,10 +61,9 @@
                于是这里永远显示「陆地城市」，和城市列表的「海城」对不上 —— 用户反馈的 bug） -->
           <span :class="ezfy.cityIsSea ? 'green' : 'gray'">[{{ ezfy.cityKindLabel }}]</span><br/>
           市政厅: {{ ezfy.city.city_level }}级<br/>
-          <!-- ★★ 2026-10-15 分母改用「真正的有效人口上限」(popCap)：召集人口上限 与 生效中的民居容纳 取小。
-               原来恒显示民居容纳 → 线上「民居容量限制开 + 召集灵活配置开」时，召集能把人口顶到 7.8 万，
-               而分母还是民居的 1.8 万，出现「78250/18000」这种分子大于分母的荒谬显示。 -->
-          人口: {{ ezfy.city.pop }}/{{ ezfy.popCap > 0 ? ezfy.popCap : '不限' }} (空闲{{ ezfy.freePop }})<br/>
+          <!-- ★★ 2026-10-20 民居容量是软上限：人口可以暂时超过，超出部分会缓慢回落。
+               所以不再用「人口/上限」的分数写法（会出现分子大于分母），改成并列展示。 -->
+          人口: {{ ezfy.city.pop }}（空闲{{ ezfy.freePop }}） / 上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '不限' }}<span v-if="ezfy.popOverHouseCap">（超出部分回落中）</span><br/>
           民心/民怨: {{ ezfy.city.feelings }}/{{ ezfy.city.grievance }} 税率: {{ ezfy.city.tax_rate }}%<br/>
           建筑: {{ ezfy.buildings.length }}座 (军事+资源区 {{ ezfy.areaCount }}/{{ ezfy.areaCap }})<br/>
           军队: {{ ezfy.totalTroops }} (城外{{ ezfy.marching }}支队伍行进, {{ ezfy.occupying }}支驻守)<br/>
@@ -82,18 +81,16 @@
     <template v-else-if="ezfy.cur === 'convene'">
         <div class="panel">
           <div class="panel-title">召集人口</div>
-          <!-- ★★ 2026-10-20 显示「有效上限」= min(召集人口上限, 生效中的民居容量)，与后端 ezfyPopCapOf 同口径。
-               原来只显示民居容纳，出生「人口 10 万 / 民居 4.5 万」时看不出到底哪个上限在生效。 -->
-          当前人口: {{ ezfy.city.pop }} / 有效上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '不限' }}<br/>
-          <span class="gray">民居容纳: {{ ezfy.housePopLimitOn ? ezfy.fmtBig(ezfy.city.pop_max) : '不限（民居不限制人口）' }}</span><br/>
-          <!-- ★ 2026-09-26：全局硬性人口上限（管理端配置，0 表示不限），达到上限后无法召集 -->
-          <!-- ★ 2026-10-09：改成「按上限截断」后，接近上限时只补差额、粮食按比例收，这里说清楚 -->
-          <template v-if="ezfy.convenePopMax > 0">
-            召集人口上限: {{ ezfy.fmtBig(ezfy.convenePopMax) }}<br/>
+          <!-- ★★ 2026-10-20 用户口径：民居容量是软上限，超过后仍可召集，超出部分缓慢回落。
+               这里只展示「当前人口（空闲）+ 民居上限 / 召集上限」，不再重复解释硬上限。 -->
+          当前人口: {{ ezfy.city.pop }}（空闲 {{ ezfy.freePop }}）<br/>
+          <template v-if="ezfy.houseSoftCapActive">
+            民居上限: {{ ezfy.fmtBig(ezfy.city.pop_max) }}<span v-if="ezfy.convenePopMax > 0"> / 召集上限: {{ ezfy.fmtBig(ezfy.convenePopMax) }}</span><br/>
+            <span v-if="ezfy.popOverHouseCap" class="gray">超出民居上限的人口会缓慢回落</span><br v-if="ezfy.popOverHouseCap"/>
           </template>
-          <span v-if="ezfy.housePopLimitOn && !ezfy.conveneFlexibleOn && ezfy.city.pop_max > 0" class="gray">
-            民居容量为硬上限，人口不会超过 {{ ezfy.fmtBig(ezfy.city.pop_max) }}
-          </span><br/>
+          <template v-else>
+            上限: {{ ezfy.convenePopMax > 0 ? ezfy.fmtBig(ezfy.convenePopMax) : '不限' }}<br/>
+          </template>
           <!-- 花费粮食/获得人口都读管理端配置（默认各 10 万），勿再写死 -->
           花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
           <div class="old-line">{{ ezfy.resNames.food }}: {{ ezfy.city.food }}</div>

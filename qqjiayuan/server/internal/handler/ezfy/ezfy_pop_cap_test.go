@@ -5,19 +5,14 @@ import (
 	"testing"
 )
 
-// ============ 人口上限口径守卫（2026-10-20）============
+// ============ 人口上限口径守卫（2026-10-20 修正版）============
 //
-// 用户报：「2 区关了『召集人口灵活配置』，民居 45000，之前开着时召集到 10 万，
-// 关了不应该掉到 45000 吗？召集人口上限 100000 是不是把民居上限盖掉了？」
-//
-// 根因：老实现里「民居硬上限」只在**自然增长**分支里夹（且只在人口从下方长过 pop_max 时），
-// 已经超过 pop_max 的人口（召集上来的）永远不会降；召集门也只在新召集时卡。
-//
-// 现在统一成一把尺子 ezfyPopCapOf：
-//
-//	有效上限 = min(召集人口上限, 民居容量（民居限制开 且 允许突破关 且 pop_max>0 时）)
-//
-// 并让 calcResource（每次懒结算）/ Convene / 移民法案 都走同一口径。
+// 用户最终口径：
+//  1. 民居容量是**软上限**：超过后仍然可以继续召集；
+//  2. 召集人口 + 对应空闲人口同步增加；
+//  3. 超出民居上限的人口会**慢慢回落**到民居上限，不是立刻夹平；
+//  4. 人口达到/超过民居上限时，召集冷却为 5 分钟（普通情况仍是 3 秒）；
+//  5. 「召集人口上限」是硬顶（自然增长/召集都不能超过），0 = 不限。
 
 func TestEzfyPopCapOf(t *testing.T) {
 	cases := []struct {
@@ -30,13 +25,13 @@ func TestEzfyPopCapOf(t *testing.T) {
 	}{
 		{"都不限", false, false, 0, 0, 0},
 		{"只开召集上限", false, false, 45000, 100000, 100000},
-		{"只开民居硬上限", true, false, 45000, 0, 45000},
+		{"只开民居软上限", true, false, 45000, 0, 45000},
 		{"两个都开取小（民居更小）", true, false, 45000, 100000, 45000},
 		{"两个都开取小（召集更小）", true, false, 45000, 30000, 30000},
-		{"允许突破民居 → 只看召集上限", true, true, 45000, 100000, 100000},
-		{"允许突破 + 无召集上限 → 不限", true, true, 45000, 0, 0},
+		{"允许长期超过民居 → 只看召集上限", true, true, 45000, 100000, 100000},
+		{"允许长期超过 + 无召集上限 → 不限", true, true, 45000, 0, 0},
 		{"民居关掉 → 只看召集上限", false, false, 45000, 100000, 100000},
-		{"pop_max=0（城里没民居）不夹人口", true, false, 0, 100000, 100000},
+		{"pop_max=0（城里没民居）不参与", true, false, 0, 100000, 100000},
 	}
 	for _, c := range cases {
 		if got := ezfyPopCapOf(c.houseOn, c.flexOn, c.popMax, c.conveneMax); got != c.want {
@@ -46,57 +41,133 @@ func TestEzfyPopCapOf(t *testing.T) {
 	}
 }
 
-// TestCalcResourceClampsExistingPop 懒结算必须把「已经超限」的人口夹下来（不只管自然增长）。
-func TestCalcResourceClampsExistingPop(t *testing.T) {
+// TestEzfySettlePopOverCap 超限人口必须「慢慢回落」，且时间余量不能丢。
+func TestEzfySettlePopOverCap(t *testing.T) {
+	const now = int64(1_700_000_000_000)
+	const cap = int64(45000)
+	const hour = int64(3600_000)
+
+	// 未超限 → 时间戳清零
+	if pop, at := ezfySettlePopOverCap(45000, cap, now, now); pop != 45000 || at != 0 {
+		t.Fatalf("未超限应原样返回且 at=0，got pop=%d at=%d", pop, at)
+	}
+	// 首次进入超限（at=0）：只记时间，本次不回落
+	if pop, at := ezfySettlePopOverCap(100000, cap, 0, now); pop != 100000 || at != now {
+		t.Fatalf("首次超限只应记时间，got pop=%d at=%d", pop, at)
+	}
+	// 1 小时：超出 55000 × 10%/小时 = 5500，人口 100000 → 94500
+	pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour)
+	if pop != 94500 || at != now+hour {
+		t.Fatalf("1 小时应回落 5500 人，got pop=%d at=%d", pop, at)
+	}
+	// 24 小时：足够回落到民居上限，时间戳清零
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+24*hour); pop != cap || at != 0 {
+		t.Fatalf("24 小时应回落到 %d 且 at=0，got pop=%d at=%d", cap, pop, at)
+	}
+	// 超出量很小、时间很短：不足 1 人时保留时间余量（at 不推进）
+	if pop, at := ezfySettlePopOverCap(45010, cap, now, now+60_000); pop != 45010 || at != now {
+		t.Fatalf("不足 1 人时应保留时间余量，got pop=%d at=%d", pop, at)
+	}
+	// 超出量很小、时间够长：刚好回落 1 人
+	pop, at = ezfySettlePopOverCap(45010, cap, now, now+hour)
+	if pop != 45009 || at != now+hour {
+		t.Fatalf("超出 10 人 1 小时应回落 1 人，got pop=%d at=%d", pop, at)
+	}
+	// 时间戳异常（未来）→ 重置为 now，不回落
+	if pop, at := ezfySettlePopOverCap(100000, cap, now+hour, now); pop != 100000 || at != now {
+		t.Fatalf("时间戳在未来应重置，got pop=%d at=%d", pop, at)
+	}
+}
+
+// TestCalcResourceSoftDecay 懒结算必须走「软上限 + 缓慢回落」，而不是立刻夹平。
+func TestCalcResourceSoftDecay(t *testing.T) {
 	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) calcResourceD("))
-	if !strings.Contains(body, "ezfyEffPopCap(city.PopMax)") {
-		t.Fatalf("calcResourceD 未按「有效人口上限」夹现有超限人口（关掉允许突破民居上限后人口不会降）：\n%s", body)
+	for _, want := range []string{
+		"ezfyConvenePopMaxCfg()", // 召集人口上限是硬顶，自然增长也不能超
+		"ezfyHouseSoftCap(city.PopMax)",
+		"ezfySettlePopOverCap(city.Pop, soft, city.PopOverCapAt, now)",
+		`"pop_over_cap_at": city.PopOverCapAt`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("calcResourceD 缺少软上限回落逻辑（缺 %s）：\n%s", want, body)
+		}
 	}
-	if !strings.Contains(body, "city.Pop = cap") {
-		t.Fatalf("calcResourceD 取到了上限但没有把 city.Pop 赋值为 cap：\n%s", body)
-	}
-	// 防回退：旧的「只夹召集硬上限」写法必须已删除，否则民居硬上限永远不生效。
-	if strings.Contains(body, "hardCap := ezfyConvenePopMaxCfg()") {
-		t.Fatalf("calcResourceD 还在用旧的单个召集上限写法（民居硬上限会被绕过）：\n%s", body)
+	// 防回退：旧的「立刻夹到 effective cap」写法必须删除
+	if strings.Contains(body, "ezfyEffPopCap(city.PopMax)") || strings.Contains(body, "city.Pop = cap") {
+		t.Fatalf("calcResourceD 还在立刻夹平超限人口（用户要求缓慢回落）：\n%s", body)
 	}
 }
 
-// TestConveneUsesEffPopCap 召集与懒结算必须同一把尺子。
-func TestConveneUsesEffPopCap(t *testing.T) {
+// TestConveneAllowsOverHouseCap 召集不能被民居软上限挡住，且到软上限后冷却 5 分钟。
+func TestConveneAllowsOverHouseCap(t *testing.T) {
 	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) Convene("))
-	if !strings.Contains(body, "popCap := ezfyEffPopCap(city.PopMax)") {
-		t.Fatalf("Convene 未使用 ezfyEffPopCap（召集上限与民居上限仍各卡各的）：\n%s", body)
+	// 只按召集人口上限硬顶截断
+	if !strings.Contains(body, "popCap := ezfyConvenePopMaxCfg()") {
+		t.Fatalf("Convene 未使用召集人口上限作为硬顶：\n%s", body)
 	}
-	if !strings.Contains(body, "city.Pop+popGain > popCap") {
-		t.Fatalf("Convene 未按有效上限截断 popGain：\n%s", body)
+	if !strings.Contains(body, "popGain = popCap - city.Pop") {
+		t.Fatalf("Convene 未按召集硬顶截断 popGain：\n%s", body)
+	}
+	// 不能再被民居软上限截断
+	if strings.Contains(body, "ezfyEffPopCap") || strings.Contains(body, "city.PopMax - city.Pop") {
+		t.Fatalf("Convene 仍被民居上限截断（超过上限应仍可召集）：\n%s", body)
+	}
+	// 人口达到/超过民居软上限 → 5 分钟冷却
+	for _, want := range []string{
+		"ezfyHouseSoftCap(city.PopMax)",
+		"ezfyConveneOverCapCooldownMs",
+		"5 分钟后再试",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("Convene 缺少「民居软上限时 5 分钟冷却」逻辑（缺 %s）：\n%s", want, body)
+		}
 	}
 }
 
-// TestAllPopGatesUseEffPopCap 人口召集 / 懒结算 / 移民法案 三处必须全部走同一口径。
-func TestAllPopGatesUseEffPopCap(t *testing.T) {
+// TestPopGatesUseConveneHardCap 人口召集 / 懒结算 / 移民法案 三处都只把召集上限当硬顶。
+func TestPopGatesUseConveneHardCap(t *testing.T) {
 	src := ezfyStripCommentLines(rawFile(t, "ezfy.go"))
-	if n := strings.Count(src, "ezfyEffPopCap(city.PopMax)"); n < 3 {
-		t.Fatalf("ezfy.go 里 ezfyEffPopCap(city.PopMax) 只有 %d 处，至少应有 3 处"+
-			"（懒结算 calcResourceD / 人口召集 Convene / 移民法案 ItemType31）", n)
+	if strings.Contains(src, "ezfyEffPopCap(") {
+		t.Fatal("ezfy.go 仍引用已删除的 ezfyEffPopCap")
+	}
+	// calcResourceD 的硬顶夹取 + Convene + 移民法案 ItemType31
+	if n := strings.Count(src, "ezfyConvenePopMaxCfg()"); n < 3 {
+		t.Fatalf("ezfyConvenePopMaxCfg() 只有 %d 处，至少应有 3 处"+
+			"（懒结算硬顶 / 人口召集 / 移民法案 ItemType31）", n)
 	}
 }
 
-// TestFrontendPopCapSameFormula 前端分母与按钮禁用必须和后端同口径。
+// TestFrontendPopCapSameFormula 前端展示/按钮/冷却必须和后端同口径。
 func TestFrontendPopCapSameFormula(t *testing.T) {
 	vue := strings.ReplaceAll(readFrontFile(t, "../../../../web/src/views/ezfy/Ezfy.vue"), "\r\n", "\n")
 	vue = ezfyStripCommentLines(vue)
+	// popCap 仍用于展示：min(召集上限, 民居软上限)
 	if !strings.Contains(vue, "this.housePopLimitOn && !this.conveneFlexibleOn") {
-		t.Fatal("前端 popCap 丢了「民居限制开 + 允许突破关」条件")
+		t.Fatal("前端 popCap 丢了「民居限制开 + 允许长期超过关」条件")
 	}
 	if !strings.Contains(vue, "Math.min(cap, pm)") {
 		t.Fatal("前端 popCap 未与召集上限取小")
 	}
-	if !strings.Contains(vue, "return this.popCap > 0 && pop >= this.popCap") {
-		t.Fatal("前端 conveneBlocked 未直接用 popCap（会和后端上限口径漂移）")
+	// 按钮只受召集硬顶限制（民居软上限不挡召集）
+	if !strings.Contains(vue, "return this.convenePopMax > 0 && pop >= this.convenePopMax") {
+		t.Fatal("前端 conveneBlocked 未只按召集人口硬顶禁用（民居软上限不该挡召集）")
 	}
-	// 召集页必须显示「有效上限」，别再只显示民居容纳导致「人口 10 万 / 上限 4.5 万」看不懂
+	// 达到/超过民居软上限 → 5 分钟冷却
+	if !strings.Contains(vue, "5 * 60 * 1000") {
+		t.Fatal("前端 conveneCooldownMs 未实现 5 分钟冷却")
+	}
+
 	cityVue := ezfyStripCommentLines(readFrontFile(t, "../../../../web/src/views/ezfy/modules/EzfyCity.vue"))
-	if !strings.Contains(cityVue, "有效上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '不限' }}") {
-		t.Fatal("召集页未显示有效人口上限")
+	// 召集页必须显示空闲人口（用户反馈「以前有现在没了」）
+	if !strings.Contains(cityVue, "空闲 {{ ezfy.freePop }}") {
+		t.Fatal("召集页未显示空闲人口")
+	}
+	// 不再显示「民居容量为硬上限…」这种与新规则矛盾的冗余提示
+	if strings.Contains(cityVue, "民居容量为硬上限") {
+		t.Fatal("召集页仍在提示「民居容量为硬上限」（现在已改为软上限）")
+	}
+	// 超过民居上限时要有「回落」提示
+	if !strings.Contains(cityVue, "popOverHouseCap") {
+		t.Fatal("前端未展示「超出民居上限会缓慢回落」提示")
 	}
 }

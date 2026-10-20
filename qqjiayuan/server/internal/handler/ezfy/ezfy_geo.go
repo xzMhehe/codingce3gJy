@@ -1202,17 +1202,16 @@ func ezfyConveneFlexOn() bool {
 	return ezfyCfg.limit.ConveneFlexibleOn != 0
 }
 
-// ezfyPopCapOf 计算「城市人口有效上限」的纯函数（0 = 不限）。
+// ezfyPopCapOf 计算「展示用人口上限 / 超限回落目标」的纯函数（0 = 不限）。
 //
-//	★ 2026-10-20 用户报「关掉『召集人口灵活配置』后，人口 10 万没降到民居 4.5 万：
-//	  是不是『召集人口上限 10 万』把民居上限盖掉了？」——
-//	  现在把两个上限**统一成取小**，自然增长 / 召集 / 已有超限人口都走这一把尺子：
-//	  ① 召集人口上限（> 0 才生效，0 = 不限）；
-//	  ② 民居容纳（仅当「民居容量限制」开、且「允许突破民居上限」关、且 pop_max > 0 时生效）。
-//	     pop_max = 0（城里没有民居/脏数据）不参与，避免把人口直接夹成 0。
+//	★ 2026-10-20 用户口径（修正）：
+//	  ① 召集人口上限（> 0 才生效，0 = 不限）—— **硬上限**，自然增长/召集都不能超过；
+//	  ② 民居容纳（仅当「民居容量限制」开、且「允许长期超过民居上限」关、且 pop_max > 0 时生效）
+//	     —— **软上限**：可以继续召集超过它，但超出部分会缓慢回落到它（见 ezfySettlePopOverCap）。
+//	     pop_max = 0（城里没有民居/脏数据）不参与，避免把人口夹成 0。
+//	  两者都生效时取小，作为**展示上限 / 回落目标**；绝不用于阻止召集（召集只看①）。
 //
-//	⚠️ 前端 `web/src/views/ezfy/Ezfy.vue::popCap` 必须与本函数完全同口径
-//	  （展示的分母、召集按钮禁用都依赖它）。
+//	⚠️ 前端 `web/src/views/ezfy/Ezfy.vue::popCap` 必须与本函数完全同口径（展示用）。
 func ezfyPopCapOf(houseOn, flexOn bool, popMax, conveneMax int64) int64 {
 	cap := int64(0)
 	if conveneMax > 0 {
@@ -1224,9 +1223,16 @@ func ezfyPopCapOf(houseOn, flexOn bool, popMax, conveneMax int64) int64 {
 	return cap
 }
 
-// ezfyEffPopCap 当前配置 + 该城 pop_max 下的有效人口上限（0 = 不限）。
-func ezfyEffPopCap(popMax int64) int64 {
-	return ezfyPopCapOf(ezfyHousePopLimitOn(), ezfyConveneFlexOn(), popMax, ezfyConvenePopMaxCfg())
+// ezfyHouseSoftCap 当前配置下的「民居软上限」（0 = 不生效）。
+//
+//	仅当「民居容量限制」开 + 「允许长期超过民居上限」关 + pop_max > 0 时生效。
+//	生效后：人口可以继续召集超过它，但超出部分会按 ezfyPopOverCapDecayPct 缓慢回落，
+//	且人口达到/超过它时召集冷却为 5 分钟（见 Convene）。
+func ezfyHouseSoftCap(popMax int64) int64 {
+	if !ezfyHousePopLimitOn() || ezfyConveneFlexOn() || popMax <= 0 {
+		return 0
+	}
+	return popMax
 }
 
 // ============ 召集人口：消耗粮食 / 获得人口 ============
