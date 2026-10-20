@@ -601,9 +601,15 @@ func (h *EzfyHandler) isAllyCity(uid uint, cityId int64) bool {
 }
 
 func (h *EzfyHandler) getWar(a, b uint) *model.EzfyWar {
+	// ★★ 2026-10-20 修复「明明没宣战却提示已与该玩家宣战」：
+	//   个人宣战没有定时归档任务，过期后 status 仍是 1/2（只有军团宣战有 corpsWarTick）。
+	//   这里必须按 expire_time 过滤，否则只要双方历史上打过一次，过期记录就会一直命中：
+	//   warStatus() 按过期时间正确返回 0（地图显示[宣战]），但 DeclareWar 用 getWar 判重
+	//   → 点[宣战]永远回「已与该玩家宣战(待生效或交战中)」，该玩家再也无法重新宣战。
+	now := time.Now().UnixMilli()
 	var w model.EzfyWar
-	err := h.DB.Where("((atk_user_id = ? AND def_user_id = ?) OR (atk_user_id = ? AND def_user_id = ?)) AND status IN (1,2)",
-		a, b, b, a).Order("id DESC").First(&w).Error
+	err := h.DB.Where("((atk_user_id = ? AND def_user_id = ?) OR (atk_user_id = ? AND def_user_id = ?)) AND status IN (1,2) AND expire_time > ?",
+		a, b, b, a, now).Order("id DESC").First(&w).Error
 	if err != nil {
 		return nil
 	}
