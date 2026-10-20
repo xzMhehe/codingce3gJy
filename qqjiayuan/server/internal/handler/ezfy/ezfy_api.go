@@ -4135,14 +4135,27 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	// ★ 2026-09-24 修复「被攻击的动态打完了还一直显示」：只展示订单仍处于
 	//   「战斗中(5)」的战场。订单已结算(征服/返航)但战场行没更新(历史 bug 留下的
 	//   僵尸行)一律不再展示；这类行由 ezfyBattleTick 自愈 + 本次线上数据修复清理。
-	dbq := h.DB.Where("def_user_id = ? AND status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
-		uid, ezfyOrderStatusBattle)
+	// ★★ 2026-10-20 附属野地防守战场按**坐标**映射，不能再用 battle.target_id：
+	//   攻打野地的订单（掠夺2/征服3）客户端只传 target_type+坐标，target_id=0，
+	//   原来 `target_id IN (SELECT id FROM ezfy_wildland...)` 永远匹配不到 →
+	//   守方在「军情 → 军队动态」里什么都看不到，自然无法 [指挥]。
+	//   同时兼容旧战场：def_user_id=0 时按野地归属城/野地主人反查。
+	dbq := h.DB.Where("status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?) AND ("+
+		"def_user_id = ? OR (def_user_id = 0 AND user_id <> ? AND ("+
+		"(target_type = 3 AND target_id IN (SELECT id FROM ezfy_city WHERE user_id = ?)) OR "+
+		"(target_type IN (1,2) AND EXISTS ("+
+		"SELECT 1 FROM ezfy_wildland w JOIN ezfy_city c ON c.id = w.city_id "+
+		"WHERE w.x = ezfy_battle.target_x AND w.y = ezfy_battle.target_y AND c.user_id = ?)))))",
+		ezfyOrderStatusBattle, uid, uid, uid, uid)
 	// ★ 2026-10-01 防守战场按「被打的城市」过滤（battle.target_id = 守方城市 id）
 	// ★★ 2026-10-19 附属野地防守战场：target_id 是**野地 id**（不是城市 id），
 	//   按当前城过滤时要把「归属该城的野地」映射进来，否则守方切到该城看不到 [指挥]。
+	// ★★ 2026-10-20 野地战场 target_id 可能为 0（客户端攻打野地时没有野地 id），
+	//   所以按坐标 EXISTS 匹配归属城；新/旧战场都能命中。
 	if cityId > 0 {
 		dbq = dbq.Where("(target_type = 3 AND target_id = ?) OR "+
-			"(target_type IN (1,2) AND target_id IN (SELECT id FROM ezfy_wildland WHERE city_id = ?))",
+			"(target_type IN (1,2) AND EXISTS (SELECT 1 FROM ezfy_wildland w "+
+			"WHERE w.x = ezfy_battle.target_x AND w.y = ezfy_battle.target_y AND w.city_id = ?))",
 			cityId, cityId)
 	}
 	dbq.Find(&defBattles)
@@ -4198,8 +4211,10 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			}
 		} else if b.TargetType == 1 || b.TargetType == 2 {
 			// ★★ 2026-10-19 附属野地守军带队的军官（增援6/采集7），与战报展示同口径。
+			// ★★ 2026-10-20 攻打野地的订单 target_id 常为 0，改按坐标找守军订单。
 			var gs []model.EzfyOrder
-			h.DB.Where("target_id = ? AND target_type IN (1,2) AND order_type IN (6,7) AND status IN (1,3)", b.TargetId).
+			h.DB.Where("target_type IN (1,2) AND order_type IN (6,7) AND status IN (1,3) "+
+				"AND target_x = ? AND target_y = ?", b.TargetX, b.TargetY).
 				Find(&gs)
 			defOfficer = h.ezfyWildDefOfficersDesc(gs)
 		}

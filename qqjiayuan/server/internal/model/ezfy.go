@@ -1365,7 +1365,8 @@ type EzfyBattle struct {
 	// ★ 「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」。
 	//   没给的兵种回落司令部「兵种战斗配置」；键 0 = 旧格式遗留的「全军统一指令」。
 	AtkCmd string `gorm:"type:varchar(500);default:'';comment:攻击指令" json:"atk_cmd"`
-	// DefUserID 守方玩家 uid（仅 target_type=3 攻击玩家城时有值，0 = 野地/寇城无玩家守方）。
+	// DefUserID 守方玩家 uid（target_type=3 玩家城；target_type=1/2 有玩家驻军的附属野地；
+	// 0 = 无真人守方，如中立野地/寇城/AI）。
 	// ★ 2026-09-23 「敌人打自己，自己也能指挥」—— 防守方据此找回并进入战场。
 	DefUserID uint `gorm:"index:idx_battle_def;comment:守方用户ID" json:"def_user_id"`
 	// DefCmd 守方**逐兵种**指令表，JSON 同 AtkCmd（玩家守城时指挥守军用；AI 为空）。

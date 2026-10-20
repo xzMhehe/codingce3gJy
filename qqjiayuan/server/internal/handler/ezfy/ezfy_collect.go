@@ -299,10 +299,18 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 		resp.ParamError(c, "当前城市没有可召回的外出部队(采集/驻军)")
 		return
 	}
-	n := 0
+	n, skipped := 0, 0
+	// ★★ 2026-10-20 附属野地正在被攻打时，参战的驻军/采集队不能一键召回；
+	//   单独召回在后面还有一道同样的卡控，这里跳过并回报数量。
+	//   一次查出所有野地战场坐标，循环内只查 map（避免每支部队一条 COUNT）。
+	activeWildBattles := h.ezfyWildlandBattleCoords(uid)
 	var gained int64
 	for i := range orders {
 		order := &orders[i]
+		if ezfyWildlandOrderCanDefend(order) && activeWildBattles[[2]int{order.TargetX, order.TargetY}] {
+			skipped++
+			continue
+		}
 		if order.OrderType == 7 {
 			var before int64
 			// 召回前先结算未入城的那部分产出（满一期给资源+宝物；不满一期只给按比例的资源），
@@ -322,9 +330,20 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 				"return_time": now + travel, "carry": order.Carry})
 		n++
 	}
+	if n == 0 {
+		if skipped > 0 {
+			resp.ParamError(c, "附属野地正在战斗, 参战部队不能召回；请先到「军情 → 军队动态 → [指挥]」结束战斗")
+			return
+		}
+		resp.ParamError(c, "当前城市没有可召回的外出部队(采集/驻军)")
+		return
+	}
 	msg := fmt.Sprintf("已召回 %d 支部队返航", n)
 	if gained > 0 {
 		msg += fmt.Sprintf(", 召回前结算负重 %d(随返航入城)", gained)
+	}
+	if skipped > 0 {
+		msg += fmt.Sprintf("；%d 支部队因正在战斗未能召回", skipped)
 	}
 	resp.OK(c, gin.H{"msg": msg})
 }

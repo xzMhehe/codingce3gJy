@@ -157,12 +157,18 @@ func (h *EzfyHandler) ezfyBattleByOrder(orderId int64) *model.EzfyBattle {
 // ★★ 2026-10-19 附属野地也可能有真人守方（野地主人派了驻军/采集队）——
 // 新开战场已按 ezfyWildlandOwnerOf 落 DefUserID，这里优先读它；
 // 旧战场（target_type=3 且没写 DefUserID）仍回落按 target_id 查城市归属。
+// ★★ 2026-10-20 旧野地战场（def_user_id=0，且 target_id 可能也是 0）按坐标反查野地主人，
+// 否则守方进指挥室会被判成「无关人员」。
 func (h *EzfyHandler) ezfyBattleDefenderUid(b *model.EzfyBattle) uint {
 	if b == nil {
 		return 0
 	}
 	if b.DefUserID > 0 {
 		return b.DefUserID
+	}
+	if b.TargetType == 1 || b.TargetType == 2 {
+		uid, _ := h.ezfyWildlandOwnerOf(b.TargetX, b.TargetY, b.UserID)
+		return uid
 	}
 	if b.TargetType != 3 {
 		return 0

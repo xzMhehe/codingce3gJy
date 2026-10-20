@@ -84,15 +84,41 @@ func TestWildlandPvp(t *testing.T) {
 		t.Fatal("pvp/自动战斗未覆盖「有驻军的附属野地」")
 	}
 	//   · 守方的「军情 → 军队动态」要能看到 [指挥]（按归属城映射野地战场）
-	if !strings.Contains(api, "(target_type IN (1,2) AND target_id IN (SELECT id FROM ezfy_wildland WHERE city_id = ?))") {
-		t.Fatal("ReportDynamics 防守战场未把附属野地战场映射到归属城（守方看不到 [指挥]）")
+	// ★★ 2026-10-20 攻打野地的订单 target_id=0，必须按坐标映射；只按 target_id
+	//   会导致守方永远看不到这场战斗。
+	if !strings.Contains(api, "target_type IN (1,2) AND EXISTS (SELECT 1 FROM ezfy_wildland w ") ||
+		!strings.Contains(api, "WHERE w.x = ezfy_battle.target_x AND w.y = ezfy_battle.target_y AND w.city_id = ?") {
+		t.Fatal("ReportDynamics 防守战场未按坐标把附属野地战场映射到归属城（守方看不到 [指挥]）")
+	}
+	//   · 旧野地战场 def_user_id=0 时，也要按坐标反查野地主人，否则守方进指挥室被判无关人员
+	if !strings.Contains(room, "if b.TargetType == 1 || b.TargetType == 2 {\n\t\tuid, _ := h.ezfyWildlandOwnerOf(b.TargetX, b.TargetY, b.UserID)") {
+		t.Fatal("ezfyBattleDefenderUid 未按坐标兼容旧附属野地战场（守方无法指挥）")
 	}
 	//   · 守方轮询要能触发开战场（fetchIncoming 纳入打我方野地的到达订单）
-	if !strings.Contains(order, "(ezfy_order.target_type IN (1,2) AND w.city_id IN ?)") {
-		t.Fatal("fetchIncoming 未纳入「正在打我方附属野地」的到达订单（守方轮询推不动战场）")
+	// ★★ 2026-10-20 同样不能用 target_id=0 去 JOIN，改按坐标 EXISTS。
+	if !strings.Contains(order, "(ezfy_order.target_type IN (1,2) AND EXISTS (") ||
+		!strings.Contains(order, "WHERE w.x = ezfy_order.target_x ") ||
+		!strings.Contains(order, "AND w.y = ezfy_order.target_y AND w.city_id IN ?") {
+		t.Fatal("fetchIncoming 未按坐标纳入「正在打我方附属野地」的到达订单（守方轮询推不动战场）")
 	}
 	if !strings.Contains(order, "军情警报: 敌军已抵达 来自 %s(%d,%d)") ||
 		!strings.Contains(order, "if hasPlayerDefender && (order.TargetType == 1 || order.TargetType == 2) {") {
 		t.Fatal("附属野地有守军时未给守方发「敌军已抵达」军情警报")
+	}
+
+	// ⑥ 附属野地战斗中的驻军/采集队不能召回（单支 + 一键召回都要卡）
+	if !strings.Contains(order, "func (h *EzfyHandler) ezfyWildlandOrderInBattle(uid uint, order *model.EzfyOrder) bool {") {
+		t.Fatal("缺少 ezfyWildlandOrderInBattle（无法判断野地守军是否在战斗中）")
+	}
+	if !strings.Contains(order, "if h.ezfyWildlandOrderInBattle(uid, &order) {") {
+		t.Fatal("单支召回未拦截「附属野地战斗中的部队」")
+	}
+	col := rawFile(t, "ezfy_collect.go")
+	if !strings.Contains(col, "activeWildBattles := h.ezfyWildlandBattleCoords(uid)") ||
+		!strings.Contains(col, "activeWildBattles[[2]int{order.TargetX, order.TargetY}]") {
+		t.Fatal("一键召回未拦截「附属野地战斗中的部队」")
+	}
+	if !strings.Contains(col, "支部队因正在战斗未能召回") {
+		t.Fatal("一键召回未回报被跳过的战斗中部队")
 	}
 }

@@ -1956,6 +1956,46 @@ func ezfyOneWayTravel(order *model.EzfyOrder) int64 {
 	return 60000
 }
 
+// ezfyWildlandOrderCanDefend 该订单是否是「附属野地上的驻军/采集队」——
+// 只有 6(增援驻军)/7(驻守采集) 且已到达(status 1/3) 才会作为守军参战。
+func ezfyWildlandOrderCanDefend(order *model.EzfyOrder) bool {
+	if order == nil || (order.TargetType != 1 && order.TargetType != 2) {
+		return false
+	}
+	if order.OrderType != 6 && order.OrderType != 7 {
+		return false
+	}
+	return order.Status == 1 || order.Status == 3
+}
+
+// ezfyWildlandBattleCoords 一次查出当前玩家可能参与防守的野地战场坐标。
+//
+// ★★ 2026-10-20 用户反馈：附属野地被征服/掠夺时，守方部队仍能在「驻军」里点[召回]，
+// 战斗中的兵力被抽走会与战场快照/战后兵力回写打架（重复入兵/丢兵）。
+// 战场订单属于攻方，且 target_id 可能为 0，所以按野地坐标匹配正在进行的战场。
+// 一次查全（而不是每支部队一条 COUNT），避免 1 核服务器上的 N+1。
+func (h *EzfyHandler) ezfyWildlandBattleCoords(uid uint) map[[2]int]bool {
+	var battles []model.EzfyBattle
+	h.DB.Select("target_x, target_y").
+		Where("status = 1 AND target_type IN (1,2) AND user_id <> ? "+
+			"AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
+			uid, ezfyOrderStatusBattle).
+		Find(&battles)
+	m := make(map[[2]int]bool, len(battles))
+	for _, b := range battles {
+		m[[2]int{b.TargetX, b.TargetY}] = true
+	}
+	return m
+}
+
+// ezfyWildlandOrderInBattle 判断单支附属野地驻军/采集队是否正在被敌军攻打。
+func (h *EzfyHandler) ezfyWildlandOrderInBattle(uid uint, order *model.EzfyOrder) bool {
+	if !ezfyWildlandOrderCanDefend(order) {
+		return false
+	}
+	return h.ezfyWildlandBattleCoords(uid)[[2]int{order.TargetX, order.TargetY}]
+}
+
 // RecallOrder 取消出征命令（原「召回」，已放开到所有命令类型）
 //
 // ★ 「出征队列可以取消」：原来只允许 type=7(驻守采集) 召回，
@@ -1988,6 +2028,12 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 	// ★ 指挥室：战斗中的部队不能召回 —— 让它先打完（或点「自动战斗」一键打完）
 	if order.Status == ezfyOrderStatusBattle {
 		resp.ParamError(c, "部队正在战斗中, 不能取消；请到「军情 → 军队动态 → [指挥]」里打完或点[自动战斗]")
+		return
+	}
+	// ★★ 2026-10-20 附属野地驻军/采集队作为守军参战时，订单本身仍是 status=1/3，
+	//   不能只靠上面的 status==5 判断；否则战斗中点[召回]会把参战兵力抽走。
+	if h.ezfyWildlandOrderInBattle(uid, &order) {
+		resp.ParamError(c, "部队正在附属野地战斗中, 不能召回；请先到「军情 → 军队动态 → [指挥]」结束战斗")
 		return
 	}
 	// ★ 2026-10-02 「自己也能单独召回驻守的军队」：
@@ -2270,14 +2316,17 @@ func (h *EzfyHandler) fetchIncoming(uid uint, now int64, cities ...[]int64) ([]m
 	}
 	// ★★ 2026-10-19 「有玩家驻军的附属野地」的守方也是真人：把「正在打我方附属野地」
 	//   的到达订单也纳入来袭，让守方自己的轮询就能触发开战场/军情警报（原来只认 target_type=3 玩家城）。
-	//   用一条 LEFT JOIN 完成（野地 target_id 是野地 id，需要按 ezfy_wildland.city_id 映射到归属城）。
+	// ★★ 2026-10-20 攻打野地的订单（掠夺2/征服3）客户端只传目标类型+坐标，target_id=0，
+	//   原来按 `w.id = ezfy_order.target_id` JOIN 永远匹配不到 → 守方轮询推不动战场。
+	//   改成按坐标 EXISTS 映射野地归属城（同时兼容 target_id 有值的驻军/采集订单）。
 	var orders []model.EzfyOrder
 	h.DB.Table("ezfy_order").
 		Select("ezfy_order.*"). // ★ 只取订单列，避免野地表同名列(id/x/y/city_id)在 SELECT * 时覆盖订单字段
-		Joins("LEFT JOIN ezfy_wildland w ON w.id = ezfy_order.target_id").
 		Where("ezfy_order.status = 0 AND ezfy_order.arrive_time <= ?", now).
 		Where("((ezfy_order.target_type = 3 AND ezfy_order.target_id IN ?) OR "+
-			"(ezfy_order.target_type IN (1,2) AND w.city_id IN ?))", ids, ids).
+			"(ezfy_order.target_type IN (1,2) AND EXISTS ("+
+			"SELECT 1 FROM ezfy_wildland w WHERE w.x = ezfy_order.target_x "+
+			"AND w.y = ezfy_order.target_y AND w.city_id IN ?)))", ids, ids).
 		Order("ezfy_order.id ASC").Find(&orders)
 	if len(orders) == 0 {
 		// 确认无来袭 → 记 memo（下次 3 秒内跳过）
