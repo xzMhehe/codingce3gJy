@@ -4037,7 +4037,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 				// ★ 2026-09-24 用户规则: 采集部队到达后驻守**空闲**, 手工点[采集]才进入采集
 				statusName = "驻守(空闲)"
 				timeLabel = "待机"
-				timeText = "空闲待命, 点[采集]开始采集"
+				timeText = "空闲待命"
 			} else {
 				statusName = "驻守采集"
 				// ★ 2026-09-28  采集不再显示「下次结算」倒计时,

@@ -360,7 +360,7 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 		return
 	}
 	if order.ArriveTime <= 0 {
-		resp.ParamError(c, "该部队已在待命(未在采集中)")
+		resp.ParamError(c, "该部队已在待命")
 		return
 	}
 	// ★ 2026-09-30 出发城市资源已达到配置的「资源最大值」时，

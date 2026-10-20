@@ -1863,7 +1863,7 @@ func (h *EzfyHandler) ezfyOrderTimeLabel(o *model.EzfyOrder, now int64) (string,
 			if o.ArriveTime > 0 {
 				return "驻守采集", ""
 			}
-			return "驻守(空闲)", "点[采集]开始采集"
+			return "驻守(空闲)", ""
 		}
 		return "驻守中", ""
 	}

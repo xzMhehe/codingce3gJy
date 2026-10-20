@@ -99,7 +99,7 @@
                      （无用提示，看负重条即可）。规则仍生效：后端采集结算把超出负重部分直接入起点城市。 -->
               </template>
               <span v-else-if="o.status === 1 && o.arrive_time" class="gray">已采：统计中…</span>
-              <span v-else-if="o.status === 1" class="gray">已采：暂无(未在采集中)</span>
+              <span v-else-if="o.status === 1" class="gray">已采：暂无</span>
               <br/>
               --------------------
             </div>
@@ -120,7 +120,6 @@
             <!-- ★ 2026-10-13 军情警讯**不受城市限制**：列表/徽标/一键删除都是「全部城市」口径 -->
             <div class="old-line">
               <a href="javascript:;" @click="ezfy.doClearReports">[一键删除]</a>
-              <span class="gray">(全部城市)</span>
             </div>
             <div class="old-line" v-for="r in ezfy.repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="ezfy.openReport(r)">
