@@ -131,6 +131,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		storeH := &handler.StoreHandler{DB: db}
 		cityH := &handler.CityHandler{DB: db}
 
+		// 站点展示信息（页脚 QQ 群号、防复制开关等，后台站点设置 KV 可配）
+		// ★ 2026-10-20 二战独立壳也要读 anti_copy：wwii 模式同样注册（读家园库 settings）
+		api.GET("/site-info", plazaH.SiteInfo)
+
 		// 公开接口（★★ 2026-10-17 二战独立部署：家园公开路由只在 home 模式注册；
 		//   wwii 模式只注册二战公开路由 login/sso/zone，见下方分支）
 		if cfg.Mode() != "wwii" {
@@ -153,8 +157,6 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 			// 在线用户（复刻诺哈 online.html：用户/游客混排，游客按 IP 展示）
 			api.GET("/online", optAuth, plazaH.Online)
 			api.GET("/announcements", plazaH.Announcements)
-			// 站点展示信息（页脚 QQ 群号等，后台站点设置 qq_group 可配）
-			api.GET("/site-info", plazaH.SiteInfo)
 			api.GET("/search", plazaH.Search)
 			api.GET("/boards", boardH.Tree)
 			api.GET("/boards/:id", boardH.Info)

@@ -34,13 +34,15 @@ func (h *PlazaHandler) Announcements(c *gin.Context) {
 
 // SiteInfo 站点展示信息（页脚小Q报时下的 QQ 群号等，后台站点设置 KV 可配）
 func (h *PlazaHandler) SiteInfo(c *gin.Context) {
+	// 站点设置开关必须即时生效：禁止浏览器/代理缓存旧值（改完 anti_copy 刷新即生效）
+	c.Header("Cache-Control", "no-store")
 	var qqGroup string
 	h.DB.Raw("SELECT `value` FROM settings WHERE `key` = 'qq_group'").Scan(&qqGroup)
 	// ★ 2026-09-30 防复制/防保存网页开关（后台站点设置 anti_copy=1 开启/0 关闭，未配置默认开启）
 	var antiCopy string
 	h.DB.Raw("SELECT `value` FROM settings WHERE `key` = 'anti_copy'").Scan(&antiCopy)
 	anti := "1"
-	if antiCopy == "0" || strings.EqualFold(antiCopy, "false") || strings.EqualFold(antiCopy, "off") {
+	if v := strings.ToLower(strings.TrimSpace(antiCopy)); v == "0" || v == "false" || v == "off" {
 		anti = "0"
 	}
 	resp.OK(c, gin.H{"qq_group": qqGroup, "anti_copy": anti})
