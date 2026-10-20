@@ -3429,6 +3429,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//   战斗结束后要把**剩余兵力写回这些订单** —— 原来只把损失记进战报，
 	//   订单 Troops 仍是满编 → 下次继续打时守军数量不对（用户反馈）。
 	var wildDefOrders []model.EzfyOrder
+	// ★★ 2026-10-20 附属野地守军主将与归属城（科技/装备/技能加成的来源）。
+	//   有玩家守军时，战斗引擎的守方加成必须按「归属城科技 + 主将军官」计算，
+	//   不能继续沿用野地/寇城「无科技、无军官」的默认 0。
+	var wildDefCommander *model.EzfyOfficer
+	wildDefCityID := uint(0)
 
 	// ★ case 0：老数据/异常请求可能没带 target_type，按「野地」处理，
 	//   否则会落进 default，导致战报标题变成「侦查报告: 」（目标名为空）。
@@ -3502,8 +3507,29 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			wildDefCamp = 0 // 玩家部队按基础(通用)兵种名展示
 			// ★★ 2026-10-19 汇总该野地守军各部队的带队军官（战报/指挥室展示）。
 			wildDefOfficerDesc = h.ezfyWildDefOfficersDesc(wildDefOrders)
-			// 指挥室「准备回合」里的【守方军官】也一并展示（原来野地守军这段是空的）。
-			defOfficerDesc = wildDefOfficerDesc
+			// ★★ 2026-10-20 守方是真人部队时，按「野地归属城科技 + 守军主将」计算
+			//   军官/科技/装备加成。原来这里只写名字，defBonus/defAtkBonus 等全为 0，
+			//   玩家看到的战报就是「守方军官 0%、守方科技 无」（用户反馈）。
+			wildDefCityID = uint(wildDef.CityId)
+			wildDefCommander = h.ezfyWildDefCommander(wildDefOrders, wildDefCityID)
+			wildDefBonus := h.ezfyWildDefCombatBonus(h.techMap(wildDefCityID), wildDefCommander)
+			defBonus = wildDefBonus.DefBonus
+			defAtkBonus = wildDefBonus.DefAtkBonus
+			defSpeedBonus = wildDefBonus.DefSpeedBonus
+			defRangeBonus = wildDefBonus.DefRangeBonus
+			defHealTech = wildDefBonus.DefHealTech
+			defOfficerAtkBonus = wildDefBonus.OfficerAtkBonus
+			defEquip = wildDefBonus.Equip
+			defSkillBreak = wildDefBonus.SkillBreak
+			defTechBreak = wildDefBonus.TechBreak
+			defDefBreak = wildDefBonus.DefBreak
+			defType = wildDefBonus.Type
+			// 指挥室「准备回合」里的【守方军官】：有主将时展示完整加成说明；
+			// 旧数据/军官已被删除时回退为原来的名字列表，至少让攻方看到是谁在守。
+			defOfficerDesc = wildDefBonus.OfficerDesc
+			if defOfficerDesc == "" {
+				defOfficerDesc = wildDefOfficerDesc
+			}
 			targetName = ezfyWildTerrainDisplayName(order.TargetX, order.TargetY, true) +
 				strconv.Itoa(wildDef.Level) + "级"
 		} else {
@@ -4031,17 +4057,21 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if target != nil {
 			defCamp = h.ensureProfile(target.UserID).Camp
 		}
-		// ★ 守方「绝地反击」生效回合数：玩家城 = 城守军官；野地/寇城 = 野地守将（无守将 → 0）
+		// ★ 守方「绝地反击」生效回合数：玩家城 = 城守军官；有玩家守军的附属野地 =
+		//   守军主将；中立野地/寇城 = 配置守将（无守将 → 0）。
 		defCounterRounds := 0
 		if target != nil {
 			defCounterRounds = h.officerCounterRounds(cityGuard)
+		} else if wildDefCommander != nil {
+			defCounterRounds = h.officerCounterRounds(wildDefCommander)
 		} else {
 			defCounterRounds = generalCounterRounds(defGeneral)
 		}
-		// ★ 守方套装展示军官：玩家城 = 城守军官；野地/寇城守将是 AI 将军，无装备、无套装
+		// ★ 守方套装/技能展示军官：玩家城 = 城守军官；有玩家守军的附属野地 = 守军主将；
+		//   中立野地/寇城守将是 AI 将军，无装备、无套装。
 		defSetOfficer := cityGuard
 		if target == nil {
-			defSetOfficer = nil
+			defSetOfficer = wildDefCommander
 		}
 		st := ezfyNewBattleState(attacker, defender,
 			atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
@@ -4052,7 +4082,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			atkOfficerDesc, defOfficerDesc,
 			officerBonus, defOfficerAtkBonus, // 军官占的「攻击加成」百分点（战报日志拆解用）
 			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
-			h.officerSkillBattleBonus(leadOfficer), h.officerSkillBattleBonus(cityGuard),
+			// ★★ 2026-10-20 守方用 defSetOfficer（城守或附属野地守军主将），与套装展示同口径。
+			h.officerSkillBattleBonus(leadOfficer), h.officerSkillBattleBonus(defSetOfficer),
 			// ★ 2026-10-06 技能/科技逐项明细（战报展示「军官技能·尖兵突击+N%」「科技·弹道学+N%」）
 			atkSkillBreak, defSkillBreak, atkTechs, defTechBreak, defDefBreak,
 			// ★ 2026-10-07 攻方「防御加成」（军官属性+防御技能+装备 Def）
@@ -5630,6 +5661,131 @@ func (h *EzfyHandler) ezfyWildDefOfficersDesc(orders []model.EzfyOrder) string {
 		}
 	}
 	return strings.Join(parts, ", ")
+}
+
+// ezfyDefenderBonus 附属野地守军的战斗加成快照。
+//
+// ★★ 2026-10-20 用户反馈「我是守方，我的斯大林拿航母采集，战场里守方军官加成 0、
+// 科技也没有」：附属野地有玩家守军时，之前只把军官名字写进战报，战斗引擎拿到的
+// defBonus/defAtkBonus/defTechBreak 全是 0。现在与玩家城 case 3 的城守口径一致：
+//
+//	防御 = 装甲科技(7)×3 + 重工技术(9)×2 + 军官学识/防御技能
+//	攻击 = 军训艺术(5)×2 + 武器科技(6)×3 + 重工技术(9)×2 + 军官攻击 + 装备伤害
+//	速度/射程/兵种专属/装备/套装/伤兵回收同样按城守公式计算。
+type ezfyDefenderBonus struct {
+	DefBonus        int
+	DefAtkBonus     int
+	DefSpeedBonus   int
+	DefRangeBonus   int
+	DefHealTech     int
+	OfficerAtkBonus int
+	Equip           ezfyBattleBonus
+	SkillBreak      []ezfyBonusItem
+	TechBreak       []ezfyBonusItem
+	DefBreak        []ezfyBonusItem
+	Type            ezfyTypeBonus
+	OfficerDesc     string
+}
+
+// ezfyWildDefCombatBonus 计算附属野地守军（增援6/驻守采集7）的战斗加成。
+//
+// tech 必须取**野地归属城**的科技表（玩家科技按账号共享，techMap(归属城) 即可），
+// officer 为守军主将（见 ezfyWildDefCommander）；没有军官时传 nil，仍会保留科技加成。
+func (h *EzfyHandler) ezfyWildDefCombatBonus(tech map[int]int, officer *model.EzfyOfficer) ezfyDefenderBonus {
+	b := ezfyDefenderBonus{
+		Type: ezfyTypeBonus{Speed: map[int]int{}, Def: map[int]int{}},
+	}
+	// 防御：与玩家城守军一致，不含城墙（城墙只守城，不守野地）。
+	b.DefBonus = tech[7]*3 + tech[9]*2 + h.officerGuardBonus(officer)
+	// 速度：燃烧引擎(10) 全体 +2%/级；喷气引擎(19) 只加空军 +3%/级。
+	b.DefSpeedBonus = tech[10] * 2
+	// 伤兵回收：治愈伤兵(21) + 军官「机械改造」5%/级（野地守军损失写回订单，
+	// 这里保留与城守同一口径，战报/后续扩展不会因为漏算而出现 0）。
+	b.DefHealTech = ezfyTechEffectValueAt(21, tech[21])
+	if h.officerHasSkill(officer, "机械改造") {
+		b.DefHealTech += 5 * h.officerSkillScale(officer)
+	}
+	if v := tech[19] * 3; v > 0 {
+		b.Type.Speed[ezfyTroopTypeAir] += v
+	}
+	if v := tech[16] * 2; v > 0 {
+		b.Type.Def[ezfyTroopTypeCity] = v
+	}
+	b.Type = h.officerTypeBonus(officer, b.Type)
+	// 装备/套装六项（伤害→攻击、防御→防御、生命/暴击/移动按引擎口径生效）。
+	b.Equip = h.officerBattleEquipBonus(officer)
+	// 攻击：军训艺术/武器科技/重工技术 + 军官攻击 + 装备伤害。
+	b.OfficerAtkBonus = h.officerBattleBonus(officer)
+	b.DefAtkBonus = tech[5]*2 + tech[6]*3 + tech[9]*2 + b.OfficerAtkBonus + b.Equip.Dmg
+	b.SkillBreak = h.officerSkillsBreak(officer)
+	b.TechBreak = ezfyBonusItems(
+		ezfyTechItem("军训艺术", tech[5]*2),
+		ezfyTechItem("武器科技", tech[6]*3),
+		ezfyTechItem("装甲科技", tech[7]*3),
+		ezfyTechItem("弹道学", tech[8]*3),
+		ezfyTechItem("重工技术", tech[9]*2),
+		ezfyTechItem("燃烧引擎", tech[10]*2),
+		ezfyTechItem("掩体防御", tech[16]*2),
+		ezfyTechItem("喷气引擎", tech[19]*3),
+	)
+	b.DefRangeBonus = tech[8] * 3
+	b.DefBreak = ezfyBonusItems(
+		ezfyTechItem("科技·装甲科技", tech[7]*3),
+		ezfyTechItem("科技·重工技术", tech[9]*2),
+	)
+	if officer != nil {
+		b.DefBreak = append(b.DefBreak, ezfyBonusItem{Name: "军官·" + officer.Name, Value: h.officerGuardAttrBonus(officer)})
+		for _, s := range h.officerGuardSkillsBreak(officer) {
+			b.DefBreak = append(b.DefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
+		}
+	}
+	b.DefBreak = append(b.DefBreak, ezfyTechItem("装备套装", b.Equip.Def)...)
+	b.OfficerDesc = h.officerBattleDesc(officer, h.officerBaseBonus(officer), "攻击加成",
+		h.officerGuardAttrBonus(officer), "守军防御")
+	return b
+}
+
+// ezfyWildDefCommander 选出附属野地守军的主将：等级最高的带队军官（同等级取 id 小者）。
+//
+// ★ 战斗引擎一方只有一个「军官加成」入口，多支守军（采集7 + 增援驻军6）无法各算各的；
+// 取等级最高者作为主将，避免把多支守军的军官加成无序叠加给全体守军。
+func (h *EzfyHandler) ezfyWildDefCommander(orders []model.EzfyOrder, ownerCityID uint) *model.EzfyOfficer {
+	if len(orders) == 0 {
+		return nil
+	}
+	cityIDs := map[uint]bool{}
+	names := []string{}
+	seen := map[string]bool{}
+	for i := range orders {
+		n := strings.TrimSpace(orders[i].Officer)
+		if n == "" {
+			continue
+		}
+		if !seen[n] {
+			seen[n] = true
+			names = append(names, n)
+		}
+		if orders[i].CityId > 0 {
+			cityIDs[uint(orders[i].CityId)] = true
+		}
+	}
+	if ownerCityID > 0 {
+		cityIDs[ownerCityID] = true
+	}
+	if len(names) == 0 || len(cityIDs) == 0 {
+		return nil
+	}
+	ids := make([]uint, 0, len(cityIDs))
+	for cid := range cityIDs {
+		ids = append(ids, cid)
+	}
+	var os []model.EzfyOfficer
+	h.DB.Where("city_id IN ? AND name IN ?", ids, names).
+		Order("level DESC, id ASC").Limit(1).Find(&os)
+	if len(os) == 0 {
+		return nil
+	}
+	return &os[0]
 }
 
 // ezfyWildlandOwnerOf 查某坐标「附属野地」的主人（0,0 = 无主/中立/寇城/自己打自己）。
