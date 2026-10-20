@@ -86,7 +86,9 @@
       </div>
       <el-main class="content">
         <transition name="page-fade" mode="out-in">
-          <router-view :key="activeTab" />
+          <!-- ★ 2026-10-20 区服切换改为局部刷新：key 里带 zoneEpoch，切区时只重建当前页面组件
+               （侧边栏/顶栏/标签页保持不动），组件 mounted 会按新的 X-Ezfy-Zone 重新拉数据。 -->
+          <router-view :key="viewKey" />
         </transition>
       </el-main>
     </el-container>
@@ -109,7 +111,9 @@ export default {
       // ★ 二战区服切换：区服列表来自家园服公开接口 /ezfy/zone
       ezfyZones: [],
       ezfyZone: '',
-      ezfyZonesLoaded: false
+      ezfyZonesLoaded: false,
+      // ★ 区服切换计数：只用来强制当前页面组件重建（局部刷新），不触发整页 reload
+      zoneEpoch: 0
     }
   },
   watch: {
@@ -164,7 +168,9 @@ export default {
     },
     currentName () { return this.names[this.activeTab] || '数据概览' },
     // 当前菜单是否属于二战征途（所有二战子菜单 key 均以 ezfy 开头）→ 决定是否显示区服切换
-    isEzfyTab () { return this.activeTab.indexOf('ezfy') === 0 }
+    isEzfyTab () { return this.activeTab.indexOf('ezfy') === 0 },
+    // 页面组件 key：普通切 tab 仍按 activeTab 重建；切区服时 zoneEpoch 变化，二战页也重建
+    viewKey () { return this.isEzfyTab ? this.activeTab + ':' + this.zoneEpoch : this.activeTab }
   },
   methods: {
     loadUser () {
@@ -184,12 +190,14 @@ export default {
         this.ezfyZone = hit ? hit.id : (r.data.current || list[0].id)
       }).catch(() => { this.ezfyZonesLoaded = false })
     },
-    // ★ 切换区服：写 localStorage，提示后整页刷新（当前二战页重新按新区服拉数据，简单可靠）
+    // ★ 切换区服：写 localStorage 后只让当前二战页重建（局部刷新），
+    //   api 拦截器会按新的 admin_ezfy_zone 给请求带上 X-Ezfy-Zone，组件 mounted 重新拉数据。
+    //   原来是 window.location.reload() 整页刷新，侧边栏/标签页/表单状态都会丢。
     switchZone (id) {
       const z = this.ezfyZones.find(x => String(x.id) === String(id))
       localStorage.setItem('admin_ezfy_zone', id)
+      this.zoneEpoch++
       this.$message.success('已切换至「' + (z ? z.name : id) + '」')
-      setTimeout(() => { window.location.reload() }, 400)
     },
     // 按登录用户角色的权限码过滤菜单：未分配的菜单不展示（超级管理员全量展示）
     // 菜单维护的覆盖配置（名称/图标/排序/隐藏）在权限过滤前先合并
