@@ -50,12 +50,14 @@
           <div class="old-line">当前坐标中心:({{ ezfy.mapCx }} , {{ ezfy.mapCy }})</div>
           <!-- ★ 「向上/向右/向下/向左/回到本城 间隙稍微大一点」→ 见 .ezfy-dir-nav a -->
           <!-- ★ 2026-10-05 「向右、向左 调换下位置（功能不变）用着不习惯」
-               → 顺序改为 向上 / 向左 / 向下 / 向右（各自 @click 的方向不变，只换摆放位置）。 -->
+               → 顺序改为 向上 / 向左 / 向下 / 向右（各自 @click 的方向不变，只换摆放位置）。
+               ★★ 2026-10-20 用户确认上下正负：向上 y+、向下 y-；
+               左右仍是 x 轴：向左 x-、向右 x+。 -->
           <div class="old-line ezfy-dir-nav">
-            <a href="javascript:;" @click="ezfy.moveMap(-ezfy.mapStep, 0)">向上</a>
-            <a href="javascript:;" @click="ezfy.moveMap(0, -ezfy.mapStep)">向左</a>
-            <a href="javascript:;" @click="ezfy.moveMap(ezfy.mapStep, 0)">向下</a>
-            <a href="javascript:;" @click="ezfy.moveMap(0, ezfy.mapStep)">向右</a>
+            <a href="javascript:;" @click="ezfy.moveMap(0, ezfy.mapStep)">向上</a>
+            <a href="javascript:;" @click="ezfy.moveMap(-ezfy.mapStep, 0)">向左</a>
+            <a href="javascript:;" @click="ezfy.moveMap(0, -ezfy.mapStep)">向下</a>
+            <a href="javascript:;" @click="ezfy.moveMap(ezfy.mapStep, 0)">向右</a>
             <a href="javascript:;" @click="ezfy.loadMap()">回到本城</a>
           </div>
           <div class="old-line gray">

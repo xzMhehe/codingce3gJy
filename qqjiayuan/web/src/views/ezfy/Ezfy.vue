@@ -1988,7 +1988,7 @@ export default {
       const p = Math.min(Math.max(1, this.noticePage), this.noticeTotalPages)
       return this.notices.slice((p - 1) * this.noticeSize, p * this.noticeSize)
     },
-    // 翻页步长 = 一整屏(复刻原版: 向上 x-5 / 向右 y+5, 即 2r+1)
+    // 翻页步长 = 一整屏(2r+1)。地图方向按钮：左右动 x（左-右+），上下动 y（上+下-）。
     mapStep () {
       return this.mapR * 2 + 1
     },
