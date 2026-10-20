@@ -54,9 +54,10 @@ router.beforeEach((to, from, next) => {
   if (to.path !== '/login' && (!token || !hasPerm)) {
     return next('/login')
   }
-  if (to.path === '/login' && token && hasPerm) {
-    return next('/')
-  }
+  // ★ 2026-10-20 前台「管理系统」入口固定进登录页：
+  //   之前已登录（localStorage 还有 jy_admin_token）时访问 /login 会被强制重定向到 /，
+  //   导致从家园点「管理」直接落到管理首页、看不到登录页。现在 /login 始终可访问，
+  //   只有访问其它页面且未登录时才回登录页。
   next()
 })
 

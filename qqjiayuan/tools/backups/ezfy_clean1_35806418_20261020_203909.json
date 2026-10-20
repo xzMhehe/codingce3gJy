@@ -1,0 +1,133 @@
+{
+ "game_id": 35806418,
+ "db": "qq_ezzt",
+ "taken_at": "2026-10-20 20:39:09",
+ "diamond": 188,
+ "equipment": [
+  {
+   "id": 151,
+   "user_id": 35806418,
+   "city_id": 0,
+   "cfg_id": 2610,
+   "name": "赤色锤镰[足部]",
+   "type": "军官装备",
+   "tier": 4,
+   "military": 100,
+   "logistics": 50,
+   "learning": 50,
+   "level": 130,
+   "officer_id": 69,
+   "created_at": "2026-09-27 21:28:47.627000",
+   "slot": "足部",
+   "set_id": 26,
+   "series": "赤色锤镰",
+   "enhance": 0,
+   "dmg": 0,
+   "def": 0,
+   "hp": 0,
+   "move": 0,
+   "crit": 0,
+   "crit_dmg": 0,
+   "original_user_id": 0
+  },
+  {
+   "id": 152,
+   "user_id": 35806418,
+   "city_id": 0,
+   "cfg_id": 2609,
+   "name": "赤色锤镰[名将勋章]",
+   "type": "军官装备",
+   "tier": 4,
+   "military": 100,
+   "logistics": 50,
+   "learning": 50,
+   "level": 130,
+   "officer_id": 69,
+   "created_at": "2026-09-27 21:28:53.854000",
+   "slot": "名将勋章",
+   "set_id": 26,
+   "series": "赤色锤镰",
+   "enhance": 0,
+   "dmg": 0,
+   "def": 0,
+   "hp": 0,
+   "move": 0,
+   "crit": 0,
+   "crit_dmg": 0,
+   "original_user_id": 0
+  },
+  {
+   "id": 153,
+   "user_id": 35806418,
+   "city_id": 0,
+   "cfg_id": 2608,
+   "name": "赤色锤镰[饰品]",
+   "type": "军官装备",
+   "tier": 4,
+   "military": 100,
+   "logistics": 50,
+   "learning": 50,
+   "level": 130,
+   "officer_id": 69,
+   "created_at": "2026-09-27 21:29:03.399000",
+   "slot": "饰品",
+   "set_id": 26,
+   "series": "赤色锤镰",
+   "enhance": 0,
+   "dmg": 0,
+   "def": 0,
+   "hp": 0,
+   "move": 0,
+   "crit": 0,
+   "crit_dmg": 0,
+   "original_user_id": 0
+  }
+ ],
+ "items": [
+  {
+   "cfg_id": 1004,
+   "count": 10
+  },
+  {
+   "cfg_id": 1009,
+   "count": 10
+  },
+  {
+   "cfg_id": 1011,
+   "count": 5
+  },
+  {
+   "cfg_id": 1012,
+   "count": 10
+  },
+  {
+   "cfg_id": 1014,
+   "count": 1
+  },
+  {
+   "cfg_id": 1016,
+   "count": 2
+  },
+  {
+   "cfg_id": 1019,
+   "count": 2600
+  },
+  {
+   "cfg_id": 1022,
+   "count": 11
+  },
+  {
+   "cfg_id": 1025,
+   "count": 11
+  },
+  {
+   "cfg_id": 1031,
+   "count": 10
+  },
+  {
+   "cfg_id": 1032,
+   "count": 20
+  }
+ ],
+ "love_cards": []
+}

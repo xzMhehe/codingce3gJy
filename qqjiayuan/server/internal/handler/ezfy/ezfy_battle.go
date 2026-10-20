@@ -584,17 +584,19 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	// ★ 2026-10-08 攻/守方科技逐项单列（罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
-	hasAtkTech := false
-	if aTech := ezfyBonusItemsDesc(atkTechs); aTech != "" {
-		st.Head = append(st.Head, "【攻方科技】"+aTech)
-		hasAtkTech = true
+	atkTechTxt := ezfyBonusItemsDesc(atkTechs)
+	defTechTxt := ezfyBonusItemsDesc(defTechs)
+	if atkTechTxt != "" {
+		st.Head = append(st.Head, "【攻方科技】"+atkTechTxt)
 	}
-	if hasAtkTech {
-		if dTech := ezfyBonusItemsDesc(defTechs); dTech != "" {
-			st.Head = append(st.Head, "【守方科技】"+dTech)
-		} else {
-			st.Head = append(st.Head, "【守方科技】无")
+	// ★ 2026-10-20 原来只有攻方有科技时才输出【守方科技】→ 攻方无科技、守方有科技
+	//   （附属野地守军按归属城科技）时守方科技整行消失，玩家以为「科技加成没生效」。
+	//   现在任意一方有科技就输出，双方对称。
+	if atkTechTxt != "" || defTechTxt != "" {
+		if defTechTxt == "" {
+			defTechTxt = "无"
 		}
+		st.Head = append(st.Head, "【守方科技】"+defTechTxt)
 	}
 	// ★ 2026-10-08 装备恒定罗列。装备行 = **单件属性之和**（全量 - 套装），
 	//   套装另起一行单列 →「装备」与「套装」不再重复（套装效果原本被算进装备行）。

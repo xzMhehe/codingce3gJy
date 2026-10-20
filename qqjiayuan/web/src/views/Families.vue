@@ -157,7 +157,7 @@ export default {
         else this.msg = r.msg
       })
     },
-    goAdmin () { window.open('/admin-ui/', '_blank') },
+    goAdmin () { window.open(location.origin + '/admin-ui/#/login', '_blank') },
     fmtDate (t) {
       if (!t) return ''
       const d = new Date(t)

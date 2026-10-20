@@ -452,30 +452,31 @@
             <span v-else-if="ezfy.battleData.atk_locked && ezfy.battleData.def_locked" class="green">· 对方已锁定</span>
             <span v-else-if="ezfy.battleData.atk_locked || ezfy.battleData.def_locked" class="green">· 对方已锁定待结算</span>
           </div>
-          <!-- ★ 2026-10-13 战场位置条：每行一对「攻-守」兵种（左攻右守、同一行里面对面），
-               按下标逐对配对（保证每行都有攻有守）。左右坐标由 `ezfy.battlePosRows` **预算好**
-               （攻守共用同一把 pos 尺 → **贴身时两个图标就挨在一起**，不再隔着半个战场；
-               同行的保序 + 最小间隔也在那里做）。图标复用「军队」页(ezfy.troopIco)，边框按攻守上色区分。 -->
+          <!-- ★ 2026-10-13 战场位置条：每行一对「我方-敌方」兵种（我方恒在左、敌方恒在右，同一行里面对面），
+               按下标逐对配对（保证每行都有我有敌）。左右坐标由 `ezfy.battlePosRows` **预算好**
+               （共用同一把 pos 尺 → **贴身时两个图标就挨在一起**，不再隔着半个战场；
+               同行的保序 + 最小间隔也在那里做）。图标复用「军队」页(ezfy.troopIco)，边框按我方/敌上色区分。
+               ★ 2026-10-20 守方视角把战线镜像（我方守军左、敌方攻军右），与表格/日志「我方绿、敌军红」一致。 -->
           <div class="old-line ezfy-battle-posbars" v-if="ezfy.battlePosRows.length">
             <div class="ezfy-battle-pair" v-for="row in ezfy.battlePosRows" :key="'pr' + row.id">
-              <span class="ezfy-pair-side atk">攻</span>
+              <span class="ezfy-pair-side atk">{{ ezfy.battleData.is_atk ? '攻' : '守' }}</span>
               <div class="ezfy-battle-poslane">
                 <div class="ezfy-battle-postrack">
-                  <div v-if="row.atk" class="ezfy-battle-unit atk"
-                       :class="{ dead: (row.atk.count || 0) <= 0 }"
+                  <div v-if="row.atk" class="ezfy-battle-unit"
+                       :class="[ezfy.battleData.is_atk ? 'atk' : 'def', { dead: (row.atk.count || 0) <= 0 }]"
                        :style="{ left: row.atkLeft + '%' }">
                     <span class="ezfy-unit-ico" v-html="ezfy.troopIco(ezfy.battleUnitCfg(row.atk))"></span>
                     <span class="ezfy-unit-name" :title="row.atk.name + ' 位置' + ezfy.fmtN(row.atk.pos)">{{ ezfy.battleUnitName(row.atk) }}</span>
                   </div>
-                  <div v-if="row.def" class="ezfy-battle-unit def"
-                       :class="{ dead: (row.def.count || 0) <= 0 }"
+                  <div v-if="row.def" class="ezfy-battle-unit"
+                       :class="[ezfy.battleData.is_atk ? 'def' : 'atk', { dead: (row.def.count || 0) <= 0 }]"
                        :style="{ left: row.defLeft + '%' }">
                     <span class="ezfy-unit-ico" v-html="ezfy.troopIco(ezfy.battleUnitCfg(row.def))"></span>
                     <span class="ezfy-unit-name" :title="row.def.name + ' 位置' + ezfy.fmtN(row.def.pos)">{{ ezfy.battleUnitName(row.def) }}</span>
                   </div>
                 </div>
               </div>
-              <span class="ezfy-pair-side def">守</span>
+              <span class="ezfy-pair-side def">{{ ezfy.battleData.is_atk ? '守' : '攻' }}</span>
             </div>
           </div>
           <!-- 双方兵力 + 逐兵种指挥（指令 + 优先攻击目标） -->

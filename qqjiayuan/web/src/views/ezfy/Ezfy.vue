@@ -1851,20 +1851,35 @@ export default {
       const n = Math.max(atk.length, def.length)
       const rows = []
       // ★ 2026-10-13 位置条的 left 在这里**一次算好**（不再由模板各自调 battlePosLeft）——
-      //   这样才能做「同一行保序」：攻方图标恒在守方左边，贴身时不重叠、也不互相穿过。
-      //   ★★ 保序**只把攻方往左推，守方位置永远保持真实** ——
-      //     否则「守方战列舰」(行1) 会被推到右边，和同 pos 的「守方航母」(行2) 错开，
-      //     看起来就不是「贴身」了（用户：「既然贴身了，守方航母和战列舰应该一列」）。
+      //   这样才能做「同一行保序」：我方图标恒在敌方左边，贴身时不重叠、也不互相穿过。
+      //   ★★ 保序**只把敌方往右推，我方位置永远保持真实** ——
+      //     否则「敌方战列舰」(行1) 会被推到左边，和同 pos 的「敌方航母」(行2) 错开，
+      //     看起来就不是「贴身」了。
+      // ★★ 2026-10-20 守方视角（用户反馈「我是防守方，动画攻防位置不对、颜色不对」）：
+      //   位置条固定「我方在左、敌方在右」—— 攻方看就是原来的「攻左守右」；
+      //   守方看则把整条战线**镜像**（我方守军左、敌方攻军右），颜色也随之变
+      //   「我方绿 / 敌方红」，与表格行、行动日志的配色口径一致。
+      const isAtk = !!this.battleData.is_atk
       const GAP = 9 // % —— 约等于一个 26px 图标在手机屏行宽里的占比
       for (let i = 0; i < n; i++) {
         const a = atk[i] || null
         const d = def[i] || null
         let al = a ? this.battlePosLeft(a) : null
         let dl = d ? this.battlePosLeft(d) : null
-        if (al !== null && dl !== null && dl - al < GAP) {
-          al = Math.max(3, dl - GAP)   // 攻方左推到「刚好留出 GAP」；守方不动 → 同 pos 的单位纵向对齐
+        if (!isAtk) {
+          if (al !== null) al = 100 - al
+          if (dl !== null) dl = 100 - dl
+        }
+        if (al !== null && dl !== null) {
+          if (isAtk && dl - al < GAP) {
+            al = Math.max(3, dl - GAP)   // 我方(攻)左推，敌方(守)不动 → 同 pos 的单位纵向对齐
+          } else if (!isAtk && al - dl < GAP) {
+            al = Math.min(97, dl + GAP)  // 我方(守)不动，敌方(攻)右推 → 同 pos 的单位纵向对齐
+          }
         }
         if (al !== null && al < 3) al = 3
+        if (al !== null && al > 97) al = 97
+        if (dl !== null && dl < 3) dl = 3
         if (dl !== null && dl > 97) dl = 97
         rows.push({ id: i, atk: a, def: d, atkLeft: al, defLeft: dl })
       }
@@ -8163,8 +8178,9 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .ezfy-battle-bar > i.on { background: #27763c; }
 .ezfy-page .ezfy-battle-bar > i.lock { background: #c0392b; }
-/* ★ 2026-10-10 战场位置条：每行一对「攻-守」兵种（左攻右守、同一行面对面），
-   行内图标按统一 pos 轴定位，轮询回新 pos 时平滑滑动。 */
+/* ★ 2026-10-10 战场位置条：每行一对「我方-敌方」兵种（我方左、敌方右、同一行面对面），
+   行内图标按统一 pos 轴定位，轮询回新 pos 时平滑滑动。
+   ★ 2026-10-20 守方视角由 JS 镜像坐标；class 仍用 .atk=我方绿 / .def=敌方红。 */
 .ezfy-page .ezfy-battle-posbars { margin: 4px 0 3px; }
 .ezfy-page .ezfy-battle-pair {
   display: flex;

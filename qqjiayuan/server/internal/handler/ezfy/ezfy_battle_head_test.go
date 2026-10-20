@@ -72,3 +72,33 @@ func TestBattleHeadOrder(t *testing.T) {
 		t.Fatalf("最后一行应是场景描述，实际：%s", last)
 	}
 }
+
+// TestBattleHeadDefTechOnly 攻方无科技、守方有科技（附属野地守军按归属城科技）时，
+// 【守方科技】也必须展示 —— 否则玩家会以为守方科技加成没生效。
+func TestBattleHeadDefTechOnly(t *testing.T) {
+	st := ezfyNewBattleState(nil, nil,
+		0, 50, 70, 0, 20,
+		0, 30,
+		ezfyBattleBonus{}, ezfyBattleBonus{},
+		ezfyBattleBonus{}, ezfyBattleBonus{},
+		"", "",
+		"", "",
+		0, 0,
+		0, 0,
+		nil, nil,
+		nil,
+		[]ezfyBonusItem{{Name: "科技·装甲科技", Value: 30}, {Name: "科技·重工技术", Value: 20}},
+		nil, 0, nil,
+		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
+		0, 0, 1, 2,
+		ezfyTypeBonus{}, ezfyTypeBonus{})
+
+	atkTech := strings.Contains(strings.Join(st.Head, "\n"), "【攻方科技】")
+	defTech := strings.Contains(strings.Join(st.Head, "\n"), "【守方科技】科技·装甲科技+30%")
+	if atkTech {
+		t.Fatal("攻方没有科技时不应输出【攻方科技】")
+	}
+	if !defTech {
+		t.Fatalf("守方有科技时必须输出【守方科技】，实际 head：%v", st.Head)
+	}
+}

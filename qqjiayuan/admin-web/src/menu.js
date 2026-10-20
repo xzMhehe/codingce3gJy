@@ -4,319 +4,225 @@
  * App.vue 的侧边栏/标签导航和 Dashboard.vue 的页面分发都由本文件自动生成，不再手工双写。
  * perm 为该菜单对应后端接口的权限码（RBAC permissions.code），登录用户的角色未分配该权限则菜单隐藏；
  * 超级管理员（super_admin）或无 perm 的项永远展示。
+ *
+ * ★ 2026-10-20 性能：component 一律写成 `() => import(...)` 懒加载。
+ *   不要在文件顶部静态 import 管理组件（那样登录页会一次性下载全部近百个页面，首屏极慢）。
  */
-import AdminUsers from './components/admin/AdminUsers.vue'
-import AdminOnline from './components/admin/AdminOnline.vue'
-import AdminHome from './components/admin/AdminHome.vue'
-import AdminUserDocu from './components/admin/AdminUserDocu.vue'
-import AdminUserContacts from './components/admin/AdminUserContacts.vue'
-import AdminUserAddresses from './components/admin/AdminUserAddresses.vue'
-import AdminUserProtections from './components/admin/AdminUserProtections.vue'
-import AdminUserLogs from './components/admin/AdminUserLogs.vue'
-import AdminUserPhones from './components/admin/AdminUserPhones.vue'
-import AdminInvites from './components/admin/AdminInvites.vue'
-import AdminWallet from './components/admin/AdminWallet.vue'
-import AdminWalletLogs from './components/admin/AdminWalletLogs.vue'
-import AdminBoards from './components/admin/AdminBoards.vue'
-import AdminTongcheng from './components/admin/AdminTongcheng.vue'
-import AdminBoardCategories from './components/admin/AdminBoardCategories.vue'
-import AdminThreads from './components/admin/AdminThreads.vue'
-import AdminFamilies from './components/admin/AdminFamilies.vue'
-import AdminTtou from './components/admin/AdminTtou.vue'
-import AdminThreadRecycle from './components/admin/AdminThreadRecycle.vue'
-import AdminWordFilters from './components/admin/AdminWordFilters.vue'
-import AdminSiteArticles from './components/admin/AdminSiteArticles.vue'
-import AdminGuestbook from './components/admin/AdminGuestbook.vue'
-import AdminMessages from './components/admin/AdminMessages.vue'
-import AdminSpaces from './components/admin/AdminSpaces.vue'
-import AdminHomes from './components/admin/AdminHomes.vue'
-import AdminVisitors from './components/admin/AdminVisitors.vue'
-import AdminShops from './components/admin/AdminShops.vue'
-import AdminShopGoods from './components/admin/AdminShopGoods.vue'
-import AdminGoods from './components/admin/AdminGoods.vue'
-import AdminMoneyShop from './components/admin/AdminMoneyShop.vue'
-import AdminShopOrders from './components/admin/AdminShopOrders.vue'
-import AdminShopComments from './components/admin/AdminShopComments.vue'
-import AdminBooks from './components/admin/AdminBooks.vue'
-import AdminBookChapters from './components/admin/AdminBookChapters.vue'
-import AdminBookComments from './components/admin/AdminBookComments.vue'
-import AdminPrivileges from './components/admin/AdminPrivileges.vue'
-import AdminAnnouncements from './components/admin/AdminAnnouncements.vue'
-import AdminGames from './components/admin/AdminGames.vue'
-import AdminBadges from './components/admin/AdminBadges.vue'
-import AdminJwtPlayers from './components/admin/AdminJwtPlayers.vue'
-import AdminJwtItems from './components/admin/AdminJwtItems.vue'
-import AdminJwtSkills from './components/admin/AdminJwtSkills.vue'
-import AdminJwtRecords from './components/admin/AdminJwtRecords.vue'
-import AdminJwtData from './components/admin/AdminJwtData.vue'
-import AdminGardenActivities from './components/admin/AdminGardenActivities.vue'
-import AdminGardenSeeds from './components/admin/AdminGardenSeeds.vue'
-import AdminGardenMaps from './components/admin/AdminGardenMaps.vue'
-import AdminGardenMixes from './components/admin/AdminGardenMixes.vue'
-import AdminGardenElves from './components/admin/AdminGardenElves.vue'
-import AdminGardenSign from './components/admin/AdminGardenSign.vue'
-import AdminGardenData from './components/admin/AdminGardenData.vue'
-import AdminFarmSeeds from './components/admin/AdminFarmSeeds.vue'
-import AdminFarmItems from './components/admin/AdminFarmItems.vue'
-import AdminFarmData from './components/admin/AdminFarmData.vue'
-import AdminParkCars from './components/admin/AdminParkCars.vue'
-import AdminParkData from './components/admin/AdminParkData.vue'
-import AdminXyPlayers from './components/admin/AdminXyPlayers.vue'
-import AdminXyData from './components/admin/AdminXyData.vue'
-import AdminEzfyPlayers from './components/admin/AdminEzfyPlayers.vue'
-import AdminEzfyData from './components/admin/AdminEzfyData.vue'
-import AdminEzfyReports from './components/admin/AdminEzfyReports.vue'
-import AdminEzfyBattles from './components/admin/AdminEzfyBattles.vue'
-import AdminEzfyPeace from './components/admin/AdminEzfyPeace.vue'
-import AdminEzfyTitles from './components/admin/AdminEzfyTitles.vue'
-import AdminEzfyBot from './components/admin/AdminEzfyBot.vue'
-import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
-import AdminEzfyMonitor from './components/admin/AdminEzfyMonitor.vue'
-import AdminEzfyCities from './components/admin/AdminEzfyCities.vue'
-import AdminEzfyBuildings from './components/admin/AdminEzfyBuildings.vue'
-import AdminEzfyBuildQueue from './components/admin/AdminEzfyBuildQueue.vue'
-import AdminEzfyTroops from './components/admin/AdminEzfyTroops.vue'
-import AdminEzfyRecruit from './components/admin/AdminEzfyRecruit.vue'
-import AdminEzfyOfficers from './components/admin/AdminEzfyOfficers.vue'
 // ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab）；
 //   装备/宝箱价格定义迁到「数据管理」（装备道具配置/套装装备配置 tab），军官管理不再管装备。
-import AdminEzfyEquips from './components/admin/AdminEzfyEquips.vue'
 // ★ 2026-09-27 用户需求：为爱发电卡维护（发放 + 领取情况）
-import AdminEzfyLoveCard from './components/admin/AdminEzfyLoveCard.vue'
-import AdminEzfyRecruitLimit from './components/admin/AdminEzfyRecruitLimit.vue'
-import AdminEzfyRanks from './components/admin/AdminEzfyRanks.vue'
-import AdminEzfyPvpRank from './components/admin/AdminEzfyPvpRank.vue'
-import AdminEzfyResources from './components/admin/AdminEzfyResources.vue'
-import AdminEzfyExchange from './components/admin/AdminEzfyExchange.vue'
-import AdminEzfyTechs from './components/admin/AdminEzfyTechs.vue'
-import AdminEzfyMap from './components/admin/AdminEzfyMap.vue'
-import AdminEzfyCorps from './components/admin/AdminEzfyCorps.vue'
-import AdminEzfyPrivchat from './components/admin/AdminEzfyPrivchat.vue'
-import AdminEzfyBuildLimit from './components/admin/AdminEzfyBuildLimit.vue'
-import AdminEzfyWords from './components/admin/AdminEzfyWords.vue'
-import AdminEzfyWars from './components/admin/AdminEzfyWars.vue'
 // ★ 2026-09-25 新增军团商城维护页面
 //   （军团宣战维护已按合并进「宣战管理」页的第二个 tab，这里不再单独挂菜单项，
 //   组件由 AdminEzfyWars.vue 内部 import，无需在 menu.js 引入）
-import AdminEzfyCorpsMall from './components/admin/AdminEzfyCorpsMall.vue'
-import AdminXyLogs from './components/admin/AdminXyLogs.vue'
-import AdminXySystem from './components/admin/AdminXySystem.vue'
-import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
-import AdminFla from './components/admin/AdminFla.vue'
-import AdminWelfare from './components/admin/AdminWelfare.vue'
-import AdminRoles from './components/admin/AdminRoles.vue'
-import AdminResources from './components/admin/AdminResources.vue'
-import AdminName from './components/admin/AdminName.vue'
-import AdminMenus from './components/admin/AdminMenus.vue'
 
 // 菜单树：最多两级分组（children 里还可带一层 children，如游戏管理下的各游戏）
 export const menu = [
   { key: 'dashboard', name: '数据概览', icon: 'el-icon-data-board', perm: 'module:dashboard' },
-  { key: 'online', name: '在线查看', icon: 'el-icon-view', component: AdminOnline, perm: 'module:online' },
+  { key: 'online', name: '在线查看', icon: 'el-icon-view', component: () => import(/* webpackChunkName: "admin-AdminOnline" */ './components/admin/AdminOnline.vue'), perm: 'module:online' },
   // 会员管理（诺哈 user/）
   {
     key: 'g-user', name: '会员管理', icon: 'el-icon-user',
     children: [
-      { key: 'users', name: '会员列表', icon: 'el-icon-s-custom', component: AdminUsers, perm: 'module:users' },
-      { key: 'nickName', name: '个性昵称', icon: 'el-icon-brush', component: AdminName, perm: 'module:nickName' },
-      { key: 'home', name: '会员资料', icon: 'el-icon-edit-outline', component: AdminHome, perm: 'module:home' },
-      { key: 'userDocu', name: '会员证件', icon: 'el-icon-postcard', component: AdminUserDocu, perm: 'module:userDocu' },
-      { key: 'userContact', name: '会员联系', icon: 'el-icon-phone-outline', component: AdminUserContacts, perm: 'module:userContact' },
-      { key: 'userAddress', name: '会员地址', icon: 'el-icon-map-location', component: AdminUserAddresses, perm: 'module:userAddress' },
-      { key: 'userProtec', name: '会员密保', icon: 'el-icon-key', component: AdminUserProtections, perm: 'module:userProtec' },
-      { key: 'userLogs', name: '会员日志', icon: 'el-icon-date', component: AdminUserLogs, perm: 'module:userLogs' },
-      { key: 'userPhones', name: '手机审核', icon: 'el-icon-mobile-phone', component: AdminUserPhones, perm: 'module:userPhones' },
-      { key: 'invites', name: '会员推荐', icon: 'el-icon-share', component: AdminInvites, perm: 'module:invites' },
-      { key: 'badges', name: '勋章管理', icon: 'el-icon-medal', component: AdminBadges, perm: 'module:badges' },
+      { key: 'users', name: '会员列表', icon: 'el-icon-s-custom', component: () => import(/* webpackChunkName: "admin-AdminUsers" */ './components/admin/AdminUsers.vue'), perm: 'module:users' },
+      { key: 'nickName', name: '个性昵称', icon: 'el-icon-brush', component: () => import(/* webpackChunkName: "admin-AdminName" */ './components/admin/AdminName.vue'), perm: 'module:nickName' },
+      { key: 'home', name: '会员资料', icon: 'el-icon-edit-outline', component: () => import(/* webpackChunkName: "admin-AdminHome" */ './components/admin/AdminHome.vue'), perm: 'module:home' },
+      { key: 'userDocu', name: '会员证件', icon: 'el-icon-postcard', component: () => import(/* webpackChunkName: "admin-AdminUserDocu" */ './components/admin/AdminUserDocu.vue'), perm: 'module:userDocu' },
+      { key: 'userContact', name: '会员联系', icon: 'el-icon-phone-outline', component: () => import(/* webpackChunkName: "admin-AdminUserContacts" */ './components/admin/AdminUserContacts.vue'), perm: 'module:userContact' },
+      { key: 'userAddress', name: '会员地址', icon: 'el-icon-map-location', component: () => import(/* webpackChunkName: "admin-AdminUserAddresses" */ './components/admin/AdminUserAddresses.vue'), perm: 'module:userAddress' },
+      { key: 'userProtec', name: '会员密保', icon: 'el-icon-key', component: () => import(/* webpackChunkName: "admin-AdminUserProtections" */ './components/admin/AdminUserProtections.vue'), perm: 'module:userProtec' },
+      { key: 'userLogs', name: '会员日志', icon: 'el-icon-date', component: () => import(/* webpackChunkName: "admin-AdminUserLogs" */ './components/admin/AdminUserLogs.vue'), perm: 'module:userLogs' },
+      { key: 'userPhones', name: '手机审核', icon: 'el-icon-mobile-phone', component: () => import(/* webpackChunkName: "admin-AdminUserPhones" */ './components/admin/AdminUserPhones.vue'), perm: 'module:userPhones' },
+      { key: 'invites', name: '会员推荐', icon: 'el-icon-share', component: () => import(/* webpackChunkName: "admin-AdminInvites" */ './components/admin/AdminInvites.vue'), perm: 'module:invites' },
+      { key: 'badges', name: '勋章管理', icon: 'el-icon-medal', component: () => import(/* webpackChunkName: "admin-AdminBadges" */ './components/admin/AdminBadges.vue'), perm: 'module:badges' },
     ]
   },
   // 货币管理（诺哈 money/）
   {
     key: 'g-money', name: '货币管理', icon: 'el-icon-coin',
     children: [
-      { key: 'wallet', name: '会员财务', icon: 'el-icon-wallet', component: AdminWallet, perm: 'module:wallet' },
-      { key: 'walletLogs', name: '货币流水', icon: 'el-icon-tickets', component: AdminWalletLogs, perm: 'module:walletLogs' },
+      { key: 'wallet', name: '会员财务', icon: 'el-icon-wallet', component: () => import(/* webpackChunkName: "admin-AdminWallet" */ './components/admin/AdminWallet.vue'), perm: 'module:wallet' },
+      { key: 'walletLogs', name: '货币流水', icon: 'el-icon-tickets', component: () => import(/* webpackChunkName: "admin-AdminWalletLogs" */ './components/admin/AdminWalletLogs.vue'), perm: 'module:walletLogs' },
     ]
   },
   // 社区管理（诺哈 bbs/）
   {
     key: 'g-bbs', name: '社区管理', icon: 'el-icon-chat-dot-round',
     children: [
-      { key: 'boards', name: '版块管理', icon: 'el-icon-menu', component: AdminBoards, perm: 'module:boards' },
-      { key: 'tongcheng', name: '同城管理', icon: 'el-icon-location-outline', component: AdminTongcheng, perm: 'module:tongcheng' },
-      { key: 'boardCategories', name: '版块分类', icon: 'el-icon-collection', component: AdminBoardCategories, perm: 'module:boardCategories' },
-      { key: 'threads', name: '帖子管理', icon: 'el-icon-document', component: AdminThreads, perm: 'module:threads' },
-      { key: 'families', name: '家族管理', icon: 'el-icon-s-cooperation', component: AdminFamilies, perm: 'module:families' },
-      { key: 'ttou', name: 'TT头像', icon: 'el-icon-picture-outline', component: AdminTtou, perm: 'module:ttou' },
-      { key: 'fla', name: '捐款上榜', icon: 'el-icon-medal-1', component: AdminFla, perm: 'module:fla' },
-      { key: 'welfare', name: '福利院', icon: 'el-icon-pie-chart', component: AdminWelfare, perm: 'module:welfare' },
-      { key: 'recycle', name: '恢复帖子', icon: 'el-icon-delete', component: AdminThreadRecycle, perm: 'module:recycle' },
-      { key: 'wordFilters', name: '敏感词', icon: 'el-icon-remove-outline', component: AdminWordFilters, perm: 'module:wordFilters' },
+      { key: 'boards', name: '版块管理', icon: 'el-icon-menu', component: () => import(/* webpackChunkName: "admin-AdminBoards" */ './components/admin/AdminBoards.vue'), perm: 'module:boards' },
+      { key: 'tongcheng', name: '同城管理', icon: 'el-icon-location-outline', component: () => import(/* webpackChunkName: "admin-AdminTongcheng" */ './components/admin/AdminTongcheng.vue'), perm: 'module:tongcheng' },
+      { key: 'boardCategories', name: '版块分类', icon: 'el-icon-collection', component: () => import(/* webpackChunkName: "admin-AdminBoardCategories" */ './components/admin/AdminBoardCategories.vue'), perm: 'module:boardCategories' },
+      { key: 'threads', name: '帖子管理', icon: 'el-icon-document', component: () => import(/* webpackChunkName: "admin-AdminThreads" */ './components/admin/AdminThreads.vue'), perm: 'module:threads' },
+      { key: 'families', name: '家族管理', icon: 'el-icon-s-cooperation', component: () => import(/* webpackChunkName: "admin-AdminFamilies" */ './components/admin/AdminFamilies.vue'), perm: 'module:families' },
+      { key: 'ttou', name: 'TT头像', icon: 'el-icon-picture-outline', component: () => import(/* webpackChunkName: "admin-AdminTtou" */ './components/admin/AdminTtou.vue'), perm: 'module:ttou' },
+      { key: 'fla', name: '捐款上榜', icon: 'el-icon-medal-1', component: () => import(/* webpackChunkName: "admin-AdminFla" */ './components/admin/AdminFla.vue'), perm: 'module:fla' },
+      { key: 'welfare', name: '福利院', icon: 'el-icon-pie-chart', component: () => import(/* webpackChunkName: "admin-AdminWelfare" */ './components/admin/AdminWelfare.vue'), perm: 'module:welfare' },
+      { key: 'recycle', name: '恢复帖子', icon: 'el-icon-delete', component: () => import(/* webpackChunkName: "admin-AdminThreadRecycle" */ './components/admin/AdminThreadRecycle.vue'), perm: 'module:recycle' },
+      { key: 'wordFilters', name: '敏感词', icon: 'el-icon-remove-outline', component: () => import(/* webpackChunkName: "admin-AdminWordFilters" */ './components/admin/AdminWordFilters.vue'), perm: 'module:wordFilters' },
     ]
   },
   // 内容管理（诺哈 article/ guest/ message/）
   {
     key: 'g-content', name: '内容管理', icon: 'el-icon-notebook-2',
     children: [
-      { key: 'articles', name: '文章管理', icon: 'el-icon-notebook-1', component: AdminSiteArticles, perm: 'module:articles' },
-      { key: 'guestbook', name: '留言本管理', icon: 'el-icon-edit', component: AdminGuestbook, perm: 'module:guestbook' },
-      { key: 'messages', name: '家信管理', icon: 'el-icon-message', component: AdminMessages, perm: 'module:messages' },
+      { key: 'articles', name: '文章管理', icon: 'el-icon-notebook-1', component: () => import(/* webpackChunkName: "admin-AdminSiteArticles" */ './components/admin/AdminSiteArticles.vue'), perm: 'module:articles' },
+      { key: 'guestbook', name: '留言本管理', icon: 'el-icon-edit', component: () => import(/* webpackChunkName: "admin-AdminGuestbook" */ './components/admin/AdminGuestbook.vue'), perm: 'module:guestbook' },
+      { key: 'messages', name: '家信管理', icon: 'el-icon-message', component: () => import(/* webpackChunkName: "admin-AdminMessages" */ './components/admin/AdminMessages.vue'), perm: 'module:messages' },
     ]
   },
   // 博客管理（诺哈 blog/）
   {
     key: 'g-blog', name: '博客管理', icon: 'el-icon-s-shop',
     children: [
-      { key: 'spaces', name: '空间列表', icon: 'el-icon-office-building', component: AdminSpaces, perm: 'module:spaces' },
+      { key: 'spaces', name: '空间列表', icon: 'el-icon-office-building', component: () => import(/* webpackChunkName: "admin-AdminSpaces" */ './components/admin/AdminSpaces.vue'), perm: 'module:spaces' },
     ]
   },
   // 家园管理（诺哈 home/）
   {
     key: 'g-home', name: '家园管理', icon: 'el-icon-house',
     children: [
-      { key: 'homes', name: '家园列表', icon: 'el-icon-s-home', component: AdminHomes, perm: 'module:homes' },
-      { key: 'visitors', name: '家园访客', icon: 'el-icon-view', component: AdminVisitors, perm: 'module:visitors' },
+      { key: 'homes', name: '家园列表', icon: 'el-icon-s-home', component: () => import(/* webpackChunkName: "admin-AdminHomes" */ './components/admin/AdminHomes.vue'), perm: 'module:homes' },
+      { key: 'visitors', name: '家园访客', icon: 'el-icon-view', component: () => import(/* webpackChunkName: "admin-AdminVisitors" */ './components/admin/AdminVisitors.vue'), perm: 'module:visitors' },
     ]
   },
   // 商城管理（诺哈 shop/ money-shop 道具商城/货币商店）
   {
     key: 'g-shop', name: '商城管理', icon: 'el-icon-shopping-cart-2',
     children: [
-      { key: 'shops', name: '店铺管理', icon: 'el-icon-s-shop', component: AdminShops, perm: 'module:shops' },
-      { key: 'shopGoods', name: '商品管理', icon: 'el-icon-box', component: AdminShopGoods, perm: 'module:shopGoods' },
-      { key: 'shopOrders', name: '订单管理', icon: 'el-icon-s-order', component: AdminShopOrders, perm: 'module:shopOrders' },
-      { key: 'shopComments', name: '评论管理', icon: 'el-icon-s-comment', component: AdminShopComments, perm: 'module:shopComments' },
-      { key: 'goods', name: '道具商城', icon: 'el-icon-goods', component: AdminGoods, perm: 'module:goods' },
-      { key: 'moneyShop', name: '货币商店', icon: 'el-icon-coin', component: AdminMoneyShop, perm: 'module:moneyShop' },
+      { key: 'shops', name: '店铺管理', icon: 'el-icon-s-shop', component: () => import(/* webpackChunkName: "admin-AdminShops" */ './components/admin/AdminShops.vue'), perm: 'module:shops' },
+      { key: 'shopGoods', name: '商品管理', icon: 'el-icon-box', component: () => import(/* webpackChunkName: "admin-AdminShopGoods" */ './components/admin/AdminShopGoods.vue'), perm: 'module:shopGoods' },
+      { key: 'shopOrders', name: '订单管理', icon: 'el-icon-s-order', component: () => import(/* webpackChunkName: "admin-AdminShopOrders" */ './components/admin/AdminShopOrders.vue'), perm: 'module:shopOrders' },
+      { key: 'shopComments', name: '评论管理', icon: 'el-icon-s-comment', component: () => import(/* webpackChunkName: "admin-AdminShopComments" */ './components/admin/AdminShopComments.vue'), perm: 'module:shopComments' },
+      { key: 'goods', name: '道具商城', icon: 'el-icon-goods', component: () => import(/* webpackChunkName: "admin-AdminGoods" */ './components/admin/AdminGoods.vue'), perm: 'module:goods' },
+      { key: 'moneyShop', name: '货币商店', icon: 'el-icon-coin', component: () => import(/* webpackChunkName: "admin-AdminMoneyShop" */ './components/admin/AdminMoneyShop.vue'), perm: 'module:moneyShop' },
     ]
   },
   // 书城管理（诺哈 book/）
   {
     key: 'g-book', name: '书城管理', icon: 'el-icon-reading',
     children: [
-      { key: 'books', name: '小说列表', icon: 'el-icon-notebook-1', component: AdminBooks, perm: 'module:books' },
-      { key: 'bookChapters', name: '章节管理', icon: 'el-icon-collection-tag', component: AdminBookChapters, perm: 'module:bookChapters' },
-      { key: 'bookComments', name: '书评管理', icon: 'el-icon-chat-line-square', component: AdminBookComments, perm: 'module:bookComments' },
+      { key: 'books', name: '小说列表', icon: 'el-icon-notebook-1', component: () => import(/* webpackChunkName: "admin-AdminBooks" */ './components/admin/AdminBooks.vue'), perm: 'module:books' },
+      { key: 'bookChapters', name: '章节管理', icon: 'el-icon-collection-tag', component: () => import(/* webpackChunkName: "admin-AdminBookChapters" */ './components/admin/AdminBookChapters.vue'), perm: 'module:bookChapters' },
+      { key: 'bookComments', name: '书评管理', icon: 'el-icon-chat-line-square', component: () => import(/* webpackChunkName: "admin-AdminBookComments" */ './components/admin/AdminBookComments.vue'), perm: 'module:bookComments' },
     ]
   },
   // 会员特权（诺哈 vip/）
   {
     key: 'g-vip', name: '会员特权', icon: 'el-icon-s-operation',
     children: [
-      { key: 'privileges', name: '特权管理', icon: 'el-icon-star-off', component: AdminPrivileges, perm: 'module:privileges' },
+      { key: 'privileges', name: '特权管理', icon: 'el-icon-star-off', component: () => import(/* webpackChunkName: "admin-AdminPrivileges" */ './components/admin/AdminPrivileges.vue'), perm: 'module:privileges' },
     ]
   },
   // 广播管理（诺哈 radio/）
   {
     key: 'g-radio', name: '广播管理', icon: 'el-icon-bell',
     children: [
-      { key: 'announcements', name: '公告广播', icon: 'el-icon-bell', component: AdminAnnouncements, perm: 'module:announcements' },
+      { key: 'announcements', name: '公告广播', icon: 'el-icon-bell', component: () => import(/* webpackChunkName: "admin-AdminAnnouncements" */ './components/admin/AdminAnnouncements.vue'), perm: 'module:announcements' },
     ]
   },
   // 游戏管理（诺哈 game/，按游戏分组）
   {
     key: 'g-game', name: '游戏管理', icon: 'el-icon-magic-stick',
     children: [
-      { key: 'games', name: '游戏大厅', icon: 'el-icon-trophy', component: AdminGames, perm: 'module:games' },
+      { key: 'games', name: '游戏大厅', icon: 'el-icon-trophy', component: () => import(/* webpackChunkName: "admin-AdminGames" */ './components/admin/AdminGames.vue'), perm: 'module:games' },
       {
         key: 'g-garden', name: '魔法花园', icon: 'el-icon-sunny',
         children: [
-          { key: 'gardenActivities', name: '花园活动', icon: 'el-icon-magic-stick', component: AdminGardenActivities, perm: 'module:gardenActivities' },
-          { key: 'gardenSeeds', name: '花园花种', icon: 'el-icon-sunny', component: AdminGardenSeeds, perm: 'module:gardenSeeds' },
-          { key: 'gardenMaps', name: '花之图谱', icon: 'el-icon-picture', component: AdminGardenMaps, perm: 'module:gardenMaps' },
-          { key: 'gardenMixes', name: '合成配方', icon: 'el-icon-s-cooperation', component: AdminGardenMixes, perm: 'module:gardenMixes' },
-          { key: 'gardenElves', name: '精灵花册', icon: 'el-icon-star-on', component: AdminGardenElves, perm: 'module:gardenElves' },
-          { key: 'gardenSign', name: '签到管理', icon: 'el-icon-date', component: AdminGardenSign, perm: 'module:gardenSign' },
-          { key: 'gardenData', name: '花园数据管理', icon: 'el-icon-data-analysis', component: AdminGardenData, perm: 'module:gardenData' },
+          { key: 'gardenActivities', name: '花园活动', icon: 'el-icon-magic-stick', component: () => import(/* webpackChunkName: "admin-AdminGardenActivities" */ './components/admin/AdminGardenActivities.vue'), perm: 'module:gardenActivities' },
+          { key: 'gardenSeeds', name: '花园花种', icon: 'el-icon-sunny', component: () => import(/* webpackChunkName: "admin-AdminGardenSeeds" */ './components/admin/AdminGardenSeeds.vue'), perm: 'module:gardenSeeds' },
+          { key: 'gardenMaps', name: '花之图谱', icon: 'el-icon-picture', component: () => import(/* webpackChunkName: "admin-AdminGardenMaps" */ './components/admin/AdminGardenMaps.vue'), perm: 'module:gardenMaps' },
+          { key: 'gardenMixes', name: '合成配方', icon: 'el-icon-s-cooperation', component: () => import(/* webpackChunkName: "admin-AdminGardenMixes" */ './components/admin/AdminGardenMixes.vue'), perm: 'module:gardenMixes' },
+          { key: 'gardenElves', name: '精灵花册', icon: 'el-icon-star-on', component: () => import(/* webpackChunkName: "admin-AdminGardenElves" */ './components/admin/AdminGardenElves.vue'), perm: 'module:gardenElves' },
+          { key: 'gardenSign', name: '签到管理', icon: 'el-icon-date', component: () => import(/* webpackChunkName: "admin-AdminGardenSign" */ './components/admin/AdminGardenSign.vue'), perm: 'module:gardenSign' },
+          { key: 'gardenData', name: '花园数据管理', icon: 'el-icon-data-analysis', component: () => import(/* webpackChunkName: "admin-AdminGardenData" */ './components/admin/AdminGardenData.vue'), perm: 'module:gardenData' },
         ]
       },
       {
         key: 'g-farm', name: '开心农场', icon: 'el-icon-cherry',
         children: [
-          { key: 'farmSeeds', name: '农场种子', icon: 'el-icon-suitcase-1', component: AdminFarmSeeds, perm: 'module:farmSeeds' },
-          { key: 'farmItems', name: '化肥陷阱', icon: 'el-icon-coin', component: AdminFarmItems, perm: 'module:farmItems' },
-          { key: 'farmData', name: '农场数据管理', icon: 'el-icon-data-analysis', component: AdminFarmData, perm: 'module:farmData' },
+          { key: 'farmSeeds', name: '农场种子', icon: 'el-icon-suitcase-1', component: () => import(/* webpackChunkName: "admin-AdminFarmSeeds" */ './components/admin/AdminFarmSeeds.vue'), perm: 'module:farmSeeds' },
+          { key: 'farmItems', name: '化肥陷阱', icon: 'el-icon-coin', component: () => import(/* webpackChunkName: "admin-AdminFarmItems" */ './components/admin/AdminFarmItems.vue'), perm: 'module:farmItems' },
+          { key: 'farmData', name: '农场数据管理', icon: 'el-icon-data-analysis', component: () => import(/* webpackChunkName: "admin-AdminFarmData" */ './components/admin/AdminFarmData.vue'), perm: 'module:farmData' },
         ]
       },
       {
         key: 'g-park', name: '抢车位', icon: 'el-icon-truck',
         children: [
-          { key: 'parkCars', name: '车市车辆', icon: 'el-icon-truck', component: AdminParkCars, perm: 'module:parkCars' },
-          { key: 'parkData', name: '车位数据管理', icon: 'el-icon-data-analysis', component: AdminParkData, perm: 'module:parkData' },
+          { key: 'parkCars', name: '车市车辆', icon: 'el-icon-truck', component: () => import(/* webpackChunkName: "admin-AdminParkCars" */ './components/admin/AdminParkCars.vue'), perm: 'module:parkCars' },
+          { key: 'parkData', name: '车位数据管理', icon: 'el-icon-data-analysis', component: () => import(/* webpackChunkName: "admin-AdminParkData" */ './components/admin/AdminParkData.vue'), perm: 'module:parkData' },
         ]
       },
       {
         key: 'g-jwt', name: '精武堂', icon: 'el-icon-s-flag',
         children: [
-          { key: 'jwtPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminJwtPlayers, perm: 'module:jwtPlayers' },
-          { key: 'jwtItems', name: '道具管理', icon: 'el-icon-goods', component: AdminJwtItems, perm: 'module:jwtItems' },
-          { key: 'jwtSkills', name: '技能管理', icon: 'el-icon-magic-stick', component: AdminJwtSkills, perm: 'module:jwtSkills' },
-          { key: 'jwtRecords', name: '比武记录', icon: 'el-icon-trophy', component: AdminJwtRecords, perm: 'module:jwtRecords' },
-          { key: 'jwtData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminJwtData, perm: 'module:jwtData' },
+          { key: 'jwtPlayers', name: '玩家管理', icon: 'el-icon-user', component: () => import(/* webpackChunkName: "admin-AdminJwtPlayers" */ './components/admin/AdminJwtPlayers.vue'), perm: 'module:jwtPlayers' },
+          { key: 'jwtItems', name: '道具管理', icon: 'el-icon-goods', component: () => import(/* webpackChunkName: "admin-AdminJwtItems" */ './components/admin/AdminJwtItems.vue'), perm: 'module:jwtItems' },
+          { key: 'jwtSkills', name: '技能管理', icon: 'el-icon-magic-stick', component: () => import(/* webpackChunkName: "admin-AdminJwtSkills" */ './components/admin/AdminJwtSkills.vue'), perm: 'module:jwtSkills' },
+          { key: 'jwtRecords', name: '比武记录', icon: 'el-icon-trophy', component: () => import(/* webpackChunkName: "admin-AdminJwtRecords" */ './components/admin/AdminJwtRecords.vue'), perm: 'module:jwtRecords' },
+          { key: 'jwtData', name: '数据管理', icon: 'el-icon-data-analysis', component: () => import(/* webpackChunkName: "admin-AdminJwtData" */ './components/admin/AdminJwtData.vue'), perm: 'module:jwtData' },
         ]
       },
       {
         key: 'g-xy', name: '幻想西游', icon: 'el-icon-s-custom',
         children: [
-          { key: 'xyPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminXyPlayers, perm: 'module:xyPlayers' },
-          { key: 'xyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminXyLogs, perm: 'module:xyLogs' },
-          { key: 'xySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminXySystem, perm: 'module:xySystem' },
-          { key: 'xyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminXyData, perm: 'module:xyData' },
+          { key: 'xyPlayers', name: '玩家管理', icon: 'el-icon-user', component: () => import(/* webpackChunkName: "admin-AdminXyPlayers" */ './components/admin/AdminXyPlayers.vue'), perm: 'module:xyPlayers' },
+          { key: 'xyLogs', name: '流水管理', icon: 'el-icon-document', component: () => import(/* webpackChunkName: "admin-AdminXyLogs" */ './components/admin/AdminXyLogs.vue'), perm: 'module:xyLogs' },
+          { key: 'xySystem', name: '系统管理', icon: 'el-icon-s-tools', component: () => import(/* webpackChunkName: "admin-AdminXySystem" */ './components/admin/AdminXySystem.vue'), perm: 'module:xySystem' },
+          { key: 'xyData', name: '数据管理', icon: 'el-icon-data-analysis', component: () => import(/* webpackChunkName: "admin-AdminXyData" */ './components/admin/AdminXyData.vue'), perm: 'module:xyData' },
         ]
       },
       {
         key: 'g-ezfy', name: '二战征途', icon: 'el-icon-position',
         children: [
-          { key: 'ezfyPlayers', name: '玩家信息管理', icon: 'el-icon-user', component: AdminEzfyPlayers, perm: 'module:ezfyPlayers' },
+          { key: 'ezfyPlayers', name: '玩家信息管理', icon: 'el-icon-user', component: () => import(/* webpackChunkName: "admin-AdminEzfyPlayers" */ './components/admin/AdminEzfyPlayers.vue'), perm: 'module:ezfyPlayers' },
           // ★ 2026-10-12 免战管理：开始/结束免战（管理端不受冷却限制），独立权限 module:ezfyPeace
-          { key: 'ezfyPeace', name: '免战管理', icon: 'el-icon-lock', component: AdminEzfyPeace, perm: 'module:ezfyPeace' },
+          { key: 'ezfyPeace', name: '免战管理', icon: 'el-icon-lock', component: () => import(/* webpackChunkName: "admin-AdminEzfyPeace" */ './components/admin/AdminEzfyPeace.vue'), perm: 'module:ezfyPeace' },
           // ★ 2026-10-17 统帅称号：称号定义维护 + 授予/撤销 + 已有称号玩家，独立权限 module:ezfyTitles
-          { key: 'ezfyTitles', name: '统帅称号', icon: 'el-icon-s-custom', component: AdminEzfyTitles, perm: 'module:ezfyTitles' },
+          { key: 'ezfyTitles', name: '统帅称号', icon: 'el-icon-s-custom', component: () => import(/* webpackChunkName: "admin-AdminEzfyTitles" */ './components/admin/AdminEzfyTitles.vue'), perm: 'module:ezfyTitles' },
           // ★ 2026-10-17 人机管理：与玩家管理**完全独立**的模块（独立权限点 module:ezfyBot）
-          { key: 'ezfyBot', name: '人机管理', icon: 'el-icon-cpu', component: AdminEzfyBot, perm: 'module:ezfyBot' },
-          { key: 'ezfyCities', name: '城市管理', icon: 'el-icon-office-building', component: AdminEzfyCities, perm: 'module:ezfyCities' },
-          { key: 'ezfyBuildings', name: '建筑管理', icon: 'el-icon-s-home', component: AdminEzfyBuildings, perm: 'module:ezfyBuildings' },
-          { key: 'ezfyBuildQueue', name: '建筑队列管理', icon: 'el-icon-time', component: AdminEzfyBuildQueue, perm: 'module:ezfyBuildQueue' },
-          { key: 'ezfyTroops', name: '兵种管理', icon: 'el-icon-s-flag', component: AdminEzfyTroops, perm: 'module:ezfyTroops' },
-          { key: 'ezfyRecruit', name: '队伍征兵', icon: 'el-icon-s-promotion', component: AdminEzfyRecruit, perm: 'module:ezfyRecruit' },
-          { key: 'ezfyOfficers', name: '军官管理', icon: 'el-icon-medal', component: AdminEzfyOfficers, perm: 'module:ezfyOfficers' },
+          { key: 'ezfyBot', name: '人机管理', icon: 'el-icon-cpu', component: () => import(/* webpackChunkName: "admin-AdminEzfyBot" */ './components/admin/AdminEzfyBot.vue'), perm: 'module:ezfyBot' },
+          { key: 'ezfyCities', name: '城市管理', icon: 'el-icon-office-building', component: () => import(/* webpackChunkName: "admin-AdminEzfyCities" */ './components/admin/AdminEzfyCities.vue'), perm: 'module:ezfyCities' },
+          { key: 'ezfyBuildings', name: '建筑管理', icon: 'el-icon-s-home', component: () => import(/* webpackChunkName: "admin-AdminEzfyBuildings" */ './components/admin/AdminEzfyBuildings.vue'), perm: 'module:ezfyBuildings' },
+          { key: 'ezfyBuildQueue', name: '建筑队列管理', icon: 'el-icon-time', component: () => import(/* webpackChunkName: "admin-AdminEzfyBuildQueue" */ './components/admin/AdminEzfyBuildQueue.vue'), perm: 'module:ezfyBuildQueue' },
+          { key: 'ezfyTroops', name: '兵种管理', icon: 'el-icon-s-flag', component: () => import(/* webpackChunkName: "admin-AdminEzfyTroops" */ './components/admin/AdminEzfyTroops.vue'), perm: 'module:ezfyTroops' },
+          { key: 'ezfyRecruit', name: '队伍征兵', icon: 'el-icon-s-promotion', component: () => import(/* webpackChunkName: "admin-AdminEzfyRecruit" */ './components/admin/AdminEzfyRecruit.vue'), perm: 'module:ezfyRecruit' },
+          { key: 'ezfyOfficers', name: '军官管理', icon: 'el-icon-medal', component: () => import(/* webpackChunkName: "admin-AdminEzfyOfficers" */ './components/admin/AdminEzfyOfficers.vue'), perm: 'module:ezfyOfficers' },
           // ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab），
           //   独立权限 module:ezfyEquips，可在权限管理里单独分配给角色
-          { key: 'ezfyEquips', name: '军官装备管理', icon: 'el-icon-suitcase', component: AdminEzfyEquips, perm: 'module:ezfyEquips' },
+          { key: 'ezfyEquips', name: '军官装备管理', icon: 'el-icon-suitcase', component: () => import(/* webpackChunkName: "admin-AdminEzfyEquips" */ './components/admin/AdminEzfyEquips.vue'), perm: 'module:ezfyEquips' },
           // ★ 2026-09-27 为爱发电卡维护（发放 + 领取情况）；perm 复用数据管理
-          { key: 'ezfyLoveCard', name: '为爱发电卡', icon: 'el-icon-present', component: AdminEzfyLoveCard, perm: 'module:ezfyData' },
-          { key: 'ezfyRecruitLimit', name: '军校刷新次数', icon: 'el-icon-refresh', component: AdminEzfyRecruitLimit, perm: 'module:ezfyOfficers' },
-          { key: 'ezfyRankCfg', name: '军衔维护', icon: 'el-icon-medal', component: AdminEzfyRanks, perm: 'module:ezfyRankCfg' },
+          { key: 'ezfyLoveCard', name: '为爱发电卡', icon: 'el-icon-present', component: () => import(/* webpackChunkName: "admin-AdminEzfyLoveCard" */ './components/admin/AdminEzfyLoveCard.vue'), perm: 'module:ezfyData' },
+          { key: 'ezfyRecruitLimit', name: '军校刷新次数', icon: 'el-icon-refresh', component: () => import(/* webpackChunkName: "admin-AdminEzfyRecruitLimit" */ './components/admin/AdminEzfyRecruitLimit.vue'), perm: 'module:ezfyOfficers' },
+          { key: 'ezfyRankCfg', name: '军衔维护', icon: 'el-icon-medal', component: () => import(/* webpackChunkName: "admin-AdminEzfyRanks" */ './components/admin/AdminEzfyRanks.vue'), perm: 'module:ezfyRankCfg' },
           // ★ 2026-10-14 「风云榜」→「排行榜」：下面设「风云榜 / 战力榜」两个 tab
           //   （风云榜可开关统计 + 把玩家设为不参与排名；战力榜复用游戏内战力口径）。
           //   perm 复用数据管理。key 保持不变，不动已分配的权限。
-          { key: 'ezfyPvpRank', name: '排行榜', icon: 'el-icon-trophy', component: AdminEzfyPvpRank, perm: 'module:ezfyData' },
-          { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: AdminEzfyResources, perm: 'module:ezfyResources' },
-          { key: 'ezfyExchange', name: '交易行维护', icon: 'el-icon-s-shop', component: AdminEzfyExchange, perm: 'module:ezfyExchange' },
-          { key: 'ezfyTechs', name: '科技管理', icon: 'el-icon-cpu', component: AdminEzfyTechs, perm: 'module:ezfyTechs' },
-          { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: AdminEzfyMap, perm: 'module:ezfyMap' },
-          { key: 'ezfyCorps', name: '军团管理', icon: 'el-icon-s-flag', component: AdminEzfyCorps, perm: 'module:ezfyCorps' },
-          { key: 'ezfyPrivchat', name: '私聊管理', icon: 'el-icon-chat-line-square', component: AdminEzfyPrivchat, perm: 'module:ezfyPrivchat' },
+          { key: 'ezfyPvpRank', name: '排行榜', icon: 'el-icon-trophy', component: () => import(/* webpackChunkName: "admin-AdminEzfyPvpRank" */ './components/admin/AdminEzfyPvpRank.vue'), perm: 'module:ezfyData' },
+          { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: () => import(/* webpackChunkName: "admin-AdminEzfyResources" */ './components/admin/AdminEzfyResources.vue'), perm: 'module:ezfyResources' },
+          { key: 'ezfyExchange', name: '交易行维护', icon: 'el-icon-s-shop', component: () => import(/* webpackChunkName: "admin-AdminEzfyExchange" */ './components/admin/AdminEzfyExchange.vue'), perm: 'module:ezfyExchange' },
+          { key: 'ezfyTechs', name: '科技管理', icon: 'el-icon-cpu', component: () => import(/* webpackChunkName: "admin-AdminEzfyTechs" */ './components/admin/AdminEzfyTechs.vue'), perm: 'module:ezfyTechs' },
+          { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: () => import(/* webpackChunkName: "admin-AdminEzfyMap" */ './components/admin/AdminEzfyMap.vue'), perm: 'module:ezfyMap' },
+          { key: 'ezfyCorps', name: '军团管理', icon: 'el-icon-s-flag', component: () => import(/* webpackChunkName: "admin-AdminEzfyCorps" */ './components/admin/AdminEzfyCorps.vue'), perm: 'module:ezfyCorps' },
+          { key: 'ezfyPrivchat', name: '私聊管理', icon: 'el-icon-chat-line-square', component: () => import(/* webpackChunkName: "admin-AdminEzfyPrivchat" */ './components/admin/AdminEzfyPrivchat.vue'), perm: 'module:ezfyPrivchat' },
           // ★ 菜单名由「建筑上限配置」改成「系统配置」，随后又要求改成「二战系统配置」
           //   （避免和下面「系统管理」那组混淆）。key / perm 保持不变，不动已分配的权限。
-          { key: 'ezfyBuildLimit', name: '二战系统配置', icon: 'el-icon-set-up', component: AdminEzfyBuildLimit, perm: 'module:ezfyBuildLimit' },
+          { key: 'ezfyBuildLimit', name: '二战系统配置', icon: 'el-icon-set-up', component: () => import(/* webpackChunkName: "admin-AdminEzfyBuildLimit" */ './components/admin/AdminEzfyBuildLimit.vue'), perm: 'module:ezfyBuildLimit' },
           // ★ 2026-09-25 「军团宣战维护合并到宣战管理，按 tab 展示」→
           //   不再单独挂菜单项，统一从「宣战管理」进去用 tab 切换（perm 复用 module:ezfyWars）
-          { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: AdminEzfyWars, perm: 'module:ezfyWars' },
+          { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: () => import(/* webpackChunkName: "admin-AdminEzfyWars" */ './components/admin/AdminEzfyWars.vue'), perm: 'module:ezfyWars' },
           // ★ 2026-09-25 军团商城维护（perm 复用军团管理 module:ezfyCorps）
-          { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: AdminEzfyCorpsMall, perm: 'module:ezfyCorps' },
+          { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: () => import(/* webpackChunkName: "admin-AdminEzfyCorpsMall" */ './components/admin/AdminEzfyCorpsMall.vue'), perm: 'module:ezfyCorps' },
           // ★ 2026-10-17 聊天管理（原「聊天敏感词」改名）：世界/军团/系统 聊天记录 + 敏感词维护
-          { key: 'ezfyWords', name: '聊天管理', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
+          { key: 'ezfyWords', name: '聊天管理', icon: 'el-icon-chat-dot-square', component: () => import(/* webpackChunkName: "admin-AdminEzfyWords" */ './components/admin/AdminEzfyWords.vue'), perm: 'module:ezfyWords' },
           // ★ 2026-10-06 战报查询（独立于流水/出征记录：战报不是订单，按玩家+类型查 ezfy_report）
           //   ★ 2026-10-07 图标 el-icon-notice-board 在 Element UI 2.15 里不存在 → 图标空白，改用 notebook-2
-          { key: 'ezfyReports', name: '战报查询', icon: 'el-icon-notebook-2', component: AdminEzfyReports, perm: 'module:ezfyLogs' },
+          { key: 'ezfyReports', name: '战报查询', icon: 'el-icon-notebook-2', component: () => import(/* webpackChunkName: "admin-AdminEzfyReports" */ './components/admin/AdminEzfyReports.vue'), perm: 'module:ezfyLogs' },
           // ★ 2026-10-08 战斗队列管理：查看进行中的战场（双方部队/准备回合/逐回合日志），
           //   支持手动推进一回合、一键自动打完、强制结算/清理卡死战场（perm 复用 module:ezfyLogs）
-          { key: 'ezfyBattles', name: '战斗队列', icon: 'el-icon-s-flag', component: AdminEzfyBattles, perm: 'module:ezfyLogs' },
-          { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
+          { key: 'ezfyBattles', name: '战斗队列', icon: 'el-icon-s-flag', component: () => import(/* webpackChunkName: "admin-AdminEzfyBattles" */ './components/admin/AdminEzfyBattles.vue'), perm: 'module:ezfyLogs' },
+          { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: () => import(/* webpackChunkName: "admin-AdminEzfySystem" */ './components/admin/AdminEzfySystem.vue'), perm: 'module:ezfySystem' },
           // ★ 2026-10-11 活动监测：造兵/征服/掠夺/召集次数排行（perm 复用 module:ezfySystem）
-          { key: 'ezfyMonitor', name: '活动监测', icon: 'el-icon-data-line', component: AdminEzfyMonitor, perm: 'module:ezfySystem' },
-          { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },
+          { key: 'ezfyMonitor', name: '活动监测', icon: 'el-icon-data-line', component: () => import(/* webpackChunkName: "admin-AdminEzfyMonitor" */ './components/admin/AdminEzfyMonitor.vue'), perm: 'module:ezfySystem' },
+          { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: () => import(/* webpackChunkName: "admin-AdminEzfyData" */ './components/admin/AdminEzfyData.vue'), perm: 'module:ezfyData' },
         ]
       }
     ]
@@ -325,10 +231,10 @@ export const menu = [
   {
     key: 'g-config', name: '系统配置', icon: 'el-icon-setting',
     children: [
-      { key: 'siteConfig', name: '站点设置', icon: 'el-icon-s-tools', component: AdminSiteConfig, perm: 'module:siteConfig' },
-      { key: 'roles', name: '管理设置', icon: 'el-icon-s-check', component: AdminRoles, perm: 'module:roles' },
-      { key: 'resources', name: '文件管理', icon: 'el-icon-picture-outline', component: AdminResources, perm: 'module:resources' },
-      { key: 'menus', name: '菜单维护', icon: 'el-icon-s-operation', component: AdminMenus, perm: 'module:menus' },
+      { key: 'siteConfig', name: '站点设置', icon: 'el-icon-s-tools', component: () => import(/* webpackChunkName: "admin-AdminSiteConfig" */ './components/admin/AdminSiteConfig.vue'), perm: 'module:siteConfig' },
+      { key: 'roles', name: '管理设置', icon: 'el-icon-s-check', component: () => import(/* webpackChunkName: "admin-AdminRoles" */ './components/admin/AdminRoles.vue'), perm: 'module:roles' },
+      { key: 'resources', name: '文件管理', icon: 'el-icon-picture-outline', component: () => import(/* webpackChunkName: "admin-AdminResources" */ './components/admin/AdminResources.vue'), perm: 'module:resources' },
+      { key: 'menus', name: '菜单维护', icon: 'el-icon-s-operation', component: () => import(/* webpackChunkName: "admin-AdminMenus" */ './components/admin/AdminMenus.vue'), perm: 'module:menus' },
     ]
   }
 ]

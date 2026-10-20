@@ -651,5 +651,7 @@ func rawFile(t *testing.T, file string) string {
 	if err != nil {
 		t.Fatalf("读源码失败 %s: %v", file, err)
 	}
-	return string(b)
+	// 源码断言统一按 LF 比较：仓库在 Windows 检出后是 CRLF，
+	// 带 \n 的多行断言会因此假失败（与代码对错无关）。
+	return strings.ReplaceAll(string(b), "\r\n", "\n")
 }

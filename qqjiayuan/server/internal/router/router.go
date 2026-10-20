@@ -43,6 +43,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	// 全站 IP 封禁（命中封禁名单的请求 302 到服务不可用页）
 	banM := middleware.NewIPBan(db)
 	r.Use(banM.Handler())
+	// 管理端/前端静态资源 gzip + hash 资源长期缓存（首屏加载优化）
+	r.Use(middleware.GzipStatic())
 
 	// ★ 2026-10-12 EzfyDB：家园侧改/重置密码时同步二战账号密码（临时措施，见 syncEzfyPassword）
 	authH := &handler.AuthHandler{DB: db, EzfyDB: ezfyDB, Secret: cfg.Jwt.Secret, ExpH: cfg.Jwt.ExpireHours}

@@ -3480,7 +3480,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if h.DB.Where("x = ? AND y = ?", order.TargetX, order.TargetY).Order("id DESC").First(&wildDef).Error == nil &&
 			wildDef.CityId > 0 {
 			// 自己的野地不会被攻打（createOrder 已拦），能到这里的主人必是他人
-			h.DB.Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", wildDef.ID).
+			// ★★ 2026-10-20 按**坐标**找守军订单，而不是 `target_id = 野地行 id`：
+			//   攻打野地的订单 target_id 常为 0（客户端只传坐标），而守军订单虽然带
+			//   野地 id，但野地行可能因征服/重建换过 id → 按 id 会漏掉全部守军，
+			//   连带军官/科技加成一起变 0（与 ReportDynamics / fetchIncoming 同口径）。
+			//   同时排除 target_type=3（城市增援），旧客户端可能把野地写成 0，
+			//   所以用 `<> 3` 而不是 `IN (1,2)`，避免漏掉历史订单。
+			h.DB.Where("target_type <> 3 AND order_type IN (6,7) AND status IN (1,3) "+
+				"AND target_x = ? AND target_y = ?", order.TargetX, order.TargetY).
 				Order("id ASC").Find(&wildDefOrders)
 			cnt := map[int]int64{}
 			sum := int64(0)
@@ -3512,7 +3519,20 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			//   玩家看到的战报就是「守方军官 0%、守方科技 无」（用户反馈）。
 			wildDefCityID = uint(wildDef.CityId)
 			wildDefCommander = h.ezfyWildDefCommander(wildDefOrders, wildDefCityID)
-			wildDefBonus := h.ezfyWildDefCombatBonus(h.techMap(wildDefCityID), wildDefCommander)
+			// ★ 科技按账号共享（techMap 内部再查到 user_id）；野地归属城若已被放弃/
+			//   记录失效导致查不到归属用户，则回退到守军订单的出发城，避免科技整段丢失。
+			wildDefTech := h.techMap(wildDefCityID)
+			if len(wildDefTech) == 0 {
+				for i := range wildDefOrders {
+					if cid := uint(wildDefOrders[i].CityId); cid > 0 && cid != wildDefCityID {
+						if t := h.techMap(cid); len(t) > 0 {
+							wildDefTech = t
+							break
+						}
+					}
+				}
+			}
+			wildDefBonus := h.ezfyWildDefCombatBonus(wildDefTech, wildDefCommander)
 			defBonus = wildDefBonus.DefBonus
 			defAtkBonus = wildDefBonus.DefAtkBonus
 			defSpeedBonus = wildDefBonus.DefSpeedBonus
