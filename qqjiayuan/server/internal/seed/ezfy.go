@@ -612,8 +612,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Category:    "军官道具",
 			Description: "在军官管理页面使用, 成功改名消耗1张, 不影响军官池的原军官"},
 		// ★ 2026-09-22 「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗」。
-		//   ★ Category 必须显式写「计谋道具」：ezfyItemCategory 里「PriceDiamond>0 → 钻石道具」
-		//   那一步在 ItemType 判断**之前**，不写的话它会被归到「钻石道具」里。
+		//   ★ Category 显式写「计谋道具」，管理端筛选可直接看到功能分类。
 		//   Category 不是「黄金道具/钻石道具」→ 不锁货币 → 前端两种价格都列出来让玩家选。
 		{ID: 1024, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: 0,
 			Category:    "计谋道具",

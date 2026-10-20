@@ -2289,15 +2289,16 @@ func ezfyItemCategory(it *model.EzfyCfgItem) string {
 //
 // 优先级：
 //
-//	① 管理端显式配了 category → 就用它（唯一能覆盖推导的口子，如「黄金道具」锁定黄金支付）；
-//	② 否则有钻石价 → 「钻石道具」（用户规则：钻石道具只能用钻石买）；
-//	③ 否则按 item_type 归类，认不出的落「其他」。
+//	① 管理端显式配了**功能分类** → 就用它；
+//	② 否则按 item_type 归到功能分类（★ 2026-10-20 调整：功能分类优先于价格，
+//	   否则所有钻石定价的加速/资源/图纸都会被塞进同一个「钻石道具」，分类失去意义）；
+//	③ 「钻石道具 / 黄金道具」只作**货币锁定标记**（见 ezfyIsDiamondItem），
+//	   未识别的道具类型才回退到该名称，最后落「其他」。
 func ezfyCategoryOf(category string, itemType int, priceDiamond int64) string {
-	if c := strings.TrimSpace(category); c != "" {
-		return c
-	}
-	if priceDiamond > 0 {
-		return "钻石道具"
+	explicit := strings.TrimSpace(category)
+	currencyOnly := explicit == "钻石道具" || explicit == "黄金道具"
+	if explicit != "" && !currencyOnly {
+		return explicit
 	}
 	switch itemType {
 	case 1, 2, 27, 28, 29, 30:
@@ -2317,6 +2318,12 @@ func ezfyCategoryOf(category string, itemType int, priceDiamond int64) string {
 	// 20 = 信号弹（计谋消耗品）
 	case 20:
 		return "计谋道具"
+	// 31 = 移民法案（人口召集）
+	case 31:
+		return "内政道具"
+	// 32 = 军团联络令
+	case 32:
+		return "军团道具"
 	case 13, 14:
 		return "身份道具"
 	case 15:
@@ -2324,14 +2331,36 @@ func ezfyCategoryOf(category string, itemType int, priceDiamond int64) string {
 	case 16, 17, 18:
 		return "迁城道具"
 	}
+	if explicit != "" {
+		return explicit
+	}
+	if priceDiamond > 0 {
+		return "钻石道具"
+	}
 	return "其他"
 }
 
 // ezfyCategoryOrder 分类在商城 / 管理端「分类筛选」下拉里的展示顺序
 var ezfyCategoryOrder = []string{
 	"资源道具", "加速道具", "增益道具", "建筑图纸", "军官道具",
-	"计谋道具", "身份道具", "出征道具", "迁城道具",
+	"计谋道具", "内政道具", "军团道具", "身份道具", "出征道具", "迁城道具",
 	"钻石道具", "黄金道具", "其他",
+}
+
+// ezfySortItemsByCategory 商城/背包展示顺序：先按分类白名单顺序，再按道具 ID。
+// 同类商品聚在一起，玩家切「全部」时不会在多个分类之间来回跳。
+func ezfySortItemsByCategory(items []model.EzfyCfgItem) {
+	sort.SliceStable(items, func(i, j int) bool {
+		ci, cj := ezfyItemCategory(&items[i]), ezfyItemCategory(&items[j])
+		ri, rj := ezfyCategoryRank(ci), ezfyCategoryRank(cj)
+		if ri != rj {
+			return ri < rj
+		}
+		if ci != cj {
+			return ci < cj
+		}
+		return items[i].ID < items[j].ID
+	})
 }
 
 // ezfyCategoryRank 分类排序权重（不在白名单里的自定义分类排最后）
@@ -2350,6 +2379,9 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 	h.cfgs()
 	var items []model.EzfyCfgItem
 	h.DB.Order("id ASC").Find(&items)
+	// ★ 2026-10-20 同类商品聚在一起（用户：「同类的排序在一起，分类搞清晰些」）：
+	//   分类白名单顺序 → 分类名 → 道具 ID；分类页签也按同一权重排序。
+	ezfySortItemsByCategory(items)
 	// ★ 2026-10-11 玩家各道具持有量（前端据此卡控「背包上限」，避免买超）——一次查询建 map
 	owned := map[int]int{}
 	{
@@ -2389,6 +2421,14 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 			"have": owned[it.ID],
 		})
 	}
+	// 分类页签按白名单顺序展示（自定义分类按名称排在白名单之后）
+	sort.SliceStable(cats, func(i, j int) bool {
+		ri, rj := ezfyCategoryRank(cats[i]), ezfyCategoryRank(cats[j])
+		if ri != rj {
+			return ri < rj
+		}
+		return cats[i] < cats[j]
+	})
 	prof := h.ensureProfile(uid)
 	resp.OK(c, gin.H{
 		"items": views, "categories": cats, "diamond": prof.Diamond,

@@ -1096,7 +1096,7 @@ func (h *EzfyAdmin) AdminEzfyData(c *gin.Context) {
 	}
 	// ★★ 2026-10-07 「道具配置」可读性改造（分类一栏是空的/是数字，整页很乱）：
 	//   库里 category **大部分是空串**，玩家在商城看到的分类其实是算出来的
-	//   （显式 category → 有钻石价算「钻石道具」→ 按 item_type 归类，见 ezfyCategoryOf）。
+	//   （显式功能分类 → 按 item_type 归类；「钻石/黄金道具」只锁货币，见 ezfyCategoryOf）。
 	//   所以这里做两件事，口径全部复用 ezfyCategoryOf，不写第二套：
 	//     ① 支持 `cat` 分类筛选 —— 先按同一口径算出命中的 id 集合，再按 id 过滤 + 分页
 	//        （道具表只有几十行，全量扫一遍代价可忽略；也避免把推导规则翻译成 SQL 表达式）；

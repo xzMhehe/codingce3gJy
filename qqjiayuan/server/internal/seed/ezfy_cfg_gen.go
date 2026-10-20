@@ -601,8 +601,7 @@ var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	{ID: 1036, Name: "科技加速80%", ItemType: 26, Param1: 80, PriceDiamond: 6, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少80%"},
 	// ★ 2026-09-28 「商城道具新增 5 个资源道具（2钻礼包，各 1000 万资源）」：
 	//   2钻礼包1~5 对应 黄金/粮食/钢铁/石油/稀矿，统一 2 钻石、无限库存(-1)。
-	//   Category 显式写「资源道具」：ezfyItemCategory 里「PriceDiamond>0 → 钻石道具」的判断在
-	//   ItemType 判断**之前**，不写会被归到「钻石道具」分类去。
+	//   Category 显式写「资源道具」：方便管理端一眼看出归类（item_type 也会自动归到资源道具）。
 	{ID: 1037, Name: "2钻礼包1", ItemType: 2, Param1: 10000000, PriceDiamond: 2, Stock: -1, Icon: "", Category: "资源道具", Description: "使用后获得黄金1000万"},
 	{ID: 1038, Name: "2钻礼包2", ItemType: 27, Param1: 10000000, PriceDiamond: 2, Stock: -1, Icon: "", Category: "资源道具", Description: "使用后获得粮食1000万"},
 	{ID: 1039, Name: "2钻礼包3", ItemType: 28, Param1: 10000000, PriceDiamond: 2, Stock: -1, Icon: "", Category: "资源道具", Description: "使用后获得钢铁1000万"},

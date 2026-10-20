@@ -1542,6 +1542,15 @@ export default {
       const list = this.mallItems || []
       return cat ? list.filter(i => i.category === cat) : list
     },
+    // ★ 2026-10-20 分类页签显示数量，玩家一眼知道哪类有货、有多少。
+    mallCatCounts () {
+      const out = {}
+      ;(this.mallItems || []).forEach(i => {
+        const c = i.category || '其他'
+        out[c] = (out[c] || 0) + 1
+      })
+      return out
+    },
     // ============ ★ 通用「检索 + 分页」小工具（背包 / 装备列表共用） ============
     // 后端一次性把列表下发，检索与分页都在前端做（这些列表不会大到需要服务端分页）。
     // ★ 背包分类（按首次出现顺序，与商城的归类口径一致：后端 ezfyItemCategory）
@@ -8160,6 +8169,14 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-plain-table td {
   text-align: center;
   vertical-align: middle;
+}
+/* ★ 2026-10-20 商城「全部」分类分组标题：同类商品聚在一起，标题左对齐便于扫读 */
+.ezfy-page .ezfy-plain-table tr.mall-cat-row td {
+  background: #f0ecdf;
+  color: #7a4b00;
+  font-weight: bold;
+  text-align: left;
+  padding-left: 8px;
 }
 /* ★ 战场指挥室：本回合倒计时条（指令期绿色、锁定后红色） */
 .ezfy-page .ezfy-battle-bar {

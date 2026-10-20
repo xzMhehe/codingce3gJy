@@ -339,7 +339,8 @@ type EzfyCfgItem struct {
 	// ★ 钻石售价：> 0 表示这是「钻石道具」，只能用钻石购买（黄金价 price_gold 忽略）。
 	//   管理端「数据管理 → 道具配置」可维护。
 	PriceDiamond int64 `gorm:"comment:钻石价格" json:"price_diamond"`
-	// ★ 商城分类（管理端可填；留空时按 item_type / price_diamond 自动归类）
+	// ★ 商城分类（管理端可填；留空时按 item_type 自动归类）。
+	//   「钻石道具 / 黄金道具」只用于锁定支付货币，不再霸占展示分类。
 	Category string `gorm:"type:varchar(20);comment:分类" json:"category"`
 }
 

@@ -179,12 +179,12 @@
           <template v-if="ezfy.mallTab === 'item'">
           <!-- ★ 分类筛选：流式排列自动换行（分类由管理端维护，手机端超宽自动折到下一行） -->
           <div class="ezfy-slot-grid">
-            <a href="javascript:;" :class="{ on: ezfy.mallCat === '' }" @click="ezfy.setMallCat('')">[全部]</a>
+            <a href="javascript:;" :class="{ on: ezfy.mallCat === '' }" @click="ezfy.setMallCat('')">[全部·{{ ezfy.mallItems.length }}]</a>
             <a v-for="c in ezfy.mallCatsList" :key="'mc' + c" href="javascript:;" :class="{ on: ezfy.mallCat === c }"
-               @click="ezfy.setMallCat(c)">[{{ c }}]</a>
+               @click="ezfy.setMallCat(c)">[{{ c }}·{{ ezfy.mallCatCounts[c] || 0 }}]</a>
           </div>
           <div class="old-line gray" v-if="ezfy.mallDiamond <= 0">
-            钻石余额为 0；标记为「钻石道具」的道具若标价 0 钻石可直接购买，其余需由管理员充值钻石后购买。
+            钻石余额为 0；需要钻石购买的道具若标价 0 钻石可直接购买，其余需由管理员充值钻石后购买。
           </div>
           <!-- ★ 道具表格化（原来平铺一长串，用户反馈「乱」）
                ★ 商城保持简洁：只列 名称/价格/库存/操作，**道具说明不在这里显示**
@@ -193,24 +193,31 @@
                · 库存 -1 = 无限（管理端「数据管理 → 道具配置」维护）。 -->
           <table class="ezfy-plain-table">
             <tr><th>名称</th><th>价格</th><th>库存</th><th>操作</th></tr>
-            <tr v-for="it in ezfy.mallPaged" :key="'mi' + it.id">
-              <td>{{ it.name }}</td>
-              <td>
-                <template v-if="it.dual_pay">
-                  <span class="orange">{{ it.price_diamond }}钻</span>/{{ it.price_gold }}{{ ezfy.resNames.gold }}
-                </template>
-                <span v-else-if="it.is_diamond" class="orange">{{ it.price_diamond > 0 ? it.price_diamond + '钻' : '限时免费' }}</span>
-                <span v-else>{{ it.price_gold > 0 ? it.price_gold + ezfy.resNames.gold : '限时免费' }}</span>
-              </td>
-              <td>
-                <span v-if="it.unlimited" class="green">无限</span>
-                <span v-else :class="it.stock > 0 ? 'gray' : 'red'">{{ it.stock > 0 ? it.stock : '已售罄' }}</span>
-              </td>
-              <td>
-                <a v-if="it.unlimited || it.stock > 0" href="javascript:;" @click="ezfy.openBuy(it)">[购买]</a>
-                <span v-else class="gray">[已售罄]</span>
-              </td>
-            </tr>
+            <template v-for="(it, idx) in ezfy.mallPaged">
+              <!-- ★ 2026-10-20 「全部」视图按分类插入分组标题，同类商品聚在一起 -->
+              <tr v-if="!ezfy.mallCat && (idx === 0 || ezfy.mallPaged[idx - 1].category !== it.category)"
+                  :key="'mh' + it.category" class="mall-cat-row">
+                <td colspan="4">{{ it.category || '其他' }}（{{ ezfy.mallCatCounts[it.category] || 0 }} 件）</td>
+              </tr>
+              <tr :key="'mi' + it.id">
+                <td>{{ it.name }}</td>
+                <td>
+                  <template v-if="it.dual_pay">
+                    <span class="orange">{{ it.price_diamond }}钻</span>/{{ it.price_gold }}{{ ezfy.resNames.gold }}
+                  </template>
+                  <span v-else-if="it.is_diamond" class="orange">{{ it.price_diamond > 0 ? it.price_diamond + '钻' : '限时免费' }}</span>
+                  <span v-else>{{ it.price_gold > 0 ? it.price_gold + ezfy.resNames.gold : '限时免费' }}</span>
+                </td>
+                <td>
+                  <span v-if="it.unlimited" class="green">无限</span>
+                  <span v-else :class="it.stock > 0 ? 'gray' : 'red'">{{ it.stock > 0 ? it.stock : '已售罄' }}</span>
+                </td>
+                <td>
+                  <a v-if="it.unlimited || it.stock > 0" href="javascript:;" @click="ezfy.openBuy(it)">[购买]</a>
+                  <span v-else class="gray">[已售罄]</span>
+                </td>
+              </tr>
+            </template>
           </table>
           <div class="old-line gray" v-if="!ezfy.mallPaged.length">(该分类下暂无道具)</div>
           <!-- ★ 分页（每页 10 件） -->
