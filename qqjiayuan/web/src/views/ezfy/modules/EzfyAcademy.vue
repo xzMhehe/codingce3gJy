@@ -100,7 +100,6 @@
           <template v-if="ezfy.playerInfo.corps_title">职务：{{ ezfy.playerInfo.corps_title }}<br/></template>
           城市数：{{ ezfy.playerInfo.city_count }}<br/>
           军官数：{{ ezfy.playerInfo.officer_count }}<br/>
-          城市最高兵力数：{{ ezfy.fmtN(ezfy.playerInfo.troop_max) }}<br/>
           占领野地：{{ ezfy.playerInfo.wild_count }}块
         </div>
         <div class="old-line">
