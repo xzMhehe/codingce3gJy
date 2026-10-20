@@ -137,7 +137,7 @@ type EzfyMapTile struct {
 	ID uint `gorm:"primaryKey;comment:主键ID" json:"id"`
 	X  int  `gorm:"uniqueIndex:uk_map_tile;comment:X坐标" json:"x"`
 	Y  int  `gorm:"uniqueIndex:uk_map_tile;comment:Y坐标" json:"y"`
-	// Terrain: 0 = 不覆盖（按哈希），1-9 = 强制成该地形（1平原…8海洋, 9沿海平原）
+	// Terrain: 0 = 不覆盖（按哈希），1-11 = 强制成该地形（1平原…8海洋, 9沿海平原, 10渔场, 11矿礁）
 	Terrain int `gorm:"comment:地形" json:"terrain"`
 	// MarkKind: 0=无 1=寇城 2=活动寇城 3=活动野地 4=特殊城市
 	MarkKind int `gorm:"comment:MarkKind: 0=无 1=寇城 2=活动寇城 3=活动野地 4=特殊城市" json:"mark_kind"`

@@ -18,14 +18,14 @@ func TestWorldMapDump(t *testing.T) {
 		for x := 0; x < ezfyWorldSize; x += step {
 			t := ezfyTerrainEx(x, y)
 			switch {
-			case t == ezfyTerrainSea:
+			case t == ezfyTerrainSea || t == ezfyTerrainFishing || t == ezfyTerrainOreReef:
 				sea++
 				line += "~"
 			case t == ezfyTerrainCoastalPlain:
 				coastal++
 				land++
 				line += "c"
-			case t == 7: // 山地
+			case t == 7: // 岛屿
 				land++
 				line += "^"
 			default:
@@ -73,7 +73,7 @@ func TestCoastalPlainCensus(t *testing.T) {
 		sampled += n
 	}
 	fmt.Println("采样点总数:", sampled)
-	for id := 1; id <= 9; id++ {
+	for id := 1; id <= 11; id++ {
 		fmt.Printf("  %-6s(id=%d): %d\n", ezfyTerrainName(id), id, byTerrain[id])
 	}
 	fmt.Printf("平原 %d，其中沿海平原 %d (占平原 %.1f%%)\n",

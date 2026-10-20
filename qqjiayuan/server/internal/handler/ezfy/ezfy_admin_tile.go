@@ -19,7 +19,7 @@ import (
 //
 // 本项目的地图（地形 / 野地等级 / 寇城 / 活动目标）**全部是坐标哈希推导的、不落库**，
 // 所以这里做一张覆盖表 ezfy_map_tile：
-//   - Terrain   > 0 时强制该格地形（1平原…8海洋, 9沿海平原）
+//   - Terrain   > 0 时强制该格地形（1平原…8海洋, 9沿海平原, 10渔场, 11矿礁）
 //   - MarkKind  > 0 时强制该格标记（1寇城 2活动寇城 3活动野地 4特殊城市）
 //
 // 覆盖优先于哈希，改完调 ezfyReload() 立即生效（不用重启）。
@@ -224,8 +224,8 @@ func (h *EzfyAdmin) AdminEzfyMapTileDelete(c *gin.Context) {
 // ezfyCheckTileVals 校验覆盖值
 func ezfyCheckTileVals(vals map[string]interface{}) string {
 	if t, ok := vals["terrain"].(int); ok && t != 0 {
-		if t < 1 || t > 9 {
-			return "地形只能是 1~9（1平原…8海洋 9沿海平原），0 = 不覆盖"
+		if t < 1 || t > 11 {
+			return "地形只能是 1~11（1平原…8海洋 9沿海平原 10渔场 11矿礁），0 = 不覆盖"
 		}
 	}
 	if k, ok := vals["mark_kind"].(int); ok && k != 0 {

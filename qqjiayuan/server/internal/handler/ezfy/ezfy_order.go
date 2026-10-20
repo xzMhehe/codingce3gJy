@@ -231,13 +231,15 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 			} else {
 				kou := isKouFast(x, y)
 				switch {
-				case terrain == ezfyTerrainSea:
+				case ezfyIsSeaWildTerrain(terrain) && terrain != ezfyTerrainIsland:
+					// 海洋 8 / 渔场 10 / 矿礁 11：
+					// 纯海洋 → 「海洋」(详情页不显示守军/军官/出征按钮)；带野地 → 海底森林/渔场/矿礁。
+					// ★ 2026-10-05 统一走 ezfyWildTerrainDisplayName（口径只有一处），这里 knownWild=false。
+					// ★ 2026-10-20 新增渔场/矿礁，和海洋同走海野分支，避免被寇城哈希覆盖。
 					cell["area_type"] = 1
 					lvl := ezfyWildlandLevel(x, y)
-					// 纯海洋 → 「海洋」(详情页不显示守军/军官/出征按钮)；带野地 → 「海底森林」。
-					// ★ 2026-10-05 统一走 ezfyWildTerrainDisplayName（口径只有一处），这里 knownWild=false。
 					cell["name"] = ezfyWildTerrainDisplayName(x, y, false)
-					if lvl == 0 {
+					if terrain == ezfyTerrainSea && lvl == 0 {
 						cell["is_ocean"] = true
 					} else {
 						cell["level"] = lvl
@@ -300,8 +302,10 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 					continue // 只看这一圈的边框
 				}
 				ex, ey := cx+dx, cy+dy
-				if ezfyTerrain(ex, ey) == 8 || !isKouFast(ex, ey) {
-					continue
+				te := ezfyTerrainEx(ex, ey)
+				if te == ezfyTerrainSea || te == ezfyTerrainFishing || te == ezfyTerrainOreReef ||
+					!isKouFast(ex, ey) {
+					continue // 海里不刷精英寇城；岛屿(7)保持原逻辑
 				}
 				elite = gin.H{"x": ex, "y": ey, "level": ezfyKouLevel(ex, ey)}
 			}
@@ -426,7 +430,7 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	//	  与实际战斗口径（海野）不符 —— 玩家会按错误的情报备兵。
 	//
 	//	现在改成与 processArrive / MapView 完全同一套判定（顺序也一致：海洋分支在地图里优先于寇城）：
-	//	  海野(海洋 8 / 岛屿 7) → 2 ；寇城 → 3 ；其余 → 1（陆地野地）。
+	//	  海野(海洋 8 / 岛屿 7 / 渔场 10 / 矿礁 11) → 2 ；寇城 → 3 ；其余 → 1（陆地野地）。
 	//	⚠️ 客户端的 `type` 查询参数已不再参与判定（传了也不影响结果），保留只是为了兼容旧前端。
 	ttype := 1
 	switch {
@@ -485,9 +489,10 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	if treasures == nil {
 		treasures = []string{}
 	}
-	// 地形显示名: 海洋里的野地→海底森林, 岛屿→岛屿, 寇城→平原(用户规范)
+	// 地形显示名: 海洋里的野地→海底森林, 岛屿→岛屿, 渔场/矿礁→各自地形名, 寇城→平原(用户规范)
 	// ★ 2026-10-05 用户纠正：① 纯海洋是「海洋」、海底森林是海洋里带野地的那块；② 岛屿(7) 也是海野玩法，
 	//   但展示名保留「岛屿」。走 ezfyWildTerrainDisplayName。
+	// ★ 2026-10-20 新增渔场(10)/矿礁(11)，同走该函数，展示名就是「渔场」「矿礁」。
 	//   ttype==2 时上面已确认 `ezfyWildlandLevel(x,y) > 0`（纯海洋在更早的分支直接返回 is_ocean），
 	//   所以这里 knownWild=true。
 	terrainName := ezfyTerrainNameEx(x, y)
@@ -1300,8 +1305,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// ★ 2026-10-02 用户规则：海军兵种(驱逐舰/潜艇/战列舰/航母)只能出征
 	//   岛屿/海底森林(海洋)/沿海平原（含建在沿海平原上的城市）目标，
 	//   出征到其它地形时在出征前卡控提示（按目标坐标地形判定，覆盖野地/寇城/城市）。
+	// ★ 2026-10-20 新增渔场/矿礁，同属海野，海军也可出征。
 	if ezfyHasNavalTroops(validTroops) && !ezfyNavalTargetAllowed(targetX, targetY) {
-		return "海军部队只能出征岛屿/海底森林/沿海平原"
+		return "海军部队只能出征岛屿/海底森林/渔场/矿礁/沿海平原"
 	}
 	total := int64(0)
 	for _, t := range validTroops {

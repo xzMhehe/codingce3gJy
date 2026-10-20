@@ -21,12 +21,18 @@ import "testing"
 // 这三条以前被改错过（「岛屿也是海野」那轮把岛屿也写成了海底森林；随后我又一度把
 // 所有地形 8 都当成海底森林），所以逐条断言钉住。
 func TestWildTerrainDisplayName(t *testing.T) {
-	// ① 玩法判定：海洋与岛屿都算海野；沿海平原不算
+	// ① 玩法判定：海洋/岛屿/渔场/矿礁都算海野；沿海平原不算
 	if !ezfyIsSeaWildTerrain(ezfyTerrainIsland) {
 		t.Fatal("岛屿(7) 应当按海野处理（ezfyIsSeaWildTerrain(7) 必须为 true）")
 	}
 	if !ezfyIsSeaWildTerrain(ezfyTerrainSea) {
 		t.Fatal("海洋(8) 应当按海野处理")
+	}
+	if !ezfyIsSeaWildTerrain(ezfyTerrainFishing) {
+		t.Fatal("渔场(10) 应当按海野处理")
+	}
+	if !ezfyIsSeaWildTerrain(ezfyTerrainOreReef) {
+		t.Fatal("矿礁(11) 应当按海野处理")
 	}
 	if ezfyIsSeaWildTerrain(ezfyTerrainCoastalPlain) {
 		t.Fatal("沿海平原(9) 不是海野")
@@ -36,6 +42,8 @@ func TestWildTerrainDisplayName(t *testing.T) {
 	islandX, islandY, foundIsland := -1, -1, false
 	pureX, pureY, foundPure := -1, -1, false
 	seaWildX, seaWildY, foundSeaWild := -1, -1, false
+	fishingX, fishingY, foundFishing := -1, -1, false
+	oreX, oreY, foundOre := -1, -1, false
 	for x := 1; x < ezfyWorldSize; x++ {
 		for y := 1; y < ezfyWorldSize; y++ {
 			switch ezfyTerrainEx(x, y) {
@@ -51,14 +59,22 @@ func TestWildTerrainDisplayName(t *testing.T) {
 				} else if !foundSeaWild {
 					seaWildX, seaWildY, foundSeaWild = x, y, true
 				}
+			case ezfyTerrainFishing:
+				if !foundFishing {
+					fishingX, fishingY, foundFishing = x, y, true
+				}
+			case ezfyTerrainOreReef:
+				if !foundOre {
+					oreX, oreY, foundOre = x, y, true
+				}
 			}
 		}
-		if foundIsland && foundPure && foundSeaWild {
+		if foundIsland && foundPure && foundSeaWild && foundFishing && foundOre {
 			break
 		}
 	}
-	if !foundIsland || !foundPure || !foundSeaWild {
-		t.Skip("世界地图里找不到齐全的三类格子，跳过展示名断言")
+	if !foundIsland || !foundPure || !foundSeaWild || !foundFishing || !foundOre {
+		t.Skip("世界地图里找不到齐全的格子，跳过展示名断言")
 	}
 
 	// ③ 岛屿：海野玩法，但展示名是「岛屿」
@@ -78,6 +94,14 @@ func TestWildTerrainDisplayName(t *testing.T) {
 		t.Fatalf("海洋野地(%d,%d) 展示名应为「海底森林」，实际 %q", seaWildX, seaWildY, got)
 	}
 
+	// ★ 2026-10-20 新增海野：渔场 / 矿礁的展示名与采集资源
+	if got := ezfyWildTerrainDisplayName(fishingX, fishingY, false); got != "渔场" {
+		t.Fatalf("渔场(%d,%d) 展示名应为「渔场」，实际 %q", fishingX, fishingY, got)
+	}
+	if got := ezfyWildTerrainDisplayName(oreX, oreY, false); got != "矿礁" {
+		t.Fatalf("矿礁(%d,%d) 展示名应为「矿礁」，实际 %q", oreX, oreY, got)
+	}
+
 	// ⑤ 采集资源必须按**地形**区分（用户：「采集资源跟海底森林不一样」）
 	if r := ezfyGatherResName(ezfyTerrainIsland); r != "钢铁" {
 		t.Fatalf("岛屿采集资源应为「钢铁」，实际 %q", r)
@@ -85,7 +109,29 @@ func TestWildTerrainDisplayName(t *testing.T) {
 	if r := ezfyGatherResName(ezfyTerrainSea); r != "石油" {
 		t.Fatalf("海底森林采集资源应为「石油」，实际 %q", r)
 	}
+	if r := ezfyGatherResName(ezfyTerrainFishing); r != "粮食" {
+		t.Fatalf("渔场采集资源应为「粮食」，实际 %q", r)
+	}
+	if r := ezfyGatherResName(ezfyTerrainOreReef); r != "稀矿" {
+		t.Fatalf("矿礁采集资源应为「稀矿」，实际 %q", r)
+	}
 	if ezfyTerrainTreasureNames[ezfyTerrainIsland][0] == ezfyTerrainTreasureNames[ezfyTerrainSea][0] {
 		t.Fatal("岛屿与海底森林的可采集宝物池不应完全相同（按地形区分）")
+	}
+	if len(ezfyTerrainTreasureNames[ezfyTerrainFishing]) == 0 ||
+		len(ezfyTerrainTreasureNames[ezfyTerrainOreReef]) == 0 {
+		t.Fatal("渔场/矿礁必须配置可采集宝物池")
+	}
+}
+
+// TestNewSeaWildAdminTerrain 管理端格子覆盖必须允许新地形 10/11，同时挡住越界值。
+func TestNewSeaWildAdminTerrain(t *testing.T) {
+	for _, id := range []int{ezfyTerrainFishing, ezfyTerrainOreReef} {
+		if msg := ezfyCheckTileVals(map[string]interface{}{"terrain": id}); msg != "" {
+			t.Fatalf("管理端地形 %d 应被允许，实际报错: %s", id, msg)
+		}
+	}
+	if msg := ezfyCheckTileVals(map[string]interface{}{"terrain": 12}); msg == "" {
+		t.Fatal("管理端地形 12 应被拒绝")
 	}
 }

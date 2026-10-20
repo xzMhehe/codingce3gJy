@@ -55,19 +55,34 @@ const ezfyWorldSize = 500
 // ezfyLandScale 世界坐标 → 大陆几何坐标系(150×150) 的缩放系数
 const ezfyLandScale = 150.0 / float64(ezfyWorldSize)
 
-// ezfyTerrainSea 海洋地形 id（与 ezfyTerrainNames 下标一致）
+// 地形 id（与 ezfyTerrainNames 下标一致）
+//
+//	1平原 2草原 3森林 4盆地 5丘陵 6沼泽 7岛屿 8海洋 9沿海平原
+//	10渔场 11矿礁（★ 2026-10-20 新增：海野里补粮食 / 稀矿产出）
 const ezfyTerrainSea = 8
 
-// ezfyTerrainIsland 岛屿地形 id（1平原…7岛屿 8海洋 9沿海平原）
 const ezfyTerrainIsland = 7
 
-// ezfyIsSeaWildTerrain 该地形是否按「海野」处理：海底森林(8) + 岛屿(7)。
+// 海野新增地形：渔场（粮食） / 矿礁（稀矿）
+//
+// 这两个是**海洋野地的细分类型**，只在「海洋 + 该格有野地」时由坐标哈希分配；
+// 纯海洋（野地等级 0）仍然保持地形 8「海洋」，不会变成渔场/矿礁。
+const (
+	ezfyTerrainFishing = 10
+	ezfyTerrainOreReef = 11
+)
+
+// ezfyIsSeaWildTerrain 该地形是否按「海野」处理：
+// 海底森林(8) + 岛屿(7) + 渔场(10) + 矿礁(11)。
 //
 // ★ 2026-10-05 用户规则「岛屿也属于海野」——岛屿上的野地守军配置、采集系数、
 //
 //	战报命名、占领记录 wild_type 一律按海野口径（原来只有地形 8 算海野）。
+//
+// ★ 2026-10-20 新增渔场/矿礁，它们天然就是海野，出征/守军/采集都走 type=2。
 func ezfyIsSeaWildTerrain(t int) bool {
-	return t == ezfyTerrainSea || t == ezfyTerrainIsland
+	return t == ezfyTerrainSea || t == ezfyTerrainIsland ||
+		t == ezfyTerrainFishing || t == ezfyTerrainOreReef
 }
 
 // ezfyWildTerrainDisplayName 野地/海野的**展示**名。
@@ -80,12 +95,15 @@ func ezfyIsSeaWildTerrain(t int) bool {
 //	③ **岛屿** = 地形(7)。它**按海野玩法**处理（守军走海野配置、海军可打、占领后 wild_type=2），
 //	   但**展示名仍是「岛屿」**，也不能叫海底森林
 //	   （用户报的「海岛占领以后显示海底森林」就是这个 bug）。
+//	④ **渔场(10) / 矿礁(11)** = 2026-10-20 新增的海野细分类型，展示名就是地形名，
+//	   分别采集粮食 / 稀矿；它们也是 wild_type=2，不叫海底森林。
 //
 // 规则：
 //
 //	地形 8 + 有野地 → "海底森林"
 //	地形 8 + 无野地 → "海洋"      ← 纯海洋，绝不是海底森林
 //	地形 7          → "岛屿"
+//	地形 10 / 11    → "渔场" / "矿礁"
 //	其它地形        → 各自地形名（丘陵/沼泽/平原…）
 //
 // knownWild 由调用方声明「该坐标上是否**确定**有野地」：
@@ -93,7 +111,8 @@ func ezfyIsSeaWildTerrain(t int) bool {
 //   - false —— 不确定（地图格、订单目标预览），此时函数按 `ezfyWildlandLevel` 判「纯海洋 vs 海底森林」
 //     （与 `MapView` 里 `lvl == 0 → 海洋 / 否则海底森林` 完全同口径）。
 //
-// ⚠️ 采集产出另按**地形**区分（岛屿→钢铁、海底森林→石油），那是 `ezfyGatherResName` 的事，别在这里管。
+// ⚠️ 采集产出另按**地形**区分（岛屿→钢铁、海底森林→石油、渔场→粮食、矿礁→稀矿），
+// 那是 `ezfyGatherResName` 的事，别在这里管。
 // ⚠️ 新增任何「海野」相关的展示文案时一律走这个函数，
 //
 //	别自己写 `ezfyIsSeaWildTerrain(...) → "海底森林"`（那样纯海洋、以及岛屿都会变成海底森林）。
@@ -245,7 +264,33 @@ func ezfyIsCoastalPlainAt(x, y int) bool {
 	return ezfyTerrain(x, y) == 1 && ezfyHasSeaNeighbor(x, y)
 }
 
-// ezfyTerrainEx 实际地形：平原且靠海 → 沿海平原(9)，其余同 ezfyTerrain
+// ezfySeaWildTerrain 海洋野地的细分类型（纯海洋返回 8）。
+//
+// 只有「基础地形是海洋且该格有野地（wildlandLevel > 0）」才会细分：
+//
+//	约 40% → 渔场(10)  采集粮食
+//	约 30% → 矿礁(11)  采集稀矿
+//	约 30% → 海底森林(8) 采集石油（保持原类型）
+//
+// 用独立哈希，避免和野地等级哈希同余导致某一种类型永远不出现。
+// 该函数只负责「海洋野地」；岛屿仍由基础地形直接返回 7。
+func ezfySeaWildTerrain(x, y int) int {
+	if ezfyWildlandLevel(x, y) == 0 {
+		return ezfyTerrainSea // 纯海洋：没有野地，不细分
+	}
+	h := ezfyAbs(x*7919 ^ y*104729)
+	switch h % 10 {
+	case 0, 1, 2, 3:
+		return ezfyTerrainFishing
+	case 4, 5, 6:
+		return ezfyTerrainOreReef
+	default:
+		return ezfyTerrainSea // 海底森林
+	}
+}
+
+// ezfyTerrainEx 实际地形：平原且靠海 → 沿海平原(9)；
+// 海洋野地 → 渔场(10) / 矿礁(11) / 海底森林(8)；其余同 ezfyTerrain。
 //
 // ★ 只用于「展示 + 建城选址 + 海城判定」；
 //
@@ -258,7 +303,11 @@ func ezfyTerrainEx(x, y int) int {
 	if ezfyIsCoastalPlainAt(x, y) {
 		return ezfyTerrainCoastalPlain
 	}
-	return ezfyTerrain(x, y)
+	t := ezfyTerrain(x, y)
+	if t == ezfyTerrainSea {
+		return ezfySeaWildTerrain(x, y)
+	}
+	return t
 }
 
 // ezfyTileKey 覆盖表的键（世界坐标上限 1000，够用）
@@ -301,7 +350,8 @@ func ezfyMarkLevelAt(x, y int) int {
 
 // ezfyTerrainNames 地形名（复刻原版 MapController.TERRAIN_NAMES，索引即地形 id）
 // 1平原 2草原 3森林 4盆地 5丘陵 6沼泽 7岛屿 8海洋 9沿海平原(本项目扩展)
-var ezfyTerrainNames = []string{"", "平原", "草原", "森林", "盆地", "丘陵", "沼泽", "岛屿", "海洋", "沿海平原"}
+// 10渔场 11矿礁（2026-10-20 新增海野：粮食 / 稀矿）
+var ezfyTerrainNames = []string{"", "平原", "草原", "森林", "盆地", "丘陵", "沼泽", "岛屿", "海洋", "沿海平原", "渔场", "矿礁"}
 
 // ezfyTerrainName 地形 id → 中文名
 func ezfyTerrainName(t int) string {
@@ -367,7 +417,8 @@ func ezfyHasNavalTroops(units []ezfyUnitGroup) bool {
 // ezfyHasAirTroops 出征部队里是否含有空军兵种（兵种 type=3：侦察机/歼击机/轰炸机/特种兵）。
 //
 // ★ 2026-10-16 出征预览「提速」清单用：喷气引擎(科技19)只加速空军，
-//   部队不含空军时不该把它列出来（否则玩家以为它在生效）。
+//
+//	部队不含空军时不该把它列出来（否则玩家以为它在生效）。
 func ezfyHasAirTroops(units []ezfyUnitGroup) bool {
 	for _, u := range units {
 		if c := ezfyCfg.troop(u.TroopId); c != nil && c.Type == ezfyTroopTypeAir {
@@ -381,10 +432,12 @@ func ezfyHasAirTroops(units []ezfyUnitGroup) bool {
 //
 // ★ 2026-10-02 用户规则：海军只能用于「岛屿(7)/海底森林(海洋8)/沿海平原(9)」
 // 以及建在沿海平原上的城市（沿海平原地形已含城市坐标）的出征，其它地形一律卡控。
+// ★ 2026-10-20 新增渔场(10)/矿礁(11)，同属海野，海军也可出征。
 // 用 ezfyTerrainEx 判定，管理端改地图地形后立即生效。
 func ezfyNavalTargetAllowed(x, y int) bool {
 	switch ezfyTerrainEx(x, y) {
-	case 7, ezfyTerrainSea, ezfyTerrainCoastalPlain:
+	case ezfyTerrainIsland, ezfyTerrainSea, ezfyTerrainCoastalPlain,
+		ezfyTerrainFishing, ezfyTerrainOreReef:
 		return true
 	}
 	return false
@@ -404,6 +457,9 @@ var ezfyTerrainTreasureNames = map[int][]string{
 	6: {"琥珀项链", "黄金手镯", "蓝宝石戒指"},  // 沼泽 → 石油
 	7: {"琥珀项链", "红宝石戒指", "祖母绿"},   // 岛屿 → 钢铁
 	8: {"翡翠项链", "蓝宝石戒指", "祖母绿"},   // 海底森林 → 石油
+	// ★ 2026-10-20 新增海野：粮食 / 稀矿（沿用同资源陆地地形的宝物池）
+	10: {"玛瑙项坠", "翡翠项链", "祖母绿"},   // 渔场 → 粮食
+	11: {"黑曜石戒指", "琥珀项链", "铂金戒指"}, // 矿礁 → 稀矿
 }
 
 // ezfyCollectibleTreasureNames 可采集/可用于军衔晋升的宝物名集合（9 种珠宝）。
@@ -438,14 +494,14 @@ func ezfyCollectibleTreasureIDs() []int {
 // ezfyGatherResName 地形 → 采集产出的资源名（粮食/钢铁/石油/稀矿）
 func ezfyGatherResName(t int) string {
 	switch t {
-	case 4:
+	case 4, ezfyTerrainOreReef:
 		return "稀矿"
-	case 5, 7:
+	case 5, ezfyTerrainIsland:
 		return "钢铁"
-	case 6, 8:
+	case 6, ezfyTerrainSea:
 		return "石油"
 	default:
-		return "粮食" // 平原/草原/森林/沿海平原
+		return "粮食" // 平原/草原/森林/沿海平原/渔场
 	}
 }
 
