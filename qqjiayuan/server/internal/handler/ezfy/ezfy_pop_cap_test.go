@@ -48,34 +48,55 @@ func TestEzfySettlePopOverCap(t *testing.T) {
 	const hour = int64(3600_000)
 
 	// 未超限 → 时间戳清零
-	if pop, at := ezfySettlePopOverCap(45000, cap, now, now); pop != 45000 || at != 0 {
+	if pop, at := ezfySettlePopOverCap(45000, cap, now, now, 10); pop != 45000 || at != 0 {
 		t.Fatalf("未超限应原样返回且 at=0，got pop=%d at=%d", pop, at)
 	}
 	// 首次进入超限（at=0）：只记时间，本次不回落
-	if pop, at := ezfySettlePopOverCap(100000, cap, 0, now); pop != 100000 || at != now {
+	if pop, at := ezfySettlePopOverCap(100000, cap, 0, now, 10); pop != 100000 || at != now {
 		t.Fatalf("首次超限只应记时间，got pop=%d at=%d", pop, at)
 	}
 	// 1 小时：超出 55000 × 10%/小时 = 5500，人口 100000 → 94500
-	pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour)
+	pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour, 10)
 	if pop != 94500 || at != now+hour {
 		t.Fatalf("1 小时应回落 5500 人，got pop=%d at=%d", pop, at)
 	}
+	// 速度可配置：50%/小时 → 超出 55000 × 50% = 27500，人口 100000 → 72500
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour, 50); pop != 72500 || at != now+hour {
+		t.Fatalf("50%%/小时应回落 27500 人，got pop=%d at=%d", pop, at)
+	}
+	// 非法速度 → 回落默认 10%/小时
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour, 0); pop != 94500 || at != now+hour {
+		t.Fatalf("非法速度应回落默认 10%%，got pop=%d at=%d", pop, at)
+	}
 	// 24 小时：足够回落到民居上限，时间戳清零
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+24*hour); pop != cap || at != 0 {
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+24*hour, 10); pop != cap || at != 0 {
 		t.Fatalf("24 小时应回落到 %d 且 at=0，got pop=%d at=%d", cap, pop, at)
 	}
 	// 超出量很小、时间很短：不足 1 人时保留时间余量（at 不推进）
-	if pop, at := ezfySettlePopOverCap(45010, cap, now, now+60_000); pop != 45010 || at != now {
+	if pop, at := ezfySettlePopOverCap(45010, cap, now, now+60_000, 10); pop != 45010 || at != now {
 		t.Fatalf("不足 1 人时应保留时间余量，got pop=%d at=%d", pop, at)
 	}
 	// 超出量很小、时间够长：刚好回落 1 人
-	pop, at = ezfySettlePopOverCap(45010, cap, now, now+hour)
+	pop, at = ezfySettlePopOverCap(45010, cap, now, now+hour, 10)
 	if pop != 45009 || at != now+hour {
 		t.Fatalf("超出 10 人 1 小时应回落 1 人，got pop=%d at=%d", pop, at)
 	}
 	// 时间戳异常（未来）→ 重置为 now，不回落
-	if pop, at := ezfySettlePopOverCap(100000, cap, now+hour, now); pop != 100000 || at != now {
+	if pop, at := ezfySettlePopOverCap(100000, cap, now+hour, now, 10); pop != 100000 || at != now {
 		t.Fatalf("时间戳在未来应重置，got pop=%d at=%d", pop, at)
+	}
+}
+
+// TestPopOverCapDecayConfig 回落速度必须来自二战系统配置，而不是写死常量。
+func TestPopOverCapDecayConfig(t *testing.T) {
+	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func ezfyPopOverCapDecayPct() int {"))
+	for _, want := range []string{
+		"ezfyCfg.limit.PopOverCapDecayPct",
+		"ezfyPopOverCapDecayPctDef",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("超限人口回落速度未读取系统配置（缺 %s）：\n%s", want, body)
+		}
 	}
 }
 
@@ -85,7 +106,7 @@ func TestCalcResourceSoftDecay(t *testing.T) {
 	for _, want := range []string{
 		"ezfyConvenePopMaxCfg()", // 召集人口上限是硬顶，自然增长也不能超
 		"ezfyHouseSoftCap(city.PopMax)",
-		"ezfySettlePopOverCap(city.Pop, soft, city.PopOverCapAt, now)",
+		"ezfySettlePopOverCap(city.Pop, soft, city.PopOverCapAt, now, ezfyPopOverCapDecayPct())",
 		`"pop_over_cap_at": city.PopOverCapAt`,
 	} {
 		if !strings.Contains(body, want) {

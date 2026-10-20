@@ -1961,10 +1961,12 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
-		WildTroopMult: ezfyWildMultDef,
-		WildResMult:   ezfyWildResMultDef,
-		GatherResMult: ezfyGatherResMultDef,
-		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
+		// ★ 2026-10-20 超限人口每小时回落百分比（缺行时默认 10%/小时）
+		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
+		WildTroopMult:      ezfyWildMultDef,
+		WildResMult:        ezfyWildResMultDef,
+		GatherResMult:      ezfyGatherResMultDef,
+		RecruitCostOn:      ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（缺行时同样要显式给默认开）
 		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,

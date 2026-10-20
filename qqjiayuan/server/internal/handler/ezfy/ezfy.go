@@ -1331,15 +1331,15 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	// ★★ 2026-10-20 用户口径（修正）：民居容量是**软上限**，不是立刻夹平。
 	//   ① 召集人口上限（> 0）仍是硬顶：自然增长最多到它，不会超过；
 	//   ② 民居容量（仅「民居容量限制」开 + 「允许长期超过民居上限」关 + pop_max > 0 时生效）
-	//      是**软上限**：超过后仍可继续召集，但超出部分按 ezfyPopOverCapDecayPct
-	//      （默认 10%/小时）缓慢回落到民居容量 —— 见 ezfySettlePopOverCap。
+	//      是**软上限**：超过后仍可继续召集，但超出部分按 ezfyPopOverCapDecayPct()
+	//      （默认 10%/小时，二战系统配置可调）缓慢回落到民居容量 —— 见 ezfySettlePopOverCap。
 	//   这样管理员关掉「允许长期超过民居上限」后，已有的 10 万人口不会瞬间消失，
 	//   而是慢慢回落到 4.5 万；玩家在此期间仍能召集（5 分钟一次，见 Convene）。
 	if hard := ezfyConvenePopMaxCfg(); hard > 0 && city.Pop > hard {
 		city.Pop = hard
 	}
 	if soft := ezfyHouseSoftCap(city.PopMax); soft > 0 {
-		city.Pop, city.PopOverCapAt = ezfySettlePopOverCap(city.Pop, soft, city.PopOverCapAt, now)
+		city.Pop, city.PopOverCapAt = ezfySettlePopOverCap(city.Pop, soft, city.PopOverCapAt, now, ezfyPopOverCapDecayPct())
 	} else {
 		city.PopOverCapAt = 0
 	}
@@ -2743,23 +2743,31 @@ func (h *EzfyHandler) ezfySettlePopRecover(city *model.EzfyCity) {
 	city.PopRecoverAt += dec * 3600000 / rate // 只推进真正用掉的时间，余量留给下次
 }
 
+const ezfyPopOverCapDecayPctDef = 10
+
 // ezfyPopOverCapDecayPct 超出民居软上限的人口每小时回落百分比（按当前超出量计算）。
 //
 // ★ 2026-10-20 用户规则：超过民居上限还可以继续召集，但超出部分要「慢慢回落」到民居上限。
-//
-//	10%/小时 ≈ 6.6 小时回落一半；想调快/调慢改这里即可。
-const ezfyPopOverCapDecayPct = 10
+// ★ 2026-10-20 用户反馈 2 区回落太慢 → 速度改到二战系统配置，默认仍为 10%/小时
+// （约 6.6 小时回落一半；30%/小时约 1.9 小时，100%/小时约 1 小时回到上限）。
+func ezfyPopOverCapDecayPct() int {
+	return ezfyLimitOr(ezfyCfg.limit.PopOverCapDecayPct, ezfyPopOverCapDecayPctDef)
+}
 
 // ezfySettlePopOverCap 超限人口缓慢回落结算（纯函数，方便单测）。
 //
-//	pop/cap 为总人口/回落目标，at 为上次结算时间戳(ms)，now 为当前时间戳(ms)。
+//	pop/cap 为总人口/回落目标，at 为上次结算时间戳(ms)，now 为当前时间戳(ms)，
+//	pct 为每小时回落百分比（按当前超出量计算）。
 //	返回新人口 + 新时间戳；时间戳 0 表示当前已不超限。
 //
 // 时间推进与 ezfySettlePopRecover 同口径：只推进「真正兑换成人头」的那部分时间，
 // 不足 1 人的时间余量留给下次 —— 否则高频 /view 会把余量反复丢弃，超限人口永远不回落。
-func ezfySettlePopOverCap(pop, cap, at, now int64) (int64, int64) {
+func ezfySettlePopOverCap(pop, cap, at, now int64, pct int) (int64, int64) {
 	if cap <= 0 || pop <= cap {
 		return pop, 0
+	}
+	if pct <= 0 {
+		pct = ezfyPopOverCapDecayPctDef
 	}
 	// 首次进入超限（老数据 at=0）或时间戳异常：只记时间，本次不回落
 	if at <= 0 || at > now {
@@ -2768,7 +2776,7 @@ func ezfySettlePopOverCap(pop, cap, at, now int64) (int64, int64) {
 	excess := pop - cap
 	elapsed := now - at
 	// 速率 = 当前超出量 × pct% / 小时，再折算到毫秒
-	rate := float64(excess) * float64(ezfyPopOverCapDecayPct) / 100.0 / 3600000.0
+	rate := float64(excess) * float64(pct) / 100.0 / 3600000.0
 	// +1e-9 抵消浮点误差（例：10 人 ×10%/小时 ×1 小时 = 0.9999999999999999 → 应算 1 人）
 	dec := int64(rate*float64(elapsed) + 1e-9)
 	if dec <= 0 {

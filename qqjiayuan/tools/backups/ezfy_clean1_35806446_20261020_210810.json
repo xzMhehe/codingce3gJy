@@ -1,0 +1,60 @@
+{
+ "game_id": 35806446,
+ "db": "qq_ezzt",
+ "taken_at": "2026-10-20 21:08:10",
+ "diamond": 726,
+ "equipment": [],
+ "items": [
+  {
+   "cfg_id": 1009,
+   "count": 5
+  },
+  {
+   "cfg_id": 1010,
+   "count": 2
+  },
+  {
+   "cfg_id": 1011,
+   "count": 5
+  },
+  {
+   "cfg_id": 1016,
+   "count": 1
+  },
+  {
+   "cfg_id": 1019,
+   "count": 2650
+  },
+  {
+   "cfg_id": 1020,
+   "count": 1
+  },
+  {
+   "cfg_id": 1022,
+   "count": 5
+  },
+  {
+   "cfg_id": 1032,
+   "count": 10
+  },
+  {
+   "cfg_id": 1033,
+   "count": 20
+  }
+ ],
+ "love_cards": [
+  {
+   "id": 16,
+   "user_id": 35806446,
+   "cfg_id": 26,
+   "name": "为爱发电卡",
+   "daily_diamond": 150,
+   "start_time": 1790692930881,
+   "end_time": 1793284930881,
+   "total_days": 30,
+   "claimed_days": 17,
+   "last_claim_time": 1792024946012,
+   "created_at": "2026-09-29 22:42:10.883000"
+  }
+ ]
+}

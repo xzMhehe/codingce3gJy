@@ -549,11 +549,15 @@ type EzfyCfgLimit struct {
 	//   ② ConveneFlexibleOn 允许长期超过民居上限（原名召集人口灵活配置）：
 	//      1 开（默认）= 召集可突破 pop_max，且不回落（原有行为）；
 	//      0 关 = 民居容量是**软上限**：仍然可以继续召集超过 pop_max，
-	//      但超出部分会按 ezfyPopOverCapDecayPct（默认 10%/小时）缓慢回落到 pop_max，
+	//      但超出部分会按 PopOverCapDecayPct（默认 10%/小时）缓慢回落到 pop_max，
 	//      且人口达到/超过民居容量时召集冷却为 5 分钟（见 Convene）。
 	//   ⚠️ 两个都是开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
 	HousePopLimitOn   int `gorm:"comment:民居容量限制开关（关 = 民居不限制人口上限）" json:"house_pop_limit_on"`
 	ConveneFlexibleOn int `gorm:"comment:允许长期超过民居上限（关 = 超限部分缓慢回落）" json:"convene_flexible_on"`
+	// ★ 2026-10-20 用户反馈「超民居上限的人口回落有点慢」→ 回落速度做成二战系统配置。
+	//   超出部分每小时按「当前超出量 × 该百分比」回落（默认 10%/小时，约 6.6 小时回落一半）。
+	//   0 / 未配置无意义 → 读取端回落默认 10。
+	PopOverCapDecayPct int `gorm:"default:10;comment:超限人口每小时回落百分比（按超出量，默认10）" json:"pop_over_cap_decay_pct"`
 
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」：
 	//   召集消耗粮食 + 召集获得人口，默认各 10 万。0 无意义 → 回落默认（seed 走 addLimitCol）。

@@ -37,7 +37,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
-		PopRecoverPerHour:  ezfyPopRecoverPerHourDef,
+		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
+		// ★ 2026-10-20 超限人口每小时回落百分比（缺行时默认 10%/小时）
+		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -210,6 +212,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.DispatchPeriodH <= 0 {
 		lim.DispatchPeriodH = 1
 	}
+	// ★ 2026-10-20 超限人口回落速度（0 / 越界无意义 → 回落默认 10%/小时）
+	if lim.PopOverCapDecayPct < 1 || lim.PopOverCapDecayPct > 100 {
+		lim.PopOverCapDecayPct = ezfyPopOverCapDecayPctDef
+	}
 	// ★ 2026-10-13 回合战斗公式：0 无意义（= 未配置/配置错）→ 回落移植前的硬编码默认值
 	if lim.BattleMaxRounds <= 0 {
 		lim.BattleMaxRounds = ezfyBattleMaxRoundsDef
@@ -352,6 +358,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConvenePopMax *int `json:"convene_pop_max"`
 		// ★ 2026-10-13 空闲人口每小时恢复量（默认 1 万；0 → 读取端回落默认）
 		PopRecoverPerHour *int `json:"pop_recover_per_hour"`
+		// ★ 2026-10-20 超出民居上限人口的每小时回落百分比（按当前超出量，1~100，默认 10）
+		PopOverCapDecayPct *int `json:"pop_over_cap_decay_pct"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
 		OfficerStarUpOn     *int `json:"officer_star_up_on"`
 		OfficerStarChance   *int `json:"officer_star_chance"`
@@ -418,7 +426,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
-		PopRecoverPerHour:  ezfyPopRecoverPerHourDef,
+		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
+		// ★ 2026-10-20 超限人口每小时回落百分比（缺行时默认 10%/小时）
+		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -616,6 +626,19 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.PopRecoverPerHour = *in.PopRecoverPerHour
+	}
+	// ★ 2026-10-20 超限人口每小时回落百分比（按当前超出量）：
+	//   1~100 有意义（100 = 1 小时内回落全部超出人口），0 会让人口永远不回落。
+	if in.PopOverCapDecayPct != nil {
+		if *in.PopOverCapDecayPct < 1 || *in.PopOverCapDecayPct > 100 {
+			resp.ParamError(c, "超限人口回落速度需要在 1~100 之间（%/小时）")
+			return
+		}
+		lim.PopOverCapDecayPct = *in.PopOverCapDecayPct
+	}
+	// ★ 超限人口回落速度兜底：老行 0 / 越界 → 默认 10%/小时
+	if lim.PopOverCapDecayPct < 1 || lim.PopOverCapDecayPct > 100 {
+		lim.PopOverCapDecayPct = ezfyPopOverCapDecayPctDef
 	}
 	if lim.MilitaryMax <= 0 {
 		lim.MilitaryMax = 36
@@ -1255,6 +1278,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT " + strconv.Itoa(ezfyWildItemCooldownDef))
 	}
 	h.DB.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = " + strconv.Itoa(ezfyWildItemCooldownDef) + " WHERE wild_item_cooldown_h IS NULL")
+	// ★ 2026-10-20 超限人口回落速度（默认 10%/小时）：老库补列 + NULL/<=0 回填默认。
+	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "pop_over_cap_decay_pct") {
+		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pop_over_cap_decay_pct int DEFAULT " + strconv.Itoa(ezfyPopOverCapDecayPctDef))
+	}
+	h.DB.Exec("UPDATE ezfy_cfg_limit SET pop_over_cap_decay_pct = " + strconv.Itoa(ezfyPopOverCapDecayPctDef) +
+		" WHERE pop_over_cap_decay_pct IS NULL OR pop_over_cap_decay_pct <= 0")
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
@@ -1319,6 +1348,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"convene_pop_max": lim.ConvenePopMax,
 		// ★ 2026-10-13 空闲人口每小时恢复量：同样显式写，避免零值被 GORM default 吞掉
 		"pop_recover_per_hour": lim.PopRecoverPerHour,
+		// ★ 2026-10-20 超限人口每小时回落百分比
+		"pop_over_cap_decay_pct": lim.PopOverCapDecayPct,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
 		"wild_treasure_cooldown_h": lim.WildTreasureCooldownH,
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）

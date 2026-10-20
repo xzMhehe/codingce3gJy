@@ -238,6 +238,9 @@ func Run(db *gorm.DB, staticDir string) {
 		//   训练完不再瞬间归还人口，转成待恢复人口按此速度一点点回到空闲（见 ezfySettlePopRecover）。
 		//   0 无意义（读取端回落默认 1 万）→ 用 addLimitCol 补列 + 回填。
 		addLimitCol("pop_recover_per_hour", 10000)
+		// ★ 2026-10-20 超限人口每小时回落速度（默认 10%/小时，按当前超出量计算）。
+		//   0 无意义（= 人口永远不回落）→ 用 addLimitCol 补列 + 回填。
+		addLimitCol("pop_over_cap_decay_pct", 10)
 		// ★ 2026-10-13 用户需求「回合战斗公式能维护起来，放到二战系统配置」：
 		//   战斗引擎 5 个硬编码机制常量配置化（默认值 = 移植前的硬编码值）。
 		//   这几个值 0 都无意义（= 未配置/配置错，读取端回落默认）→ 用 addLimitCol 补列+回填。

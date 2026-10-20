@@ -355,6 +355,12 @@
               <template slot="label">允许长期超过民居上限<el-tooltip placement="top" :content="tips.convene_flexible_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.convene_flexible_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" :disabled="form.house_pop_limit_on !== 1" @change="onFlexibleChange" />
             </el-form-item>
+            <!-- ★ 2026-10-20 用户反馈「2 区超民居上限人口回落有点慢」：回落速度做成可配置 -->
+            <el-form-item>
+              <template slot="label">超限人口回落速度<el-tooltip placement="top" :content="tips.pop_over_cap_decay_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.pop_over_cap_decay_pct" :min="1" :max="100" :step="5" :disabled="form.house_pop_limit_on !== 1 || form.convene_flexible_on !== 0" controls-position="right" style="width:180px" />
+              <span class="unit-hint">%/小时</span>
+            </el-form-item>
             <!-- ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」 -->
             <el-form-item>
               <template slot="label">召集人口上限<el-tooltip placement="top" :content="tips.convene_pop_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -486,6 +492,8 @@ export default {
         convene_pop_max: 0,
         // ★ 2026-10-13：空闲人口每小时恢复量（训练完人口不再瞬间归还，按此速度慢慢恢复，默认 1 万）
         pop_recover_per_hour: 10000,
+        // ★ 2026-10-20：超出民居上限的人口每小时回落百分比（按当前超出量，默认 10%/小时）
+        pop_over_cap_decay_pct: 10,
         // ★ 2026-10-14 风云榜统计开关（1 = 开：战斗结算写周榜；0 = 关：完全不统计）
         pvp_rank_on: 1,
         officer_star_up_on: 1,
@@ -510,8 +518,8 @@ export default {
           'speed_train_on', 'speed_train_rate', 'res_max_food', 'res_max_steel', 'res_max_oil',
           'res_max_rare', 'res_max_gold'],
         switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'food_upkeep_on', 'march_oil_on',
-          'house_pop_limit_on', 'convene_flexible_on', 'convene_food_cost', 'convene_pop_gain',
-          'convene_pop_max', 'pop_recover_per_hour', 'pvp_rank_on'],
+          'house_pop_limit_on', 'convene_flexible_on', 'pop_over_cap_decay_pct',
+          'convene_food_cost', 'convene_pop_gain', 'convene_pop_max', 'pop_recover_per_hour', 'pvp_rank_on'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
           'recruit_five_star_rate'],
       },
@@ -631,9 +639,12 @@ export default {
           '是否允许召集长期超过由下面的「允许长期超过民居上限」决定',
         convene_flexible_on: '仅当「民居容量限制」开着时有效。' +
           '开 = 允许长期超过民居容量（召集可突破，超限人口不回落）；' +
-          '关 = 民居容量是**软上限**：仍可继续召集超过 pop_max，但超出部分会按每小时 10% 缓慢回落到 pop_max；' +
+          '关 = 民居容量是**软上限**：仍可继续召集超过 pop_max，但超出部分会按下方「超限人口回落速度」缓慢回落到 pop_max；' +
           '人口达到/超过民居容量时，召集冷却从 3 秒变为 5 分钟。' +
-          '⚠️ 关掉后全服超限城市会开始缓慢回落（不是立刻降到上限）',
+          '⚠️ 关掉后全服超限城市会开始回落（不是立刻降到上限）',
+        pop_over_cap_decay_pct: '超出民居上限的人口每小时回落速度（按当前超出量计算，1~100，默认 10%/小时）。' +
+          '10 ≈ 6.6 小时回落一半；30 ≈ 1.9 小时回落一半；50 ≈ 1 小时回落一半；100 ≈ 1 小时内回到民居上限。' +
+          '只影响「民居容量限制」开且「允许长期超过民居上限」关的城市。',
         convene_food_cost: '玩家点一次「召集」消耗的粮食数，默认 10 万（=100000）',
         convene_pop_gain: '玩家点一次「召集」获得的人口数，默认 10 万（=100000）',
         convene_pop_max: '城市人口**硬上限**（自然增长、召集、空闲人口都不会超过）。开关关掉 = 不限。' +
@@ -755,6 +766,9 @@ export default {
             convene_pop_max: pos(r.data.convene_pop_max, 0),
             // ★ 2026-10-13 空闲人口每小时恢复量（0 无意义 → 回落默认 1 万）
             pop_recover_per_hour: pos(r.data.pop_recover_per_hour, 10000),
+            // ★ 2026-10-20 超限人口回落速度（1~100，越界/未配置回落默认 10%/小时）
+            pop_over_cap_decay_pct: (Number(r.data.pop_over_cap_decay_pct) >= 1 && Number(r.data.pop_over_cap_decay_pct) <= 100)
+              ? Number(r.data.pop_over_cap_decay_pct) : 10,
             // ★ 2026-10-14 风云榜统计开关：**0 合法 = 关闭统计**，不能用 pos()（会把 0 改回 1）
             pvp_rank_on: (r.data.pvp_rank_on === undefined || r.data.pvp_rank_on === null)
               ? 1 : Number(r.data.pvp_rank_on),
@@ -785,7 +799,7 @@ export default {
     // ★ 2026-10-20 关闭「允许长期超过民居上限」= 民居变成软上限，全服超限人口开始缓慢回落，先确认
     onFlexibleChange (on) {
       if (on) return
-      this.$confirm('关闭后，民居容量会变成软上限：所有城市超过民居容量的人口会开始缓慢回落（不是立刻降到上限），回落期间仍可继续召集（5 分钟一次）。确定关闭？',
+      this.$confirm(`关闭后，民居容量会变成软上限：所有城市超过民居容量的人口会按当前配置的 ${this.form.pop_over_cap_decay_pct}%/小时回落（不是立刻降到上限），回落期间仍可继续召集（5 分钟一次）。确定关闭？`,
         '提示', { type: 'warning' })
         .then(() => {})
         .catch(() => { this.form.convene_flexible_on = 1 })
@@ -820,6 +834,7 @@ export default {
 /* 配置标题后的说明图标：悬停显示提示，不占版面 */
 .cfg-tip { margin-left: 3px; padding: 1px 3px; color: #909399; font-size: 13px; cursor: help; vertical-align: -1px; }
 .cfg-tip:hover { color: #409eff; }
+.unit-hint { margin-left: 8px; font-size: 12px; color: #909399; }
 /* ★ 2026-09-25 改成 tab 后新增的两个小样式 */
 .head-hint { font-size: 12px; color: #909399; margin-right: 10px; }
 /* ★ 2026-10-18 分 tab 保存条：放在每个 tab 底部，只保存当前分类 */

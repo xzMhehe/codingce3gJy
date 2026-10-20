@@ -1,0 +1,87 @@
+{
+ "game_id": 35806447,
+ "db": "qq_ezzt",
+ "taken_at": "2026-10-20 21:08:11",
+ "diamond": 538,
+ "equipment": [
+  {
+   "id": 105239,
+   "user_id": 35806447,
+   "city_id": 0,
+   "cfg_id": 2507,
+   "name": "青天白日[手部]",
+   "type": "军官装备",
+   "tier": 4,
+   "military": 100,
+   "logistics": 50,
+   "learning": 50,
+   "level": 130,
+   "officer_id": 0,
+   "created_at": "2026-10-15 18:02:13.380000",
+   "slot": "手部",
+   "set_id": 25,
+   "series": "青天白日",
+   "enhance": 0,
+   "dmg": 0,
+   "def": 0,
+   "hp": 0,
+   "move": 0,
+   "crit": 0,
+   "crit_dmg": 0,
+   "original_user_id": 0
+  }
+ ],
+ "items": [
+  {
+   "cfg_id": 1004,
+   "count": 10
+  },
+  {
+   "cfg_id": 1009,
+   "count": 12
+  },
+  {
+   "cfg_id": 1010,
+   "count": 1
+  },
+  {
+   "cfg_id": 1014,
+   "count": 1
+  },
+  {
+   "cfg_id": 1019,
+   "count": 2600
+  },
+  {
+   "cfg_id": 1021,
+   "count": 1
+  },
+  {
+   "cfg_id": 1022,
+   "count": 5
+  },
+  {
+   "cfg_id": 1031,
+   "count": 10
+  },
+  {
+   "cfg_id": 1032,
+   "count": 20
+  }
+ ],
+ "love_cards": [
+  {
+   "id": 17,
+   "user_id": 35806447,
+   "cfg_id": 26,
+   "name": "为爱发电卡",
+   "daily_diamond": 150,
+   "start_time": 1790692942273,
+   "end_time": 1793284942273,
+   "total_days": 30,
+   "claimed_days": 17,
+   "last_claim_time": 1792029446542,
+   "created_at": "2026-09-29 22:42:22.276000"
+  }
+ ]
+}
