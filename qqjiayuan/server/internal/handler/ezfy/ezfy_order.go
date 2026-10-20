@@ -3742,9 +3742,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					battleBlock = fmt.Sprintf("公文报告:侦查拦截\n我方侦察机抵达%s[%d，%d]上空时遭敌方侦察机拦截，双方侦察机展开空战，共持续 %d 回合！\n",
 						targetName, order.TargetX, order.TargetY, ar.Rounds) + airLine + "\n------------------\n"
 					// ---- 守方拦截战报 ----
+					// ★ 2026-10-20 修正守方视角：空战是攻方胜时，守方侦察机已被打光，
+					//   不能再写「击退敌军侦察 / 敌军侦察机已被击破或击退」——那是攻方胜的相反结果。
+					defTitle, defTail := ezfyScoutInterceptDefenderText(ar.AttackerWin)
 					defBlock := fmt.Sprintf("公文报告:防空拦截\n敌军侦察机企图侦查我方城市「%s」(%d,%d)，我军侦察机升空拦截，双方侦察机展开空战，共持续 %d 回合！\n",
-						target.Name, order.TargetX, order.TargetY, ar.Rounds) + airLine + "\n敌军侦察机已被击破或击退。\n"
-					h.addReport(target.UserID, 2, "战斗报告: 击退敌军侦察", defBlock, "", order.ID, target.ID)
+						target.Name, order.TargetX, order.TargetY, ar.Rounds) + airLine + "\n" + defTail
+					h.addReport(target.UserID, 2, defTitle, defBlock, "", order.ID, target.ID)
 					if enemyDeadOf(ar.AttackerLeft) <= 0 {
 						allShotDown = true
 					}
@@ -5425,6 +5428,16 @@ func winText(win bool) string {
 		return "胜"
 	}
 	return "败"
+}
+
+// ezfyScoutInterceptDefenderText 守方「防空拦截」战报的标题与结尾。
+// 空战胜负按 ar.AttackerWin 判定：攻方胜 = 守方侦察机被打光、敌军突破拦截，
+// 不能沿用「击退敌军侦察」；只有守方守住（含平局）才写击退。
+func ezfyScoutInterceptDefenderText(attackerWin bool) (title, tail string) {
+	if attackerWin {
+		return "战斗报告: 防空拦截失败", "我方侦察机全部被击破，敌军侦察机突破拦截。\n"
+	}
+	return "战斗报告: 击退敌军侦察", "敌军侦察机已被击破或击退。\n"
 }
 
 func winResultText(win bool) string {
