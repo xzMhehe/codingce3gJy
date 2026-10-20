@@ -37,6 +37,30 @@
         城市数：{{ ezfy.cities.length }}<br/>
         人口数：{{ ezfy.city.pop }}<br/>
         军官数：{{ ezfy.officerCount }}<br/>
+        <!-- ★★ 2026-10-20 玩家反馈「不知道自己跟谁宣战/交战」：
+             放在「军官数」下面，有进行中的个人宣战时才显示；
+             每行只展示对方名字 + 当前城市坐标，点名字可进对方统帅页。 -->
+        <template v-if="ezfy.pendingWars.length || ezfy.activeWars.length">
+          <span style="color:#000">战争状态：</span><br/>
+          <template v-if="ezfy.pendingWars.length">
+            <span class="orange">宣战中</span>（{{ ezfy.pendingWars.length }}）<br/>
+            <span v-for="w in ezfy.pendingWars" :key="'pw' + w.id">
+              <a href="javascript:;" @click="ezfy.openPlayer(w.user_id)">{{ w.nickname }}</a>
+              <span class="gray"> · {{ w.city_name || (w.city_id ? '城市' : '无城') }}<template v-if="w.city_id">({{ w.x }},{{ w.y }})</template></span>
+              <span class="orange"> · {{ w.hours_left }}小时后开战</span>
+              <span class="gray"> · {{ w.mine_is_atk ? '宣战' : '被宣战' }}</span><br/>
+            </span>
+          </template>
+          <template v-if="ezfy.activeWars.length">
+            <span class="red">对战中</span>（{{ ezfy.activeWars.length }}）<br/>
+            <span v-for="w in ezfy.activeWars" :key="'aw' + w.id">
+              <a href="javascript:;" @click="ezfy.openPlayer(w.user_id)">{{ w.nickname }}</a>
+              <span class="gray"> · {{ w.city_name || (w.city_id ? '城市' : '无城') }}<template v-if="w.city_id">({{ w.x }},{{ w.y }})</template></span>
+              <span class="red"> · {{ w.hours_left }}小时后结束</span>
+              <span class="gray"> · {{ w.mine_is_atk ? '宣战' : '被宣战' }}</span><br/>
+            </span>
+          </template>
+        </template>
         <br/>
         总兵力：{{ ezfy.totalTroops }}<br/>
         城外行进：{{ ezfy.marching }}支 | 驻守采集：{{ ezfy.occupying }}支<br/>

@@ -102,6 +102,10 @@ func (h *EzfyHandler) ProfileSelfInfo(c *gin.Context) {
 
 		// ★ 2026-10-17 统帅称号：自己的统帅页也展示（与「他人统帅页」同口径，昵称下方/阵营上方）
 		"titles": ezfyTitlesOf(h.DB, uid),
+
+		// ★★ 2026-10-20 玩家反馈「不知道跟谁宣战/交战」：统帅页直接列出进行中的个人宣战。
+		//   返回 status=1 宣战待生效 / status=2 交战中，含对方昵称、城市与坐标。
+		"wars": h.ezfyMyWars(uid),
 	})
 }
 
