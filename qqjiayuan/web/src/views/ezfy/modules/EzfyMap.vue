@@ -142,6 +142,14 @@
               <a href="javascript:;" style="margin-left:8px" @click="ezfy.addStar">{{ ezfy.isCellStarred ? '已收藏' : '收藏' }}</a>
             </div>
           </div>
+          <!-- ★ 2026-10-20 玩家城市详情补回「城市名+坐标」：
+               加了「所属区域」后，有 continent 的分支把原来这行漏掉了，详情里只剩城主/同盟。 -->
+          <div class="old-line" v-if="!ezfy.selDetail && ezfy.selCell.area_type === 3 && ezfy.selCell.continent">
+            【{{ ezfy.selCell.name }}】({{ ezfy.selCell.x }},{{ ezfy.selCell.y }})
+          </div>
+          <div class="old-line" v-if="!ezfy.selDetail && ezfy.selCell.area_type === 3 && ezfy.selCell.terrain_name">
+            地形: {{ ezfy.selCell.terrain_name }}
+          </div>
           <!-- ★ 2026-10-20 城主名字可点：进该玩家的统帅页（与聊天/排行点玩家名同入口） -->
           <div class="old-line" v-if="!ezfy.selDetail && ezfy.selCell.owner">
             城主: <a href="javascript:;" @click="ezfy.openPlayer(ezfy.selCell.user_id)">{{ ezfy.selCell.owner }}</a>
