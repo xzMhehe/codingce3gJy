@@ -105,7 +105,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	// ★ 2026-10-12 传 ezfyDB：二战中间件要读 ezfy_account.kick_at 支持管理端「踢下线」
 	// ★★ 2026-10-18 再传 db（家园库）：多区时家园退出只会写一个二战库，
 	//   靠家园 users.session_at 才能把所有区的旧 token 一起作废。
-	ezfyJwtM := middleware.EzfyJWTAuth(cfg.Jwt.Secret, ezfyDB, db)
+	// ★★ 2026-10-20 onlineScope = 本区区服标题：二战请求会按它把在线来源写回 users.last_online_scope，
+	//   管理端「在线查看」据此把家园与 1 区/2 区分开统计（不再漏掉二战在线玩家）。
+	ezfyJwtM := middleware.EzfyJWTAuth(cfg.Jwt.Secret, ezfyDB, db, cfg.ZoneTitle())
 	optAuth := middleware.OptionalAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
 	permAny := middleware.RequireAnyPerm

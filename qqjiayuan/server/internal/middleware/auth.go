@@ -20,6 +20,10 @@ const (
 	// CtxScope token 来源端（claims.Issuer）：authutil 的 homeIssuer / AdminIssuer / EzfyIssuer。
 	// ★★ 2026-10-19 管理端与用户端 token 分离：Logout 靠它决定「顶哪条会话作废线」。
 	CtxScope = "token_scope"
+
+	// OnlineScopeHome 家园端在线来源标签（users.last_online_scope）。
+	// 管理端「在线查看」按这个字段把家园与二战各区在线人数分开统计。
+	OnlineScopeHome = "家园"
 )
 
 // badgeCleanLastMs 上次执行「过期勋章清理」的毫秒时间戳。
@@ -55,6 +59,34 @@ func lastActiveRecently(uid uint, nowMs int64) bool {
 	}
 	lastActiveMemo[uid] = nowMs
 	return false
+}
+
+// touchHomeOnline 把「在线」写回家园库 users（二战服请求也走这里）。
+//
+// ★★ 2026-10-20 用户反馈「管理端在线查看不准、数量少多了」：
+// 二战独立部署后 EzfyJWTAuth 原来**完全不写家园库**，玩家在二战里玩再久，
+// users.last_active_at 也停在家园最后一次请求 —— 30 分钟后就从管理端在线列表消失，
+// 连二战自己的 ezfyUserOnline（战斗是否进指挥室）也会误判玩家离线。
+//
+// 这里按家园 JWT 同款 60 秒节流更新 last_active_at + last_online_scope，
+// 二战各区分别写自己的区服标题，管理端即可把「家园 / 1区 / 2区」分开统计。
+// 只写活跃时间与来源，不碰登录时间/活跃天数（那些仍只由家园登录逻辑维护）。
+func touchHomeOnline(db *gorm.DB, uid uint, ip, scope string) {
+	if db == nil || uid == 0 {
+		return
+	}
+	if lastActiveRecently(uid, time.Now().UnixMilli()) {
+		return
+	}
+	updates := map[string]interface{}{
+		"last_active_at":    time.Now(),
+		"last_online_scope": scope,
+	}
+	// 顺手刷新最后 IP：在线查看里的「封禁」直接用它，避免二战玩家显示成旧的家园登录 IP。
+	if ip != "" {
+		updates["last_ip"] = ip
+	}
+	db.Model(&struct{}{}).Table("users").Where("id = ?", uid).Updates(updates)
 }
 
 // CORS 跨域
@@ -232,7 +264,10 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 				now := time.Now()
 				db.Model(&struct{}{}).Table("users").
 					Where("id = ?", claims.UserID).
-					Updates(map[string]interface{}{"last_active_at": now, "last_login_at": now})
+					Updates(map[string]interface{}{
+						"last_active_at": now, "last_login_at": now,
+						"last_online_scope": OnlineScopeHome,
+					})
 				// 家园活跃天数：每天首次活跃 +1，连续登录 +0.2，超Q/蓝钻在有效期内每晚一天等级 +0.1/级（封顶 +1.0）
 				var lastDate sql.NullString
 				db.Raw("SELECT last_active_date FROM users WHERE id = ?", claims.UserID).Scan(&lastDate)
@@ -272,8 +307,10 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 //	只认二战签发的 token（Issuer=qqjiayuan-ezfy），家园 token 无法通过（反过亦然）。
 //	校验通过后同样 set CtxUID/CtxUName —— 值就是「家园号(=二战游戏ID)」，
 //	二战 handler 按 middleware.GetUID(c) 沿用既有查询，**零迁移**。
-//	不写家园库（无活跃时间/勋章等家园逻辑），登录态彻底独立。
-func EzfyJWTAuth(secret string, db *gorm.DB, homeDB *gorm.DB) gin.HandlerFunc {
+//	登录态独立；但仍按 60 秒节流把在线时间/来源写回家园库（见 touchHomeOnline），
+//	否则管理端在线查看会漏掉全部二战玩家（2026-10-20 用户反馈「在线数量少多了」）。
+//	onlineScope = 本区区服标题（如「二战征途-【1区】红色警戒」），管理端按它分栏统计。
+func EzfyJWTAuth(secret string, db *gorm.DB, homeDB *gorm.DB, onlineScope string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" {
@@ -319,6 +356,9 @@ func EzfyJWTAuth(secret string, db *gorm.DB, homeDB *gorm.DB) gin.HandlerFunc {
 				return
 			}
 		}
+		// ★★ 2026-10-20 二战在线也要算进家园 users.last_active_at：
+		//   否则管理端在线查看（家园库）看不到二战玩家，数量比实际少很多。
+		touchHomeOnline(homeDB, claims.UserID, c.ClientIP(), onlineScope)
 		c.Set(CtxUID, claims.UserID)
 		c.Set(CtxUName, claims.Nickname)
 		c.Next()

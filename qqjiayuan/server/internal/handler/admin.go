@@ -41,10 +41,16 @@ func (h *AdminHandler) Stats(c *gin.Context) {
 }
 
 // ---- 在线查看 ----
-// OnlineView 在线查看：登录用户 + 在线游客混排（复刻用户端 /online 口径），带 IP 与封禁状态
+// OnlineView 在线查看：登录用户 + 在线游客混排（复刻用户端 /online 口径），带 IP 与封禁状态。
+//
+// ★★ 2026-10-20 用户需求「把二战分区以及和家园分开」：
+//   - 二战独立部署后，二战请求也会写 users.last_active_at / last_online_scope；
+//   - 这里按来源（家园 / 二战各区标题）分别统计，前端分栏展示；
+//   - ?scope=家园 / ?scope=二战征途-【1区】红色警戒 可只看某一分区，空 = 全部。
 func (h *AdminHandler) OnlineView(c *gin.Context) {
 	page, offset, size := pageOf(c, 20)
 	since := time.Now().Add(-30 * time.Minute)
+	filter := strings.TrimSpace(c.Query("scope"))
 
 	type uRow struct {
 		UserID       uint
@@ -53,10 +59,11 @@ func (h *AdminHandler) OnlineView(c *gin.Context) {
 		Color        string
 		IP           string
 		LastActiveAt time.Time
+		OnlineScope  string
 	}
 	var users []uRow
 	h.DB.Model(&model.User{}).
-		Select("id AS user_id, username, nickname, color, last_ip AS ip, last_active_at").
+		Select("id AS user_id, username, nickname, color, last_ip AS ip, last_active_at, last_online_scope").
 		Where("last_active_at > ?", since).Find(&users)
 	var guests []model.OnlineGuest
 	h.DB.Where("last_active_at > ?", since).Find(&guests)
@@ -75,20 +82,61 @@ func (h *AdminHandler) OnlineView(c *gin.Context) {
 		Nickname     string    `json:"nickname"`
 		Color        string    `json:"color"`
 		IP           string    `json:"ip"`
+		Scope        string    `json:"scope"`
 		LastActiveAt time.Time `json:"last_active_at"`
 		Banned       bool      `json:"banned"`
 		BanID        uint      `json:"ban_id"`
 	}
-	rows := make([]row, 0, len(users)+len(guests))
+	allRows := make([]row, 0, len(users)+len(guests))
+	scopeCount := map[string]int{}
 	for _, u := range users {
-		rows = append(rows, row{UserID: u.UserID, Username: u.Username, Nickname: u.Nickname,
-			Color: u.Color, IP: u.IP, LastActiveAt: u.LastActiveAt, Banned: banID[u.IP] > 0, BanID: banID[u.IP]})
+		scope := onlineScopeLabel(u.OnlineScope)
+		scopeCount[scope]++
+		allRows = append(allRows, row{UserID: u.UserID, Username: u.Username, Nickname: u.Nickname,
+			Color: u.Color, IP: u.IP, Scope: scope, LastActiveAt: u.LastActiveAt,
+			Banned: banID[u.IP] > 0, BanID: banID[u.IP]})
 	}
+	// 游客只存在于家园端，统一计入「家园」（类型列仍显示「游客」）。
+	scopeCount[middleware.OnlineScopeHome] += len(guests)
 	for _, g := range guests {
-		rows = append(rows, row{IsGuest: true, IP: g.IP, LastActiveAt: g.LastActiveAt,
-			Banned: banID[g.IP] > 0, BanID: banID[g.IP]})
+		allRows = append(allRows, row{IsGuest: true, IP: g.IP, Scope: middleware.OnlineScopeHome,
+			LastActiveAt: g.LastActiveAt, Banned: banID[g.IP] > 0, BanID: banID[g.IP]})
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].LastActiveAt.After(rows[j].LastActiveAt) })
+	sort.Slice(allRows, func(i, j int) bool { return allRows[i].LastActiveAt.After(allRows[j].LastActiveAt) })
+
+	// 分区统计始终按全部在线算（不受当前筛选影响），前端分栏数字才稳定。
+	type scopeRow struct {
+		Scope string `json:"scope"`
+		Count int    `json:"count"`
+	}
+	scopes := make([]scopeRow, 0, len(scopeCount))
+	for scope, n := range scopeCount {
+		scopes = append(scopes, scopeRow{Scope: scope, Count: n})
+	}
+	// 筛选中的分区即使已经没人也保留一栏，避免选中项突然消失。
+	if filter != "" {
+		if _, ok := scopeCount[filter]; !ok {
+			scopes = append(scopes, scopeRow{Scope: filter, Count: 0})
+		}
+	}
+	sort.Slice(scopes, func(i, j int) bool {
+		hi := scopes[i].Scope == middleware.OnlineScopeHome
+		hj := scopes[j].Scope == middleware.OnlineScopeHome
+		if hi != hj {
+			return hi // 家园固定排第一
+		}
+		return scopes[i].Scope < scopes[j].Scope
+	})
+
+	rows := allRows
+	if filter != "" {
+		rows = make([]row, 0, len(allRows))
+		for _, r := range allRows {
+			if r.Scope == filter {
+				rows = append(rows, r)
+			}
+		}
+	}
 	total := len(rows)
 	start, end := offset, offset+size
 	if end > total {
@@ -97,7 +145,19 @@ func (h *AdminHandler) OnlineView(c *gin.Context) {
 	if start > end {
 		start = end
 	}
-	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": rows[start:end]})
+	resp.OK(c, gin.H{
+		"total": total, "all_total": len(allRows), "scope": filter, "scopes": scopes,
+		"page": page, "size": size, "list": rows[start:end],
+	})
+}
+
+// onlineScopeLabel 在线来源展示名：空值 = 老数据，按家园处理。
+func onlineScopeLabel(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return middleware.OnlineScopeHome
+	}
+	return raw
 }
 
 // ---- IP 封禁 ----

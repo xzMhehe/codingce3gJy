@@ -88,6 +88,11 @@ type User struct {
 	LevelIcon      int        `gorm:"-" json:"level_icon"`    // 等级图标 v{N}.gif
 	LevelTitle     string     `gorm:"-" json:"level_title"`   // 等级称号（如 册封骑士）
 	AchieveLevel   int        `gorm:"-" json:"achieve_level"` // 成就等级（每100点升1级）
+
+	// ★★ 2026-10-20 在线来源：家园 / 二战各区标题（如「二战征途-【1区】红色警戒」）。
+	//   管理端「在线查看」按它把家园与二战 1 区、2 区分开统计；空值按家园处理（老数据）。
+	//   写入点：middleware.JWTAuth（家园请求写「家园」）、EzfyJWTAuth（二战请求写区服标题）。
+	OnlineScope string `gorm:"column:last_online_scope;type:varchar(100);default:'';comment:最后活跃来源（家园/二战区服标题）" json:"last_online_scope"`
 }
 
 // NumHistory 用户曾用家园号（靓号转换记录，曾用过的都展示）

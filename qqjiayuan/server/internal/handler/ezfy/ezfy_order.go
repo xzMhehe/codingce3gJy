@@ -4037,12 +4037,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//       绝不因在线窗口过期而偷偷自动打完。
 		// ★★ 2026-10-19 有玩家驻军的附属野地同样适用「双方都不在线才自动」：
 		//   否则攻方离线、守方也离线时，战场会一直挂着把目标堵死。
-		if !autoBattle && !h.ezfyUserOnline(uid) {
+		// ★★ 2026-10-20 用户规则「人机也是真人，按真人算的，只不过是机器操控人的帐号」：
+		//   人机由后台逐回合指挥，视为**一直在线**（见 ezfyBattleSideOnline）。
+		//   这样玩家打人机城、人机打玩家城都会正常进指挥室，不会被
+		//   「攻守双方都离线 → 自动结算」提前把仗打完。
+		if !autoBattle && !h.ezfyBattleSideOnline(uid) {
 			defOnline := false
 			if order.TargetType == 3 {
-				defOnline = target != nil && target.UserID > 0 && h.ezfyUserOnline(target.UserID)
+				defOnline = target != nil && target.UserID > 0 && h.ezfyBattleSideOnline(target.UserID)
 			} else if hasPlayerDefender {
-				defOnline = h.ezfyUserOnline(wildDefOrders[0].UserID)
+				defOnline = h.ezfyBattleSideOnline(wildDefOrders[0].UserID)
 			}
 			if (order.TargetType == 3 || hasPlayerDefender) && !defOnline {
 				autoBattle = true

@@ -36,6 +36,25 @@ func (h *EzfyHandler) ezfyUserOnline(uid uint) bool {
 	return time.Since(*u.LastActiveAt) <= ezfyOnlineWindowSec*time.Second
 }
 
+// ezfyBattleSideOnline 战场一方是否「在线」—— 只用于到达时决定开指挥室还是直接自动结算。
+//
+// ★★ 2026-10-20 用户规则「人机也是真人，按真人算的，只不过是机器操控人的帐号」：
+//   - 人机战斗期间由后台 botBattleCmds 每 15 秒逐回合下达指令，等价于**一直在线**；
+//   - 不能用 users.last_active_at 判人机离线：否则玩家打人机城时，只要到达那一刻
+//     玩家最近 180 秒没操作（或人机后台 tick 先结算到这笔订单），
+//     「攻守双方都离线 → 自动结算」就会把整场仗直接打完，玩家根本进不了指挥室。
+//   - 同理，人机打玩家城时人机侧也算在线 → 不会再被“双方离线”提前自动结算，
+//     守方玩家能正常看到 [指挥] 并逐回合部署。
+func (h *EzfyHandler) ezfyBattleSideOnline(uid uint) bool {
+	if uid == 0 {
+		return false
+	}
+	if h.ezfyBotIsBot(uid) {
+		return true
+	}
+	return h.ezfyUserOnline(uid)
+}
+
 //
 // ★ 2026-09-22 「实现指挥功能」，入口在 军情 → 军队动态 → [指挥]。
 //
@@ -289,30 +308,10 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 	cmds := ezfyAtkCmdsParse(b.AtkCmd)
 	defCmds := ezfyAtkCmdsParse(b.DefCmd)
 
-	// ★★ 2026-10-19 用户规则「人机和玩家战斗，要学习玩家的指挥，而不是无脑一直指挥
-	//   兵种前进被人家无损吃」：攻/守任一方是人机时，人机这一边的逐兵种指令 =
-	//   **镜像对方玩家**已下达的指令 —— 玩家把哪支兵种设成暂停/后退，人机对应兵种
-	//   也暂停/后退，不再单方面全前进送兵。仅当玩家侧已有指令（非空）才镜像；
-	//   双方都没有指令时维持默认（前进）原逻辑。
-	if len(cmds) > 0 || len(defCmds) > 0 {
-		var ac, dc model.EzfyCity
-		atkBot := h.DB.First(&ac, b.CityId).Error == nil && ac.IsBot == 1
-		defBot := false
-		if b.TargetType == 3 {
-			defBot = h.DB.First(&dc, b.TargetId).Error == nil && dc.IsBot == 1
-		} else if b.TargetType == 1 || b.TargetType == 2 {
-			if _, cid, wl := h.ezfyWildlandOwnerInfo(b.TargetX, b.TargetY, b.UserID); cid > 0 && wl.CityId > 0 {
-				defBot = h.DB.First(&dc, wl.CityId).Error == nil && dc.IsBot == 1
-			}
-		}
-		if atkBot && len(defCmds) > 0 {
-			cmds = defCmds
-		}
-		if defBot && len(cmds) > 0 {
-			defCmds = cmds
-		}
-	}
-
+	// ★★ 2026-10-20 用户规则「人机也是真人，按真人算的，只不过是机器操控人的帐号」：
+	//   攻守双方各用**自己**的逐兵种指令，不再把玩家指令镜像给人机。
+	//   人机侧由后台 botBattleCmds() 每 15 秒按射程/兵力自动下达前进/待命/后退，
+	//   与玩家手动指令互不干扰（人机城市/人机出征同样走指挥室）。
 	steps := 0
 	for !st.Done && now-b.RoundStart >= ezfyBattleRoundMsCfg() {
 		st.Step(cmds, defCmds)

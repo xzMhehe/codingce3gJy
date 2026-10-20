@@ -2,9 +2,19 @@
   <div>
     <!-- 在线查看：登录用户 + 在线游客（30 分钟滑动窗口，与用户端 /online 口径一致） -->
     <el-card shadow="never" class="box">
-      <div class="toolbar">
+      <!-- ★★ 2026-10-20 用户需求「把二战分区以及和家园分开」：
+           顶部按来源（家园 / 二战各区）分栏显示在线人数，点击只看该分区；
+           列表新增「分区」列，一眼能看出玩家在哪个服。 -->
+      <div class="toolbar online-toolbar">
         <span class="label">在线用户 / 游客（近 30 分钟）</span>
+        <span class="all-total">合计 <b>{{ allTotal }}</b></span>
         <div class="grow" />
+        <el-radio-group v-model="scope" size="mini" class="scope-tabs" @change="switchScope">
+          <el-radio-button label="">全部</el-radio-button>
+          <el-radio-button v-for="s in scopes" :key="s.scope" :label="s.scope">
+            {{ s.scope }}（{{ s.count }}）
+          </el-radio-button>
+        </el-radio-group>
         <el-button icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
@@ -14,6 +24,11 @@
         <el-table-column label="类型" width="80" align="center">
           <template slot-scope="{ row }">
             <el-tag :type="row.is_guest ? 'info' : 'success'" size="mini">{{ row.is_guest ? '游客' : '用户' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="分区" width="210" show-overflow-tooltip>
+          <template slot-scope="{ row }">
+            <el-tag size="mini" effect="plain" :type="row.scope === '家园' ? 'success' : 'warning'">{{ row.scope }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="名称" min-width="180" show-overflow-tooltip>
@@ -127,8 +142,8 @@ export default {
   name: 'AdminOnline',
   data () {
     return {
-      // 在线列表
-      list: [], total: 0, page: 1, size: 20, loading: false,
+      // 在线列表：scope 为空 = 全部；scopes = 各分区在线人数（后端按 last_online_scope 统计）
+      list: [], total: 0, allTotal: 0, scopes: [], scope: '', page: 1, size: 20, loading: false,
       // 封禁名单
       bans: [], banTotal: 0, banPage: 1, banSize: 20, banWord: '', banLoading: false,
       banDlg: false, banSaving: false,
@@ -142,15 +157,22 @@ export default {
   methods: {
     load () {
       this.loading = true
-      api.get('/admin/online', { params: { page: this.page, size: this.size } }).then(r => {
+      api.get('/admin/online', { params: { page: this.page, size: this.size, scope: this.scope || undefined } }).then(r => {
         this.loading = false
         if (r.code === 0) {
           this.list = r.data.list || []
           this.total = r.data.total || 0
+          this.allTotal = r.data.all_total || 0
+          this.scopes = r.data.scopes || []
           this.page = r.data.page || 1
           this.size = r.data.size || 20
         } else this.$message.error(r.msg)
       }).catch(() => { this.loading = false })
+    },
+    // 切换分区：回到第一页重新拉取（分栏数字仍由后端按全部在线返回）
+    switchScope () {
+      this.page = 1
+      this.load()
     },
     loadBans () {
       this.banLoading = true
@@ -209,6 +231,17 @@ export default {
 
 <style scoped>
 .txt-none { color: #c0c4cc; }
+/* ★ 2026-10-20 在线查看分栏：家园 + 二战各区，人数直接写在按钮上 */
+.online-toolbar { flex-wrap: wrap; row-gap: 8px; }
+.all-total { font-size: 13px; color: #606266; }
+.all-total b { font-size: 16px; color: #409eff; margin: 0 2px; }
+.scope-tabs { display: flex; flex-wrap: wrap; row-gap: 6px; margin-right: 8px; }
+.scope-tabs ::v-deep .el-radio-button__inner {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ban-warn {
   display: flex;
   gap: 8px;
