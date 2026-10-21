@@ -5375,7 +5375,10 @@ export default {
       api.post('/games/ezfy/troops/train', {
         troop_id: this.trainSel.id, count: n, split: this.trainSplit
       }).then(r => this.alert(r, '征兵已开始', () => {
-        // ★ 2026-10-05 训练完跳回军工厂页（不再停留在具体兵种/训练页）；城防则回城防页
+        // ★ 2026-10-21 「用完就恢复」：征兵当下人口就转入待恢复，立刻刷一次军队数据，
+        //   让「空闲人口」这一秒就扣下去（不要等造完/下次轮询才看到变化）。
+        this.loadTroops()
+        // ★ 2026-10-05 训练完跳回军工厂页（不再停留在具体兵种训练页）；城防则回城防页
         this.go(this.trainMode === 'defence' ? 'defence' : 'factory')
       }))
     },

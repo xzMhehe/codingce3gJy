@@ -1365,7 +1365,7 @@ func ezfyConvenePopMaxCfg() int64 {
 // ★ 用户规则（原话）：「玩家军队训练完会立即恢复，这种用完的人口不会立即恢复，
 // 是一点一点恢复到当前人口数量的」。
 //
-//	所以训练队列出厂时占用的人口不再瞬间归还，而是转成 ezfy_city.pop_recover，
+//	所以训练开始（消耗人口）当下，占用人口就转成 ezfy_city.pop_recover（不等出厂），
 //	按本值（默认 1 万/小时）慢慢减回 0（见 ezfySettlePopRecover）。
 const ezfyPopRecoverPerHourDef = 10000 // 空闲人口每小时恢复量，默认 1 万
 
@@ -2023,7 +2023,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
-		// ★ 2026-10-20 超限人口每小时回落百分比（缺行时默认 10%/小时）
+		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
 		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
 		WildTroopMult:      ezfyWildMultDef,
 		WildResMult:        ezfyWildResMultDef,

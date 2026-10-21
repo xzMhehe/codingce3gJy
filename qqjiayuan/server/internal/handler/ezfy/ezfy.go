@@ -1333,7 +1333,7 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	//   ① 召集人口上限（> 0）仍是硬顶：自然增长最多到它，不会超过；
 	//   ② 民居容量（仅「民居容量限制」开 + 「允许长期超过民居上限」关 + pop_max > 0 时生效）
 	//      是**软上限**：超过后仍可继续召集，但超出部分按 ezfyPopOverCapDecayPct()
-	//      （默认 10%/小时，二战系统配置可调）缓慢回落到民居容量 —— 见 ezfySettlePopOverCap。
+	//      （默认 100%/5 分钟，二战系统配置可调）缓慢回落到民居容量 —— 见 ezfySettlePopOverCap。
 	//   这样管理员关掉「允许长期超过民居上限」后，已有的 10 万人口不会瞬间消失，
 	//   而是慢慢回落到 4.5 万；玩家在此期间仍能召集（5 分钟一次，见 Convene）。
 	if hard := ezfyConvenePopMaxCfg(); hard > 0 && city.Pop > hard {
@@ -1350,7 +1350,7 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 		city.PopRecover = city.Pop
 	}
 	// ★ 2026-10-13 空闲人口「慢恢复」：把待恢复人口按小时线性减回 0
-	//   （用户规则：训练完不该立即恢复空闲人口，要一点一点恢复）。
+	//   （用户规则：征兵当下就占用、不该立即恢复空闲人口，要一点一点恢复）。
 	//   与人口自然增长同一处结算 —— 所有接口必经懒结算，口径唯一。
 	//   落库随下面的「写合并」一起走（pop_recover / pop_recover_at）。
 	h.ezfySettlePopRecover(city)
@@ -2633,8 +2633,8 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	recruitCost := ezfyRecruitCostOn()
 	if recruitCost {
 		popUsed := h.cityPopUsedD(city, snap.buildingsOf(h, city.ID), trainQ)
-		// ★ 2026-10-13 还要扣掉「待恢复人口」——训练完占用的人口不瞬间归还，
-		//   这段时间里它既不算空闲、也不该被拿来训练（否则等于训练完立刻又满了）。
+		// ★ 2026-10-13 还要扣掉「待恢复人口」——征兵占用的人口不瞬间归还，
+		//   这段时间里它既不算空闲、也不该被拿来训练（否则等于征兵后立刻又满了）。
 		popAvailable := city.Pop - popUsed - city.PopRecover
 		// ★ 2026-10-17 人机训练不占人口（用户规则：出征数量 30~40 万，50 万人口训不出 40 万火箭
 		//   Pop12 的 480 万人口需求 → 出征只能带 4 万）。人机城（IsBot=1）跳过人口校验，
@@ -2871,7 +2871,7 @@ func (h *EzfyHandler) cityPopUsedD(city *model.EzfyCity, buildings []model.EzfyC
 // ★ 2026-10-13 用户规则（原话）：「玩家军队训练完会立即恢复（这是 bug），
 // 这种用完的人口不会立即恢复，是一点一点恢复到当前人口数量的」。
 //
-//	`pop_recover` = 训练队列出厂时占用的人口（见 collectTrainQueue），
+//	`pop_recover` = 训练**开始（消耗人口）时**占用的人口（见 trainTroopLocked），
 //	本函数按 ezfyPopRecoverPerHour()（默认 1 万/小时）把它减回 0。
 //	纯内存计算、**不查库**；落库由 calcResourceD 的「写合并」顺带写（见那里的说明）。
 //
@@ -2892,7 +2892,7 @@ func (h *EzfyHandler) ezfySettlePopRecover(city *model.EzfyCity) {
 		city.PopRecoverAt = now
 		return
 	}
-	// 没有待恢复人口：只把时间点跟到 now（下次训练完成才重新起算）
+	// 没有待恢复人口：只把时间点跟到 now（下次训练消耗人口时重新起算）
 	if city.PopRecover <= 0 {
 		city.PopRecover = 0
 		city.PopRecoverAt = now
@@ -2916,13 +2916,19 @@ func (h *EzfyHandler) ezfySettlePopRecover(city *model.EzfyCity) {
 	city.PopRecoverAt += dec * 3600000 / rate // 只推进真正用掉的时间，余量留给下次
 }
 
-const ezfyPopOverCapDecayPctDef = 10
+// ezfyPopOverCapDecayPctDef 超限人口回落速度默认值（100 = 5 分钟内回落完）。
+const ezfyPopOverCapDecayPctDef = 100
 
-// ezfyPopOverCapDecayPct 超出民居软上限的人口每小时回落百分比（按当前超出量计算）。
+// ezfyPopOverCapDecayPeriodMs 超限人口回落的速度基准周期：5 分钟。
+//
+//	pct 的含义是「每 5 分钟回落当前超出量的百分之几」，因此 100 = 5 分钟回落完。
+const ezfyPopOverCapDecayPeriodMs = int64(5 * 60 * 1000)
+
+// ezfyPopOverCapDecayPct 超出民居软上限的人口每 5 分钟回落百分比（按当前超出量计算）。
 //
 // ★ 2026-10-20 用户规则：超过民居上限还可以继续召集，但超出部分要「慢慢回落」到民居上限。
-// ★ 2026-10-20 用户反馈 2 区回落太慢 → 速度改到二战系统配置，默认仍为 10%/小时
-// （约 6.6 小时回落一半；30%/小时约 1.9 小时，100%/小时约 1 小时回到上限）。
+// ★ 2026-10-21 用户反馈「调到 100% 还要 1 小时，要求 5 分钟内回落」：
+// 速度单位从「%/小时」改为「%/5 分钟」，默认 100 → 5 分钟内回到民居上限。
 func ezfyPopOverCapDecayPct() int {
 	return ezfyLimitOr(ezfyCfg.limit.PopOverCapDecayPct, ezfyPopOverCapDecayPctDef)
 }
@@ -2930,7 +2936,7 @@ func ezfyPopOverCapDecayPct() int {
 // ezfySettlePopOverCap 超限人口缓慢回落结算（纯函数，方便单测）。
 //
 //	pop/cap 为总人口/回落目标，at 为上次结算时间戳(ms)，now 为当前时间戳(ms)，
-//	pct 为每小时回落百分比（按当前超出量计算）。
+//	pct 为每 5 分钟回落百分比（按当前超出量计算）。
 //	返回新人口 + 新时间戳；时间戳 0 表示当前已不超限。
 //
 // 时间推进与 ezfySettlePopRecover 同口径：只推进「真正兑换成人头」的那部分时间，
@@ -2948,9 +2954,9 @@ func ezfySettlePopOverCap(pop, cap, at, now int64, pct int) (int64, int64) {
 	}
 	excess := pop - cap
 	elapsed := now - at
-	// 速率 = 当前超出量 × pct% / 小时，再折算到毫秒
-	rate := float64(excess) * float64(pct) / 100.0 / 3600000.0
-	// +1e-9 抵消浮点误差（例：10 人 ×10%/小时 ×1 小时 = 0.9999999999999999 → 应算 1 人）
+	// 速率 = 当前超出量 × pct% / 5 分钟，再折算到毫秒
+	rate := float64(excess) * float64(pct) / 100.0 / float64(ezfyPopOverCapDecayPeriodMs)
+	// +1e-9 抵消浮点误差（例：10 人 ×10% ×5 分钟 = 0.9999999999999999 → 应算 1 人）
 	dec := int64(rate*float64(elapsed) + 1e-9)
 	if dec <= 0 {
 		return pop, at // 还不足 1 人：保留时间余量，下次继续攒

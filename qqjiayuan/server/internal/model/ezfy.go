@@ -570,15 +570,16 @@ type EzfyCfgLimit struct {
 	//   ② ConveneFlexibleOn 允许长期超过民居上限（原名召集人口灵活配置）：
 	//      1 开（默认）= 召集可突破 pop_max，且不回落（原有行为）；
 	//      0 关 = 民居容量是**软上限**：仍然可以继续召集超过 pop_max，
-	//      但超出部分会按 PopOverCapDecayPct（默认 10%/小时）缓慢回落到 pop_max，
+	//      但超出部分会按 PopOverCapDecayPct（默认 100%/5 分钟，即 5 分钟内回落完）缓慢回落到 pop_max，
 	//      且人口达到/超过民居容量时召集冷却为 5 分钟（见 Convene）。
 	//   ⚠️ 两个都是开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
 	HousePopLimitOn   int `gorm:"comment:民居容量限制开关（关 = 民居不限制人口上限）" json:"house_pop_limit_on"`
 	ConveneFlexibleOn int `gorm:"comment:允许长期超过民居上限（关 = 超限部分缓慢回落）" json:"convene_flexible_on"`
 	// ★ 2026-10-20 用户反馈「超民居上限的人口回落有点慢」→ 回落速度做成二战系统配置。
-	//   超出部分每小时按「当前超出量 × 该百分比」回落（默认 10%/小时，约 6.6 小时回落一半）。
-	//   0 / 未配置无意义 → 读取端回落默认 10。
-	PopOverCapDecayPct int `gorm:"default:10;comment:超限人口每小时回落百分比（按超出量，默认10）" json:"pop_over_cap_decay_pct"`
+	// ★ 2026-10-21 「调到 100% 还要 1 小时，要求 5 分钟内回落」→ 单位改为「%/5 分钟」：
+	//   每 5 分钟按「当前超出量 × 该百分比」回落（默认 100%/5 分钟 = 5 分钟回落完）。
+	//   0 / 未配置无意义 → 读取端回落默认 100。
+	PopOverCapDecayPct int `gorm:"default:100;comment:超限人口每5分钟回落百分比（按超出量，默认100）" json:"pop_over_cap_decay_pct"`
 
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」：
 	//   召集消耗粮食 + 召集获得人口，默认各 10 万。0 无意义 → 回落默认（seed 走 addLimitCol）。
@@ -1128,8 +1129,9 @@ type EzfyCity struct {
 	PopMax      int64 `gorm:"comment:人口上限" json:"pop_max"`
 	// ★ 2026-10-13 用户规则「空闲人口不该一训练完就立刻恢复，要一点一点恢复到当前人口」：
 	//
-	//	训练队列出厂时，它占用的人口**不再瞬间归还**，而是转成这里的「待恢复人口」，
-	//	之后按 `ezfy_cfg_limit.pop_recover_per_hour`（默认 1 万/小时）慢慢减回 0。
+	//	★ 2026-10-18「用完就恢复」：**训练开始（消耗人口）当下**就把占用人口转成这里的
+	//	「待恢复人口」，不等出厂；之后按 `ezfy_cfg_limit.pop_recover_per_hour`
+	//	（默认 1 万/小时）慢慢减回 0。
 	//
 	//	空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（下限 0），
 	//	上限 = min(召集人口上限, 人口 − 建筑占用)，所以待恢复人口天然保证空闲不超上限。
@@ -1139,7 +1141,7 @@ type EzfyCity struct {
 	PopRecoverAt int64 `gorm:"comment:待恢复人口上次结算时间戳(ms)" json:"pop_recover_at"`
 	// ★ 2026-10-20 超出民居上限的人口回落上次结算时间戳(ms)，0 = 当前未超限/刚进入超限。
 	//   仅当「民居容量限制开 + 允许长期超过民居上限关」时生效：
-	//   超出部分按 ezfyPopOverCapDecayPct（默认 10%/小时）缓慢回落到 pop_max，
+	//   超出部分按 ezfyPopOverCapDecayPct（默认 100%/5 分钟）缓慢回落到 pop_max，
 	//   不是立刻夹平（用户规则）。详见 calcResourceD。
 	PopOverCapAt int64 `gorm:"comment:超限人口回落上次结算时间戳(ms,0=未超限)" json:"pop_over_cap_at"`
 	Gold         int64 `gorm:"comment:黄金" json:"gold"`

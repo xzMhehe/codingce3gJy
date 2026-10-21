@@ -38,7 +38,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
 		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
-		// ★ 2026-10-20 超限人口每小时回落百分比（缺行时默认 10%/小时）
+		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
 		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
@@ -233,7 +233,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.DispatchPeriodH <= 0 {
 		lim.DispatchPeriodH = 1
 	}
-	// ★ 2026-10-20 超限人口回落速度（0 / 越界无意义 → 回落默认 10%/小时）
+	// ★ 2026-10-20 超限人口回落速度（0 / 越界无意义 → 回落默认 100%/5 分钟）
 	if lim.PopOverCapDecayPct < 1 || lim.PopOverCapDecayPct > 100 {
 		lim.PopOverCapDecayPct = ezfyPopOverCapDecayPctDef
 	}
@@ -459,7 +459,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
 		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
-		// ★ 2026-10-20 超限人口每小时回落百分比（缺行时默认 10%/小时）
+		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
 		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
@@ -657,7 +657,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.ConvenePopMax = *in.ConvenePopMax
 	}
-	// ★ 2026-10-13 空闲人口每小时恢复量（训练完人口不再瞬间归还，按此速度慢慢恢复）：
+	// ★ 2026-10-13 空闲人口每小时恢复量（征兵占用人口从征兵当下起按此速度慢慢恢复）：
 	//   0 无意义（读取端回落默认 1 万）→ 只拦负数与防呆上界，不主动归一。
 	if in.PopRecoverPerHour != nil {
 		if *in.PopRecoverPerHour < 0 || *in.PopRecoverPerHour > 1000000000 {
@@ -666,16 +666,16 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.PopRecoverPerHour = *in.PopRecoverPerHour
 	}
-	// ★ 2026-10-20 超限人口每小时回落百分比（按当前超出量）：
-	//   1~100 有意义（100 = 1 小时内回落全部超出人口），0 会让人口永远不回落。
+	// ★ 2026-10-20 超限人口每 5 分钟回落百分比（按当前超出量）：
+	//   1~100 有意义（100 = 5 分钟内回落全部超出人口），0 会让人口永远不回落。
 	if in.PopOverCapDecayPct != nil {
 		if *in.PopOverCapDecayPct < 1 || *in.PopOverCapDecayPct > 100 {
-			resp.ParamError(c, "超限人口回落速度需要在 1~100 之间（%/小时）")
+			resp.ParamError(c, "超限人口回落速度需要在 1~100 之间（每 5 分钟回落 %）")
 			return
 		}
 		lim.PopOverCapDecayPct = *in.PopOverCapDecayPct
 	}
-	// ★ 超限人口回落速度兜底：老行 0 / 越界 → 默认 10%/小时
+	// ★ 超限人口回落速度兜底：老行 0 / 越界 → 默认 100%/5 分钟
 	if lim.PopOverCapDecayPct < 1 || lim.PopOverCapDecayPct > 100 {
 		lim.PopOverCapDecayPct = ezfyPopOverCapDecayPctDef
 	}
@@ -1374,7 +1374,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT " + strconv.Itoa(ezfyWildItemCooldownDef))
 	}
 	h.DB.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = " + strconv.Itoa(ezfyWildItemCooldownDef) + " WHERE wild_item_cooldown_h IS NULL")
-	// ★ 2026-10-20 超限人口回落速度（默认 10%/小时）：老库补列 + NULL/<=0 回填默认。
+	// ★ 2026-10-20 超限人口回落速度（默认 100%/5 分钟）：老库补列 + NULL/<=0 回填默认。
 	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "pop_over_cap_decay_pct") {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pop_over_cap_decay_pct int DEFAULT " + strconv.Itoa(ezfyPopOverCapDecayPctDef))
 	}
@@ -1463,7 +1463,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"convene_pop_max": lim.ConvenePopMax,
 		// ★ 2026-10-13 空闲人口每小时恢复量：同样显式写，避免零值被 GORM default 吞掉
 		"pop_recover_per_hour": lim.PopRecoverPerHour,
-		// ★ 2026-10-20 超限人口每小时回落百分比
+		// ★ 2026-10-20 超限人口每 5 分钟回落百分比
 		"pop_over_cap_decay_pct": lim.PopOverCapDecayPct,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
 		"wild_treasure_cooldown_h": lim.WildTreasureCooldownH,

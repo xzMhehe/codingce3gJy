@@ -42,10 +42,13 @@ func TestEzfyPopCapOf(t *testing.T) {
 }
 
 // TestEzfySettlePopOverCap 超限人口必须「慢慢回落」，且时间余量不能丢。
+//
+// ★ 2026-10-21 用户要求「100% 也要 5 分钟内回落」→ 速度基准从「每小时」改成「每 5 分钟」。
 func TestEzfySettlePopOverCap(t *testing.T) {
 	const now = int64(1_700_000_000_000)
 	const cap = int64(45000)
-	const hour = int64(3600_000)
+	const fiveMin = int64(300_000)
+	const hour = 12 * fiveMin
 
 	// 未超限 → 时间戳清零
 	if pop, at := ezfySettlePopOverCap(45000, cap, now, now, 10); pop != 45000 || at != 0 {
@@ -55,35 +58,62 @@ func TestEzfySettlePopOverCap(t *testing.T) {
 	if pop, at := ezfySettlePopOverCap(100000, cap, 0, now, 10); pop != 100000 || at != now {
 		t.Fatalf("首次超限只应记时间，got pop=%d at=%d", pop, at)
 	}
-	// 1 小时：超出 55000 × 10%/小时 = 5500，人口 100000 → 94500
-	pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour, 10)
-	if pop != 94500 || at != now+hour {
-		t.Fatalf("1 小时应回落 5500 人，got pop=%d at=%d", pop, at)
+	// 5 分钟：超出 55000 × 10%/5 分钟 = 5500，人口 100000 → 94500
+	pop, at := ezfySettlePopOverCap(100000, cap, now, now+fiveMin, 10)
+	if pop != 94500 || at != now+fiveMin {
+		t.Fatalf("10%%/5 分钟应回落 5500 人，got pop=%d at=%d", pop, at)
 	}
-	// 速度可配置：50%/小时 → 超出 55000 × 50% = 27500，人口 100000 → 72500
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour, 50); pop != 72500 || at != now+hour {
-		t.Fatalf("50%%/小时应回落 27500 人，got pop=%d at=%d", pop, at)
+	// 速度可配置：50%/5 分钟 → 超出 55000 × 50% = 27500，人口 100000 → 72500
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+fiveMin, 50); pop != 72500 || at != now+fiveMin {
+		t.Fatalf("50%%/5 分钟应回落 27500 人，got pop=%d at=%d", pop, at)
 	}
-	// 非法速度 → 回落默认 10%/小时
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour, 0); pop != 94500 || at != now+hour {
-		t.Fatalf("非法速度应回落默认 10%%，got pop=%d at=%d", pop, at)
+	// 100%/5 分钟：正好 5 分钟回落到民居上限，时间戳清零
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+fiveMin, 100); pop != cap || at != 0 {
+		t.Fatalf("100%%/5 分钟应 5 分钟内回落到 %d 且 at=0，got pop=%d at=%d", cap, pop, at)
 	}
-	// 24 小时：足够回落到民居上限，时间戳清零
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+24*hour, 10); pop != cap || at != 0 {
-		t.Fatalf("24 小时应回落到 %d 且 at=0，got pop=%d at=%d", cap, pop, at)
+	// 100%/5 分钟：2 分钟按比例回落 40%（55000 × 40% = 22000）
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+2*60_000, 100); pop != 78000 || at != now+2*60_000 {
+		t.Fatalf("100%%/5 分钟 2 分钟应回落 22000 人，got pop=%d at=%d", pop, at)
+	}
+	// 非法速度 → 回落默认 100%/5 分钟
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+fiveMin, 0); pop != cap || at != 0 {
+		t.Fatalf("非法速度应回落默认 100%%，got pop=%d at=%d", pop, at)
+	}
+	// 1 小时：足够回落到民居上限，时间戳清零
+	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour, 10); pop != cap || at != 0 {
+		t.Fatalf("1 小时应回落到 %d 且 at=0，got pop=%d at=%d", cap, pop, at)
 	}
 	// 超出量很小、时间很短：不足 1 人时保留时间余量（at 不推进）
 	if pop, at := ezfySettlePopOverCap(45010, cap, now, now+60_000, 10); pop != 45010 || at != now {
 		t.Fatalf("不足 1 人时应保留时间余量，got pop=%d at=%d", pop, at)
 	}
 	// 超出量很小、时间够长：刚好回落 1 人
-	pop, at = ezfySettlePopOverCap(45010, cap, now, now+hour, 10)
-	if pop != 45009 || at != now+hour {
-		t.Fatalf("超出 10 人 1 小时应回落 1 人，got pop=%d at=%d", pop, at)
+	pop, at = ezfySettlePopOverCap(45010, cap, now, now+fiveMin, 10)
+	if pop != 45009 || at != now+fiveMin {
+		t.Fatalf("超出 10 人 5 分钟应回落 1 人，got pop=%d at=%d", pop, at)
 	}
 	// 时间戳异常（未来）→ 重置为 now，不回落
 	if pop, at := ezfySettlePopOverCap(100000, cap, now+hour, now, 10); pop != 100000 || at != now {
 		t.Fatalf("时间戳在未来应重置，got pop=%d at=%d", pop, at)
+	}
+}
+
+// TestTrainPopRecoverStartsAtConscription 征兵占用的人口必须**从征兵当下**开始慢恢复，
+// 不能等训练队列出厂（造完）才计入待恢复。
+func TestTrainPopRecoverStartsAtConscription(t *testing.T) {
+	train := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) trainTroopLocked("))
+	for _, want := range []string{
+		"h.ezfySettlePopRecover(city)",
+		"city.PopRecover += int64(cfg.Pop) * int64(count)",
+	} {
+		if !strings.Contains(train, want) {
+			t.Fatalf("trainTroopLocked 未在征兵当下转入待恢复人口（缺 %s）：\n%s", want, train)
+		}
+	}
+	// 出厂时不能再累加一次，否则同一笔人口被算两次、恢复量翻倍。
+	collect := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) collectTrainQueue("))
+	if strings.Contains(collect, "PopRecover +=") {
+		t.Fatalf("collectTrainQueue 出厂时仍在累加待恢复人口（应在征兵当下算）：\n%s", collect)
 	}
 }
 
