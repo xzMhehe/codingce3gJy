@@ -1,0 +1,30 @@
+server:
+  port: 8080
+  # 生产模式下托管前端构建产物目录（web/dist），留空则为纯 API 服务
+  web_dir: "../web/dist"
+  # 管理系统前端（admin-web/dist），托管在 /admin-ui/
+  admin_web_dir: "../admin-web/dist"
+  # ★★ 2026-10-15 区名写活：游戏名/区编号/区名/区后缀 → 完整标题「二战征途-【1区】红色警戒」
+  #   开二区时复制一份配置，把下面三项改成二区值（如 2 / 2区 / 铁血），port 换掉即可。
+  game_name: "二战征途"           # 游戏名（缺省回落「二战征途」）
+  zone_id: 1                      # 本服务器编号（区号）
+  zone_name: "1区"                # 区名
+  zone_sub: "红色警戒"            # 区后缀（可为空，如二区可不填后缀）
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: "1234567890"
+  dbname: qq_jiayuan
+
+# ★★ 2026-10-10 二战征途独立库（多数据源）。全部 ezfy_* 表都在这个库里。
+#   host/port/user/password 留空 = 自动沿用上面 mysql 的（同实例换库）。
+#   整段留空或删掉 = 单库模式（二战与家园同库），老部署不受影响。
+#   账号 / 昵称 / 私信 / 系统设置仍在家园库（二战经 HomeDB 读），只靠「家园号」关联。
+ezfy_mysql:
+  dbname: qq_ezzt
+
+jwt:
+  secret: "qq-jiayuan-secret-2026-do-not-leak"
+  expire_hours: 168

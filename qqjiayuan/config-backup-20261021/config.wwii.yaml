@@ -1,0 +1,29 @@
+# 本地调试用：二战独立服（mode=wwii），端口 8081，库 qq_ezzt
+# 与 config.yaml（家园服 8080）配套启动：
+#   server.exe -config config.yaml          # 家园 8080（管理端 /admin-ui/ + 反代二战管理接口）
+#   server.exe -config config.wwii.yaml     # 二战 8081（玩家端 + 二战管理接口真正实现）
+server:
+  mode: wwii
+  port: 8081
+  web_dir: "../web/dist"
+  game_name: "二战征途"
+  zone_id: 1
+  zone_name: "1区"
+  zone_sub: "红色警戒"
+  home_url: "http://127.0.0.1:8080"
+  # 本机是唯一实例，后台推进照常开
+  bg_tick: true
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: "1234567890"
+  dbname: qq_jiayuan
+
+ezfy_mysql:
+  dbname: qq_ezzt
+
+jwt:
+  secret: "qq-jiayuan-secret-2026-do-not-leak"
+  expire_hours: 168
