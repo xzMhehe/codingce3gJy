@@ -284,6 +284,9 @@ func Run(db *gorm.DB, staticDir string) {
 		addSwitchCol("officer_star_keep_on_fail", 0) // 失败是否保留升星卡：0 扣掉（默认）/ 1 保留
 		// ★ 2026-10-17 「训练一键加速」「所有城市训练一键加速」开关（默认 1 开；0 关 = 前端隐藏按钮 + 后端拒绝）
 		addSwitchCol("speed_train_on", 1)
+		// ★ 2026-10-21 造兵时间：市长军事加成开关 / 装备套装军事计入开关（默认都开；0 合法 = 关）
+		addSwitchCol("train_mayor_military_on", 1)
+		addSwitchCol("train_mayor_equip_on", 1)
 		// ★ 2026-10-17 人机免耗粮（默认 1 开）：人机城内军队不扣维护粮 + 人机出征免油耗（真人照常扣）
 		addSwitchCol("bot_food_free", 1)
 		// 数值类（0 无意义 → 回落默认值），用只回填 NULL 的写法，别覆盖管理端改过的值
@@ -3248,6 +3251,20 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pvp_rank_on int DEFAULT 1")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET pvp_rank_on = 1 WHERE pvp_rank_on IS NULL")
+	// ★ 2026-10-21 造兵时间：市长军事加成 / 装备套装军事计入（默认 1 = 开）。
+	//   ⚠️ 0 合法（= 关）→ 只补列 + 只回填 NULL，不能用 `<= 0` 兜底把管理员关掉的开关又打开。
+	for _, c := range []struct {
+		col string
+		def int
+	}{
+		{"train_mayor_military_on", 1},
+		{"train_mayor_equip_on", 1},
+	} {
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) + " WHERE " + c.col + " IS NULL")
+	}
 	// ★ 2026-10-18 人机出征时间段（如 "20:00-22:00,08:00-12:00"，空 = 全天）：varchar 列，空串合法
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "bot_atk_windows") {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN bot_atk_windows varchar(120) DEFAULT ''")

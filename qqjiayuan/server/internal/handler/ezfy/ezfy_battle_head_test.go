@@ -28,7 +28,7 @@ func TestBattleHeadOrder(t *testing.T) {
 		150, 180, // atkOfficerSkill, defOfficerSkill
 		[]ezfyBonusItem{{Name: "尖兵突击", Value: 150}},
 		[]ezfyBonusItem{{Name: "尖兵突击", Value: 180}},
-		[]ezfyBonusItem{{Name: "军训艺术", Value: 20}, {Name: "武器科技", Value: 30}, {Name: "重工技术", Value: 20}},
+		[]ezfyBonusItem{{Name: "武器科技", Value: 30}, {Name: "重工技术", Value: 20}},
 		[]ezfyBonusItem{{Name: "装甲科技", Value: 30}, {Name: "掩体防御", Value: 20}},
 		[]ezfyBonusItem{{Name: "城墙", Value: 45}},
 		355, []ezfyBonusItem{{Name: "军官·Michael·Adams", Value: 144}}, // atkDefBonus, atkDefBreak

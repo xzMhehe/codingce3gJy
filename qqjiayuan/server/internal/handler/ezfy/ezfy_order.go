@@ -3318,9 +3318,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// 带队军官(军事属性 + 装备 + 技能)与科技加成
 	leadOfficer := h.officerByName(city.ID, order.Officer)
 	officerBonus := h.officerBattleBonus(leadOfficer)
-	// 攻击加成：军训艺术(5)+2%/级 · 武器科技(6)+3%/级 · 重工技术(9)+2%/级
+	// 攻击加成：武器科技(6)+3%/级 · 重工技术(9)+2%/级
+	// ★ 2026-10-21 军训艺术(5) 改为「造兵速度」科技，不再参与战斗攻击加成。
 	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（：弹道学=射程，不参与攻击加成）
-	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2
+	atkBonus := officerBonus + atkTech[6]*3 + atkTech[9]*2
 	// 速度加成：只有燃烧引擎(10)「部队速度」是**全体兵种**通用的；
 	// ★ 2026-10-08 喷气引擎(19)「空军速度」是**兵种专属** → 移到下方 atkType（原来错误地加了全军）
 	atkSpeedBonus := atkTech[10] * 2
@@ -3351,7 +3352,6 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（科技名见 ezfy_cfg 种子表）
 	// ★ 2026-10-08 补全影响 攻击/防御/射程/速度 的全部攻方科技（原来只列攻击类 → 看头像显示不全）
 	atkTechs := ezfyBonusItems(
-		ezfyTechItem("军训艺术", atkTech[5]*2),
 		ezfyTechItem("武器科技", atkTech[6]*3),
 		ezfyTechItem("装甲科技", atkTech[7]*3),
 		ezfyTechItem("弹道学", atkTech[8]*3),
@@ -3702,27 +3702,27 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//	（描述都是「部队攻击」）完全没算 → 守城部队白丢一截攻击加成，
 		//	且【守方科技】行比【攻方科技】少这两项（满科技的两个号列出来却不一样）。
 		//
-		//	现在与攻方口径对齐：军训艺术+2%/级 · 武器科技+3%/级 · 重工技术+2%/级（重装备攻防）
-		//	＋ 城守军官攻击加成。
+		//	现在与攻方口径对齐：武器科技+3%/级 · 重工技术+2%/级（重装备攻防）
+		//	＋ 城守军官攻击加成。军训艺术(5) 自 2026-10-21 起只加造兵速度，不再进战斗。
 		//	★ 装甲科技(7) 只保留在**防御**加成里（defBonus / defDefBreak），不再重复进攻击。
 		//	★ 守方射程加成 = 弹道学(8)*3（与攻方同口径；掩体防御只进城防攻防，不进射程 —— 见下方 defRangeBonus）
 		// ★★ 2026-10-09 用户规则：**守方攻击不再额外吃「掩体防御」(16)** ——
 		//   那是守城方专属的一项，导致满科技的两个号在战报里显示成「攻方 攻击+70% / 守方 攻击+90%」。
-		//   现在两边攻击口径完全一致（军训艺术 + 武器科技 + 重工技术 + 带队/城守军官）。
+		//   现在两边攻击口径完全一致（武器科技 + 重工技术 + 带队/城守军官）。
 		//   掩体防御仍保留在**防御**里（defBonus / defDefBreak）—— 攻守双方都吃，不影响对称性。
 		// ★ 2026-10-10 修复「装备一样加成不一样」：攻方攻击 = atkBonus + atkEquip.Dmg（装备伤害单独加），
 		//   而守方攻击之前漏加了装备/套装伤害（defEquip.Dmg）。这里先算 defEquip（必须在 defAtkBonus 之前赋值），
 		//   再补进去 —— 守城部队反击时身上装备/套装的「伤害」加成才真实生效。
 		defEquip = h.officerBattleEquipBonus(cityGuard)
-		defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard) + defEquip.Dmg
+		defAtkBonus = defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard) + defEquip.Dmg
 		// ★ 2026-10-06 城守军官占守方攻击加成的百分点（战报日志拆解用）
 		defOfficerAtkBonus = h.officerBattleBonus(cityGuard)
 		// ★ 2026-10-06 守方拆解逐项明细：城守技能 + 守方科技（与 defAtkBonus 同口径）
 		defSkillBreak = h.officerSkillsBreak(cityGuard)
-		// ★ 2026-10-08 与【攻方科技】用**同一集合、同一顺序**（补上军训艺术/武器科技）：
+		// ★ 2026-10-08 与【攻方科技】用**同一集合、同一顺序**：
 		//   满科技的两个号现在列出的科技项完全一致，不会再出现「都是满科技、守方却少两项」的困惑。
+		// ★ 2026-10-21 军训艺术(5) 已改为造兵速度科技，战斗/战报不再列出。
 		defTechBreak = ezfyBonusItems(
-			ezfyTechItem("军训艺术", defTech[5]*2),
 			ezfyTechItem("武器科技", defTech[6]*3),
 			ezfyTechItem("装甲科技", defTech[7]*3),
 			ezfyTechItem("弹道学", defTech[8]*3),
@@ -5690,7 +5690,7 @@ func (h *EzfyHandler) ezfyWildDefOfficersDesc(orders []model.EzfyOrder) string {
 // defBonus/defAtkBonus/defTechBreak 全是 0。现在与玩家城 case 3 的城守口径一致：
 //
 //	防御 = 装甲科技(7)×3 + 重工技术(9)×2 + 军官学识/防御技能
-//	攻击 = 军训艺术(5)×2 + 武器科技(6)×3 + 重工技术(9)×2 + 军官攻击 + 装备伤害
+//	攻击 = 武器科技(6)×3 + 重工技术(9)×2 + 军官攻击 + 装备伤害
 //	速度/射程/兵种专属/装备/套装/伤兵回收同样按城守公式计算。
 type ezfyDefenderBonus struct {
 	DefBonus        int
@@ -5734,12 +5734,11 @@ func (h *EzfyHandler) ezfyWildDefCombatBonus(tech map[int]int, officer *model.Ez
 	b.Type = h.officerTypeBonus(officer, b.Type)
 	// 装备/套装六项（伤害→攻击、防御→防御、生命/暴击/移动按引擎口径生效）。
 	b.Equip = h.officerBattleEquipBonus(officer)
-	// 攻击：军训艺术/武器科技/重工技术 + 军官攻击 + 装备伤害。
+	// 攻击：武器科技/重工技术 + 军官攻击 + 装备伤害。
 	b.OfficerAtkBonus = h.officerBattleBonus(officer)
-	b.DefAtkBonus = tech[5]*2 + tech[6]*3 + tech[9]*2 + b.OfficerAtkBonus + b.Equip.Dmg
+	b.DefAtkBonus = tech[6]*3 + tech[9]*2 + b.OfficerAtkBonus + b.Equip.Dmg
 	b.SkillBreak = h.officerSkillsBreak(officer)
 	b.TechBreak = ezfyBonusItems(
-		ezfyTechItem("军训艺术", tech[5]*2),
 		ezfyTechItem("武器科技", tech[6]*3),
 		ezfyTechItem("装甲科技", tech[7]*3),
 		ezfyTechItem("弹道学", tech[8]*3),

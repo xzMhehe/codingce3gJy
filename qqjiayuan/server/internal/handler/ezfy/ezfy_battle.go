@@ -299,8 +299,9 @@ func ezfyTypeSpeedTxt(tb ezfyTypeBonus, present map[int]bool) string {
 //
 // ★★ 2026-10-11 用户口径：「假如当前兵种不是城防兵种就别展示，不然容易有歧义」
 // → present 为空(nil/空 map)时也当作「没有」，不再「不过滤、全部列出」。
-//   （排查线上战场 83068：守方确实带了 troop_id=20 防空炮(type=4)，当时展示是对的；
-//    但空表兜底会让「真的没带城防兵」的一方也显示 20%，属歧义来源。）
+//
+//	（排查线上战场 83068：守方确实带了 troop_id=20 防空炮(type=4)，当时展示是对的；
+//	 但空表兜底会让「真的没带城防兵」的一方也显示 20%，属歧义来源。）
 func ezfyTypeDefTxt(tb ezfyTypeBonus, present map[int]bool) string {
 	if len(tb.Def) == 0 {
 		return ""
@@ -517,7 +518,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	//	原来汇总行只写总数，而军官行给的是「属性部分」、技能是单列的 —— 玩家拿
 	//	「军官行属性 + 科技行」去核对总会差一截（差的那截正是军官技能），以为漏算了。
 	//	这里直接写清「军官(属性+技能) / 科技 / 装备」三段，一眼能对账：
-	//	  攻方 攻击+345%(军官+275 科技+70)  ← 275=属性125+尖兵突击150，70=军训20+武器30+重工20
+	//	  攻方 攻击+345%(军官+275 科技+70)  ← 275=属性125+尖兵突击150，70=武器30+重工40
 	//	★ 科技段 = 总攻击加成 − 军官加成 − 装备伤害（三者互不重叠，恒等成立）。
 	// 科技段 = 总额 − 军官 − 装备；正常数据下恒 ≥0，异常/手工构造的输入钳到 0 避免出现「科技+-265」
 	atkTechPart := effAtk - st.AtkOfficerBonus - atkEquip.Dmg
@@ -1933,7 +1934,7 @@ func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
 // ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成一行，顿号分隔；跳过非正值。
 // ★ 2026-10-08 改回单行顿号分隔（不再每项单独一行），如：
 //
-//	「军训艺术+20%（部队攻击）、武器科技+30%（部队攻击）、装甲科技+30%（部队防御）」。
+//	「武器科技+30%（部队攻击）、装甲科技+30%（部队防御）」。
 //
 // 对科技额外补齐「（效果描述）」，让玩家一眼看出该科技起什么用（对应 ezfy_cfg 科技表 Effect）。
 func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
@@ -1956,7 +1957,7 @@ func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 // ezfyTechEffectDesc 科技名 → 作用说明（取自科技配置表 Effect 的「功能」部分，去掉每级百分比）。
 // 只为战报科技行展示用；未收录的科技不追加描述。
 var ezfyTechEffectDesc = map[string]string{
-	"军训艺术": "部队攻击", "武器科技": "部队攻击", "装甲科技": "部队防御",
+	"武器科技": "部队攻击", "装甲科技": "部队防御",
 	"弹道学": "射程加成", "重工技术": "重装备攻防", "燃烧引擎": "部队速度",
 	"掩体防御": "城防攻防", "指挥艺术": "携带上限", "侦察技巧": "情报",
 	"喷气引擎": "空军速度", "装载技术": "部队负重", "补给技巧": "军队耗粮",

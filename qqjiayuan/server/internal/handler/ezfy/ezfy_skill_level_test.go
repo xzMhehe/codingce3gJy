@@ -216,8 +216,8 @@ func TestBonusBreakdownDetail(t *testing.T) {
 			// 逐项展开：技能/科技各拆成具体名字
 			"逐项", 252, 150, 352, 0, "冥王",
 			[]ezfyBonusItem{{Name: "尖兵突击", Value: 90}, {Name: "火炮控制", Value: 60}},
-			[]ezfyBonusItem{{Name: "军训艺术", Value: 40}, {Name: "弹道学", Value: 54}},
-			"(军官·冥王+102% 军官技能·尖兵突击+90% 军官技能·火炮控制+60% 科技·军训艺术+40% 科技·弹道学+54%)",
+			[]ezfyBonusItem{{Name: "武器科技", Value: 40}, {Name: "弹道学", Value: 54}},
+			"(军官·冥王+102% 军官技能·尖兵突击+90% 军官技能·火炮控制+60% 科技·武器科技+40% 科技·弹道学+54%)",
 		},
 		{
 			// 科技有值但全 0（明细里 value=0 不展示）
@@ -332,28 +332,36 @@ func TestDefBonusInjected(t *testing.T) {
 // ★★ 2026-10-08 用户反馈「两个号都是满科技，为什么科技加成不一样」：
 //
 //	守方原来用「装甲科技(7)+重工技术(9)+掩体防御(16)」算攻击加成 ——
-//	装甲科技的配置描述是「部队防御」，只该进防御加成；而「军训艺术(5)/武器科技(6)」
-//	（描述都是「部队攻击」）完全没算。结果满科技的两个号：【守方科技】行比【攻方科技】
-//	少两项，攻击加成还偏低。
+//	装甲科技的配置描述是「部队防御」，只该进防御加成；而「武器科技(6)」
+//	（描述是「部队攻击」）完全没算。结果满科技的两个号：【守方科技】行比【攻方科技】
+//	少一项，攻击加成还偏低。
 //
 // ★★ 2026-10-09 用户再次要求「两个号都满科技，加成就该一样」：守方**不再额外吃掩体防御(16)**。
 //
 //	那是守城方专属的一项，会让满科技的两个号在战报里显示成「攻方 攻击+70% / 守方 攻击+90%」。
-//	现在两边攻击口径完全一致：军训艺术(5) + 武器科技(6) + 重工技术(9) + 军官加成。
+//
+// ★★ 2026-10-21 军训艺术(5) 改为「造兵速度」科技：攻守双方的攻击计算/战报都不再包含它。
+//
+//	现在两边攻击口径完全一致：武器科技(6) + 重工技术(9) + 军官加成。
 func TestDefenderAtkTechMatchesAttacker(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
-	if !strings.Contains(src, "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)") {
-		t.Fatal("守方攻击加成必须与攻方同口径（军训艺术5 + 武器科技6 + 重工技术9 + 军官）")
+	if !strings.Contains(src, "defAtkBonus = defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)") {
+		t.Fatal("守方攻击加成必须与攻方同口径（武器科技6 + 重工技术9 + 军官）")
 	}
-	if strings.Contains(src, "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2") {
+	if strings.Contains(src, "defTech[5]") {
+		t.Fatal("军训艺术(5) 已改为造兵速度科技，不该再进守方攻击加成")
+	}
+	if strings.Contains(src, "defAtkBonus = defTech[6]*3 + defTech[9]*2 + defTech[16]*2") {
 		t.Fatal("守方攻击加成不该再额外吃掩体防御(16)：守城方专属项会让满科技的攻守两号加成不一致")
 	}
 	if strings.Contains(src, "defAtkBonus = defTech[7]*3") {
 		t.Fatal("守方攻击加成不该用装甲科技(7)（描述是「部队防御」，只进防御加成）")
 	}
-	if !strings.Contains(src, `ezfyTechItem("军训艺术", defTech[5]*2)`) ||
-		!strings.Contains(src, `ezfyTechItem("武器科技", defTech[6]*3)`) {
-		t.Fatal("【守方科技】行缺军训艺术/武器科技（应与【攻方科技】同集合）")
+	if !strings.Contains(src, `ezfyTechItem("武器科技", defTech[6]*3)`) {
+		t.Fatal("【守方科技】行缺武器科技（应与【攻方科技】同集合）")
+	}
+	if strings.Contains(src, `ezfyTechItem("军训艺术"`) {
+		t.Fatal("【守方科技】行不该再列军训艺术（已改为造兵速度科技）")
 	}
 }
 
@@ -366,14 +374,14 @@ func TestDefenderAtkTechMatchesAttacker(t *testing.T) {
 //	这里锁**计算侧** —— 每类科技都要在 ezfy_order.go 的加成表达式里出现，
 //	否则就会出现「列表里列了、回合里不生效」的假展示。
 //
-// 科技 ID 对照：5 军训艺术(攻) · 6 武器科技(攻) · 7 装甲科技(防) · 8 弹道学(射程) ·
-// 9 重工技术(重装备攻防) · 10 燃烧引擎(速度) · 16 掩体防御(城防攻防) · 19 喷气引擎(空军速度)
+// 科技 ID 对照：5 军训艺术(造兵速度，不参与战斗) · 6 武器科技(攻) · 7 装甲科技(防) ·
+// 8 弹道学(射程) · 9 重工技术(重装备攻防) · 10 燃烧引擎(速度) · 16 掩体防御(城防攻防) · 19 喷气引擎(空军速度)
 func TestFourTechCategoriesWired(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
 	// ★ 速度只列**通用**那部分（燃烧引擎 10「部队速度」）；喷气引擎(19)是「空军速度」，
 	//   属兵种专属，见下面的 TestTypeSpecificBonusWired。
 	atkCases := []struct{ name, want string }{
-		{"攻击", "atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2"},
+		{"攻击", "atkBonus := officerBonus + atkTech[6]*3 + atkTech[9]*2"},
 		// ★★ 2026-10-09 掩体防御(16) 移出通用防御 → 只对城防单位生效（atkType.Def[4]）
 		{"防御", "atkDefBonus += atkTech[7]*3 + atkTech[9]*2"},
 		{"速度(通用)", "atkSpeedBonus := atkTech[10] * 2"},
@@ -381,7 +389,7 @@ func TestFourTechCategoriesWired(t *testing.T) {
 	}
 	defCases := []struct{ name, want string }{
 		// ★ 2026-10-09 「攻守加成一致」：守方攻击不再额外吃掩体防御(16)
-		{"攻击", "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)"},
+		{"攻击", "defAtkBonus = defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)"},
 		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7)，掩体防御(16) 也只对城防生效
 		{"防御", "defBonus = defTech[7]*3 + defTech[9]*2"},
 		{"速度(通用)", "defSpeedBonus = defTech[10] * 2"},
@@ -396,6 +404,12 @@ func TestFourTechCategoriesWired(t *testing.T) {
 	for _, c := range defCases {
 		if !strings.Contains(src, c.want) {
 			t.Fatalf("守方缺「%s」类科技加成（列了却不生效）：%s", c.name, c.want)
+		}
+	}
+	// ★ 2026-10-21 军训艺术(5) 已改为造兵速度科技，战斗计算/战报都不该再出现。
+	for _, bad := range []string{"atkTech[5]*2", "defTech[5]*2"} {
+		if strings.Contains(src, bad) {
+			t.Fatalf("军训艺术(5) 不该再参与战斗攻击加成：%s", bad)
 		}
 	}
 }

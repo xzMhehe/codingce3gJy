@@ -459,6 +459,10 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	allTroops := ezfyCfg.sortedTroops()
 	// 节日活动·造兵打折: 列表展示的就是打折后的实际消耗
 	discount := h.actPct(ezfyActTrain)
+	// ★ 2026-10-21 兵种详情/训练页展示的训练时间：与建队列同一公式
+	//   （含市长军事/开关 + 军训艺术等级）。市长和科技只查一次，下面所有兵种共用。
+	mayorMil := h.mayorTrainMilitary(city.ID)
+	trainArt := h.techMapOf(city.UserID)[5]
 	// 已训练数量(城内部队), 供兵种详情页显示「现有:N」
 	for _, t := range allTroops {
 		f, s, o, r := h.trainCostWithActivity(t.Food, t.Steel, t.Oil, t.Rare)
@@ -473,7 +477,7 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 			"need_factory": ezfyNeedFactoryLevel(t.Require),
 			"cost":         gin.H{"food": f, "steel": s, "oil": o, "rare": r},
 			"raw_cost":     gin.H{"food": t.Food, "steel": t.Steel, "oil": t.Oil, "rare": t.Rare},
-			"train_time":   t.TrainTime,
+			"train_time":   ezfyTrainUnitSeconds(t.TrainTime, mayorMil, trainArt),
 		})
 	}
 	// 城防空间(围墙容量)与已占用(复刻 troopDefence.html 的「围墙：N级 城防空间：(used/cap)」)
@@ -876,7 +880,7 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 //	只要接口按「每级加成 × 当前等级」算文本，无论数据库是什么数据，展示永远正确。
 var ezfyTechEffectPrefix = map[int]string{
 	1: "粮食产量", 2: "钢铁产量", 3: "石油产量", 4: "稀矿产量",
-	5: "部队攻击", 6: "部队攻击", 7: "部队防御", 8: "射程加成", 9: "重装备攻防", 10: "部队速度", 11: "建造时间", 12: "情报",
+	5: "造兵速度", 6: "部队攻击", 7: "部队防御", 8: "射程加成", 9: "重装备攻防", 10: "部队速度", 11: "建造时间", 12: "情报",
 	13: "部队负重", 14: "资源容量", 15: "部队携带", 16: "城防攻防",
 	17: "掠夺资源", 18: "军队耗粮", 19: "空军速度", 20: "城防修复",
 	21: "伤兵恢复",

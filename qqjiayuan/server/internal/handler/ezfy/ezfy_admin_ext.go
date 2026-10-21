@@ -695,8 +695,9 @@ func (h *EzfyAdmin) AdminEzfyBuildQueueFinishAll(c *gin.Context) {
 // AdminEzfyBuildQueueFinishReady 完成所有「已到期」的建筑（管理端手动触发，替代原自动协程）
 //
 // ★ 2026-09-29 去掉全局自动结算协程，改由管理端定期手动点按钮：
-//   只把「剩余时间已到（display 成可完成）」的建造/升级项完工，
-//   还没到时间的保持现状不动。与 "一键完成全部"(FinishAll，强制完成整个队列) 不同。
+//
+//	只把「剩余时间已到（display 成可完成）」的建造/升级项完工，
+//	还没到时间的保持现状不动。与 "一键完成全部"(FinishAll，强制完成整个队列) 不同。
 func (h *EzfyAdmin) AdminEzfyBuildQueueFinishReady(c *gin.Context) {
 	now := time.Now().UnixMilli()
 	var rows []model.EzfyCityBuilding
@@ -869,9 +870,10 @@ func (h *EzfyAdmin) AdminEzfyTroopsCfg(c *gin.Context) {
 // AdminEzfyTroopGrant 增/减兵力（count 为负表示扣减）
 //
 // ★ 数量上限 ezfyAdminTroopMax（1 亿）：不是游戏规则，是**防呆**。
-//   线上踩过：管理端输入框里手滑敲成 99999999999，城1 就多了 1000 亿航母，
-//   军队耗粮直接变成 4.4 万亿，玩家以为「补给技巧科技坏了」。
-//   真正的病因是脏数据，不是公式 —— 所以在这里卡一道，别再让别人踩。
+//
+//	线上踩过：管理端输入框里手滑敲成 99999999999，城1 就多了 1000 亿航母，
+//	军队耗粮直接变成 4.4 万亿，玩家以为「补给技巧科技坏了」。
+//	真正的病因是脏数据，不是公式 —— 所以在这里卡一道，别再让别人踩。
 func (h *EzfyAdmin) AdminEzfyTroopGrant(c *gin.Context) {
 	var in struct {
 		CityId  int64 `json:"city_id"`
@@ -1159,14 +1161,16 @@ func (h *EzfyAdmin) AdminEzfyTrainCreate(c *gin.Context) {
 		return
 	}
 	now := time.Now().UnixMilli()
+	ez := h.ezfyH()
 	sec := in.Seconds
 	if sec <= 0 {
-		sec = int64(cfg.TrainTime) * in.Count
+		// ★ 2026-10-21 管理端手动训练也走玩家端同一公式（市长军事/开关 + 军训艺术等级）。
+		ez.cfgs()
+		sec = ezfyTrainUnitSeconds(cfg.TrainTime, ez.mayorTrainMilitary(uint(in.CityId)), ez.techMapOf(ct.UserID)[5]) * in.Count
 		if sec <= 0 {
 			sec = 60
 		}
 	}
-	ez := h.ezfyH()
 	if in.Instant {
 		ez.addTroop(uint(in.CityId), in.TroopId, in.Count)
 		// ★ 2026-10-12 即时征召也落一条队列记录（status=2 已完成）：
@@ -1843,7 +1847,8 @@ func (h *EzfyAdmin) AdminEzfyResourceSummary(c *gin.Context) {
 // AdminEzfyTechs 玩家科技列表
 //
 // ★ 2026-09-28 科技等级用户级共用（无主城概念）：等级在 ezfy_user_tech 按
-//   (user_id, tech_id) 一份；研究中队列在 ezfy_city_tech(status=1) 按发起城市。
+//
+//	(user_id, tech_id) 一份；研究中队列在 ezfy_city_tech(status=1) 按发起城市。
 func (h *EzfyAdmin) AdminEzfyTechs(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	word := strings.TrimSpace(c.Query("word"))

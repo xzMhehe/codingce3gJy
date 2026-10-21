@@ -2570,6 +2570,9 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	city.Rare -= rare
 	h.saveCityRes(city)
 	now := time.Now().UnixMilli()
+	// ★ 2026-10-21 单个兵训练耗时：floor(初始值 * 250/(250+市长军事) * 10/(10+军训艺术等级))。
+	//   军工厂/城防都走同一公式；已有队列的 EndTime 在创建时就定死，不会重算。
+	unitSec := ezfyTrainUnitSeconds(cfg.TrainTime, h.mayorTrainMilitary(city.ID), tech[5])
 	// ★ 免费征兵标记：开关关着建的队列，取消时不退还资源（见 EzfyTrainQueue.FreeTrain）
 	freeFlag := 0
 	if !recruitCost {
@@ -2586,7 +2589,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 			continue
 		}
 		q := model.EzfyTrainQueue{CityId: int64(city.ID), TroopId: troopId, Count: part, Status: 0,
-			StartTime: now, EndTime: now + int64(cfg.TrainTime)*1000*part, FreeTrain: freeFlag}
+			StartTime: now, EndTime: now + unitSec*1000*part, FreeTrain: freeFlag}
 		h.DB.Create(&q)
 	}
 	// ★★ 2026-10-18 「用完就恢复」改造：训练开始（消耗人口）的**当下**就把占用人口
@@ -4581,8 +4584,9 @@ func (h *EzfyHandler) ezfyUserBrief(uid uint) (account string, level, exp int) {
 // ezfyRate 开工率归一化：0 = 停产(不生产、资源建筑不占人口), 否则夹到 1~100。
 //
 // ★ 2026-10-19 语义变更：原来 0 当「未设置按 100%」——因为老数据字段为 0 表示从未调过。
-//   现在改为「0 = 停产」，上线前必须先回填老数据（rate_* = 0 → 100，见上线 SQL），
-//   否则老城/新城的默认 0 会全部停产。新建城市也显式写 100（见 createMainCity）。
+//
+//	现在改为「0 = 停产」，上线前必须先回填老数据（rate_* = 0 → 100，见上线 SQL），
+//	否则老城/新城的默认 0 会全部停产。新建城市也显式写 100（见 createMainCity）。
 func ezfyRate(v int) int {
 	if v <= 0 {
 		return 0

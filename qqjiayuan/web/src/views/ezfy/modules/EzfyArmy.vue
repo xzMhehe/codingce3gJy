@@ -75,9 +75,9 @@
               <td>{{ t.count }}</td>
               <td>
                 <!-- 训练/建造：防御兵种(type 4)走城防建造，其余直接训练 -->
-                <a href="javascript:;" @click="ezfy.openTrainPre(t, t.type === 4 ? 'defence' : 'troop')">[{{ t.type === 4 ? '建造' : '训练' }}]</a>
+                <a href="javascript:;" @click="ezfy.openTrainPre(t, t.type === 4 ? 'defence' : 'troop')">[{{ t.type === 4 ? '建造' : '训' }}]</a>
                 <!-- 解散：数量由玩家自己输入（），数量为 0 时无意义、不显示 -->
-                <a v-if="t.count > 0" class="red" href="javascript:;" @click="ezfy.doDisband(t)">[解散]</a>
+                <a v-if="t.count > 0" class="red" href="javascript:;" @click="ezfy.doDisband(t)">[解]</a>
               </td>
             </tr>
           </table>

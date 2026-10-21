@@ -611,6 +611,15 @@ type EzfyCfgLimit struct {
 	//   ⚠️ 开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol（只回填 NULL）。
 	SpeedTrainOn int `gorm:"comment:训练一键加速开关（关 = 按钮不展示也无法使用）" json:"speed_train_on"`
 
+	// ★ 2026-10-21 造兵时间市长军事加成开关：1 开（默认）= 训练时间按
+	//   floor(面板 train_time × 250/(250+市长军事) × 10/(10+军训艺术等级)) 计算；
+	//   0 关 = 市长军事按 0 处理，仍吃军训艺术等级。
+	//   ⚠️ 开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol（只回填 NULL）。
+	TrainMayorMilitaryOn int `gorm:"comment:造兵时间市长军事加成开关(1开0关)" json:"train_mayor_military_on"`
+	// ★ 2026-10-21 装备/套装军事是否计入市长军事：1 算（默认，取自身+装备+套装）/ 0 不算（只取军官自身）。
+	//   仅在上面的 TrainMayorMilitaryOn 开启时有效。
+	TrainMayorEquipOn int `gorm:"comment:造兵市长军事计入装备套装(1算0不算)" json:"train_mayor_equip_on"`
+
 	// ★ 伤兵恢复黄金折扣率（百分比口径）：恢复费用 = 兵种总造价 / wound_heal_divisor × 折扣率/100。
 	//   默认 100 = 100% = 原价；调低 = 恢复便宜。0 无意义 → 回落 100。
 	WoundHealRate float64 `gorm:"default:100;comment:伤兵治疗比率" json:"wound_heal_rate"`

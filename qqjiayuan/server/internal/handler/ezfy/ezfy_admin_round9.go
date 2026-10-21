@@ -78,6 +78,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-10-17 训练一键加速开关（默认 1 开）
 		SpeedTrainOn: 1,
+		// ★ 2026-10-21 造兵时间市长军事加成 / 装备套装军事计入（默认都开；0 = 关）
+		TrainMayorMilitaryOn: ezfyTrainMayorMilitaryDef, TrainMayorEquipOn: ezfyTrainMayorEquipDef,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
@@ -407,6 +409,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		PvpRankOn *int `json:"pvp_rank_on"`
 		// ★ 2026-10-17 训练一键加速开关（0 = 关 = 前端隐藏按钮 + 后端拒绝；1 = 开 = 默认）
 		SpeedTrainOn *int `json:"speed_train_on"`
+		// ★ 2026-10-21 造兵时间市长军事加成开关 / 装备套装军事计入开关（0 = 关，1 = 开）
+		TrainMayorMilitaryOn *int `json:"train_mayor_military_on"`
+		TrainMayorEquipOn    *int `json:"train_mayor_equip_on"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -461,6 +466,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		SpeedTrainRate:      0.1, WoundHealRate: 100,
 		// ★ 2026-10-17 训练一键加速开关（默认 1 开）
 		SpeedTrainOn: 1,
+		// ★ 2026-10-21 造兵时间市长军事加成 / 装备套装军事计入（默认都开；0 = 关）
+		TrainMayorMilitaryOn: ezfyTrainMayorMilitaryDef, TrainMayorEquipOn: ezfyTrainMayorEquipDef,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
@@ -877,6 +884,13 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if !setSwitch(in.SpeedTrainOn, &lim.SpeedTrainOn, "训练一键加速开关") {
 		return
 	}
+	// ★ 2026-10-21 造兵时间：市长军事加成 / 装备套装军事计入（0/1 都合法）
+	if !setSwitch(in.TrainMayorMilitaryOn, &lim.TrainMayorMilitaryOn, "造兵市长军事加成") {
+		return
+	}
+	if !setSwitch(in.TrainMayorEquipOn, &lim.TrainMayorEquipOn, "装备/套装军事计入") {
+		return
+	}
 	// ★ 军官升星的数值项：0 无意义，只接受 >= 1；成功率与上限不超过 100
 	if v, ok := check(in.OfficerStarChance, "升星成功率"); !ok {
 		return
@@ -1284,6 +1298,20 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	h.DB.Exec("UPDATE ezfy_cfg_limit SET pop_over_cap_decay_pct = " + strconv.Itoa(ezfyPopOverCapDecayPctDef) +
 		" WHERE pop_over_cap_decay_pct IS NULL OR pop_over_cap_decay_pct <= 0")
+	// ★ 2026-10-21 造兵市长军事加成 / 装备套装军事计入（默认 1）：⚠️ 0 合法（= 关），
+	//   只补列 + 只回填 NULL，不能把管理员关掉的 0 改回 1。
+	for _, c := range []struct {
+		col string
+		def int
+	}{
+		{"train_mayor_military_on", ezfyTrainMayorMilitaryDef},
+		{"train_mayor_equip_on", ezfyTrainMayorEquipDef},
+	} {
+		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
+		}
+		h.DB.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) + " WHERE " + c.col + " IS NULL")
+	}
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
@@ -1358,6 +1386,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"move_cool_h": lim.MoveCoolH,
 		// ★ 2026-10-14 风云榜统计开关（**0 合法 = 关闭统计**，必须显式写否则 0 会被 GORM 吞掉）
 		"pvp_rank_on": lim.PvpRankOn,
+		// ★ 2026-10-21 造兵时间市长军事加成 / 装备套装计入（0 合法，必须显式写）
+		"train_mayor_military_on": lim.TrainMayorMilitaryOn,
+		"train_mayor_equip_on":    lim.TrainMayorEquipOn,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()

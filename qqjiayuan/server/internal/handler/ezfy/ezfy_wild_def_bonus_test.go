@@ -20,8 +20,8 @@ func TestEzfyWildDefCombatBonusTech(t *testing.T) {
 	if b.DefBonus != 50 { // 装甲科技 30 + 重工技术 20
 		t.Fatalf("守方防御加成 = %d, 期望 50", b.DefBonus)
 	}
-	if b.DefAtkBonus != 70 { // 军训 20 + 武器 30 + 重工 20
-		t.Fatalf("守方攻击加成 = %d, 期望 70", b.DefAtkBonus)
+	if b.DefAtkBonus != 50 { // 武器 30 + 重工 20
+		t.Fatalf("守方攻击加成 = %d, 期望 50", b.DefAtkBonus)
 	}
 	if b.DefSpeedBonus != 20 { // 燃烧引擎 20
 		t.Fatalf("守方速度加成 = %d, 期望 20", b.DefSpeedBonus)
@@ -38,8 +38,8 @@ func TestEzfyWildDefCombatBonusTech(t *testing.T) {
 	if b.Type.Def[ezfyTroopTypeCity] != 20 { // 掩体防御只加城防单位
 		t.Fatalf("守方城防防御 = %d, 期望 20", b.Type.Def[ezfyTroopTypeCity])
 	}
-	if len(b.TechBreak) != 8 {
-		t.Fatalf("守方科技明细 %d 项, 期望 8 项（军训/武器/装甲/弹道/重工/燃烧/掩体/喷气）", len(b.TechBreak))
+	if len(b.TechBreak) != 7 {
+		t.Fatalf("守方科技明细 %d 项, 期望 7 项（武器/装甲/弹道/重工/燃烧/掩体/喷气）", len(b.TechBreak))
 	}
 	if len(b.DefBreak) != 2 {
 		t.Fatalf("守方防御明细 %d 项, 期望 2 项（装甲科技/重工技术）", len(b.DefBreak))
@@ -111,13 +111,12 @@ func TestEzfyWildDefBonusWiring(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyWildDefCombatBonus(")
 	for _, want := range []string{
 		"tech[7]*3 + tech[9]*2",
-		"tech[5]*2 + tech[6]*3 + tech[9]*2",
+		"tech[6]*3 + tech[9]*2",
 		"tech[10] * 2",
 		"tech[8] * 3",
 		"h.officerGuardBonus(officer)",
 		"h.officerBattleBonus(officer)",
 		"h.officerBattleEquipBonus(officer)",
-		`ezfyTechItem("军训艺术"`,
 		`ezfyTechItem("武器科技"`,
 		`ezfyTechItem("装甲科技"`,
 		`ezfyTechItem("弹道学"`,
@@ -129,5 +128,9 @@ func TestEzfyWildDefBonusWiring(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("附属野地守军加成公式缺少 %q", want)
 		}
+	}
+	// 军训艺术(5) 已改为造兵速度科技，不该再进野地守军战斗加成/战报。
+	if strings.Contains(body, "tech[5]") || strings.Contains(body, `ezfyTechItem("军训艺术"`) {
+		t.Fatal("附属野地守军加成仍在用军训艺术(5)：应改为造兵速度科技，不参与战斗")
 	}
 }

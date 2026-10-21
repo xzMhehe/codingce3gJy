@@ -431,8 +431,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkTech := h.techMap(city.ID)
 	leadOfficer := h.officerByName(city.ID, order.Officer)
 	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（：弹道学=射程，不参与攻击加成）
+	// ★ 2026-10-21 军训艺术(5) 改为造兵速度科技，不再参与战斗攻击加成。
 	atkBonus := h.officerBattleBonus(leadOfficer) +
-		atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2
+		atkTech[6]*3 + atkTech[9]*2
 	// 速度：燃烧引擎(10)「部队速度」= 通用；喷气引擎(19)「空军速度」= 兵种专属（见下方 atkType）
 	atkSpeedBonus := atkTech[10] * 2
 	// ★ 2026-10-08 兵种专属加成（与普通出征同口径）：喷气引擎只加空军 + 军官兵种技能
@@ -447,7 +448,6 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（与普通出征同一口径）
 	// ★ 2026-10-08 补全影响 攻击/防御/射程/速度 的全部攻方科技（与普通出征同口径）
 	atkTechs := ezfyBonusItems(
-		ezfyTechItem("军训艺术", atkTech[5]*2),
 		ezfyTechItem("武器科技", atkTech[6]*3),
 		ezfyTechItem("装甲科技", atkTech[7]*3),
 		ezfyTechItem("弹道学", atkTech[8]*3),

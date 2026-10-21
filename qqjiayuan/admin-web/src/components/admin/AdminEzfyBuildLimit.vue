@@ -334,6 +334,16 @@
               <template slot="label">征兵消耗资源<el-tooltip placement="top" :content="tips.recruit_cost_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.recruit_cost_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
+            <!-- ★ 2026-10-21 造兵时间公式：floor(面板 × 250/(250+市长军事) × 10/(10+军训艺术等级))，默认吃市长加成 -->
+            <el-form-item>
+              <template slot="label">造兵市长军事加成<el-tooltip placement="top" :content="tips.train_mayor_military_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.train_mayor_military_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+              <span class="unit-hint">面板×250/(250+军事)×10/(10+军训)，向下取整</span>
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">装备/套装军事计入<el-tooltip placement="top" :content="tips.train_mayor_equip_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.train_mayor_equip_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" :disabled="form.train_mayor_military_on !== 1" />
+            </el-form-item>
             <el-form-item>
               <template slot="label">军队耗粮<el-tooltip placement="top" :content="tips.food_upkeep_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.food_upkeep_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
@@ -480,6 +490,8 @@ export default {
         default_continent: 1,
         speed_train_rate: 100, wound_heal_rate: 100, heal_all_diamond: 100,
         speed_train_on: 1,
+        // ★ 2026-10-21 造兵时间：市长军事加成 / 装备套装军事计入（默认都开）
+        train_mayor_military_on: 1, train_mayor_equip_on: 1,
         // ★ 2026-09-27：资源最大值（每项资源唯一硬上限），默认 21 亿 = 2100000000
         res_max_food: 2100000000, res_max_steel: 2100000000, res_max_oil: 2100000000,
         res_max_rare: 2100000000, res_max_gold: 2100000000,
@@ -517,7 +529,8 @@ export default {
           'placate_grievance', 'placate_feelings', 'placate_cooldown_min', 'officer_salary_per_level',
           'speed_train_on', 'speed_train_rate', 'res_max_food', 'res_max_steel', 'res_max_oil',
           'res_max_rare', 'res_max_gold'],
-        switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'food_upkeep_on', 'march_oil_on',
+        switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'train_mayor_military_on',
+          'train_mayor_equip_on', 'food_upkeep_on', 'march_oil_on',
           'house_pop_limit_on', 'convene_flexible_on', 'pop_over_cap_decay_pct',
           'convene_food_cost', 'convene_pop_gain', 'convene_pop_max', 'pop_recover_per_hour', 'pvp_rank_on'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
@@ -633,6 +646,11 @@ export default {
         war_require_on: '开 = 必须向对方宣战才能掠夺 / 征服其城市；关 = 无需宣战即可直接进攻',
         march_cap_on: '开 = 出征兵力受司令部等级上限限制；关 = 不限兵力，随便带多少',
         recruit_cost_on: '开 = 征兵消耗资源并占用空闲人口；关 = 不消耗资源、也不占人口',
+        train_mayor_military_on: '开 = 新建训练队列的单个兵耗时按 floor(兵种面板时间 × 250/(250+市长军事) × 10/(10+军训艺术等级)) 计算；' +
+          '关 = 市长军事按 0 处理，仍吃军训艺术等级。默认开。' +
+          '已有训练队列的结束时间在创建时就固定，改开关不会重算。',
+        train_mayor_equip_on: '开 = 市长军事取「军官自身 + 装备 + 套装」；关 = 只取军官自身军事（装备/套装不计入）。' +
+          '仅在「造兵市长军事加成」开启时有效。默认开。',
         food_upkeep_on: '开 = 城内军队每小时扣除粮食；关 = 不扣',
         march_oil_on: '开 = 出征消耗石油；关 = 不消耗',
         house_pop_limit_on: '开 = 民居容量（pop_max）参与限制人口：自然增长到 pop_max 封顶；关 = 民居完全不限制人口，人口可无限增长。' +
@@ -755,6 +773,9 @@ export default {
             res_max_rare: pos(Number(r.data.res_max_rare) || 0, 2100000000),
             res_max_gold: pos(Number(r.data.res_max_gold) || 0, 2100000000),
             recruit_cost_on: sw(r.data.recruit_cost_on),
+            // ★ 2026-10-21 造兵时间：0 合法 = 关，不能用 pos()（会把 0 改回 1）
+            train_mayor_military_on: sw(r.data.train_mayor_military_on),
+            train_mayor_equip_on: sw(r.data.train_mayor_equip_on),
             food_upkeep_on: sw(r.data.food_upkeep_on),
             march_oil_on: sw(r.data.march_oil_on),
             war_require_on: sw(r.data.war_require_on),

@@ -1210,6 +1210,9 @@ const (
 	// ★ 2026-09-28 采集军官后勤属性加成率倍率 / 市长产量加成倍率，默认 1
 	ezfyOfficerGatherMultDef = 1
 	ezfyMayorGainMultDef     = 1
+	// ★ 2026-10-21 造兵时间：市长军事加成开关 / 装备套装军事计入开关，默认都开
+	ezfyTrainMayorMilitaryDef = 1
+	ezfyTrainMayorEquipDef    = 1
 	// ★ 2026-09-28 采集等级成长幂次，默认 1.3（高等级野地产出加速型增长）
 	ezfyGatherLevelPowDef = 1.3
 	// ★ 2026-09-28 海野采集系数，默认 1.5（海野基础 3 × 1.5 = 4.5，比同级陆野 4 更高）
@@ -1233,6 +1236,26 @@ func ezfyMarchCapOn() bool {
 		return ezfyMarchCapDef != 0
 	}
 	return ezfyCfg.limit.MarchCapOn != 0
+}
+
+// ezfyTrainMayorMilitaryOn 造兵时间是否吃市长军事加成（默认开；0 = 关）。
+//
+// ★ 2026-10-21：关掉后训练时间按 floor(面板 × 10/(10+军训艺术等级)) 计算，不查市长、不加成。
+func ezfyTrainMayorMilitaryOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyTrainMayorMilitaryDef != 0
+	}
+	return ezfyCfg.limit.TrainMayorMilitaryOn != 0
+}
+
+// ezfyTrainMayorEquipOn 造兵计时里市长军事是否计入装备/套装加成（默认开；0 = 只算军官自身）。
+//
+// 仅在主开关 ezfyTrainMayorMilitaryOn 开启时有效；主开关关了直接不取市长军事。
+func ezfyTrainMayorEquipOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyTrainMayorEquipDef != 0
+	}
+	return ezfyCfg.limit.TrainMayorEquipOn != 0
 }
 
 // ezfyHousePopLimitOn 民居容量是否限制人口上限（关 = 民居不限制人口，人口可无限增长）
@@ -1972,6 +1995,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径（线上现值 0.1 = 训练近乎免费）
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
+		// ★ 2026-10-21 造兵时间市长军事加成 / 装备套装军事计入（缺行时默认都开）
+		TrainMayorMilitaryOn: ezfyTrainMayorMilitaryDef, TrainMayorEquipOn: ezfyTrainMayorEquipDef,
 		// ★ 2026-10-08 新玩家落地洲缺行兜底（默认欧洲；0/越界行读取时回落见 ezfyDefaultContinent）
 		DefaultContinent: ezfyDefaultMoveContinent,
 		// ★ 2026-10-12 迁城冷却小时数缺行兜底（默认 24；0 合法 = 关闭，见 ezfyMoveCoolH）
