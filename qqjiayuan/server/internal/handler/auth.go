@@ -269,19 +269,27 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// ★★ 2026-10-19 管理端与用户端 token 分离（按「登录端」分流，不按账号身份判断）：
 	//
-	//	scope=admin（admin-web 登录）→ 签 AdminIssuer token，只顶 users.admin_session_at
-	//	   **不碰** users.session_at / ezfy_account.session_at
-	//	   → 玩家端（家园 web + 二战用户端）不会被迫下线（原现象：管理端一登录玩家就掉）。
+	//	scope=admin（admin-web 登录）→ 签 AdminIssuer token，**不碰** users.session_at /
+	//	   ezfy_account.session_at / users.admin_session_at
+	//	   → 玩家端（家园 web + 二战用户端）不会被迫下线（原现象：管理端一登录玩家就掉）；
+	//	   → 同一管理账号可在多台设备/多个浏览器同时在线（2026-10-21 修复）。
 	//	scope=user/空（用户端登录）→ 签 homeIssuer token，顶 users.session_at + 二战 session_at
 	//	   （★ 2026-10-18 单设备在线：一个账号只能一处在线）**不碰** admin_session_at
 	//	   → 管理端已登录的会话不受影响。
 	//
-	//	★ 作废线必须在**签发 token 之前**写：iat 取自签发时刻，二者同秒才恒通过；
+	//	★★ 2026-10-21 用户反馈「没在其他设备登录，管理端却提示已在其他设备登录并跳登录页」：
+	//	  根因是管理端登录也写了 users.admin_session_at（新登录顶掉旧登录），而管理端经常
+	//	  在同一账号的多台设备/多个标签页上使用 → 后登录的把先登录的顶下线。
+	//	  管理端的「单设备在线」从未被要求（10-18 的单设备在线是针对玩家端），所以改为：
+	//	    · 登录：**不写** admin_session_at，多个管理端会话可并存；
+	//	    · 退出：仍写（Logout），服务端作废该账号此前签发的全部管理端 token。
+	//	  这样既能多设备使用，又保留「退出后旧 token 立即失效」的安全兜底。
+	//
+	//	★ 用户端作废线必须在**签发 token 之前**写：iat 取自签发时刻，二者同秒才恒通过；
 	//	  若先签 token 再写 session_at，跨秒的瞬间刚签发的 token 就会立刻失效 = 登录即掉线。
-	//	★★ 2026-10-19 必须是「秒×1000」而不是 UnixMilli：JWT 的 NumericDate 精度是**秒**
+	//	★★ 作废线必须是「秒×1000」而不是 UnixMilli：JWT 的 NumericDate 精度是**秒**
 	//	  （iat 存的是 T，取 UnixMilli 得 T*1000）。若写毫秒(T*1000+500)，刚签发的 token
-	//	  iat=T*1000 立刻 < 作废线 → **登录即掉线**（已实测踩到）。同秒内重复登录顶不掉旧
-	//	  token 是该精度的固有限制，人工操作不可能触发，保持既有口径。
+	//	  iat=T*1000 立刻 < 作废线 → **登录即掉线**（已实测踩到）。
 	//	★ 管理端 token 只发给有 module:* 权限的账号（否则普通玩家也能顶管理端会话线）。
 	isAdminScope := strings.EqualFold(strings.TrimSpace(req.Scope), "admin")
 	nowSec := time.Now().Unix() * 1000
@@ -293,10 +301,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			resp.Forbidden(c, "该账号没有后台访问权限，请用管理员账号登录")
 			return
 		}
-		if e := h.DB.Model(&model.User{}).Where("id = ?", user.ID).Update("admin_session_at", nowSec).Error; e != nil {
-			fmt.Printf("【警告】写 users.admin_session_at 失败（管理端退出将无法作废旧 token）: %v\n", e)
-		}
-		middleware.SetAdminSessionAt(user.ID, nowSec)
 		token, err = authutil.GenerateAdminToken(user.ID, user.Nickname, h.Secret, h.ExpH)
 	} else {
 		h.DB.Model(&model.User{}).Where("id = ?", user.ID).Update("session_at", nowSec)
@@ -341,7 +345,9 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	// ★★ 2026-10-19 管理端与用户端 token 分离：按**当前 token 的来源端**决定顶哪条作废线。
 	//
 	//	管理端 token（AdminIssuer）退出 → 只顶 users.admin_session_at
-	//	   → 同账号的家园 web / 二战用户端**不受影响**（原来管理端一退出玩家就掉线）。
+	//	   → 同账号的家园 web / 二战用户端**不受影响**（原来管理端一退出玩家就掉线）；
+	//	   → 同时作废该账号**此前签发的全部管理端 token**（管理端登录不写这一列，多设备可并存，
+	//	     只有退出这一下把大家统一下线）。
 	//	用户端 token（homeIssuer）退出 → 顶 users.session_at + 二战 ezfy_account.session_at
 	//	   → 管理端会话不受影响。
 	scope, _ := c.Get(middleware.CtxScope)

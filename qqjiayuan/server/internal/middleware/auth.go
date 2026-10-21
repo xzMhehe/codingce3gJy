@@ -113,7 +113,11 @@ func CORS() gin.HandlerFunc {
 //	用户端 home token  → users.session_at        （本函数下方 homeSessionAtOf）
 //	管理端 admin token → users.admin_session_at  （下方 adminSessionAtOf）
 //
-// 两条线各自只作废本端的 token：管理端登录/退出不再把玩家端踢下线，玩家端登录也不再踢管理端。
+// 两条线各自只作废本端的 token：管理端退出不再把玩家端踢下线，玩家端登录也不再踢管理端。
+//
+// ★★ 2026-10-21 管理端允许多设备同时在线：管理端**登录不写** admin_session_at，
+//   只有**退出**才写（写一次 = 该账号此前签发的全部管理端 token 一起失效）。
+//   所以这一列的含义是「管理端最近一次退出时刻」，不再是「最近登录时刻」。
 //
 // 性能：家园请求也走 1核1G + RDS，这里同样用 60s 进程内缓存；logout 接口写库后调
 // SetHomeSessionAt / SetAdminSessionAt **立即刷新本机缓存**（多机部署时其他节点最迟 60s 生效，
@@ -174,15 +178,16 @@ func SetHomeSessionAt(uid uint, at int64) {
 //
 //	与 homeSessionCache 完全独立的两份缓存/两条线：
 //	  用户端登录/退出 → users.session_at       → 只作废 home token
-//	  管理端登录/退出 → users.admin_session_at → 只作废 admin token
-//	所以「管理端登录 → 玩家端被迫下线」不再发生（反之亦然）。
+//	  管理端退出      → users.admin_session_at → 只作废 admin token
+//	所以「管理端退出 → 玩家端被迫下线」不再发生（反之亦然）。
+//	管理端登录不写这一列（2026-10-21）：多个管理端会话可并存，避免后登录顶掉先登录。
 var (
 	adminSessionCacheMu   sync.Mutex
 	adminSessionCache     = map[uint]int64{}
 	adminSessionCacheDone = map[uint]time.Time{}
 )
 
-// adminSessionAtOf 取玩家「管理端最近登录/退出」时刻（0 = 从未），带进程内缓存。
+// adminSessionAtOf 取玩家「管理端最近退出」时刻（0 = 从未退出），带进程内缓存。
 func adminSessionAtOf(db *gorm.DB, uid uint) int64 {
 	adminSessionCacheMu.Lock()
 	if at, ok := adminSessionCache[uid]; ok && time.Since(adminSessionCacheDone[uid]) < homeSessionCacheTTL {
@@ -204,7 +209,7 @@ func adminSessionAtOf(db *gorm.DB, uid uint) int64 {
 	return at
 }
 
-// SetAdminSessionAt 管理端登录/退出后立即刷新本机缓存，保证本机即时生效。
+// SetAdminSessionAt 管理端退出后立即刷新本机缓存，保证本机即时生效。
 func SetAdminSessionAt(uid uint, at int64) {
 	adminSessionCacheMu.Lock()
 	adminSessionCache[uid] = at
@@ -235,7 +240,7 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 		c.Set(CtxScope, claims.Issuer)
 
 		// ★★ 2026-10-19 按端分流校验（两条线互不影响）：
-		//   管理端 token → users.admin_session_at（管理端自己的登录/退出线）
+		//   管理端 token → users.admin_session_at（管理端退出作废线；登录不写，可多设备并存）
 		//   用户端 token → users.session_at      （家园退出/单设备在线的线）
 		if claims.IssuedAt != nil {
 			var sessionAt int64
@@ -246,7 +251,7 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 			}
 			if sessionAt > 0 && claims.IssuedAt.UnixMilli() < sessionAt {
 				if claims.Issuer == authutil.AdminIssuer {
-					resp.Unauthorized(c, "管理端已在其他设备登录，请重新登录")
+					resp.Unauthorized(c, "管理端登录状态已失效，请重新登录")
 				} else {
 					resp.Unauthorized(c, "账号已在其他设备退出登录，请重新登录")
 				}

@@ -29,7 +29,8 @@ const EzfyIssuer = "qqjiayuan-ezfy"
 //   - 同一套账号体系、同一签名密钥，但**用 Issuer 区分「哪个端登录的」**；
 //   - 用户端（家园 web / 二战用户端）只认 homeIssuer，管理端只认 AdminIssuer；
 //   - 两条会话作废线也分开：用户端 `users.session_at`、管理端 `users.admin_session_at`
-//     → 管理端登录/退出**不再顶掉用户端**（原现象：管理端一登录，玩家端被迫下线）。
+//     → 管理端退出**不再顶掉用户端**（原现象：管理端退出，玩家端被迫下线）；
+//     管理端登录不写作废线（2026-10-21），同一账号可在多台设备/多个浏览器同时登录。
 const AdminIssuer = "qqjiayuan-admin"
 
 func GenerateToken(userID uint, nickname, secret string, expireHours int) (string, error) {
@@ -74,7 +75,7 @@ func ParseEzfyToken(tokenStr, secret string) (*Claims, error) {
 // ★★ 2026-10-19 管理端与用户端 token 分离：管理端接口（/api/admin/*）与用户端接口
 //   共用同一批 handler/中间件，所以 JWTAuth 必须两类都认；**真正的隔离在会话作废线上**
 //   （见 middleware.JWTAuth：home token 校 users.session_at，admin token 校 admin_session_at），
-//   互不顶线 = 管理端登录不会把玩家端踢下线，反之亦然。
+//   互不顶线 = 管理端退出不会把玩家端踢下线，反之亦然。
 //   返回的 claims.Issuer 可用于区分来源端（Logout 据此决定顶哪条线）。
 func ParseAnyToken(tokenStr, secret string) (*Claims, error) {
 	return parseToken(tokenStr, secret, homeIssuer, AdminIssuer)

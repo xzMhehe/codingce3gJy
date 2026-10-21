@@ -3,6 +3,15 @@ import router from '../router'
 
 const api = axios.create({ baseURL: '/api', timeout: 15000 })
 
+// 登录态失效统一处理：清掉本地缓存并回登录页。
+// ★★ 2026-10-21 后端未授权用的是 resp.Unauthorized（HTTP 200 + body.code=401），
+//   不会走下面 axios 的 error 分支；两个分支都调用这里，避免「页面提示请重新登录但不跳转」。
+function clearAuthAndRedirect () {
+  localStorage.removeItem('jy_admin_token')
+  localStorage.removeItem('jy_admin_user')
+  if (router.currentRoute.path !== '/login') router.push('/login')
+}
+
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('jy_admin_token')
   if (token) cfg.headers.Authorization = 'Bearer ' + token
@@ -27,15 +36,18 @@ api.interceptors.response.use(
       }
       return { code: 404, msg: '请求的接口不存在或服务异常', data: null }
     }
+    // ★★ 2026-10-21 token 失效（HTTP 200 + code:401）→ 清本地登录态并跳登录页
+    if (body && body.code === 401) {
+      clearAuthAndRedirect()
+      return body
+    }
     return body
   },
   err => {
     if (err.response && err.response.data) {
       const body = err.response.data
       if (body.code === 401) {
-        localStorage.removeItem('jy_admin_token')
-        localStorage.removeItem('jy_admin_user')
-        if (router.currentRoute.path !== '/login') router.push('/login')
+        clearAuthAndRedirect()
       }
       return Promise.resolve(body)
     }

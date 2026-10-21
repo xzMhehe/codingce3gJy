@@ -284,12 +284,19 @@ export default {
       if (this.activeTab !== 'dashboard') this.go('dashboard')
     },
     openFront () { window.open('http://' + location.host + '/') },
-    onCmd (cmd) {
+    async onCmd (cmd) {
       if (cmd === 'front') return this.openFront()
-      // ★★ 2026-10-18 退出 → 先通知服务端作废 token（users.session_at 顶到当前），
-      //   否则只是清了本地缓存，脚本/其它设备拿着旧 token 依然能打接口。
-      //   家园侧 /auth/logout 会连二战 token 一起作废，与玩家端退出同口径。
-      api.post('/auth/logout').catch(() => {})
+      // ★★ 2026-10-18 退出 → 先通知服务端作废 token，否则只是清了本地缓存，
+      //   脚本/其它设备拿着旧 token 依然能打接口。
+      // ★★ 2026-10-21 修复「退出请求没带 token」：axios 请求拦截器是异步执行的，
+      //   原来先发 api.post 再同步 removeItem，请求真正发出时本地 token 已被删掉 →
+      //   服务端收到匿名请求，退出作废线根本没写。这里先取出 token 显式放进
+      //   Authorization 头，并等服务端处理完再清本地缓存。
+      //   管理端退出会作废该账号此前签发的**全部**管理端 token（见 handler.Logout）。
+      const token = localStorage.getItem('jy_admin_token')
+      try {
+        await api.post('/auth/logout', null, token ? { headers: { Authorization: 'Bearer ' + token } } : undefined)
+      } catch (e) {}
       localStorage.removeItem('jy_admin_token')
       localStorage.removeItem('jy_admin_user')
       this.$router.push('/login')
