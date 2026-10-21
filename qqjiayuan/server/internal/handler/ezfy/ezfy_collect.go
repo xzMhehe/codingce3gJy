@@ -53,6 +53,9 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 	//	  · 整批的 arrive_time / collect_start **完全相同** → 一条 `WHERE id IN (...)` 批量下达。
 	//	整批固定 3 次往返，与部队支数无关。
 	atMax := h.ezfyAtResMax(int64(current.ID))
+	// ★★ 2026-10-21 负重满后资源不再产出；一键采集不能把这些负重未清的部队
+	//   直接重新开起来，必须先[一键收获]/[停止]清空负重才能重新采集资源。
+	techs := h.techMapOf(uid)
 	wildIDs := make([]int64, 0, len(orders))
 	for i := range orders {
 		wildIDs = append(wildIDs, orders[i].TargetId)
@@ -61,7 +64,7 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 
 	fullMsg := ""
 	okIDs := make([]int64, 0, len(orders))
-	fail, skip := 0, 0
+	fail, skip, carrySkip := 0, 0, 0
 	for i := range orders {
 		order := &orders[i]
 		wl := wilds[order.TargetId]
@@ -76,12 +79,23 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 			skip++
 			continue
 		}
+		if cap := h.ezfyCarryCapOf(parseGroups(order.Troops), uint(order.CityId), techs); cap > 0 &&
+			parseCarry(order.Carry).total() >= cap {
+			carrySkip++
+			continue
+		}
 		okIDs = append(okIDs, int64(order.ID))
 	}
-	// 全部因为「资源满」被跳过 → 直接以业务错误回，前端才会提示原因
-	if len(okIDs) == 0 && skip > 0 && fail == 0 {
-		resp.ParamError(c, fullMsg)
-		return
+	// 全部因为「资源满 / 负重满」被跳过 → 直接以业务错误回，前端才会提示原因
+	if len(okIDs) == 0 && fail == 0 {
+		if skip > 0 {
+			resp.ParamError(c, fullMsg)
+			return
+		}
+		if carrySkip > 0 {
+			resp.ParamError(c, "空闲驻军负重已满, 请先[一键收获]/[停止采集]清空负重后再采集")
+			return
+		}
 	}
 	// ★ 2026-10-13 性能：同一批 arrive_time / collect_start 完全相同 → 一条 UPDATE 批量下达
 	//   （原每支一条 UPDATE，20 支就是 20 次跨库往返）。
@@ -99,6 +113,9 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 	}
 	if skip > 0 {
 		msg += fmt.Sprintf("(%d 支跳过: 出发城市资源已达上限)", skip)
+	}
+	if carrySkip > 0 {
+		msg += fmt.Sprintf("(%d 支跳过: 负重已满, 请先[一键收获]或[停止采集])", carrySkip)
 	}
 	resp.OK(c, gin.H{"msg": msg})
 }
@@ -149,9 +166,8 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 		resp.ParamError(c, "采集野地已丢失")
 		return
 	}
-	// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：负重满了部队仍继续采集、产出照常累加
-	//   （★★ 2026-10-21 口径：装不下的部分也存「待带回」，可超上限，点[停止采集]/[一键收获]入城）。
-	//   已满的部队先点[停止采集]/[一键收获]清空再开始，避免一上来就提示负重已满。
+	// ★★ 2026-10-21 用户规则：负重满了资源不再产出、宝物继续；
+	//   已满的部队必须先点[停止采集]/[一键收获]清空负重，才能重新开始采集资源。
 	if h.ezfyCarryFull(&order) {
 		resp.ParamError(c, "本部队负重已满, 可先[停止采集]取回负重或[召回]清空, 再继续采集")
 		return
@@ -193,11 +209,13 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND city_id = ? AND order_type = 7 AND status = 1 AND arrive_time > 0",
+	// ★★ 2026-10-21 兼容「空闲但负重未清」的部队（旧规则自动停止留下的数据/异常状态）。
+	//   一键收获必须能把这类部队一起收掉，否则玩家清不掉负重、也就无法重新点[采集]。
+	h.DB.Where("user_id = ? AND city_id = ? AND order_type = 7 AND status = 1 AND (arrive_time > 0 OR (carry IS NOT NULL AND carry <> ''))",
 		uid, current.ID).
 		Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
-		resp.ParamError(c, "当前城市没有正在采集的部队")
+		resp.ParamError(c, "当前城市没有可收获的采集部队")
 		return
 	}
 
@@ -238,13 +256,16 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	for i := range orders {
 		order := &orders[i]
 		// 满一个采集周期 → 完整结算(资源进负重+宝物); 不满 → 按采集时长折算资源(无宝物)
-		if now >= order.ArriveTime {
-			h.settleDispatch(uid, order, now, env, lootBatch)
-		} else {
-			h.settlePartialCollect(uid, order, now, "收获", env)
+		// 空闲但仍有 carry 的部队只取 carry，不再结算。
+		if order.ArriveTime > 0 {
+			if now >= order.ArriveTime {
+				h.settleDispatch(uid, order, now, env, lootBatch)
+			} else {
+				h.settlePartialCollect(uid, order, now, "收获", env)
+			}
 		}
-		// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：结算后把部队负重**入城**再原地待命。
-		//   ★ 2026-10-13 性能：先记为待入账，由 envFlush 按城合并入库（原每支读两次城 + 写一次城）。
+		// 结算后把部队负重**入城**再原地待命。
+		// ★ 2026-10-13 性能：先记为待入账，由 envFlush 按城合并入库（原每支读两次城 + 写一次城）。
 		h.envHarvestCarry(env, order)
 		okIDs = append(okIDs, int64(order.ID))
 		n++
@@ -380,7 +401,19 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 		return
 	}
 	if order.ArriveTime <= 0 {
-		resp.ParamError(c, "该部队已在待命")
+		// ★★ 2026-10-21 兼容旧数据/异常状态下部队已待命(arrive_time=0)但 carry 还在；
+		//   此时 [停止] 应把负重取回城市，让玩家能重新点[采集]。
+		if parseCarry(order.Carry).total() <= 0 {
+			resp.ParamError(c, "该部队已在待命")
+			return
+		}
+		gained := h.harvestCarryToCity(&order)
+		if gained <= 0 {
+			resp.ParamError(c, "出发城市资源已达上限, 负重未能入库")
+			return
+		}
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("已取回负重资源 %d 入城, 部队原地待命(可再[采集]继续或[召回]撤兵)",
+			gained)})
 		return
 	}
 	// ★ 2026-09-30 出发城市资源已达到配置的「资源最大值」时，
@@ -399,7 +432,7 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 	} else {
 		h.settlePartialCollect(uid, &order, now, "停止采集", nil) // 未满一期: 只有资源
 	}
-	// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：停止采集 = 取回部队负重入城
+	// 停止采集 = 取回部队负重入城
 	gained := h.harvestCarryToCity(&order)
 	// ★★ 修复「停止没停」：结算/入城后必须把采集状态清零(原地待命)。
 	//   否则 arrive_time 仍 >0（满一期时 settleDispatch 还会推进到下一期），

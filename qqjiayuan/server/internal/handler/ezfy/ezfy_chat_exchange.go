@@ -1639,8 +1639,16 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		gathering[id] = true
 	}
 	idleOrderByWild := map[int64]uint{}
-	for _, o := range idleOrders {
+	idleCarryByWild := map[int64]int64{}
+	idleCarryFullByWild := map[int64]bool{}
+	for i := range idleOrders {
+		o := &idleOrders[i]
 		idleOrderByWild[o.TargetId] = o.ID
+		carryTotal := parseCarry(o.Carry).total()
+		idleCarryByWild[o.TargetId] = carryTotal
+		if cap := h.ezfyCarryCapOf(parseGroups(o.Troops), uint(o.CityId), techs); cap > 0 && carryTotal >= cap {
+			idleCarryFullByWild[o.TargetId] = true
+		}
 	}
 	gatherOrderByWild := map[int64]uint{} // ★★ 2026-10-18 采集中的订单 id（前端[停止]要用）
 	for _, o := range gatherOrders {
@@ -1651,22 +1659,28 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		sts := w.Status
 		idleOrderId := uint(0)
 		gatherOrderId := uint(0)
+		idleCarryTotal := int64(0)
+		idleCarryFull := false
 		if gathering[int64(w.ID)] {
 			sts = 1
 			gatherOrderId = gatherOrderByWild[int64(w.ID)]
 		} else if oid, ok := idleOrderByWild[int64(w.ID)]; ok {
 			sts = 0
 			idleOrderId = oid
+			idleCarryTotal = idleCarryByWild[int64(w.ID)]
+			idleCarryFull = idleCarryFullByWild[int64(w.ID)]
 		}
 		garCnt := garrisonCnt[int64(w.ID)] // ★★ 2026-10-18 驻军支数（增援驻军）
 		// ★ 必须带 terrain_name：前端 loadWilds() 会用这里的返回**整体覆盖** wildlands，
 		//   之前漏了这个字段，导致「附属野地」页面的【地形】列永远是空的。
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y,
 			"wild_type": w.WildType, "level": w.Level, "status": sts,
-			"idle_order_id":   idleOrderId,
-			"gather_order_id": gatherOrderId,
-			"garrison_count":  garCnt,
-			"terrain":         ezfyTerrainEx(w.X, w.Y),
+			"idle_order_id":    idleOrderId,
+			"idle_carry_total": idleCarryTotal,
+			"idle_carry_full":  idleCarryFull,
+			"gather_order_id":  gatherOrderId,
+			"garrison_count":   garCnt,
+			"terrain":          ezfyTerrainEx(w.X, w.Y),
 			// ★ 2026-10-05 用户纠正：① 海洋野地→海底森林、岛屿→岛屿（岛屿仍是海野玩法，只是名字不同）；
 			//   ② 表里有这一行 ⇒ 确定有野地 ⇒ knownWild=true（不看 level，避免 level=0 的海洋野地被显示成「海洋」）。
 			"terrain_name": ezfyWildTerrainDisplayName(w.X, w.Y, true),

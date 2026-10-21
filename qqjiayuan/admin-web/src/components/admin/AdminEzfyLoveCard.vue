@@ -47,8 +47,10 @@
         <el-table-column prop="created_at" label="发放时间" width="160" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="90" align="center" fixed="right">
+        <el-table-column label="操作" width="150" align="center" fixed="right">
           <template slot-scope="{row}">
+            <!-- ★ 2026-10-21 用户需求：把该卡剩余未领钻石一次性发给玩家，并标记为已领完。 -->
+            <el-button size="mini" type="success" plain icon="el-icon-check" title="把剩余未领钻石一次性发放给玩家" @click="doComplete(row)">完成</el-button>
             <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除该卡记录" @click="doDelete(row)" />
           </template>
         </el-table-column>
@@ -185,6 +187,26 @@ export default {
           this.load()
         } else this.$message.error(r.msg || '发放失败')
       }).catch(() => { this.grantSaving = false })
+    },
+    // ★ 2026-10-21 完成：剩余未领天数 × 每日钻石，一次性发给玩家
+    doComplete (row) {
+      const days = Math.max(0, Number(row.remaining) || 0)
+      const gain = days * (Number(row.daily_diamond) || 0)
+      if (!days) { this.$message.info('该卡已全部领取，无需再发放'); return }
+      if (!gain) { this.$message.warning('每日钻石配置异常，无法完成'); return }
+      const who = row.nickname || ('ID:' + row.user_id)
+      this.$confirm('确认把「' + row.name + '」剩余 ' + days + ' 天、共 ' + gain + ' 钻石一次性发放给玩家「' + who + '」？完成后该卡将标记为已领完。', '完成发放', {
+        type: 'warning',
+        confirmButtonText: '发放并完成',
+        cancelButtonText: '取消'
+      }).then(() => {
+        api.post('/admin/ezfy-love-cards/' + row.id + '/complete').then(r => {
+          if (r.code === 0) {
+            this.$message.success((r.data && r.data.msg) || '已完成发放')
+            this.load()
+          } else this.$message.error(r.msg || '操作失败')
+        })
+      }).catch(() => {})
     },
     doDelete (row) {
       this.$confirm('确认删除该玩家的「' + row.name + '」记录？删除后玩家将无法再领取该卡剩余钻石。', '删除确认', {

@@ -1345,6 +1345,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						// ★ 2026-09-27 为爱发电卡：发放/领取情况维护
 						admin.GET("/ezfy-love-cards/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardOptions)
 						admin.GET("/ezfy-love-cards/list", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCards)
+						// ★ 2026-10-21 管理端「完成」：剩余未领钻石一次性发放并标记领完
+						admin.POST("/ezfy-love-cards/:id/complete", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardComplete)
 						admin.DELETE("/ezfy-love-cards/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardDelete)
 						admin.GET("/ezfy-data/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyData)
 						admin.POST("/ezfy-data/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataCreate)

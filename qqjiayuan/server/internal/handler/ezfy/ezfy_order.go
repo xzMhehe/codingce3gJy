@@ -2653,13 +2653,12 @@ func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 //   - 宝物每期至少 1 件直接进背包(不受负重限制), 每期另有 20% 概率多 1 件,
 //     采集时间越长期数越多宝物越多; 平原/沿海平原无珠宝则该期没有宝物。
 //
-// ★ 2026-09-28 用户规则修正（本轮核心）:
-//   - 资源**累积进部队负重(carry)**，不直接入城；
-//     「收获」/「停止采集」/「召回」时取回负重入城（见各入口）。
-//   - **负重满了不自动停止**：部队继续驻守采集，由玩家手动[停止采集]/[一键收获]/[召回]取回。
-//     ★★ 2026-10-21 用户新规则「装不下需要用户点击 停止/一键收获 后才能进入原城市」：
-//     超出负重的部分**不再即时入城/丢弃**，与负重内的产出一起先存 carry（可超上限），
-//     等玩家点 [停止采集]/[一键收获] 时经 harvestCarryToCity 进入部队**原出发城市**。
+// ★★ 2026-10-21 用户规则（本轮核心）:
+//   - 资源先**累积进部队负重(carry)**，不直接入城；
+//   - 负重装满后，本次超出的资源**直接丢弃**，之后资源不再增加；
+//   - 但部队**不自动停止**，宝物仍按周期继续结算；
+//   - 玩家点 [停止采集]/[一键收获] 清空负重后，才能重新采集资源；
+//   - 宝物每期至少 1 件直接进背包（不受负重限制），只有宝物满才自动停止。
 //
 // 返回 (结算期数, 是否结算); 未满一期或野地已丢(部队自动返航)时 settled=false。
 // lootBatch 可选：批量结算入口（processOrders 轮询 / 一键收获）传入聚合器，
@@ -2700,16 +2699,23 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	}
 	level := wl.Level
 	terrain := ezfyTerrainEx(wl.X, wl.Y)
-	g := h.dispatchGatherYield(order, &wl, int64(periods)*ezfyDispatchPeriod(), env)
+	// ★★ 2026-10-21 用户规则：采集达到部队最大负重后，资源不再增加（本次超出的部分直接丢弃），
+	//   但部队继续驻守，**宝物仍按周期结算**；想继续采集资源需点 [停止采集]/[一键收获]
+	//   清空负重后再重新采集。离线补算多期时资源只结算负重装得下的期数，宝物仍按实际期数结算。
+	capTotal := h.envCarryCap(env, order, uid)
+	room := int64(-1) // <0 表示未配置负重上限，保持不限
+	if capTotal > 0 {
+		if before := parseCarry(order.Carry); before.total() >= capTotal {
+			room = 0
+		} else {
+			room = capTotal - before.total()
+		}
+	}
+	fitPeriods, g, dropped := h.ezfyFitGatherPeriods(order, &wl, periods, room, env)
 	food, steel, oil, rare := g.Food, g.Steel, g.Oil, g.Rare
 	resName, amt := g.ResName, g.Amount
 	// ★ 2026-09-28 规则修正：产出**累积进部队负重(carry)**，不直接入城；
 	//   取回负重入城由各入口（StopCollect/HarvestAll/RecallAll）负责。
-	//   ★★ 2026-10-21 用户新规则「装不下需要用户点击 停止/一键收获 后才能进入原城市」：
-	//     产出（**含超出负重的部分**）全部先存进 carry（可超负重上限、不丢弃、不即时入城），
-	//     负重上限只作「满/未满」展示；玩家点 [停止采集]/[一键收获]/[召回] 时
-	//     由 harvestCarryToCity 把整包 carry 进入部队**原出发城市**。
-	//     （废除 2026-09-30 的「超重部分直接入城」逻辑。）
 	// ★ 2026-10-13 性能：批量结算时城市已预取（env），单支路径回落单条查询。
 	var city *model.EzfyCity
 	if env != nil {
@@ -2720,17 +2726,22 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	}
 	h.addCarryToOrder(order, food, steel, oil, rare, 0)
 	cur := parseCarry(order.Carry)
-	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)驻守满%d期\n产出: %s%d",
-		level, wl.X, wl.Y, periods, resName, amt)
-	desc += fmt.Sprintf("(兵力%d × 整点%d小时 × 野地加成%g%% × 后勤%d ÷ %g)",
-		g.Troops, g.Hours, g.WildBonusPct, g.Logistics, g.Divisor)
-	// ★★ 2026-10-21 新规则：存的是部队「待带回」，可能已超负重上限 ——
-	//   玩家点[停止采集]/[一键收获]后才会进入部队原出发城市。
+	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)驻守结算%d期", level, wl.X, wl.Y, periods)
+	if fitPeriods > 0 {
+		desc += fmt.Sprintf("\n资源结算%d期\n产出: %s%d", fitPeriods, resName, amt)
+		desc += fmt.Sprintf("(兵力%d × 整点%d小时 × 野地加成%g%% × 后勤%d ÷ %g)",
+			g.Troops, g.Hours, g.WildBonusPct, g.Logistics, g.Divisor)
+	} else {
+		desc += "\n负重已满, 资源不再产出(宝物照常结算), 需[停止采集]/[一键收获]清空负重后才能重新采集资源。"
+	}
 	stored := cur.total()
-	capTotal := h.envCarryCap(env, order, uid)
 	desc += fmt.Sprintf("\n已存资源 %d（负重上限 %d）", stored, capTotal)
-	if stored > capTotal {
-		desc += fmt.Sprintf("\n负重已满, 含超出 %d, 点[停止采集]/[一键收获]后一并入城", stored-capTotal)
+	if dropped > 0 {
+		desc += fmt.Sprintf("\n超出负重丢弃 %d", dropped)
+	}
+	carryFull := h.envCarryFull(env, order, uid)
+	if carryFull && fitPeriods > 0 {
+		desc += "\n负重已满, 资源不再增加; 宝物仍按周期产出, 需[停止采集]/[一键收获]清空负重后才能重新采集资源。"
 	}
 	// 宝物: 每满一个采集周期(每期)至少 1 件, 直接进「宝物」; 每期另有 20% 概率多 1 件
 	//
@@ -2776,14 +2787,14 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	if treasureFull {
 		desc += fmt.Sprintf("宝物已达上限(%d), 采集已停止, 请先处理宝物后再点[采集]。\n", treasureMax)
 	}
-	// ★ 2026-09-28 用户规则「无自动停止」：负重满了部队也仍**继续驻守采集**，产出照常累加（不丢弃）；
-	//   由玩家手动[停止采集]/[一键收获]/[召回]取回整包 carry 入原出发城。
-	//   ★ 2026-10-11 例外：**宝物满 → 停止采集**（arrive_time=0 原地待命，与 [停止采集] 同语义）。
+	// ★★ 2026-10-21 用户规则：负重满**不再自动停止**——资源停、宝物继续；
+	//   只有宝物满才自动停止采集（原地待命，与 [停止采集] 同语义）。
 	nextArrive := now + ezfyDispatchPeriod()
 	if treasureFull {
-		nextArrive = 0 // 停止采集：原地待命，等玩家腾出宝物空位再点[采集]
-	} else if h.envCarryFull(env, order, uid) {
-		desc += "负重已满, 部队仍继续驻守采集、产出照常存着(点[停止采集]/[一键收获]后一并入城)。\n"
+		nextArrive = 0
+	} else if carryFull {
+		desc += fmt.Sprintf("部队继续驻守(只结算宝物), 可随时[召回]或[停止采集]。\n待带回 %d/%d\n",
+			cur.total(), capTotal)
 	} else {
 		desc += fmt.Sprintf("部队继续驻守采集, 可随时[召回]或[停止采集]。\n待带回 %d/%d\n",
 			cur.total(), capTotal)
@@ -2793,12 +2804,87 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	upd := map[string]interface{}{"arrive_time": order.ArriveTime,
 		"result": order.Result, "carry": order.Carry}
 	if treasureFull {
-		upd["collect_start"] = 0 // 停止采集（与 [停止采集]/[一键收获] 落库口径一致）
+		upd["collect_start"] = 0 // 宝物满停止采集（与 [停止采集]/[一键收获] 落库口径一致）
 	}
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Updates(upd)
 	// ★ 2026-10-13 性能：传 order.CityId，省掉 addReport 里「按订单回查城市」的那次跨库查询。
 	h.envReport(env, uid, 5, "采集报告: 驻守结算", desc, "", order.ID, order.CityId)
 	return int(periods), true
+}
+
+// ezfyGatherSetAmount 把一次采集产出改成指定数量（采集一次只产一种资源）。
+func ezfyGatherSetAmount(g *ezfyGatherCalc, amt int64) {
+	if amt < 0 {
+		amt = 0
+	}
+	g.Food, g.Steel, g.Oil, g.Rare = 0, 0, 0, 0
+	switch g.ResName {
+	case "钢铁":
+		g.Steel = amt
+	case "石油":
+		g.Oil = amt
+	case "稀矿":
+		g.Rare = amt
+	default:
+		g.Food = amt
+	}
+	g.Amount = amt
+}
+
+// ezfyFitGatherPeriods 在剩余负重 room 内计算实际能结算资源的期数。
+//
+// ★★ 2026-10-21 用户规则：采集达到部队最大负重后，本次多出来的资源直接丢弃，
+// 之后资源不再产出，但**宝物仍按周期继续结算**，直到玩家停止/收获清负重。
+// 因此本函数只限制资源期数，不改变调用方按完整期数结算宝物。room < 0 表示不限负重。
+//
+// 返回 (实际资源期数, 对应产出, 最后一期超出负重被丢弃的量)。
+func (h *EzfyHandler) ezfyFitGatherPeriods(order *model.EzfyOrder, wl *model.EzfyWildland,
+	want, room int64, env *ezfySettleEnv) (int64, ezfyGatherCalc, int64) {
+	period := ezfyDispatchPeriod()
+	g := h.dispatchGatherYield(order, wl, want*period, env)
+	if want <= 0 || room < 0 || g.Amount <= room {
+		return want, g, 0
+	}
+	if room <= 0 {
+		ezfyGatherSetAmount(&g, 0)
+		return 0, g, 0
+	}
+	// 二分出「完整装得下」的最大期数，再补上装到负重上限的那一期。
+	// ★ 性能：直接用首轮算出的公式参数本地算各期产量，避免在 processOrders 单支路径
+	//   反复查军官/野地加成（原二分每轮一次 DB 查询，1 核线上会明显变慢）。
+	amountAt := func(n int64) int64 {
+		if n <= 0 {
+			return 0
+		}
+		amt := ezfyGatherAmount(g.Troops, float64(ezfyGatherHours(n*period)),
+			g.WildBonusPct, g.Logistics, g.Divisor, g.SeaMult)
+		if amt < 1 {
+			amt = 1
+		}
+		return amt
+	}
+	lo, hi := int64(0), want
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if amountAt(mid) <= room {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	n := lo + 1
+	if n > want {
+		n = want
+	}
+	if n != want {
+		g = h.dispatchGatherYield(order, wl, n*period, env)
+	}
+	if g.Amount > room {
+		dropped := g.Amount - room
+		ezfyGatherSetAmount(&g, room)
+		return n, g, dropped
+	}
+	return n, g, 0
 }
 
 // ezfyClaimSettle 原子认领一次采集结算窗口（跨进程幂等，防双机重复结算多给资源）。
@@ -3030,7 +3116,7 @@ func (h *EzfyHandler) settleDispatchOnRecall(uid uint, order *model.EzfyOrder, n
 // settlePartialCollect 未满一个采集周期的部分结算(「停止采集」/「提前召回」共用):
 //   - 资源按**真实驻守时长连续折算**（★★ 2026-10-21 用户规则「不要按整点卡，
 //     采集多少就是收获多少」—— dispatchGatherYieldPartial，不再整点取整/保底1点卡死），
-//     全部先存部队「待带回(carry)」；入城由调用方入口
+//     装得下的部分存部队「待带回(carry)」，超出剩余负重直接丢弃；入城由调用方入口
 //     （[停止采集]/[一键收获]/[召回] 随后的 harvestCarryToCity）负责;
 //   - **不做宝物**(不满一个采集周期无宝物);
 //   - 只把结果写进 result, **不接回** —— 是否返航由调用方决定。
@@ -3058,25 +3144,38 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 		elapsed = ezfyDispatchPeriod()
 	}
 	g := h.dispatchGatherYieldPartial(order, &wl, elapsed, env) // 未满一期：连续小时，不整点取整
-	food, steel, oil, rare := g.Food, g.Steel, g.Oil, g.Rare
-	resName, amt := g.ResName, g.Amount
-	// ★★ 2026-10-21 用户新规则「装不下需要用户点击 停止/一键收获 后才能进入原城市」：
-	//   产出（**含超出负重的部分**）按已驻守时长折算后全部先存部队「待带回(carry)」
-	//   （可超负重上限、不丢弃、不即时入城）；由 **本函数的调用方入口**（[停止采集]/[一键收获]/[召回]）
-	//   随后调用 harvestCarryToCity 把整包 carry 进入部队**原出发城市**。
+	// ★★ 2026-10-21 用户规则：产出超出剩余负重的部分**直接丢弃**。
+	//   本函数只负责把装得下的部分存进 carry；入城由调用方入口的点按钮动作触发。
+	capTotal := h.envCarryCap(env, order, uid)
+	room := int64(-1)
+	if capTotal > 0 {
+		if before := parseCarry(order.Carry); before.total() >= capTotal {
+			room = 0
+		} else {
+			room = capTotal - before.total()
+		}
+	}
+	fit, dropped := ezfyCarryTake(ezfyCarry{Food: g.Food, Steel: g.Steel, Oil: g.Oil, Rare: g.Rare}, room)
+	food, steel, oil, rare := fit.Food, fit.Steel, fit.Oil, fit.Rare
+	resName, amt := g.ResName, fit.total()
 	h.addCarryToOrder(order, food, steel, oil, rare, 0)
 	cur := parseCarry(order.Carry)
-	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)%s, 按驻守时长折算资源\n产出: %s%d",
-		wl.Level, wl.X, wl.Y, label, resName, amt)
-	desc += fmt.Sprintf("(兵力%d × %s × 野地加成%g%% × 后勤%d ÷ %g)",
-		g.Troops, ezfyGatherHoursText(g.HoursF), g.WildBonusPct, g.Logistics, g.Divisor)
-	// ★★ 2026-10-21 新规则：存的是部队「待带回」，可能已超负重上限 ——
-	//   本函数只负责把产出存进 carry；入城由调用方入口的点按钮动作触发。
+	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)%s, 按驻守时长折算资源",
+		wl.Level, wl.X, wl.Y, label)
+	if amt > 0 {
+		desc += fmt.Sprintf("\n产出: %s%d", resName, amt)
+		desc += fmt.Sprintf("(兵力%d × %s × 野地加成%g%% × 后勤%d ÷ %g)",
+			g.Troops, ezfyGatherHoursText(g.HoursF), g.WildBonusPct, g.Logistics, g.Divisor)
+	} else {
+		desc += "\n负重已满, 本次没有新增资源"
+	}
 	stored := cur.total()
-	capTotal := h.envCarryCap(env, order, uid)
 	desc += fmt.Sprintf("\n已存资源 %d（负重上限 %d）", stored, capTotal)
-	if stored > capTotal {
-		desc += fmt.Sprintf("\n负重已满, 含超出 %d, 点[停止采集]/[一键收获]后一并入城", stored-capTotal)
+	if dropped > 0 {
+		desc += fmt.Sprintf("\n超出负重丢弃 %d", dropped)
+	}
+	if capTotal > 0 && stored >= capTotal {
+		desc += "\n负重已满, 资源不再增加; 请点[停止采集]/[一键收获]清空负重后重新采集资源。"
 	}
 	desc += fmt.Sprintf("\n（%s不满一个采集周期, 本期没有宝物, 取回负重需[停止采集]/[召回]入城）", label)
 	order.Result = order.Troops
@@ -3141,7 +3240,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-09-24 用户规则: 到达后驻守**空闲**, 必须手工点[采集](或驻军区的[一键采集])
 	//   才开始采集 —— 不再自动进采集。开始采集(StartCollect)后每满一个采集周期结算一期:
 	//   资源**直接入起点城市**(F = 卡车×整点小时×野地加成%×后勤÷2), 宝物直接进背包(每期至少 1 件);
-	//   ★ 2026-09-28：负重装满后自动停止采集(原地待命)。空闲驻军用 arrive_time=0 表示(不参与结算)。
+	//   ★ 2026-10-21：负重装满后资源不再增加，但宝物继续按周期结算；空闲驻军用 arrive_time=0 表示(不参与结算)。
 	if order.OrderType == 4 || order.OrderType == 7 {
 		var wl model.EzfyWildland
 		if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
@@ -3157,7 +3256,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"status": 1, "order_type": 7, "result": order.Troops, "arrive_time": 0})
 		h.addReport(uid, 5, "采集报告: 部队已抵达",
-			fmt.Sprintf("采集部队已抵达野地(%d,%d)驻守, 当前空闲待命。\n请到「军情 → 驻军」点[采集](或[一键采集])开始采集: 每满一个采集周期结算一期, 资源**直接入库到出发城市**(等级越高越多, 军官后勤每点+1%%), 宝物直接进背包(每期至少1件)。负重装满会自动停止采集。可随时[召回]撤兵。",
+			fmt.Sprintf("采集部队已抵达野地(%d,%d)驻守, 当前空闲待命。\n请到「军情 → 驻军」点[采集](或[一键采集])开始采集: 每满一个采集周期结算一期, 资源**直接入库到出发城市**(等级越高越多, 军官后勤每点+1%%), 宝物直接进背包(每期至少1件)。负重装满后资源不再增加, 但宝物仍按周期结算; 想继续采资源请先[停止采集]/[一键收获]清空负重。可随时[召回]撤兵。",
 				wl.X, wl.Y), "", order.ID)
 		return
 	}

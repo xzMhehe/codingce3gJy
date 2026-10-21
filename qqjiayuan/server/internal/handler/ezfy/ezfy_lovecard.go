@@ -168,6 +168,24 @@ func loveCardClaimable(c *model.EzfyLoveCard, nowMS int64) int {
 	return claimable
 }
 
+// loveCardSettle 管理端「完成」时的结算口径：把**剩余未领天数**一次性折算成钻石。
+//
+// 返回 days=剩余天数、gain=应发钻石。已领完（或无有效总天数）返回 0,0；
+// 每日钻石配置异常（<=0）时 gain 为 0，由调用方拒绝完成，避免「标记完成却没发钻石」。
+func loveCardSettle(c *model.EzfyLoveCard) (days int, gain int64) {
+	if c == nil || c.TotalDays <= 0 {
+		return 0, 0
+	}
+	days = c.TotalDays - c.ClaimedDays
+	if days < 0 {
+		days = 0
+	}
+	if days > 0 && c.DailyDiamond > 0 {
+		gain = int64(days) * c.DailyDiamond
+	}
+	return days, gain
+}
+
 // loveCards 玩家全部为爱发电卡（含已领完，按发放倒序）。
 func (h *EzfyHandler) loveCards(uid uint) []model.EzfyLoveCard {
 	var cards []model.EzfyLoveCard

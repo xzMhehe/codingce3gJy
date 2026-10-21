@@ -148,14 +148,53 @@ func (h *EzfyHandler) ezfyCarryCapOf(groups []ezfyUnitGroup, cityId uint, techs 
 	return base
 }
 
+// ezfyCarryTake 从一次采集产出中取「剩余负重装得下」的部分，返回可装入量与丢弃量。
+//
+// ★★ 2026-10-21 用户规则：采集把部队负重装满后，**本次超出的资源直接丢弃**，
+// 之后资源不再增加但宝物继续；想再采资源必须点 [停止采集]/[一键收获] 清空负重。
+//
+// room < 0 表示不限负重（未配置兵种负重时保持旧行为）。
+// 采集一次只产一种资源，这里按字段顺序装到 room 为止，保证不超上限。
+func ezfyCarryTake(c ezfyCarry, room int64) (fit ezfyCarry, dropped int64) {
+	total := c.total()
+	if total <= 0 {
+		return ezfyCarry{}, 0
+	}
+	if room < 0 || total <= room {
+		return c, 0
+	}
+	if room == 0 {
+		return ezfyCarry{}, total
+	}
+	left := room
+	take := func(v int64, dst *int64) {
+		if v <= 0 {
+			return
+		}
+		n := v
+		if n > left {
+			n = left
+		}
+		*dst = n
+		left -= n
+		dropped += v - n
+	}
+	take(c.Food, &fit.Food)
+	take(c.Steel, &fit.Steel)
+	take(c.Oil, &fit.Oil)
+	take(c.Rare, &fit.Rare)
+	take(c.Gold, &fit.Gold)
+	return fit, dropped
+}
+
 // addCarryToOrder 把一次采集产出记进部队「待带回(carry)」。
 //
-// ★★ 2026-10-21 用户新规则（用户原话「装不下需要用户点击 停止/一键收获 后才能进入原城市」）：
+// ★★ 2026-10-21 用户规则（用户原话「都超过负重的直接丢弃」「装不下需要用户点击
+// 停止/一键收获后才能进入原城市」）：
 //
-//	产出（**含超出负重的部分**）不再即时入城、也**不再丢弃** —— 全部存进 carry
-//	（可超出负重上限，上限只用于「满/未满」展示，不截断存储）。等玩家点
-//	[停止采集]/[一键收获]/[召回] 时，才由 harvestCarryToCity 一次性进入
-//	部队**原出发城市**（旧「封顶丢弃」「超重直接入城」两条逻辑一并废除）。
+//	调用方先按 ezfyCarryTake 用剩余负重截断产出，**超出部分直接丢弃**；
+//	本函数只负责把截断后的量累加进 carry。等玩家点 [停止采集]/[一键收获]/[召回]
+//	时，才由 harvestCarryToCity 一次性进入部队**原出发城市**。
 //
 // 返回存入后的 carry 总量；本次产出为 0 时不写库（避免无谓 UPDATE）。
 func (h *EzfyHandler) addCarryToOrder(order *model.EzfyOrder, food, steel, oil, rare, gold int64) int64 {
@@ -174,11 +213,9 @@ func (h *EzfyHandler) addCarryToOrder(order *model.EzfyOrder, food, steel, oil, 
 
 // ezfyCarryFull 该订单部队的「待带回」是否已达负重上限。
 //
-// ★ 2026-09-28 用户规则：采集产出累积进 carry，部队**不自动停止**、持续采集。
-// ★★ 2026-10-21 口径修正：满了之后产出**照常累加**（不丢弃、不即时入城），
-//
-//	超出上限的部分等玩家点 [停止采集]/[一键收获] 后一并进入原出发城市。
-//	上限只作为「满/未满」展示与 [采集] 发起点的一个提示，不做截断。
+// ★★ 2026-10-21 用户规则：负重装满后资源不再增加（本次超出部分丢弃），
+// 但部队继续驻守、宝物仍按周期结算；本函数用于 [采集] 发起点的卡控：
+// 负重未清空前不允许重新采集资源。
 func (h *EzfyHandler) ezfyCarryFull(order *model.EzfyOrder) bool {
 	capTotal := h.ezfyCarryCap(order)
 	if capTotal <= 0 {
@@ -189,9 +226,9 @@ func (h *EzfyHandler) ezfyCarryFull(order *model.EzfyOrder) bool {
 
 // harvestCarryToCity 把部队「待带回负重(carry)」累加进起点城市，并清空负重。
 //
-// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：采集产出累积进负重，由玩家手动
+// ★ 2026-10-21 用户规则：采集装满负重后资源不再增加，宝物继续；玩家手动
 //
-//	[停止采集]/[一键收获]/[召回]取回。本函数负责把取回的负重入城（走 harvestToCity，
+//	[停止采集]/[一键收获]/[召回]取回负重后可重新采集资源。本函数负责把取回的负重入城（走 harvestToCity，
 //	前后无差值——carry 就是本次真正到账的量），同时把订单负重清零。
 //	返回实际入城总量。
 func (h *EzfyHandler) harvestCarryToCity(order *model.EzfyOrder) int64 {
@@ -212,7 +249,7 @@ func (h *EzfyHandler) harvestCarryToCity(order *model.EzfyOrder) int64 {
 //
 // ★★ 2026-10-21 当前模型（用户规则「装不下等点停止/收获才进原城市」）：
 //
-//	采集产出一律先累积进部队「待带回(carry)」（可超负重上限、不丢弃、不即时入城）；
+//	采集产出先累积进部队「待带回(carry)」，超出剩余负重的部分直接丢弃；
 //	玩家点 [停止采集]/[一键收获] 时由 harvestCarryToCity 把整包 carry 经本函数
 //	一次性进入部队**原出发城市**；[召回] 则随返航到达时入城（finishReturn 同口径）。
 //

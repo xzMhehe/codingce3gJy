@@ -323,7 +323,7 @@
 
           <!-- ④ 随军资源（★ 2026-10-07 所有出征类型都能带：玩家资源多了可随身带出腾仓库/防被抢。
                从出发城扣除、占部队负重；采集产出入库时随身资源不重复入库，
-               ★ 2026-10-21 采集产出同样先存「待带回」（可超负重上限），点[停止采集]/[一键收获]后入原出发城市，返航/召回原样带回） -->
+               ★ 2026-10-21 采集产出同样先存「待带回」，装满后超出部分丢弃、资源不再增加但宝物继续，点[停止采集]/[一键收获]后入原出发城市，返航/召回原样带回） -->
           <div class="of-sec">④ 随军资源</div>
           <div class="of-rows">
             <div class="of-row" v-for="res in ezfy.resFields" :key="res.key"
@@ -602,8 +602,10 @@
             <a href="javascript:;" @click="ezfy.go('hq')">[指挥(司令部)]</a>
             <a v-if="ezfy.curOrder.status === 0 || ezfy.curOrder.status === 1"
                class="red" href="javascript:;" @click="ezfy.doRecall(ezfy.curOrder)">[取消出征]</a>
-            <a v-if="ezfy.curOrder.order_type === 7 && ezfy.curOrder.status === 1 && !ezfy.curOrder.arrive_time"
+            <a v-if="ezfy.curOrder.order_type === 7 && ezfy.curOrder.status === 1 && !ezfy.curOrder.arrive_time && !(ezfy.curOrder.carry_total > 0)"
                class="red" href="javascript:;" @click="ezfy.startCollect(ezfy.curOrder)">[采集]</a>
+            <a v-else-if="ezfy.curOrder.order_type === 7 && ezfy.curOrder.status === 1 && (ezfy.curOrder.arrive_time || ezfy.curOrder.carry_total > 0)"
+               class="red" href="javascript:;" @click="ezfy.stopCollect(ezfy.curOrder)">[停止]</a>
             <a v-if="ezfy.curOrder.order_type === 7 && ezfy.curOrder.status === 1 && ezfy.curOrder.arrive_time"
                href="javascript:;" @click="ezfy.go('wilds')">[查看野地]</a>
             <a v-if="ezfy.curOrder.report_id" href="javascript:;" @click="ezfy.jumpReport(ezfy.curOrder.report_id)">[查看战报]</a>
@@ -636,10 +638,10 @@
               <a href="javascript:;" class="red" @click="ezfy.openBattle(o.id)">[指挥]</a>
               <span class="gray">第{{ o.battle_round || 1 }}/{{ o.battle_max }}回合</span>
             </template>
-            <template v-else-if="o.status === 1 && !o.arrive_time">
+            <template v-else-if="o.status === 1 && !o.arrive_time && !(o.carry_total > 0)">
               <a href="javascript:;" class="red" @click="ezfy.startCollect(o)">[采集]</a>
             </template>
-            <template v-else-if="o.status === 1 && o.arrive_time">
+            <template v-else-if="o.status === 1 && (o.arrive_time || o.carry_total > 0)">
               <a href="javascript:;" class="red" @click="ezfy.stopCollect(o)">[停止]</a>
             </template>
             <!-- ★ 2026-09-30 行军计谋：出征中(0)/返回中(2)显示 [计谋]，进入计谋页选择神兵天降/战略转移 -->
@@ -650,8 +652,8 @@
             军官：{{ o.officer || '无' }}<br/>
             {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}<br/>
             <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
-                 ★★ 2026-10-21 新规则：产出全部先存部队「待带回(carry)」（可超负重上限，不丢弃），
-                   点[停止采集]/[一键收获]后一并进原出发城市；预览不再封顶。
+                 ★★ 2026-10-21 用户规则：负重装满后本次超出部分丢弃、资源不再增加，
+                   但宝物仍按周期继续；预览按负重封顶，清空负重后才能重新采资源。
                  ★★ 2026-10-09 修复「采集队列会整块消失（隐藏情况）」：liveGather 在客户端时钟
                    略慢于服务端 / 缺 gather 字段时返回 null → o._lg 为 undefined，原来直接读
                    o._lg.food 会在渲染期抛 TypeError，**整条队列渲染失败被隐藏**。
@@ -661,8 +663,8 @@
                    （与首页产量同一套 fmtProd：截断取整，展示值不会大于真实值）。「本期已采」→「已采」。 -->
               <span class="green">已采：{{ ezfy.fmtProd(o._lg.food) }}粮/{{ ezfy.fmtProd(o._lg.steel) }}钢/{{ ezfy.fmtProd(o._lg.oil) }}油/{{ ezfy.fmtProd(o._lg.rare) }}稀/{{ ezfy.fmtProd(o._lg.gold) }}金</span><br/>
               <span class="gray">总 {{ ezfy.fmtProd(o._lg.total) }}（负重 {{ ezfy.fmtProd(o._lg.total) }}/{{ ezfy.fmtProd(o.carry_cap) }}）</span>
-              <!-- ★★ 2026-10-21 新规则：装不下的部分不再直接入库 —— 全部存「待带回」，可超负重上限，
-                   点[停止采集]/[一键收获]后一并进原出发城市（总 可以大于负重上限）。 -->
+              <!-- ★★ 2026-10-21 用户规则：负重满后资源不再增加，宝物仍按周期继续。 -->
+              <span v-if="o._lg.full" class="red">（负重已满，资源不再增加，宝物继续）</span>
               <br/>
             </template>
             <span v-else-if="o.status === 1 && o.arrive_time" class="gray">已采：统计中…</span>
@@ -699,6 +701,7 @@
               <td>{{ w.level }}</td>
               <td>
                 <template v-if="w.status === 1">采集中</template>
+                <template v-else-if="w.idle_order_id && w.idle_carry_full">驻守(空闲·负重已满)</template>
                 <template v-else-if="w.idle_order_id">驻守(空闲)</template>
                 <template v-else>空闲</template>
                 <template v-if="w.garrison_count">·驻军{{ w.garrison_count }}支</template>
@@ -708,8 +711,10 @@
                      (驻军与采集部队并存, 不占「一块野地一支采集队」名额) -->
                 <a href="javascript:;" @click="ezfy.openWildReinforce(w)">[增援]</a>
                 <!-- ★ 2026-09-28 平原/沿海平原可建城、采集无宝物, 附属野地列表不再提供采集, 仅保留[放弃] -->
+                <a v-if="w.idle_order_id && w.idle_carry_full" class="red" href="javascript:;"
+                   @click="ezfy.stopCollect(ezfy.wildOrderArg(w, w.idle_order_id))">[停止]</a>
                 <a v-if="w.status === 0 && !w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" href="javascript:;" @click="ezfy.openWildGather(w)">[采集]</a>
-                <a v-else-if="w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" class="red" href="javascript:;" @click="ezfy.startCollect(w.idle_order_id)">[开始采集]</a>
+                <a v-else-if="w.idle_order_id && !w.idle_carry_full && w.terrain !== 1 && w.terrain !== 9" class="red" href="javascript:;" @click="ezfy.startCollect(w.idle_order_id)">[开始采集]</a>
                 <!-- ★ 2026-09-28 用户反馈「采集中只能[放弃]，没法[停止]」：
                      后端现在会下发 gather_order_id（见 ezfy.go 的 wildViews），
                      这里据此构造一个最小的订单对象喂给 stopCollect（它只用到 id/target_* 拼提示文案）。 -->

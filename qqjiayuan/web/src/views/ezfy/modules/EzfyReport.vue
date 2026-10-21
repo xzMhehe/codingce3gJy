@@ -45,7 +45,7 @@
               <br/>
               军官：{{ o.officer || '无' }}<br/>
               {{ o.time_label }}：{{ o._lt || o.time_text }}<br/>
-              <!-- ★ 2026-10-21 采集产出也走 carry（待带回，可超负重上限，点[停止采集]/[一键收获]入城）；
+              <!-- ★ 2026-10-21 采集产出也走 carry（待带回，点[停止采集]/[一键收获]入城）；
                    「运输」在途物资同样显示在这里。 -->
               <span v-if="o.carry_total > 0" class="green">
                 在途物资：{{ ezfy.fmtN(o.carry.food) }}粮/{{ ezfy.fmtN(o.carry.steel) }}钢/{{ ezfy.fmtN(o.carry.oil) }}油/{{ ezfy.fmtN(o.carry.rare) }}稀/{{ ezfy.fmtN(o.carry.gold) }}金
@@ -67,8 +67,8 @@
           <template v-else-if="ezfy.reportTab === 2">
             <div class="old-line">
               <!-- ★ 采集玩法说明：驻守空闲需点[采集]；满一个采集周期结算一期（资源+宝物）；
-                   未满一期按真实时长连续折算（不整点取整）；装不下的部分也先存「待带回」，可超负重上限，
-                   点[停止采集]/[一键收获]后一并进原出发城市；[召回]撤兵。 -->
+                   未满一期按真实时长连续折算（不整点取整）；负重装满后本次超出部分丢弃、资源不再增加，
+                   但宝物仍按周期继续；点[停止采集]/[一键收获]清空负重后才能重新采资源；[召回]撤兵。 -->
               <a href="javascript:;" @click="ezfy.doCollectAll">[一键采集]</a>
               <a href="javascript:;" @click="ezfy.doHarvestAll">[一键收获]</a>
               <a href="javascript:;" @click="ezfy.doRecallAll">[一键召回]</a>
@@ -80,15 +80,15 @@
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
               军官：{{ o.officer || '无' }}<br/>
               {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}
-              <span v-if="o.status === 1 && !o.arrive_time"><a href="javascript:;" class="red" @click="ezfy.startCollect(o)">[采集]</a></span>
-              <span v-else-if="o.status === 1 && o.arrive_time"><a href="javascript:;" class="red" @click="ezfy.stopCollect(o)">[停止]</a></span>
+              <span v-if="o.status === 1 && !o.arrive_time && !(o.carry_total > 0)"><a href="javascript:;" class="red" @click="ezfy.startCollect(o)">[采集]</a></span>
+              <span v-else-if="o.status === 1 && (o.arrive_time || o.carry_total > 0)"><a href="javascript:;" class="red" @click="ezfy.stopCollect(o)">[停止]</a></span>
               <!-- ★ 2026-10-19 驻守部队（status=1 采集队 / status=3 增援驻军）都能单支召回。
                    增援到附属野地的部队是**纯驻军**（order_type=6）：只驻守、不采集，
                    敌军进攻时作为守军参战；玩家可在这里单支召回，或用顶部 [一键召回]。 -->
               <span v-if="o.status === 1 || o.status === 3"><a href="javascript:;" class="red" @click="ezfy.doRecall(o)">[召回]</a></span><br/>
               <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
-                   ★★ 2026-10-21 新规则：产出全部先存部队「待带回(carry)」（可超负重上限，不丢弃），
-                   点[停止采集]/[一键收获]后一并进原出发城市。
+                   ★★ 2026-10-21 用户规则：负重装满后本次超出部分丢弃、资源不再增加，
+                   但宝物仍按周期继续；预览按负重封顶，清空负重后才能重新采资源。
                    ★★ 2026-10-09 修复「采集队列会整块消失（隐藏情况）」：
                      liveGather 在「客户端时钟略慢于服务端 / 缺 gather 字段」时返回 null → o._lg 为 undefined，
                      而原来这里直接读 o._lg.food → 渲染期 TypeError → **整个列表渲染失败被隐藏**。
@@ -99,8 +99,8 @@
                      「本期已采」→「已采」。 -->
                 <span class="green">已采：{{ ezfy.fmtProd(o._lg.food) }}粮/{{ ezfy.fmtProd(o._lg.steel) }}钢/{{ ezfy.fmtProd(o._lg.oil) }}油/{{ ezfy.fmtProd(o._lg.rare) }}稀/{{ ezfy.fmtProd(o._lg.gold) }}金</span>
                 <span class="gray">（总 {{ ezfy.fmtProd(o._lg.total) }}，负重 {{ ezfy.fmtProd(o._lg.total) }}/{{ ezfy.fmtProd(o.carry_cap) }}）</span>
-                <!-- ★★★ 2026-10-21 新规则：装不下的部分不再直接入库 —— 全部存「待带回」，可超负重上限，
-                     点[停止采集]/[一键收获]后一并进原出发城市（总 可以大于负重上限）。 -->
+                <!-- ★★ 2026-10-21 用户规则：负重满后资源不再增加，宝物仍按周期继续。 -->
+                <span v-if="o._lg.full" class="red">（负重已满，资源不再增加，宝物继续）</span>
               </template>
               <span v-else-if="o.status === 1 && o.arrive_time" class="gray">已采：统计中…</span>
               <span v-else-if="o.status === 1" class="gray">已采：暂无</span>

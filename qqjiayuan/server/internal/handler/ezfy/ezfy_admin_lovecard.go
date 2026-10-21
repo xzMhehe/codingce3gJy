@@ -1,10 +1,14 @@
 package ezfy
 
 import (
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
@@ -27,6 +31,95 @@ func (h *EzfyAdmin) AdminEzfyLoveCardDelete(c *gin.Context) {
 		return
 	}
 	resp.OK(c, gin.H{"msg": "已删除「" + love.Name + "」(ID:" + strconv.FormatUint(uint64(love.UserId), 10) + ")"})
+}
+
+var (
+	errLoveCardSettled   = errors.New("love card already settled")
+	errLoveCardNoProfile = errors.New("love card player profile missing")
+)
+
+// AdminEzfyLoveCardComplete POST /admin/ezfy-love-cards/:id/complete —— 管理端「完成」：
+// 把该卡**剩余未领天数**折算成钻石一次性发给玩家，并把卡标记为已领完。
+//
+// ★ 2026-10-21 用户需求：操作列加「完成」，未领的钻石一次性全部发放给用户。
+// ★ 与玩家每日领取共用同一把并发锁：条件更新 claimed_days 仍等于读取值才生效，
+//
+//	GM 点「完成」和玩家同时领取时只有一方能成功，不会重复发钻石。
+func (h *EzfyAdmin) AdminEzfyLoveCardComplete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var love model.EzfyLoveCard
+	if err := h.DB.First(&love, id).Error; err != nil {
+		resp.NotFound(c, "记录不存在")
+		return
+	}
+	days, gain := loveCardSettle(&love)
+	if days <= 0 {
+		resp.OK(c, gin.H{"msg": "该卡已全部领取，无需再发放", "days": 0, "diamond_gain": 0})
+		return
+	}
+	if gain <= 0 {
+		resp.ParamError(c, "卡片每日钻石配置异常，无法完成")
+		return
+	}
+
+	// 卡片已存在说明玩家档案通常已建；这里仍兜底补建，避免 Update 命中 0 行后漏发。
+	ez := h.ezfyH()
+	ez.ensureProfile(love.UserId)
+
+	nowMS := time.Now().UnixMilli()
+	var balance int64
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.EzfyLoveCard{}).
+			Where("id = ? AND claimed_days = ?", love.ID, love.ClaimedDays).
+			Updates(map[string]interface{}{"claimed_days": love.TotalDays, "last_claim_time": nowMS})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return errLoveCardSettled
+		}
+		// 钻石原子累加 + 同事务写流水，保证「标记完成」和「到账」要么都成功、要么都回滚。
+		pres := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", love.UserId).
+			Update("diamond", gorm.Expr("diamond + ?", gain))
+		if pres.Error != nil {
+			return pres.Error
+		}
+		if pres.RowsAffected != 1 {
+			return errLoveCardNoProfile
+		}
+		if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", love.UserId).
+			Pluck("diamond", &balance).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.EzfyDiamondLog{
+			UserId: love.UserId, Change: gain, Balance: balance,
+			Reason: "为爱发电卡管理端完成发放",
+		}).Error
+	})
+	if errors.Is(err, errLoveCardSettled) {
+		resp.ParamError(c, "该卡已被领取或处理，请刷新后重试")
+		return
+	}
+	if errors.Is(err, errLoveCardNoProfile) {
+		resp.ParamError(c, "玩家档案不存在，无法发放")
+		return
+	}
+	if err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+
+	love.ClaimedDays = love.TotalDays
+	love.LastClaimTime = nowMS
+	msg := fmt.Sprintf("已完成「%s」：剩余 %d 天共 %d 钻石已发给玩家(ID:%d)", love.Name, days, gain, love.UserId)
+	resp.OK(c, gin.H{
+		"msg": msg, "days": days, "diamond_gain": gain,
+		"diamond_total": balance, "card": loveCardView(&love),
+	})
 }
 
 // ============ 二战风云管理端 · 为爱发电卡（发放/领取情况）============
