@@ -139,8 +139,10 @@ func TestMallCatAndPagerLayout(t *testing.T) {
 	vue := ezfyStripCommentLines(readFrontFile(t, "../../../../web/src/views/ezfy/Ezfy.vue"))
 	for _, want := range []string{
 		"mallCatShort (c)",
-		"grid-template-columns: repeat(4, minmax(0, 1fr))",
-		"grid-template-columns: 4.5em minmax(0, 1fr) 4.5em",
+		"grid-template-columns: repeat(4, max-content)",
+		"justify-content: start",
+		"grid-template-columns: 4.5em 10em 4.5em",
+		"margin: 8px 0 4px",
 	} {
 		if !strings.Contains(vue, want) {
 			t.Fatalf("商城分类/分页样式缺失（缺 %s）", want)

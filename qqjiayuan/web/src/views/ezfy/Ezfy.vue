@@ -8361,17 +8361,14 @@ body.ezfy-ios .ezfy-page textarea {
    原来只绑了 .on class 没写样式 → 选中项和未选看起来一样。
    口径与 .acade-tab a.on 一致：红 + 加粗。 */
 .ezfy-page .ezfy-slot-grid > a.on { color: #c0392b; font-weight: bold; }
-/* ★ 2026-10-21 商城道具分类：每行固定 4 个（多行排布，不再铺成一长行）；
-   名称由 mallCatShort 收成两字，超长时省略号兜底。 */
+/* ★ 2026-10-21 商城道具分类：参考装备部位筛选的样式（左对齐、按内容宽度、10px 间距），
+   只是强制每行 4 个。★ 不能再用 repeat(4, 1fr)：桌面端会把 4 个分类摊到整行、
+   把文字居中，和装备分类那种紧凑左对齐完全不像。 */
 .ezfy-page .ezfy-slot-grid.mall-cat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 3px 6px;
-}
-.ezfy-page .ezfy-slot-grid.mall-cat-grid > a {
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  grid-template-columns: repeat(4, max-content);
+  justify-content: start;
+  gap: 2px 10px;
 }
 /* ★ 2026-09-25 套装加成展示（用户反馈「套装的加成看不到，不知道买完套装给军官用哪个」）
    三处展示，全部是**纯文本竖排**，窄屏不会横向溢出：
@@ -9315,15 +9312,14 @@ body.ezfy-ios .ezfy-page textarea {
   }
 }
 /* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条）
-   ★ 2026-10-21 用户「点上一页/下一页位置会变」：改成居中三栏网格，
-     左右两栏宽度固定，中间文字再长也不会把按钮挤走。 */
+   ★ 2026-10-21 用户「分页不对，居中干啥，变左边去和原来位置一样」：
+     恢复左对齐；仍用固定三栏（4.5em / 10em / 4.5em）保证点上一页/下一页时按钮不跳。
+     17px 字号下，下一页起点 ≈ 4.5em + 10em = 247px，与原内联排布基本一致。 */
 .ezfy-page .ezfy-pager {
   display: grid;
-  grid-template-columns: 4.5em minmax(0, 1fr) 4.5em;
+  grid-template-columns: 4.5em 10em 4.5em;
   align-items: center;
-  width: 100%;
-  max-width: 360px;
-  margin: 8px auto 4px;
+  margin: 8px 0 4px;
   /* ★ 2026-09-25 随全站统一：分页条 15 → var(--fs)（所有文字一样大） */
   font-size: var(--fs);
 }
@@ -9331,13 +9327,10 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-pager > span {
   margin: 0;
   text-align: center;
+  white-space: nowrap;
 }
 .ezfy-page .ezfy-pager > a {
   text-decoration: none;
-  white-space: nowrap;
-}
-.ezfy-page .ezfy-pager > span {
-  white-space: nowrap;
 }
 .ezfy-page .ezfy-pager a.gray {
   color: #999;
@@ -9346,9 +9339,8 @@ body.ezfy-ios .ezfy-page textarea {
 /* 极窄屏（≤350px）：三栏同步收窄 + 字号降 2px，保证中间页数不压到 [下一页]。 */
 @media (max-width: 350px) {
   .ezfy-page .ezfy-pager {
-    grid-template-columns: 4em minmax(0, 1fr) 4em;
+    grid-template-columns: 4em 10em 4em;
     font-size: calc(var(--fs) - 2px);
   }
 }
-/* ★ 2026-09-25 随全站统一：分页条窄屏也不缩（原来 13px） */
 </style>

@@ -184,9 +184,6 @@
             <a v-for="c in ezfy.mallCatsList" :key="'mc' + c" href="javascript:;" :class="{ on: ezfy.mallCat === c }"
                @click="ezfy.setMallCat(c)">[{{ ezfy.mallCatShort(c) }}]</a>
           </div>
-          <div class="old-line gray" v-if="ezfy.mallDiamond <= 0">
-            钻石余额为 0；需要钻石购买的道具若标价 0 钻石可直接购买，其余需由管理员充值钻石后购买。
-          </div>
           <!-- ★ 道具表格化（原来平铺一长串，用户反馈「乱」）
                ★ 商城保持简洁：只列 名称/价格/库存/操作，**道具说明不在这里显示**
                  （说明改到「背包」里点 [说明] 展开，见 cur==='bag' 那一段）。
