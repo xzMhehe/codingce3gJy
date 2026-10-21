@@ -128,6 +128,9 @@
                 <template v-if="ezfy.selDetail.terrain === 1 || ezfy.selDetail.terrain === 9">采集可以获得{{ ezfy.selDetail.gather_res }}，可建立城市。</template>
                 <template v-else>采集可以获得{{ ezfy.selDetail.gather_res }}，可能获得{{ (ezfy.selDetail.treasures || []).join('、') }}。</template>
               </div>
+              <div class="old-line gray" v-if="ezfy.selDetail.gather_res">
+                采集产量 = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 2（16:59 按 16 小时算）
+              </div>
             </template>
           </template>
           <div class="old-line" v-else>

@@ -591,6 +591,11 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	}
 
 	profile := h.ensureProfile(uid)
+	// ★ 2026-10-21 战报 [攻方] 显示玩家昵称（活动目标守方仍是野地/目标名+等级）。
+	atkLabel := strings.TrimSpace(profile.Nickname)
+	if atkLabel == "" {
+		atkLabel = city.Name
+	}
 	report := fmt.Sprintf("主题:战斗报告\n出发地:%s(%d,%d)\n目的地:%s(%d,%d)\n时间:%s\n公文报告:战斗报告\n我方一支部队对%s[ %d，%d ]发起了进攻。战斗共持续 %d 回合，我方战斗%s\n",
 		city.Name, city.X, city.Y, label, order.TargetX, order.TargetY,
 		time.UnixMilli(now).Format("2006-01-02 15:04"), label,
@@ -607,7 +612,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	if draw {
 		atkTag, defTag = "平", "平"
 	}
-	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
+	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, atkLabel)
 	report += troopChangeText(atkBefore, atkAfter)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, label)
 	// ★ 2026-09-29 配置了守将时展示守方军官（否则守方只有兵种看不到是谁）
@@ -632,7 +637,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		detail += a + "\n"
 	}
 	detail += "\n[双方兵力]\n"
-	detail += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
+	detail += fmt.Sprintf("[%s]攻方:%s\n", atkTag, atkLabel)
 	if leadOfficer != nil {
 		detail += "军官:" + officerReportDesc(leadOfficer) + "\n"
 	}

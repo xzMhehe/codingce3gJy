@@ -2697,8 +2697,9 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	}
 	level := wl.Level
 	terrain := ezfyTerrainEx(wl.X, wl.Y)
-	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, int64(periods)*ezfyDispatchPeriod(), env)
-	amt := food + steel + oil + rare
+	g := h.dispatchGatherYield(order, &wl, int64(periods)*ezfyDispatchPeriod(), env)
+	food, steel, oil, rare := g.Food, g.Steel, g.Oil, g.Rare
+	resName, amt := g.ResName, g.Amount
 	// ★ 2026-09-28 规则修正：产出**累积进部队负重(carry)**（负重封顶、多采部分丢弃），
 	//   不直接入城；待玩家[停止采集]/[一键收获]/[召回]时取回负重入城（见各入口）。
 	//   从负重取回仍走「前后差值」口径，保证反馈数=实际进账数。
@@ -2747,11 +2748,8 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	cur = parseCarry(order.Carry)
 	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)驻守满%d期\n产出: %s%d",
 		level, wl.X, wl.Y, periods, resName, amt)
-	if gainPct > 100 {
-		desc += fmt.Sprintf("(等级×%d期, 军官后勤加成 +%d%%)", periods, gainPct-100)
-	} else {
-		desc += fmt.Sprintf("(等级×%d期)", periods)
-	}
+	desc += fmt.Sprintf("(卡车%d × 整点%d小时 × 野地加成%g%% × 后勤%d ÷ %g)",
+		g.Trucks, g.Hours, g.WildBonusPct, g.Logistics, g.Divisor)
 	desc += fmt.Sprintf("\n已入负重 %d/%d", cur.total(), h.envCarryCap(env, order, uid))
 	if direct > 0 {
 		desc += fmt.Sprintf("\n负重已满, 超出部分 %d 已直接入起点城市(不丢弃)", direct)
@@ -2845,63 +2843,147 @@ func (h *EzfyHandler) ezfyClaimSettle(order *model.EzfyOrder, oldArrive, next in
 	return true
 }
 
+// ezfyGatherCalc 一次采集产量计算的全部明细（供入库/战报/实时预览共用）。
+type ezfyGatherCalc struct {
+	Food, Steel, Oil, Rare int64
+	ResName                string
+	Trucks                 int64   // M：卡车数量
+	Hours                  int64   // N：整点小时数（向下取整）
+	WildBonusPct           float64 // R：同资源野地总等级 × 每级加成%
+	Logistics              int     // A：带队军官后勤
+	Divisor                float64 // 公式除数（默认 2）
+	IsSea                  bool    // 目标是否海野（海底森林/岛屿/渔场/矿礁）
+	SeaMult                float64 // 海野采集倍率（仅海野生效，默认 3；陆地恒为 1）
+	Amount                 int64   // F：本次产出合计（海野 = 公式结果 × SeaMult）
+}
+
+// ezfyGatherTruckCount 统计出征部队里的卡车数量（M）。
+//
+// 兵种 ID 由管理端配置（默认 3 = 军用运输卡车/通用运输卡车）。
+// order.Troops 兼容 JSON `[{"troopId":3,"count":100}]` 与老格式 `3:100,1:50`。
+func ezfyGatherTruckCount(raw string) int64 {
+	truckID := ezfyGatherTruckTroopID()
+	var total int64
+	for _, g := range parseGroups(raw) {
+		if g.TroopId == truckID && g.Count > 0 {
+			total += g.Count
+		}
+	}
+	return total
+}
+
+// ezfyGatherAmount 采集公式核心：F = M × N × R × A ÷ divisor（海野再 × seaMult）。
+//
+//	M = trucks（卡车数量）
+//	N = hours（整点小时，调用方已向下取整）
+//	R = wildPct（百分比，例如 42 表示 42%）
+//	A = logistics（军官后勤）
+//	seaMult = 海野采集倍率（default 3）：仅海野调用方传 >1 的值；陆地传 1；
+//	          <=0 视为 1（不做海野加成），0 不会把产出清零。
+//
+// 用 +1e-6 再 floor，避免 42% 这类十进制在 float 里算成 195955199.99999997 被截成少 1。
+func ezfyGatherAmount(trucks, hours int64, wildPct float64, logistics int, divisor, seaMult float64) int64 {
+	if trucks <= 0 || hours <= 0 || wildPct <= 0 || logistics <= 0 || divisor <= 0 {
+		return 0
+	}
+	v := float64(trucks) * float64(hours) * wildPct * float64(logistics) / (100 * divisor)
+	if seaMult > 0 && seaMult != 1 {
+		v *= seaMult
+	}
+	if v <= 0 {
+		return 0
+	}
+	if v >= float64(math.MaxInt64) {
+		return math.MaxInt64
+	}
+	return int64(math.Floor(v + 1e-6))
+}
+
+// ezfyGatherWildBonusPctFor 计算 R：出发城市名下「同资源野地」的总等级 × 每级加成%。
+//
+// 野地加成不是看单块野地的等级，而是**全城同资源野地等级之和**：
+//
+//	例：城市名下 10 级森林 + 4 级森林，每级 3% → 森林（粮食）加成 42%。
+//
+// 批量结算用 env 预汇总（同城多支共享）；单支路径回落一次按城查询。
+func (h *EzfyHandler) ezfyGatherWildBonusPctFor(order *model.EzfyOrder, wl *model.EzfyWildland, resName string, env *ezfySettleEnv) float64 {
+	levels := 0
+	if m := env.wildLevels(order.CityId); m != nil {
+		levels = m[resName]
+	} else {
+		var wls []model.EzfyWildland
+		h.DB.Select("city_id", "x", "y", "level").Where("city_id = ?", order.CityId).Find(&wls)
+		levels = ezfyWildResLevels(wls)[resName]
+	}
+	// 防御：缓存里没算到目标野地（例如 env 是别的入口临时构造）时，至少把目标本身算进去。
+	if levels <= 0 && wl != nil && wl.CityId == order.CityId &&
+		ezfyGatherResName(ezfyTerrainEx(wl.X, wl.Y)) == resName {
+		levels = wl.Level
+	}
+	if levels <= 0 {
+		return 0
+	}
+	return float64(levels) * ezfyGatherWildBonusPct()
+}
+
 // dispatchGatherYield 按驻守时长(毫秒)计算采集资源产出。
 //
-// 每期(一个采集周期)产出 = 野地等级 × 800 × 后勤加成; 陆地 ×4, 海野(wild_type=2) ×3;
-// 时长不足一期时按比例折算。返回 (粮食, 钢铁, 石油, 稀矿, 加成%, 资源名)。
-func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.EzfyWildland, ms int64, envs ...*ezfySettleEnv) (int64, int64, int64, int64, int, string) {
-	// ★ 2026-10-13 性能：批量结算传入请求级缓存 env（军官只查一次），单支路径不传。
+// ★★ 2026-10-21 改为线上原版公式：F = M × N × R × A ÷ 2
+//
+//	M = 卡车数量（默认兵种 3）
+//	N = 整点小时数（16:59 按 16 小时算，向下取整）
+//	R = 野地加成%（城市名下同资源野地总等级 × 每级 3%）
+//	A = 带队军官后勤
+//
+// ★ 2026-10-21 用户规则「海野需要比陆地野地高 3 倍」：
+//	海野（海底森林/岛屿/渔场/矿礁，ezfyIsSeaWildTerrain）产出 = 公式结果 × 海野倍率（默认 3，
+//	管理端「二战系统配置」可调）；陆地野地不乘。
+//
+// 例：180000 卡车 × 16 小时 × 42% × 324 后勤 ÷ 2 = 195955200。
+// 产出仍是单一资源（按地形判定）；ms 不足 1 整点时按原有兜底至少 1 点。
+func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.EzfyWildland, ms int64, envs ...*ezfySettleEnv) ezfyGatherCalc {
+	// ★ 2026-10-13 性能：批量结算传入请求级缓存 env（军官/野地只查一次），单支路径不传。
 	var env *ezfySettleEnv
 	if len(envs) > 0 {
 		env = envs[0]
 	}
-	// 军官后勤加成: 每 1 点 +1%, 上限 +100%
-	// ★ 2026-09-28 「采集后勤加成率可调」→ 后勤点数先乘 ezfyOfficerGatherMult 再折算百分比。
-	gainPct := 100
+	// 地形只算一次：资源名（粮/钢/油/稀）与「是否海野」共用同一地形判定，天然同源。
+	terrain := ezfyTerrainEx(wl.X, wl.Y)
+	resName := ezfyGatherResName(terrain)
+	isSea := ezfyIsSeaWildTerrain(terrain)
+	trucks := ezfyGatherTruckCount(order.Troops)
+	hours := ezfyGatherHours(ms)
+	logistics := 0
 	if officer := h.envOfficer(env, uint(order.CityId), order.Officer); officer != nil {
-		gainPct += int(float64(officer.Logistics) * ezfyOfficerGatherMult())
-		if gainPct > 200 {
-			gainPct = 200
-		}
+		logistics = officer.Logistics
 	}
-	// ★ 2026-09-28 「采集和野地等级有关，越高级采越多」：
-	//   每期基础 = 800 × (等级 ^ gatherLevelPow)，让高等级加速增长（默认幂次 1.3）；再乘后勤加成%。
-	per := int64(800 * math.Pow(float64(wl.Level), ezfyGatherLevelPow()) * float64(gainPct) / 100)
-	mult := int64(4)
-	if wl.WildType == 2 {
-		mult = 3
-		// ★ 2026-09-28 「海野采集更高些，给海野加个系数 1~2」：
-		//   海野基础陆海系数低(3 vs 陆地4)，乘上本系数拉高海野采集收益（默认 1.5 → 4.5，比陆地更高）。
-		if sm := ezfyGatherSeaMult(); sm != 1 {
-			mult = int64(float64(mult) * sm)
-		}
+	wildPct := h.ezfyGatherWildBonusPctFor(order, wl, resName, env)
+	divisor := ezfyGatherFormulaDivisor()
+	seaMult := 1.0
+	if isSea {
+		seaMult = ezfyGatherSeaBonusMult()
 	}
-	amt := per * mult
-	if ms > 0 && ms < ezfyDispatchPeriod() {
-		amt = amt * ms / ezfyDispatchPeriod()
-	}
-	// ★ 2026-09-25 「采集资源倍率也加到系统管理里」→ 产出 × 倍率（默认 1 = 原样）
-	if gm := ezfyGatherResMult(); gm != 1 {
-		amt = int64(float64(amt) * gm)
-	}
-	amt = max64(0, amt)
-	// ★ 2026-09-24 修复「提前采集资源0」: 驻守过就至少给 1 点资源
+	amt := ezfyGatherAmount(trucks, hours, wildPct, logistics, divisor, seaMult)
+	// ★ 2026-09-24 修复「提前采集资源0」: 驻守过就至少给 1 点资源。
 	if ms > 0 && amt < 1 {
 		amt = 1
 	}
-	resName := ezfyGatherResName(ezfyTerrainEx(wl.X, wl.Y))
-	var food, steel, oil, rare int64
+	out := ezfyGatherCalc{
+		ResName: resName, Trucks: trucks, Hours: hours,
+		WildBonusPct: wildPct, Logistics: logistics, Divisor: divisor, Amount: amt,
+		IsSea: isSea, SeaMult: seaMult,
+	}
 	switch resName {
 	case "钢铁":
-		steel = amt
+		out.Steel = amt
 	case "石油":
-		oil = amt
+		out.Oil = amt
 	case "稀矿":
-		rare = amt
+		out.Rare = amt
 	default:
-		food = amt
+		out.Food = amt
 	}
-	return food, steel, oil, rare, gainPct, resName
+	return out
 }
 
 // settleDispatchOnRecall 召回驻守采集部队前的结算:
@@ -2952,7 +3034,9 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 	if elapsed > ezfyDispatchPeriod() {
 		elapsed = ezfyDispatchPeriod()
 	}
-	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, elapsed, env)
+	g := h.dispatchGatherYield(order, &wl, elapsed, env)
+	food, steel, oil, rare := g.Food, g.Steel, g.Oil, g.Rare
+	resName, amt := g.ResName, g.Amount
 	// ★ 2026-09-28 规则修正：产出**累积进部队负重(carry)**（负重封顶、多采部分丢弃），
 	//   不直接入城；取回负重入城由各入口（StopCollect/HarvestAll/RecallAll）负责。
 	// ★★ 2026-09-30 同 settleDispatch 的修复：负重满了的部分直接入起点城市，不丢弃。
@@ -2970,7 +3054,6 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 	if room < 0 {
 		room = 0
 	}
-	amt := food + steel + oil + rare
 	// ★★ 2026-10-10 修复「采集资源没入城市」（与 settleDispatch 同一处 bug）：负重已装满(room==0)或
 	//   没有负重(纯步兵/运输兵 carry=0)时原代码把整批产出丢弃; 现改为装不下的部分直接入起点城市, 资源永不消失。
 	direct := int64(0)
@@ -2992,10 +3075,10 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 	cur = parseCarry(order.Carry)
 	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)%s, 按驻守时长折算资源\n产出: %s%d",
 		wl.Level, wl.X, wl.Y, label, resName, amt)
-	if gainPct > 100 {
-		desc += fmt.Sprintf("(等级×%d分钟, 军官后勤加成 +%d%%)", max64(elapsed/60000, 1), gainPct-100)
-	} else {
-		desc += fmt.Sprintf("(等级×%d分钟)", max64(elapsed/60000, 1))
+	desc += fmt.Sprintf("(卡车%d × 整点%d小时 × 野地加成%g%% × 后勤%d ÷ %g)",
+		g.Trucks, g.Hours, g.WildBonusPct, g.Logistics, g.Divisor)
+	if g.Hours < 1 {
+		desc += "(不足1整点, 按保底1点资源)"
 	}
 	desc += fmt.Sprintf("\n已入负重 %d/%d", cur.total(), h.envCarryCap(env, order, uid))
 	if direct > 0 {
@@ -3063,7 +3146,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// 采集(4)/派遣(7): 到达已占领野地 → 转为常驻驻军(空闲待命)
 	// ★ 2026-09-24 用户规则: 到达后驻守**空闲**, 必须手工点[采集](或驻军区的[一键采集])
 	//   才开始采集 —— 不再自动进采集。开始采集(StartCollect)后每满一个采集周期结算一期:
-	//   资源**直接入起点城市**(等级越高越多, 军官后勤加成), 宝物直接进背包(每期至少 1 件);
+	//   资源**直接入起点城市**(F = 卡车×整点小时×野地加成%×后勤÷2), 宝物直接进背包(每期至少 1 件);
 	//   ★ 2026-09-28：负重装满后自动停止采集(原地待命)。空闲驻军用 arrive_time=0 表示(不参与结算)。
 	if order.OrderType == 4 || order.OrderType == 7 {
 		var wl model.EzfyWildland
@@ -3841,10 +3924,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 						}
 					}
 					// ---- 空战战报正文（攻守双方各自的兵种变化行） ----
+					// ★ 2026-10-21 空战战报的 [攻方]/[守方] 也显示玩家昵称（守方拦截只发生在玩家城）。
+					airAtkLabel := h.ezfyReportSideName(uid, city.Name)
+					airDefLabel := h.ezfyReportSideName(target.UserID, targetName)
 					atkTagC, defTagC := winText(ar.AttackerWin), winText(!ar.AttackerWin)
-					airLine := fmt.Sprintf("[%s]攻方:%s\n", atkTagC, city.Name) +
+					airLine := fmt.Sprintf("[%s]攻方:%s\n", atkTagC, airAtkLabel) +
 						troopChangeText(groupCounts(atkRecon), groupCounts(ar.AttackerLeft)) +
-						fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTagC, targetName) +
+						fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTagC, airDefLabel) +
 						troopChangeText(groupCounts(defReconG), groupCounts(ar.DefenderLeft))
 					battleBlock = fmt.Sprintf("公文报告:侦查拦截\n我方侦察机抵达%s[%d，%d]上空时遭敌方侦察机拦截，双方侦察机展开空战，共持续 %d 回合！\n",
 						targetName, order.TargetX, order.TargetY, ar.Rounds) + airLine + "\n------------------\n"
@@ -4260,6 +4346,33 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		atkExp = ezfyOfficerBattleExp(enemyDeadOf(br.DefenderLosses), win)
 	}
 
+	// ★★ 2026-10-19 附属野地的「守方战报」（用户：「自己附属野地被征服、被掠夺、被侦查
+	//   战斗报告也要能看」）：
+	//   野地不是 EzfyCity，原来只有 target_type=3（玩家城市）才写守方报告 →
+	//   野地主人被打完毫不知情（只有守军被歼灭时才有一条「附属野地失守」）。
+	//   ★ 必须**在结算前**记下主人：征服成功会走 ezfyClearWildlandAt 清掉旧野地记录，
+	//     那之后再按坐标查就查不到原主人了。
+	var wlOwnerUID uint
+	var wlOwnerCityID int64
+	if order.TargetType == 1 || order.TargetType == 2 {
+		wlOwnerUID, wlOwnerCityID = h.ezfyWildlandOwnerOf(order.TargetX, order.TargetY, uid)
+	}
+
+	// ★ 2026-10-21 战报 [攻方]/[守方] 行改为**玩家昵称**（用户：不要城市名）：
+	//   攻方 = 玩家昵称；守方 = 玩家城城主 / 有主附属野地的城主；
+	//   无主野地/寇城仍用「野地名+等级」（如 渔场10级）。
+	profile := h.ensureProfile(uid)
+	atkLabel := strings.TrimSpace(profile.Nickname)
+	if atkLabel == "" {
+		atkLabel = city.Name
+	}
+	defLabel := targetName
+	if order.TargetType == 3 && target != nil {
+		defLabel = h.ezfyReportSideName(target.UserID, targetName)
+	} else if wlOwnerUID > 0 {
+		defLabel = h.ezfyReportSideName(wlOwnerUID, targetName)
+	}
+
 	// ★ 2026-10-06 被掠夺/被征服报告正文要等战斗结算完（用与攻方同款的完整正文）才写，
 	//   相关临时值提前到函数级作用域，各分支里只赋值。
 	lootFeel := 0     // 掠夺民心扣减值
@@ -4271,10 +4384,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	report := fmt.Sprintf("主题:%s\n出发地:%s(%d,%d)\n目的地:%s(%d,%d)\n时间:%s\n公文报告:%s\n我方一支部队对 %s[ %d，%d ]进行了%s。战斗共持续 %d 回合，我方战斗%s\n",
 		reportType, city.Name, city.X, city.Y, targetName, order.TargetX, order.TargetY,
 		time.UnixMilli(now).Format("2006-01-02 15:04"), reportType,
-		targetName, order.TargetX, order.TargetY,
+		defLabel, order.TargetX, order.TargetY,
 		ezfyOrderTypeName(order.OrderType), br.Rounds, battleOutcomeText(win, draw))
 
-	profile := h.ensureProfile(uid)
 	report += fmt.Sprintf("军衔声望:%d\n", profile.Prestige)
 	// ★★ 2026-10-19 用户反馈「攻守军官堆在抬头，看不出哪一方的」：
 	//   军官行不再集中写在「军衔声望」下方，改为**各自挂在 [攻方]/[守方] 标题下面**：
@@ -4295,12 +4407,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	if draw {
 		atkTag, defTag = "平", "平"
 	}
-	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
+	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, atkLabel)
 	if leadOfficer != nil {
 		report += "军官:" + officerReportDesc(leadOfficer) + "\n"
 	}
 	report += troopChangeText(atkBefore, atkAfter)
-	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
+	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, defLabel)
 	// ★★ 2026-10-19 守方军官跟在「[败]守方:」标题下（玩家城=城守；附属野地=驻军带队军官）。
 	if cityGuard != nil {
 		report += "军官:" + officerReportDesc(cityGuard) + "\n"
@@ -4330,12 +4442,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		detail += a + "\n"
 	}
 	detail += "\n[双方兵力]\n"
-	detail += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
+	detail += fmt.Sprintf("[%s]攻方:%s\n", atkTag, atkLabel)
 	if leadOfficer != nil {
 		detail += "军官:" + officerReportDesc(leadOfficer) + "\n"
 	}
 	detail += troopChangeText(atkBefore, atkAfter)
-	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
+	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, defLabel)
 	if cityGuard != nil {
 		detail += "军官:" + officerReportDesc(cityGuard) + "\n"
 	}
@@ -4467,17 +4579,6 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	prestigeGain := 0
 
-	// ★★ 2026-10-19 附属野地的「守方战报」（用户：「自己附属野地被征服、被掠夺、被侦查
-	//   战斗报告也要能看」）：
-	//   野地不是 EzfyCity，原来只有 target_type=3（玩家城市）才写守方报告 →
-	//   野地主人被打完毫不知情（只有守军被歼灭时才有一条「附属野地失守」）。
-	//   ★ 必须**在结算前**记下主人：征服成功会走 ezfyClearWildlandAt 清掉旧野地记录，
-	//     那之后再按坐标查就查不到原主人了。
-	var wlOwnerUID uint
-	var wlOwnerCityID int64
-	if order.TargetType == 1 || order.TargetType == 2 {
-		wlOwnerUID, wlOwnerCityID = h.ezfyWildlandOwnerOf(order.TargetX, order.TargetY, uid)
-	}
 	// ★★ 2026-10-19 用户规则：攻击**有归属(玩家附属)**的野地**不产出任何战利品** ——
 	//   野地配置产出（前面按 cfg.ResMin/ResMax 算好的 rnd）+ 守军缴获一律不计，战果全 0。
 	//   原因：「不然有人靠这个刷资源」—— 有主野地打完仍归主人，可被反复攻打刷战利品。
@@ -5020,6 +5121,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
 					AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(cityGuard),
 					PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef,
+					AtkLabel: atkLabel, DefLabel: defLabel,
 				})
 				head := defConqBody
 				if order.OrderType == 2 {
@@ -5100,8 +5202,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
 				AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(cityGuard),
 				PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef,
+				AtkLabel: atkLabel, DefLabel: defLabel,
 			})
-			head := fmt.Sprintf("你的城市%s遭到「%s」的军队进攻, 我方守军击退了敌军!", targetName, city.Name)
+			head := fmt.Sprintf("你的城市%s遭到「%s」的军队进攻, 我方守军击退了敌军!", targetName, atkLabel)
 			h.addReport(target.UserID, repType, defTitle+": "+targetName+
 				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
 				head+"\n\n"+defReport, detail, 0, target.ID)
@@ -5833,6 +5936,18 @@ func (h *EzfyHandler) ezfyWildlandOwnerInfo(x, y int, atkUID uint) (uid uint, ci
 	return owner.UserID, int64(owner.ID), wl
 }
 
+// ezfyReportSideName 战报 [攻方]/[守方] 行展示的名字：
+// 真人玩家优先用游戏昵称（ezfy_profile.nickname），取不到时回退到城市名/野地名。
+// ★ 2026-10-21 用户规则：战报不要显示城市名，要显示玩家名字。
+func (h *EzfyHandler) ezfyReportSideName(uid uint, fallback string) string {
+	if uid > 0 {
+		if n := strings.TrimSpace(h.ensureProfile(uid).Nickname); n != "" {
+			return n
+		}
+	}
+	return fallback
+}
+
 // ezfyDefReportSpec 「守方视角」战报正文的输入（★ 2026-10-19）。
 //
 // ★★ 抽出来的原因：玩家城市守方战报原来在「攻方获胜」分支**直接复用攻方正文**
@@ -5863,6 +5978,9 @@ type ezfyDefReportSpec struct {
 	PrestigeGain   int                // 守方本场军功声望（>0 才输出该行）
 	DefExp         int64              // 守方军官本场经验（>0 才输出该行）
 	HealLineDef    string             // 守方「回收比例」行（空串=不显示）
+	// ★ 2026-10-21 [攻方]/[守方] 行展示名（玩家昵称；空=沿用城市名/野地名）
+	AtkLabel string
+	DefLabel string
 }
 
 // ezfyDefenderReportBody 生成「守方视角」战报正文（**不含抬头句**，调用方自己拼），
@@ -5880,18 +5998,27 @@ func (h *EzfyHandler) ezfyDefenderReportBody(s ezfyDefReportSpec) string {
 	if s.Order != nil {
 		tx, ty = s.Order.TargetX, s.Order.TargetY
 	}
+	// ★ 2026-10-21 [攻方]/[守方] 行显示玩家昵称；未传时回退城市名/野地名。
+	atkLabel := strings.TrimSpace(s.AtkLabel)
+	if atkLabel == "" {
+		atkLabel = atkName
+	}
+	defLabel := strings.TrimSpace(s.DefLabel)
+	if defLabel == "" {
+		defLabel = s.DefName
+	}
 	defProfile := h.ensureProfile(s.DefUID)
 	b := fmt.Sprintf("主题:%s\n出发地:%s(%d,%d)\n目的地:%s(%d,%d)\n时间:%s\n公文报告:%s\n敌方一支部队对 %s[ %d，%d ]进行了%s。战斗共持续 %d 回合，我方战斗%s\n",
 		s.DefTitle, atkName, atkX, atkY, s.DefName, tx, ty,
 		time.UnixMilli(s.Now).Format("2006-01-02 15:04"), s.DefTitle,
-		s.DefName, tx, ty, s.OcTitle, s.Rounds, battleOutcomeText(s.DefWin, s.Draw))
+		defLabel, tx, ty, s.OcTitle, s.Rounds, battleOutcomeText(s.DefWin, s.Draw))
 	b += fmt.Sprintf("军衔声望:%d\n", defProfile.Prestige)
-	b += fmt.Sprintf("[%s]攻方:%s\n", s.AtkTag, atkName)
+	b += fmt.Sprintf("[%s]攻方:%s\n", s.AtkTag, atkLabel)
 	if s.AtkOfficer != nil {
 		b += "军官:" + officerReportDesc(s.AtkOfficer) + "\n"
 	}
 	b += troopChangeText(s.AtkBefore, s.AtkAfter)
-	b += fmt.Sprintf("--------------------\n[%s]守方:%s\n", s.DefTag, s.DefName)
+	b += fmt.Sprintf("--------------------\n[%s]守方:%s\n", s.DefTag, defLabel)
 	if s.DefOfficerDesc != "" {
 		b += "军官:" + s.DefOfficerDesc + "\n"
 	}
@@ -5931,24 +6058,28 @@ func (h *EzfyHandler) addWildlandOwnerReport(order *model.EzfyOrder, ownerUID ui
 	if atkCity != nil && atkCity.Name != "" {
 		atkName = atkCity.Name
 	}
+	// ★ 2026-10-21 守方战报里的攻方/守方也显示玩家昵称：
+	//   攻方=玩家昵称；守方=附属野地城主（ownerUID）昵称。
+	atkLabel := h.ezfyReportSideName(order.UserID, atkName)
+	defLabel := h.ezfyReportSideName(ownerUID, targetName)
 	pos := fmt.Sprintf("(%d,%d)", order.TargetX, order.TargetY)
 	title := "被掠夺报告: " + targetName + pos
 	defTitle := "被掠夺报告"
 	reportType := 2
 	ocName := "掠夺"
-	head := fmt.Sprintf("你的附属野地 %s%s 遭到「%s」的军队进攻, 我方守军击退了敌军, 未被掠夺!", targetName, pos, atkName)
+	head := fmt.Sprintf("你的附属野地 %s%s 遭到「%s」的军队进攻, 我方守军击退了敌军, 未被掠夺!", targetName, pos, atkLabel)
 	if order.OrderType == 3 {
 		title = "被征服报告: " + targetName + pos
 		defTitle = "被征服报告"
 		reportType = 4
 		ocName = "征服"
-		head = fmt.Sprintf("你的附属野地 %s%s 遭到「%s」的军队进攻, 我方守军击退了敌军, 野地仍在!", targetName, pos, atkName)
+		head = fmt.Sprintf("你的附属野地 %s%s 遭到「%s」的军队进攻, 我方守军击退了敌军, 野地仍在!", targetName, pos, atkLabel)
 	}
 	if win {
 		if order.OrderType == 3 {
-			head = fmt.Sprintf("你的附属野地 %s%s 被「%s」的军队征服, 该野地已被敌方占领!", targetName, pos, atkName)
+			head = fmt.Sprintf("你的附属野地 %s%s 被「%s」的军队征服, 该野地已被敌方占领!", targetName, pos, atkLabel)
 		} else {
-			head = fmt.Sprintf("你的附属野地 %s%s 被「%s」的军队掠夺!", targetName, pos, atkName)
+			head = fmt.Sprintf("你的附属野地 %s%s 被「%s」的军队掠夺!", targetName, pos, atkLabel)
 		}
 	}
 	// ★★ 2026-10-19 守方「军功声望」：**参战即得 100**（守住/被攻破都给，与玩家城守方同口径，
@@ -5962,6 +6093,7 @@ func (h *EzfyHandler) addWildlandOwnerReport(order *model.EzfyOrder, ownerUID ui
 		AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
 		AtkOfficer: leadOfficer, DefOfficerDesc: defOfficerDesc,
 		PrestigeGain: defPrestige, DefExp: defExp,
+		AtkLabel: atkLabel, DefLabel: defLabel,
 	})
 	h.addReport(ownerUID, reportType, title, head+"\n\n"+body, detail, order.ID, ownerCityID)
 	if defPrestige > 0 {

@@ -29,6 +29,9 @@ import (
 type ezfySettleEnv struct {
 	wilds  map[int64]*model.EzfyWildland
 	cities map[int64]*model.EzfyCity
+	// ★ 2026-10-21 采集新公式：按出发城市预取「该城名下所有野地 → 各资源总等级」，
+	//   供 R（野地加成%）使用。批量结算/军队动态一次 IN 查询，避免逐支扫野地表。
+	cityWildLevels map[int64]map[string]int
 
 	reports []model.EzfyReport
 	equips  []model.EzfyEquipment
@@ -90,9 +93,10 @@ func (h *EzfyHandler) ezfyCityAtResMax(c *model.EzfyCity) bool {
 // newSettleEnv 为一批订单预取共享数据（野地 + 城市），各一次 IN 查询。
 func (h *EzfyHandler) newSettleEnv(orders []model.EzfyOrder) *ezfySettleEnv {
 	e := &ezfySettleEnv{
-		wilds:    map[int64]*model.EzfyWildland{},
-		cities:   map[int64]*model.EzfyCity{},
-		officers: map[string]*model.EzfyOfficer{},
+		wilds:          map[int64]*model.EzfyWildland{},
+		cities:         map[int64]*model.EzfyCity{},
+		cityWildLevels: map[int64]map[string]int{},
+		officers:       map[string]*model.EzfyOfficer{},
 	}
 	if len(orders) == 0 {
 		return e
@@ -125,6 +129,18 @@ func (h *EzfyHandler) newSettleEnv(orders []model.EzfyOrder) *ezfySettleEnv {
 			c := cities[i]
 			e.cities[int64(c.ID)] = &c
 		}
+		// ★ 2026-10-21 采集新公式的野地加成：一次取回这批城市名下所有野地，
+		//   按「城市 → 资源 → 总等级」预先汇总（同城多支采集队共享，避免 N+1）。
+		var cityWilds []model.EzfyWildland
+		h.DB.Where("city_id IN ?", cityIDs).Find(&cityWilds)
+		byCity := map[int64][]model.EzfyWildland{}
+		for i := range cityWilds {
+			w := cityWilds[i]
+			byCity[w.CityId] = append(byCity[w.CityId], w)
+		}
+		for cid, list := range byCity {
+			e.cityWildLevels[cid] = ezfyWildResLevels(list)
+		}
 	}
 	return e
 }
@@ -143,6 +159,14 @@ func (e *ezfySettleEnv) city(id int64) *model.EzfyCity {
 		return nil
 	}
 	return e.cities[id]
+}
+
+// wildLevels 取该城预汇总的「资源 → 野地总等级」；未预取到返回 nil（调用方回落单次查询）。
+func (e *ezfySettleEnv) wildLevels(cityID int64) map[string]int {
+	if e == nil || e.cityWildLevels == nil {
+		return nil
+	}
+	return e.cityWildLevels[cityID]
 }
 
 // treasureLeft 本批还剩几件宝物可放。首次向 DB 取一次，之后本地递减。
@@ -257,7 +281,7 @@ func (h *EzfyHandler) envHarvest(e *ezfySettleEnv, orderID uint, cityID int64, f
 
 // envHarvestCarry 把部队「待带回负重」记为待入城，并在内存里清空负重。
 //
-// ★ 与原 `harvestCarryToCity` 的差别只有一点：落库（carry='' 的 UPDATE）推迟到
+// ★ 与原 `harvestCarryToCity` 的差别只有一点：落库（carry=” 的 UPDATE）推迟到
 // envFlush 之后由调用方**批量**执行 —— 原实现每支都要读两次城资源 + 写一次城 + 写一次订单。
 func (h *EzfyHandler) envHarvestCarry(e *ezfySettleEnv, order *model.EzfyOrder) {
 	c := parseCarry(order.Carry)

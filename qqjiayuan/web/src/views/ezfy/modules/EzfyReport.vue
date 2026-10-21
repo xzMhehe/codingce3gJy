@@ -70,6 +70,9 @@
               <a href="javascript:;" @click="ezfy.doHarvestAll">[一键收获]</a>
               <a href="javascript:;" @click="ezfy.doRecallAll">[一键召回]</a>
             </div>
+            <div class="old-line gray">
+              采集产量 = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 2（16:59 按 16 小时算）
+            </div>
             <div class="old-line" v-for="o in ezfy.dynStationPaged" :key="'st' + o.id">
               命令：{{ o.type_name }} <a href="javascript:;" @click="ezfy.openOrder(o)">查看</a><br/>
               <!-- ★ 2026-09-28 显示这支部队是「哪个城出来的」(辨识番号) -->

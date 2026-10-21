@@ -1205,17 +1205,26 @@ const (
 	ezfyWildMultDef      = 10 // 野地兵力倍数：默认 10
 	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 10
 	ezfyWildResMultDef = 10
-	// ★ 2026-09-25 「采集资源倍率也加到系统管理里」→ 常驻采集产出资源倍率，默认 10
-	ezfyGatherResMultDef = 10
-	// ★ 2026-09-28 采集军官后勤属性加成率倍率 / 市长产量加成倍率，默认 1
+	// ⚠️ 2026-10-21 旧采集公式参数（已废弃，仅保留默认值给老字段兜底/兼容）
+	ezfyGatherResMultDef     = 10
 	ezfyOfficerGatherMultDef = 1
-	ezfyMayorGainMultDef     = 1
+	// ★ 2026-10-21 新采集公式参数：
+	//   F = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数
+	//   卡车兵种默认 3（军用/通用运输卡车）；每级野地默认 3%；除数默认 2；
+	//   海野（海底森林/岛屿/渔场/矿礁）产出再 × 海野倍率（默认 3，比陆地高 3 倍）。
+	ezfyGatherTruckTroopIDDef   = 3
+	ezfyGatherWildBonusPctDef   = 3.0
+	ezfyGatherFormulaDivisorDef = 2.0
+	ezfyGatherSeaBonusMultDef   = 3.0
+	// ★ 2026-09-28 市长产量加成倍率，默认 1
+	ezfyMayorGainMultDef = 1
 	// ★ 2026-10-21 造兵时间：市长军事加成开关 / 装备套装军事计入开关，默认都开
 	ezfyTrainMayorMilitaryDef = 1
 	ezfyTrainMayorEquipDef    = 1
 	// ★ 2026-09-28 采集等级成长幂次，默认 1.3（高等级野地产出加速型增长）
 	ezfyGatherLevelPowDef = 1.3
-	// ★ 2026-09-28 海野采集系数，默认 1.5（海野基础 3 × 1.5 = 4.5，比同级陆野 4 更高）
+	// ⚠️ 2026-10-21 旧公式海野系数（已废弃）——新公式海野倍率见 GatherSeaBonusMult / ezfyGatherSeaBonusMult，
+	//   这里仅给老字段 ezfyCfgLimit.GatherSeaMult 兜底展示用。
 	ezfyGatherSeaMultDef = 1.5
 	// ★ 2026-09-28 军校刷新周期模式，默认按小时（2）；1 = 按天
 	ezfyRecruitCycleHourlyDef = 2
@@ -1506,7 +1515,7 @@ func ezfyScaleByWildMult(n int64) int64 {
 // ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 管理端「二战系统配置」可调。
 //
 //	作用点只有一处：ezfy_order.go 里算野地战利品 `rnd` 的那一步。
-//	**不含**驻守采集（采集产出是「野地等级 × 800 × 后勤加成」另一套公式）。
+//	**不含**驻守采集（采集产出走「卡车 × 整点小时 × 野地加成% × 后勤 ÷ 2」另一套公式）。
 func ezfyWildResMult() float64 {
 	if !ezfyCfg.ready() {
 		return ezfyWildResMultDef
@@ -1587,34 +1596,70 @@ func ezfyScaleGoldByProdMult(n int64) int64 {
 	return int64(float64(n) * m)
 }
 
-// ezfyGatherResMult 常驻采集产出资源倍率（默认 10；0 或负数无意义 → 回落 10）
+// ezfyGatherTruckTroopID 采集公式里的「卡车」兵种 ID（默认 3）。
 //
-// ★ 2026-09-25 「采集资源倍率也加到系统管理里」→ 管理端「二战系统配置」可调。
+//	F = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数
 //
-//	作用点只有一处：ezfy_order.go 的 dispatchGatherYield（采集产出 = 等级 × 800 × 后勤加成 × 陆海系数）。
-//	**不含**战斗战利品（那是 ezfyWildResMult）。
-func ezfyGatherResMult() float64 {
+// 历史默认 3 = 军用运输卡车/通用运输卡车；0 / 负 / NULL → 回落 3。
+func ezfyGatherTruckTroopID() int {
 	if !ezfyCfg.ready() {
-		return ezfyGatherResMultDef
+		return ezfyGatherTruckTroopIDDef
 	}
-	if m := ezfyCfg.limit.GatherResMult; m > 0 {
-		return m
+	if id := ezfyCfg.limit.GatherTruckTroopID; id > 0 {
+		return id
 	}
-	return ezfyGatherResMultDef
+	return ezfyGatherTruckTroopIDDef
 }
 
-// ezfyOfficerGatherMult 采集「军官后勤属性」加成率倍率（默认 1；0 / 负 / NULL → 回落 1）
+// ezfyGatherWildBonusPct 每 1 级「同资源野地」提供的采集加成百分比（默认 3%）。
 //
-// ★ 2026-09-28 「采集后勤加成率可调」：dispatchGatherYield 里
-// gainPct = 100 + floor(后勤 × 本倍率)，封顶 200。
-func ezfyOfficerGatherMult() float64 {
+//	例：城市名下 10 级森林 + 4 级森林 = 14 级 → 森林（粮食）加成 14 × 3% = 42%。
+//	0 / 负 / NULL → 回落 3。
+func ezfyGatherWildBonusPct() float64 {
 	if !ezfyCfg.ready() {
-		return ezfyOfficerGatherMultDef
+		return ezfyGatherWildBonusPctDef
 	}
-	if m := ezfyCfg.limit.OfficerGatherMult; m > 0 {
-		return m
+	if p := ezfyCfg.limit.GatherWildBonusPct; p > 0 {
+		return p
 	}
-	return ezfyOfficerGatherMultDef
+	return ezfyGatherWildBonusPctDef
+}
+
+// ezfyGatherFormulaDivisor 采集公式的除数（默认 2）。
+//
+//	0 / 负 / NULL → 回落 2。
+func ezfyGatherFormulaDivisor() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyGatherFormulaDivisorDef
+	}
+	if d := ezfyCfg.limit.GatherFormulaDivisor; d > 0 {
+		return d
+	}
+	return ezfyGatherFormulaDivisorDef
+}
+
+// ezfyGatherHours 采集时长 → 整点小时数（向下取整；16:59 = 16 小时）。
+func ezfyGatherHours(ms int64) int64 {
+	if ms <= 0 {
+		return 0
+	}
+	return ms / (3600 * 1000)
+}
+
+// ezfyWildResLevels 把一批野地按「实际产出资源」汇总等级。
+//
+//	野地加成 R 的口径：城市名下所有**同资源**野地的总等级 × 每级加成%。
+//	资源按地形判定，与 dispatchGatherYield 的 resName 完全同源（含海野细分）。
+func ezfyWildResLevels(wls []model.EzfyWildland) map[string]int {
+	out := map[string]int{}
+	for i := range wls {
+		if wls[i].Level <= 0 {
+			continue
+		}
+		res := ezfyGatherResName(ezfyTerrainEx(wls[i].X, wls[i].Y))
+		out[res] += wls[i].Level
+	}
+	return out
 }
 
 // ezfyMayorGainMult 市长产量加成倍率（默认 1；NULL → 回落 1；0 合法 = 关闭市长加成）
@@ -1644,15 +1689,21 @@ func ezfyGatherLevelPow() float64 {
 	return ezfyGatherLevelPowDef
 }
 
-// ezfyGatherSeaMult 海野采集系数（默认 1.5；0 / 负 / NULL → 回落 1.5）
-func ezfyGatherSeaMult() float64 {
+// ezfyGatherSeaBonusMult 海野采集倍率（默认 3）。
+//
+// ★ 2026-10-21 用户规则「海野需要比陆地野地高 3 倍」：新采集公式 F = M × N × R × A ÷ 2 的
+//	计算结果，在**海野**（海底森林 / 岛屿 / 渔场 / 矿礁）上再 × 该倍率 —— 同参数下
+//	海野产出 = 陆野产出 × 3。陆地野地不乘（倍率 1）。
+//	管理端「二战系统配置 → 野地与行军」可调；0 / 负 / NULL → 回落默认 3。
+//	旧废弃字段 GatherSeaMult（默认 1.5）不再参与计算。
+func ezfyGatherSeaBonusMult() float64 {
 	if !ezfyCfg.ready() {
-		return ezfyGatherSeaMultDef
+		return ezfyGatherSeaBonusMultDef
 	}
-	if m := ezfyCfg.limit.GatherSeaMult; m > 0 {
+	if m := ezfyCfg.limit.GatherSeaBonusMult; m > 0 {
 		return m
 	}
-	return ezfyGatherSeaMultDef
+	return ezfyGatherSeaBonusMultDef
 }
 
 // ezfyRecruitCycleHourly 军校刷新周期是否按小时（默认按小时；1=按天 / 2=按小时，非法回落按小时）
@@ -1989,7 +2040,12 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		WildTroopMult:      ezfyWildMultDef,
 		WildResMult:        ezfyWildResMultDef,
 		GatherResMult:      ezfyGatherResMultDef,
-		RecruitCostOn:      ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
+		// ★ 2026-10-21 采集新公式的缺行默认值
+		GatherTruckTroopID:   ezfyGatherTruckTroopIDDef,
+		GatherWildBonusPct:   ezfyGatherWildBonusPctDef,
+		GatherFormulaDivisor: ezfyGatherFormulaDivisorDef,
+		GatherSeaBonusMult:   ezfyGatherSeaBonusMultDef,
+		RecruitCostOn:        ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（缺行时同样要显式给默认开）
 		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,

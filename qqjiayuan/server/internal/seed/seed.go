@@ -379,10 +379,37 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_cfg_limit SET gather_level_pow = 1.3 WHERE gather_level_pow IS NULL OR gather_level_pow <= 0")
 
 		// ★ 2026-09-28：海野采集系数（默认 1.5，允许小数；0 / NULL 无意义 → 回落 1.5）。
+		//   ⚠️ 2026-10-21 起该字段已废弃（新采集公式不再读取），列保留只为不动历史数据；
+		//   新公式的海野倍率改用下面的 gather_sea_bonus_mult。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_sea_mult") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_sea_mult double DEFAULT 1.5")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET gather_sea_mult = 1.5 WHERE gather_sea_mult IS NULL OR gather_sea_mult <= 0")
+
+		// ★★ 2026-10-21 采集新公式 F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 2：
+		//   ① 卡车兵种 ID（默认 3 = 军用/通用运输卡车）
+		//   ② 每 1 级同资源野地提供的加成%（默认 3）
+		//   ③ 公式除数（默认 2）
+		//   各项 0 / NULL 都无意义 → 回填默认值。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_truck_troop_id") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_truck_troop_id int DEFAULT 3")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_truck_troop_id = 3 WHERE gather_truck_troop_id IS NULL OR gather_truck_troop_id <= 0")
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_wild_bonus_pct") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_wild_bonus_pct double DEFAULT 3")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_wild_bonus_pct = 3 WHERE gather_wild_bonus_pct IS NULL OR gather_wild_bonus_pct <= 0")
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_formula_divisor") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_formula_divisor double DEFAULT 2")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_formula_divisor = 2 WHERE gather_formula_divisor IS NULL OR gather_formula_divisor <= 0")
+
+		// ★ 2026-10-21：海野采集倍率（默认 3，允许小数）—— 用户规则「海野需要比陆地野地高 3 倍」：
+		//   海野（海底森林/岛屿/渔场/矿礁）产出 = 公式结果 × 该倍率；0 / NULL 无意义 → 回填 3。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_sea_bonus_mult") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_sea_bonus_mult double DEFAULT 3")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_sea_bonus_mult = 3 WHERE gather_sea_bonus_mult IS NULL OR gather_sea_bonus_mult <= 0")
 
 		// ★ 2026-09-28：军校刷新周期模式（1=按天 2=按小时，默认按小时；0 / NULL 无意义 → 回落 2）。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "recruit_cycle_mode") {

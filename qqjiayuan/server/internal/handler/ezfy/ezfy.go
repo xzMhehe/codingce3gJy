@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2415,6 +2416,150 @@ func (h *EzfyHandler) trainQOfRaw(cityId uint) []model.EzfyTrainQueue {
 	return qs
 }
 
+// ezfyFactorySlot 一座军工厂的队列槽位快照。
+type ezfyFactorySlot struct {
+	ID    uint // 建筑行 ID（不是建筑配置 ID）
+	Level int
+	Used  int
+	Ready bool // false = 升级中/建造中，不能接新队列
+}
+
+// ezfyFactorySlots 统计每座军工厂当前被训练队列占用的槽位数。
+//
+// 用户规则（2026-10-21）：
+//   - 单座军工厂的队列数不得超过自身等级；
+//   - [全部工厂] 平分时只把「还有空位」的厂算进去，满了的厂不参与；
+//   - 已有队列不重算 EndTime，只影响后续队列的容量判断。
+//
+// 新队列会写 FactoryId，直接按归属计数；老数据 / 管理端补单的 FactoryId=0，
+// 按队列顺序放进「等级满足该兵种需求、当前占用最少」的厂里虚拟归属，
+// 这样不需要给历史数据回填，也不会出现单厂超过等级。
+func ezfyFactorySlots(buildings []model.EzfyCityBuilding, queues []model.EzfyTrainQueue) []ezfyFactorySlot {
+	slots := make([]ezfyFactorySlot, 0, len(buildings))
+	for _, b := range buildings {
+		if b.BuildingId != ezfyFactoryBuildingID || b.Level <= 0 {
+			continue
+		}
+		slots = append(slots, ezfyFactorySlot{ID: b.ID, Level: b.Level, Ready: b.Status == 0})
+	}
+	sort.Slice(slots, func(i, j int) bool { return slots[i].ID < slots[j].ID })
+	if len(slots) == 0 || len(queues) == 0 {
+		return slots
+	}
+	// 先按归属队列计数：这些队列明确属于某座厂。
+	for _, q := range queues {
+		if q.Count <= 0 || q.FactoryId <= 0 {
+			continue
+		}
+		if c := ezfyCfg.troop(q.TroopId); c != nil && c.Type == 4 {
+			continue // 城防建造不占军工厂队列
+		}
+		for i := range slots {
+			if int64(slots[i].ID) == q.FactoryId {
+				slots[i].Used++
+				break
+			}
+		}
+	}
+	// 老队列没有归属：按队列 ID 顺序，放进「该兵种能用的厂里当前占用最少」的厂。
+	// 按 ID 排序是为了让 /troops 与 /troops/train 的虚拟归属完全一致（不受 SQL 排序抖动影响）。
+	legacy := make([]model.EzfyTrainQueue, 0, len(queues))
+	for _, q := range queues {
+		if q.Count > 0 && q.FactoryId <= 0 {
+			legacy = append(legacy, q)
+		}
+	}
+	sort.Slice(legacy, func(i, j int) bool { return legacy[i].ID < legacy[j].ID })
+	for _, q := range legacy {
+		c := ezfyCfg.troop(q.TroopId)
+		if c == nil || c.Type == 4 {
+			continue
+		}
+		need := ezfyNeedFactoryLevel(c.Require)
+		best := -1
+		for i := range slots {
+			if !slots[i].Ready || slots[i].Level < need {
+				continue
+			}
+			if slots[i].Used >= slots[i].Level {
+				continue
+			}
+			if best < 0 || slots[i].Used < slots[best].Used ||
+				(slots[i].Used == slots[best].Used && slots[i].ID < slots[best].ID) {
+				best = i
+			}
+		}
+		if best < 0 {
+			// 所有可用厂都满了（历史数据可能超限）：仍然记到占用最少的厂上，
+			// 让它显示为满，不再接受新队列。
+			for i := range slots {
+				if !slots[i].Ready || slots[i].Level < need {
+					continue
+				}
+				if best < 0 || slots[i].Used < slots[best].Used ||
+					(slots[i].Used == slots[best].Used && slots[i].ID < slots[best].ID) {
+					best = i
+				}
+			}
+		}
+		if best >= 0 {
+			slots[best].Used++
+		}
+	}
+	return slots
+}
+
+// ezfyFactoryAvailability 某兵种可用的军工厂队列情况：
+//
+//	eligible  = 等级达标且不在升级中的厂数（用来区分「没厂」和「厂满了」）
+//	available = 其中还有空位的厂数（[全部工厂] 的分母）
+//	free      = 这些厂剩余队列位合计
+func ezfyFactoryAvailability(slots []ezfyFactorySlot, need int) (eligible, available, free int) {
+	for _, s := range slots {
+		if !s.Ready || s.Level < need {
+			continue
+		}
+		eligible++
+		if s.Used < s.Level {
+			available++
+			free += s.Level - s.Used
+		}
+	}
+	return
+}
+
+// ezfyFactoryPick 从可用槽位里选 n 座厂（每座开一条队列）。
+//
+// 数量不足以占满所有厂时，优先用空位多的厂：它们训练完还能继续接队列，
+// 不会因为一次小训练就把低级厂塞满、减少下一次「X座平分」的数量。
+func ezfyFactoryPick(slots []ezfyFactorySlot, need, n int) []ezfyFactorySlot {
+	if n <= 0 {
+		return nil
+	}
+	candidates := make([]ezfyFactorySlot, 0, len(slots))
+	for _, s := range slots {
+		if s.Ready && s.Level >= need && s.Used < s.Level {
+			candidates = append(candidates, s)
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		// [仅此工厂] 没有单独选厂时，优先用等级最高的那座（页面标题显示的就是最高等级）；
+		// [全部工厂] 数量不足时也先用高等级厂，低级厂留到以后还能继续参与平分。
+		if candidates[i].Level != candidates[j].Level {
+			return candidates[i].Level > candidates[j].Level
+		}
+		fi, fj := candidates[i].Level-candidates[i].Used, candidates[j].Level-candidates[j].Used
+		if fi != fj {
+			return fi > fj
+		}
+		return candidates[i].ID < candidates[j].ID
+	})
+	if n > len(candidates) {
+		n = len(candidates)
+	}
+	return candidates[:n]
+}
+
 // trainTroop 训练/建造入口：先按城市分片加锁，再执行真正的训练逻辑。
 // 锁保证「读已占用 → 校验城防空间 → 建队列」原子化，杜绝并发超容。
 func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split bool) string {
@@ -2527,43 +2672,64 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 			return fmt.Sprintf("城防空间不足(围墙%d级, 上限%d, 已占用%d)", wallLevel, space, used)
 		}
 	}
-	factoryTotal := h.buildingTotalLevel(city.ID, ezfyFactoryBuildingID)
-	var activeCount int64
-	h.DB.Model(&model.EzfyTrainQueue{}).Where("city_id = ? AND status = 0", city.ID).Count(&activeCount)
-	// ★ 2026-10-05 军工厂机制（用户规则）：
-	//   每个军工厂最大队列数 = 自己等级；
-	//   训练某兵种时只有「等级 ≥ 需求(need_factory)」的军工厂可用，
-	//   队列上限 = 可用军工厂等级合计（原实现把不满足需求的厂也算进上限，虚高）；
-	//   [全部工厂] 模式 = 把数量平分给全部可用军工厂（各开一队列）→ 预计耗时 = 单个耗时×数量/可用厂数。
+	// ★ 2026-10-21 军工厂队列机制（用户规则）：
+	//   每座军工厂最大队列数 = 自身等级；
+	//   训练某兵种时只有「等级 ≥ 需求(need_factory)」且不在升级中的厂可用；
+	//   [全部工厂] 只平分给「还有空位」的厂 → 分母 = 可用厂数，不是全部厂数。
+	//   队列归属记在 EzfyTrainQueue.FactoryId；老队列没有归属时在内存里虚拟分配。
 	needFactory := 0
 	if cfg.Type != 4 {
 		needFactory = ezfyNeedFactoryLevel(cfg.Require)
 	}
-	queueLimit := 0
-	eligible := 0
+	buildings := snap.buildingsOf(h, city.ID)
+	factorySlots := ezfyFactorySlots(buildings, trainQ)
+	// factoryIds[i] = 第 i 条新队列占用的军工厂建筑行 ID；城防(type 4) 不占厂。
+	factoryIds := []uint{0}
 	if cfg.Type == 4 {
-		queueLimit = maxInt(1, factoryTotal)
-	} else {
-		var factories []model.EzfyCityBuilding
-		h.DB.Where("city_id = ? AND building_id = ? AND status = 0", city.ID, ezfyFactoryBuildingID).Find(&factories)
-		for _, f := range factories {
-			if needFactory <= 0 || f.Level >= needFactory {
-				queueLimit += f.Level
-				eligible++
+		factoryTotal := 0
+		for _, b := range buildings {
+			if b.BuildingId == ezfyFactoryBuildingID {
+				factoryTotal += b.Level
 			}
 		}
+		queueLimit := maxInt(1, factoryTotal)
+		var activeCount int64
+		h.DB.Model(&model.EzfyTrainQueue{}).Where("city_id = ? AND status = 0", city.ID).Count(&activeCount)
+		if int(activeCount) >= queueLimit {
+			return fmt.Sprintf("训练队列已满(军工厂等级合计%d个队列)", queueLimit)
+		}
+	} else {
+		eligible, available, free := ezfyFactoryAvailability(factorySlots, needFactory)
+		if eligible <= 0 {
+			if len(factorySlots) <= 0 {
+				return "请先建造军工厂"
+			}
+			return fmt.Sprintf("军工厂等级不足(需要军工厂%d级)", needFactory)
+		}
+		if available <= 0 || free <= 0 {
+			return "训练队列已满(所有可用军工厂队列都已满)"
+		}
+		if split {
+			n := minInt(available, free)
+			if n > count {
+				n = count
+			}
+			picked := ezfyFactoryPick(factorySlots, needFactory, n)
+			factoryIds = make([]uint, 0, len(picked))
+			for _, s := range picked {
+				factoryIds = append(factoryIds, s.ID)
+			}
+		} else {
+			picked := ezfyFactoryPick(factorySlots, needFactory, 1)
+			if len(picked) > 0 {
+				factoryIds = []uint{picked[0].ID}
+			}
+		}
+		if len(factoryIds) <= 0 {
+			return "训练队列已满(所有可用军工厂队列都已满)"
+		}
 	}
-	if queueLimit <= 0 {
-		return "请先建造军工厂"
-	}
-	if int(activeCount) >= queueLimit {
-		return fmt.Sprintf("训练队列已满(可用军工厂等级合计%d个队列)", queueLimit)
-	}
-	n := 1
-	if split && cfg.Type != 4 {
-		free := queueLimit - int(activeCount)
-		n = maxInt(1, minInt(eligible, free))
-	}
+	n := len(factoryIds)
 	city.Food -= food
 	city.Steel -= steel
 	city.Oil -= oil
@@ -2588,8 +2754,12 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 		if part <= 0 {
 			continue
 		}
+		factoryId := int64(0)
+		if i < len(factoryIds) {
+			factoryId = int64(factoryIds[i])
+		}
 		q := model.EzfyTrainQueue{CityId: int64(city.ID), TroopId: troopId, Count: part, Status: 0,
-			StartTime: now, EndTime: now + unitSec*1000*part, FreeTrain: freeFlag}
+			StartTime: now, EndTime: now + unitSec*1000*part, FreeTrain: freeFlag, FactoryId: factoryId}
 		h.DB.Create(&q)
 	}
 	// ★★ 2026-10-18 「用完就恢复」改造：训练开始（消耗人口）的**当下**就把占用人口

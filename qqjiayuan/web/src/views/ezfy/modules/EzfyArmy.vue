@@ -46,14 +46,16 @@
           </div>
           <div class="old-line gray" v-if="!ezfy.defenceQueues.length">(无)</div>
           <table class="ezfy-center-tbl">
+            <!-- ★ 2026-10-21 表头参考「城内军队」页：图标 / 兵种 / 数量 / 操作 -->
+            <tr><th class="nm ico-cell">图标</th><th class="nm">兵种</th><th>数量</th><th>操作</th></tr>
             <!-- ★ 2026-10-08 城防加「图标」列：与城内军队图标同源(ezfy.troopIco)，一眼认出设施 -->
             <tr v-for="t in ezfy.defenceCfgs" :key="'dt' + t.id">
               <td class="ico-cell"><span v-html="ezfy.troopIco(t)"></span></td>
               <td class="nm"><a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a>:</td>
               <td>{{ ezfy.troopCount(t.id) }}</td>
               <td>
-                <a href="javascript:;" @click="ezfy.openTrainPre(t, 'defence')">[建造]</a>
-                <a href="javascript:;" @click="ezfy.doDismiss(t)">[拆除]</a>
+                <a href="javascript:;" @click="ezfy.openTrainPre(t, 'defence')">[建]</a>
+                <a href="javascript:;" @click="ezfy.doDismiss(t)">[拆]</a>
               </td>
             </tr>
           </table>
@@ -322,15 +324,17 @@
             <a href="javascript:;" @click="ezfy.go('buildm')">军事区</a>
             -&gt;军营(军工厂)({{ ezfy.factoryLevels }}级)：
           </div>
-          <div class="old-line">正在训练：</div>
-          <div class="old-line" v-for="q in ezfy.queues" :key="'fq' + q.id">
-            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time, ezfy.gatherNow) }}
-          </div>
-          <div class="old-line gray" v-if="!ezfy.queues.length">(无)</div>
           <div class="old-line" v-for="t in ezfy.trainCfgs" :key="'ft' + t.id">
             <a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a> : {{ ezfy.troopCount(t.id) }}
             <a href="javascript:;" @click="ezfy.openTrainPre(t, 'troop')">[训练]</a>
           </div>
+          <br/>
+          <div class="panel-title">训练队列({{ ezfy.queues.length }})</div>
+          <div class="old-line" v-for="q in ezfy.queues" :key="'fq' + q.id">
+            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time, ezfy.gatherNow) }}
+          </div>
+          <div class="old-line gray" v-if="!ezfy.queues.length">(队列为空)</div>
+          <br/>
           <div class="old-line">
             <a href="javascript:;" @click="ezfy.go('troops')">[城内军队]</a>
             <a href="javascript:;" @click="ezfy.go('buildm')">[返回军事区]</a>
@@ -450,7 +454,10 @@
             <span>操作选项：</span>
             <label><input type="radio" :value="true" v-model="ezfy.trainSplit"/>[全部工厂]</label>
             <label><input type="radio" :value="false" v-model="ezfy.trainSplit"/>[仅此工厂]</label>
-            <span class="gray" v-if="ezfy.trainSplit && ezfy.trainMode !== 'defence'">({{ ezfy.eligibleFactories }}座平分)</span>
+            <span class="gray" v-if="ezfy.trainSplit && ezfy.trainMode !== 'defence'">({{ ezfy.splitFactoryCount }}座平分)</span>
+          </div>
+          <div class="old-line red" v-if="ezfy.trainSplit && ezfy.trainMode !== 'defence' && ezfy.eligibleFactories <= 0">
+            当前没有可用的军工厂队列：所有满足等级要求的军工厂队列都已满，请先等待训练完成或取消队列。
           </div>
           <div class="old-line">预计耗时：{{ ezfy.trainEstimateText }}</div>
           <div class="old-line">

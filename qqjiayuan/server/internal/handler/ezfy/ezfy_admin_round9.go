@@ -54,7 +54,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		MayorGainMult:     ezfyMayorGainMultDef,
 		GatherLevelPow:    ezfyGatherLevelPowDef,
 		GatherSeaMult:     ezfyGatherSeaMultDef,
-		RecruitCycleMode:  ezfyRecruitCycleHourlyDef,
+		// ★ 2026-10-21 采集新公式参数
+		GatherTruckTroopID:   ezfyGatherTruckTroopIDDef,
+		GatherWildBonusPct:   ezfyGatherWildBonusPctDef,
+		GatherFormulaDivisor: ezfyGatherFormulaDivisorDef,
+		GatherSeaBonusMult:   ezfyGatherSeaBonusMultDef,
+		RecruitCycleMode:     ezfyRecruitCycleHourlyDef,
 		// ★ 2026-10-08 新玩家落地洲（缺行时给默认欧洲）
 		DefaultContinent: ezfyDefaultMoveContinent,
 		// ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金，默认粮10/钢10/油20/稀25）
@@ -169,9 +174,23 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.GatherLevelPow <= 0 {
 		lim.GatherLevelPow = ezfyGatherLevelPowDef
 	}
-	// ★ 2026-09-28 海野采集系数兜底（0 / 负 / NULL → 1.5）
+	// ★ 2026-09-28 海野采集系数兜底（0 / 负 / NULL → 1.5）——字段已废弃，仅用于老值展示兼容
 	if lim.GatherSeaMult <= 0 {
 		lim.GatherSeaMult = ezfyGatherSeaMultDef
+	}
+	// ★ 2026-10-21 采集新公式参数兜底（0 / 负 / NULL → 默认）
+	if lim.GatherTruckTroopID <= 0 {
+		lim.GatherTruckTroopID = ezfyGatherTruckTroopIDDef
+	}
+	if lim.GatherWildBonusPct <= 0 {
+		lim.GatherWildBonusPct = ezfyGatherWildBonusPctDef
+	}
+	if lim.GatherFormulaDivisor <= 0 {
+		lim.GatherFormulaDivisor = ezfyGatherFormulaDivisorDef
+	}
+	// ★ 2026-10-21 海野采集倍率兜底（0 / 负 / NULL → 3）
+	if lim.GatherSeaBonusMult <= 0 {
+		lim.GatherSeaBonusMult = ezfyGatherSeaBonusMultDef
 	}
 	// ★ 2026-09-28 军校刷新周期兜底（只允许 1=按天 / 2=按小时，其余回落按小时）
 	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
@@ -336,7 +355,15 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-28：采集等级成长幂次（默认 1.3，越高级采集越多）
 		GatherLevelPow *float64 `json:"gather_level_pow"`
 		// ★ 2026-09-28：海野采集系数（默认 1.5，1~2；越大海野采集收益越高）
+		//   ⚠️ 2026-10-21 起已废弃（新采集公式不再读取），保留入参只为兼容老客户端。
 		GatherSeaMult *float64 `json:"gather_sea_mult"`
+		// ★ 2026-10-21 采集新公式：卡车兵种 ID / 每级野地加成% / 公式除数 / 海野采集倍率
+		GatherTruckTroopID   *int     `json:"gather_truck_troop_id"`
+		GatherWildBonusPct   *float64 `json:"gather_wild_bonus_pct"`
+		GatherFormulaDivisor *float64 `json:"gather_formula_divisor"`
+		// ★ 2026-10-21：海野采集倍率（默认 3，允许小数）—— 海野（海底森林/岛屿/渔场/矿礁）
+		//   产出 = 公式结果 × 该倍率，同参数下海野比陆地高 3 倍。
+		GatherSeaBonusMult *float64 `json:"gather_sea_bonus_mult"`
 		// ★ 2026-09-28：军校刷新周期（1=按天 2=按小时，默认按小时）
 		RecruitCycleMode *int `json:"recruit_cycle_mode"`
 		// ★ 2026-10-08：新玩家落地洲（1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）
@@ -448,7 +475,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MayorGainMult:     ezfyMayorGainMultDef,
 		GatherLevelPow:    ezfyGatherLevelPowDef,
 		GatherSeaMult:     ezfyGatherSeaMultDef,
-		RecruitCycleMode:  ezfyRecruitCycleHourlyDef,
+		// ★ 2026-10-21 采集新公式参数
+		GatherTruckTroopID:   ezfyGatherTruckTroopIDDef,
+		GatherWildBonusPct:   ezfyGatherWildBonusPctDef,
+		GatherFormulaDivisor: ezfyGatherFormulaDivisorDef,
+		GatherSeaBonusMult:   ezfyGatherSeaBonusMultDef,
+		RecruitCycleMode:     ezfyRecruitCycleHourlyDef,
 		// ★ 2026-10-08 新玩家落地洲（缺行时给默认欧洲）
 		DefaultContinent: ezfyDefaultMoveContinent,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
@@ -795,6 +827,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		lim.GatherLevelPow = m
 	}
 	// ★ 2026-09-28 海野采集系数：允许小数，1~2 建议区间；只拦非正数
+	//   ⚠️ 2026-10-21 起已废弃（新公式不再读取），仍接收老客户端值但不参与计算。
 	if in.GatherSeaMult != nil {
 		m := *in.GatherSeaMult
 		if m <= 0 {
@@ -802,6 +835,41 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.GatherSeaMult = m
+	}
+	// ★ 2026-10-21 采集新公式参数：
+	//   卡车兵种 ID 必须是正数；每级野地加成% 必须大于 0；除数必须大于 0。
+	if in.GatherTruckTroopID != nil {
+		id := *in.GatherTruckTroopID
+		if id <= 0 || id > 100000 {
+			resp.ParamError(c, "采集卡车兵种 ID 需要在 1~100000 之间")
+			return
+		}
+		lim.GatherTruckTroopID = id
+	}
+	if in.GatherWildBonusPct != nil {
+		p := *in.GatherWildBonusPct
+		if p <= 0 || p > 10000 {
+			resp.ParamError(c, "每级野地加成% 需要大于 0（建议 3，即每级 3%）")
+			return
+		}
+		lim.GatherWildBonusPct = p
+	}
+	if in.GatherFormulaDivisor != nil {
+		d := *in.GatherFormulaDivisor
+		if d <= 0 || d > 10000 {
+			resp.ParamError(c, "采集公式除数必须大于 0（默认 2）")
+			return
+		}
+		lim.GatherFormulaDivisor = d
+	}
+	// ★ 2026-10-21 海野采集倍率：允许小数；1 = 海野与陆地同权，默认 3（海野比陆地高 3 倍）。
+	if in.GatherSeaBonusMult != nil {
+		m := *in.GatherSeaBonusMult
+		if m <= 0 {
+			resp.ParamError(c, "海野采集倍率必须大于 0（默认 3；1 表示与陆地相同）")
+			return
+		}
+		lim.GatherSeaBonusMult = m
 	}
 	// ★ 2026-09-28 军校刷新周期：只允许 1=按天 2=按小时
 	if in.RecruitCycleMode != nil {
@@ -1163,9 +1231,23 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.GatherLevelPow <= 0 {
 		lim.GatherLevelPow = ezfyGatherLevelPowDef
 	}
-	// ★ 2026-09-28 海野采集系数兜底（0 / 负 / NULL → 1.5）
+	// ★ 2026-09-28 海野采集系数兜底（0 / 负 / NULL → 1.5）——字段已废弃，仅用于老值展示兼容
 	if lim.GatherSeaMult <= 0 {
 		lim.GatherSeaMult = ezfyGatherSeaMultDef
+	}
+	// ★ 2026-10-21 采集新公式参数兜底（0 / 负 / NULL → 默认）
+	if lim.GatherTruckTroopID <= 0 {
+		lim.GatherTruckTroopID = ezfyGatherTruckTroopIDDef
+	}
+	if lim.GatherWildBonusPct <= 0 {
+		lim.GatherWildBonusPct = ezfyGatherWildBonusPctDef
+	}
+	if lim.GatherFormulaDivisor <= 0 {
+		lim.GatherFormulaDivisor = ezfyGatherFormulaDivisorDef
+	}
+	// ★ 2026-10-21 海野采集倍率兜底（0 / 负 / NULL → 3）
+	if lim.GatherSeaBonusMult <= 0 {
+		lim.GatherSeaBonusMult = ezfyGatherSeaBonusMultDef
 	}
 	// ★ 2026-09-28 军校刷新周期兜底（只允许 1=按天 / 2=按小时，其余回落按小时）
 	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
@@ -1336,8 +1418,13 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"mayor_gain_mult":     lim.MayorGainMult,
 		// ★ 2026-09-28 采集等级成长幂次
 		"gather_level_pow": lim.GatherLevelPow,
-		// ★ 2026-09-28 海野采集系数
+		// ★ 2026-09-28 海野采集系数（已废弃，仅保留列值兼容）
 		"gather_sea_mult": lim.GatherSeaMult,
+		// ★ 2026-10-21 采集新公式参数（必须显式写，避免 0 值被 GORM 吞掉）
+		"gather_truck_troop_id":  lim.GatherTruckTroopID,
+		"gather_wild_bonus_pct":  lim.GatherWildBonusPct,
+		"gather_formula_divisor": lim.GatherFormulaDivisor,
+		"gather_sea_bonus_mult":  lim.GatherSeaBonusMult,
 		// ★ 2026-09-28 军校刷新周期（1=按天 2=按小时）
 		"recruit_cycle_mode": lim.RecruitCycleMode,
 		// ★ 2026-10-08 新玩家落地洲

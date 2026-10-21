@@ -508,6 +508,19 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 			factoryTotal += b.Level
 		}
 	}
+	// ★ 2026-10-21 单厂队列上限：前端「(X座平分)」要知道每座厂已占多少队列。
+	//   使用与 trainTroopLocked 完全相同的槽位分配（含老队列虚拟归属），
+	//   保证页面显示的分母 = 后端实际会参与的厂数。
+	factoryViews := []gin.H{}
+	for _, s := range ezfyFactorySlots(buildings, qs) {
+		free := s.Level - s.Used
+		if free < 0 {
+			free = 0
+		}
+		factoryViews = append(factoryViews, gin.H{
+			"id": s.ID, "level": s.Level, "used": s.Used, "free": free, "ready": s.Ready,
+		})
+	}
 	data := gin.H{
 		"city": city, "troops": troopViews, "queues": queues, "wounded": woundViews,
 		"pop": city.Pop, "pop_used": popUsed, "cfgs": cfgViews,
@@ -521,6 +534,7 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 		"defence_space_used": defUsed,
 		"factory_total":      factoryTotal,
 		"factory_count":      factoryCount,
+		"factories":          factoryViews,
 	}
 	ezfyPageCacheSet(uid, "troops", data)
 	resp.OK(c, data)
@@ -4011,7 +4025,6 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	// ★ 2026-09-28 「累计采集/采集资源要实时变化、累加展示，不能只靠刷新」：
 	//   先批量查出**采集中**部队的野地，后端据此下发「每期产出」，
 	//   前端拿到 accept 之后用本地下发时间实时 extrapolate 累加，不必等满一期才结算。
-	gatherWl := map[int64]*model.EzfyWildland{}
 	var gatherWlIDs []int64
 	for i := range orders {
 		o := &orders[i]
@@ -4019,13 +4032,11 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			gatherWlIDs = append(gatherWlIDs, o.TargetId)
 		}
 	}
+	// ★ 2026-10-21 采集新公式需要「出发城市同资源野地总等级」+ 军官后勤，
+	//   这里复用批量结算缓存：野地/城市/全城野地等级各一次 IN 查询，循环内不再打库。
+	var gatherEnv *ezfySettleEnv
 	if len(gatherWlIDs) > 0 {
-		var wls []model.EzfyWildland
-		h.DB.Where("id IN ?", gatherWlIDs).Find(&wls)
-		for i := range wls {
-			wp := &wls[i]
-			gatherWl[int64(wp.ID)] = wp
-		}
+		gatherEnv = h.newSettleEnv(orders)
 	}
 	// ★ 2026-09-28 「军队动态/驻军要显示这支部队是从哪个城出来的」：
 	//   订单表只存了 city_id（军队所在城 id），**没有下发城名/坐标**，前端看不出番号。
@@ -4057,18 +4068,27 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		var gather *gin.H
 		if o.Status == 1 && o.OrderType == 7 && o.ArriveTime > 0 {
 			periodMs := ezfyDispatchPeriod()
-			var pf, ps, po, pr int64
-			if wl := gatherWl[o.TargetId]; wl != nil && wl.CityId == o.CityId {
-				// 单期产出（时长=整一个结算周期，抽掉「按比例折算」那部分）
-				pf, ps, po, pr, _, _ = h.dispatchGatherYield(o, wl, periodMs)
+			g := ezfyGatherCalc{}
+			if gatherEnv != nil {
+				if wl := gatherEnv.wildland(o.TargetId); wl != nil && wl.CityId == o.CityId {
+					// 单期产出（时长=整一个结算周期；新公式按整点小时算）
+					g = h.dispatchGatherYield(o, wl, periodMs, gatherEnv)
+				}
 			}
 			gather = &gin.H{
-				"start_ms":  o.CollectStart, // 本期从哪个时刻开始累计
-				"period_ms": periodMs,       // 一个结算周期的毫秒数
-				"per_food":  pf,
-				"per_steel": ps,
-				"per_oil":   po,
-				"per_rare":  pr,
+				"start_ms":     o.CollectStart, // 采集起始时刻（前端按整点小时本地累加）
+				"period_ms":    periodMs,       // 一个结算周期的毫秒数
+				"period_hours": ezfyGatherHours(periodMs),
+				"per_food":     g.Food,
+				"per_steel":    g.Steel,
+				"per_oil":      g.Oil,
+				"per_rare":     g.Rare,
+				// 公式明细：F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 除数
+				// （★ 2026-10-21 海野倍率只参与产物计算与 per_*，-game 不下发、战报不展示，玩家无感）
+				"trucks":         g.Trucks,
+				"wild_bonus_pct": g.WildBonusPct,
+				"logistics":      g.Logistics,
+				"divisor":        g.Divisor,
 			}
 		}
 		switch o.Status {

@@ -1470,14 +1470,17 @@ export default {
       return Math.max(0, m)
     },
     // 训练确认页预计耗时(复刻 createTroop.html 的「时间」: 单个耗时 × 数量 ÷ 并行工厂数)
-    // ★ 2026-10-05 [全部工厂] 并行数 = 可用军工厂数（等级 ≥ 需求），与后端 trainTroop 口径一致
+    // ★ 2026-10-21 [全部工厂] 并行数 = 还有空位的可用军工厂数；
+    //   数量比厂数少时只会有「数量」座厂真正分到队列，所以再夹一次 min(可用厂数, 数量)。
     trainEstimateText () {
       if (!this.trainSel) return '0秒'
       const n = parseInt(this.trainCount) || 0
       const par = this.trainMode === 'defence'
         ? 1
-        : (this.trainSplit ? Math.max(1, this.eligibleFactories) : 1)
-      return this.durText(Math.ceil(this.trainSel.train_time * n / par))
+        : (this.trainSplit ? Math.max(1, this.splitFactoryCount) : 1)
+      // 后端按「每条队列分到 ceil(总数/厂数) 个」建队列，最长的那条决定总耗时；
+      // 不能用 ceil(单个耗时 × 总数 / 厂数)，否则 7 秒×10 个分 3 厂会算成 24 秒（实际 28 秒）。
+      return this.durText(this.trainSel.train_time * Math.ceil(n / par))
     },
     attackTroops () {
       return (this.troopsData.troops || []).filter(t => t.type !== 4)
@@ -1516,10 +1519,24 @@ export default {
       for (const f of this.factories) if (f.level > m) m = f.level
       return m || 0
     },
-    // ★ 2026-10-05 [全部工厂] 平分的分母 = 训练该兵种时可用的军工厂数（等级 ≥ 需求）
+    // ★ 2026-10-21 [全部工厂] 平分的分母 = 还有空位的可用军工厂数。
+    //   后端 /troops 下发 factories: [{id, level, used, free, ready}]，
+    //   这里按兵种需求过滤，并排除升级中 / 队列已满的厂。
+    //   （旧接口没有 factories 字段时退回旧口径，避免页面空白。）
     eligibleFactories () {
       const need = this.trainSel ? (this.trainSel.need_factory || 0) : 0
+      const list = (this.troopsData && this.troopsData.factories) || []
+      if (list.length) {
+        return list.filter(f => f.ready !== false && (f.level || 0) >= need &&
+          (f.used || 0) < (f.level || 0)).length
+      }
       return this.factories.filter(f => need <= 0 || f.level >= need).length
+    },
+    // 实际会参与平分的厂数：可用厂数不会超过本次训练数量（数量 1 时只开 1 条队列）。
+    splitFactoryCount () {
+      const avail = this.eligibleFactories
+      const n = parseInt(this.trainCount) || 0
+      return n > 0 ? Math.min(avail, n) : avail
     },
     factoryFree () {
       return Math.max(1, this.factoryTotal - this.queues.length)
@@ -5412,8 +5429,11 @@ export default {
       return hh + '小时' + (m % 60) + '分'
     },
     // ★ 2026-09-28 「累计采集/采集资源实时变化、累加展示，不能只靠刷新」：
-    //   采集中部队由后端下发 gather = { start_ms, period_ms, per_food/steel/oil/rare }，
+    //   采集中部队由后端下发 gather = { start_ms, period_ms, period_hours, per_food/steel/oil/rare }，
     //   前端据此每一秒(由 gatherNow 驱动)本地 extrapolate 出「累计时长+累计产出的资源」。
+    //   ★★ 2026-10-21 新公式 F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 2：
+    //   小时数向下取整（16:59=16 小时），前端按整点小时折算，和实际结算口径一致。
+    //   ★ 2026-10-21 海野倍率：后端 per_* 已按海野（海底森林/岛屿/渔场/矿礁）乘过海野倍率，前端直接外推即可。
     //   ★ 2026-09-28 用户规则：本期已采按负重上限展示，超负重部分丢弃（total 封顶到 carry_cap）。
     liveGather (o) {
       const g = o && o.gather
@@ -5421,8 +5441,14 @@ export default {
       const now = this.gatherNow || Date.now()
       const elapsed = Math.max(0, now - g.start_ms) // 毫秒
       if (elapsed <= 0) return null
-      const frac = elapsed / g.period_ms
-      const mk = v => Math.floor((v || 0) * frac)
+      // ★★ 2026-10-21 采集新公式 F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 2：
+      //   小时数向下取整（16:59 按 16 小时算），所以前端也按整点小时折算，
+      //   不再用 elapsed/period_ms 的连续比例（否则显示会比实际结算多）。
+      const periodHours = g.period_hours > 0
+        ? g.period_hours
+        : Math.max(1, Math.round(g.period_ms / 3600000))
+      const hours = Math.floor(elapsed / 3600000)
+      const mk = v => Math.floor((v || 0) * hours / periodHours)
       let food = mk(g.per_food)
       let steel = mk(g.per_steel)
       let oil = mk(g.per_oil)

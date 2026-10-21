@@ -474,24 +474,22 @@ type EzfyCfgLimit struct {
 	//   本字段只乘「粮/钢/油/稀矿」产量；黄金产量走 GoldProdMult。
 	//   ⚠️ 0 合法（黄金产量归零）；NULL → seed 回填 1。
 	GoldProdMult float64 `gorm:"default:1;comment:黄金产量倍率" json:"gold_prod_mult"`
-	// ★ 2026-09-25 「采集资源倍率也加到系统管理里」→ 常驻采集产出资源 × 该倍数。
-	//   作用点：dispatchGatherYield 的产出（等级 × 800 × 后勤加成 × 陆海系数）。
-	//   默认 10 = 10 倍（线上现值）；0.5 = 减半。允许小数。0 无意义 → 回落 10。
-	GatherResMult float64 `gorm:"default:10;comment:采集资源倍率" json:"gather_res_mult"`
-	// ★ 2026-09-28 「采集军官后勤加成率可调」：
-	//   开工斜率：采集产出里「军官后勤属性」的加成按该倍率缩放后再叠加。
-	//   公式 dispatchGatherYield：gainPct = 100 + floor(后勤 × 本倍率)，封顶 200（+100%）。
-	//   默认 1 = 现行为（每点后勤 +1%）；0.5 = 减半；2 = 翻倍。0 / 负 / NULL 无意义 → 回落 1。
-	OfficerGatherMult float64 `gorm:"default:1;comment:采集后勤加成倍率" json:"officer_gather_mult"`
+	// ⚠️ 2026-10-21 **已废弃**（采集改为新公式后不再参与计算）：
+	//   旧公式「野地等级^幂次 × 800 × 后勤加成% × 陆海系数 × 本倍率」已被
+	//   `F = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数` 取代。
+	//   列保留只为不动历史数据；管理端不再提供该项，dispatchGatherYield 也不再读取。
+	GatherResMult float64 `gorm:"default:10;comment:已废弃(2026-10-21)：采集资源倍率" json:"gather_res_mult"`
+	// ⚠️ 2026-10-21 **已废弃**：旧公式把后勤折算成 +N% 并封顶 +100%，新公式直接乘后勤属性。
+	//   列保留只为不动历史数据；管理端不再提供该项。
+	OfficerGatherMult float64 `gorm:"default:1;comment:已废弃(2026-10-21)：采集后勤加成倍率" json:"officer_gather_mult"`
 	// ★ 2026-09-28 「市长加成整体可调」：
 	//   作用点 mayorBonusPct：市长产量加成% 整体 × 该倍率（默认 1 = 现状）。
 	//   0 合法（关闭市长加成）；NULL 无意义 → 回落 1。
 	MayorGainMult float64 `gorm:"default:1;comment:市长加成倍率" json:"mayor_gain_mult"`
-	// ★ 2026-09-28 「采集和野地等级有关系，越高级采的越多，搞个合理的」：
-	//   采集每期基础 = 800 × (野地等级 ^ 本幂次)，让高等级野地产出加速型增长（比纯线性更拉开差距）。
-	//   默认 1.3：1级=800；5级≈6467；7级≈10160；9级≈13840（均未乘后勤/倍率/陆海）。
-	//   1.0 = 纯线性（历史行为）；>1 越高等级越发突出；<1 高等级收益递减。0 / 负 / NULL 无意义 → 回落 1.3。
-	GatherLevelPow float64 `gorm:"default:1.3;comment:采集等级成长幂次" json:"gather_level_pow"`
+	// ⚠️ 2026-10-21 **已废弃**：旧公式的野地等级幂次。
+	//   新公式里野地等级通过「野地加成%」参与计算（见 GatherWildBonusPct）。
+	//   列保留只为不动历史数据；管理端不再提供该项。
+	GatherLevelPow float64 `gorm:"default:1.3;comment:已废弃(2026-10-21)：采集等级成长幂次" json:"gather_level_pow"`
 	// ⚠️ 2026-10-09 **已废弃**（「掉落 都走手动配置的」）：下面四个字段对应的全局掉落概率
 	//   不再被任何代码读写，管理端也已移除。**列保留**只为不动历史数据 ——
 	//   现在野地/寇城掉落走「地图管理 → 野地类型」的 treasure/drop_items（`wildlandConfigLoot`），
@@ -501,10 +499,31 @@ type EzfyCfgLimit struct {
 	DropT4 int `gorm:"default:1;comment:已废弃(2026-10-09)：特殊宝物掉落roll阈值" json:"drop_t4"`
 	// ⚠️ 2026-10-09 同上**已废弃**（活动野地掉宝总概率%）。
 	DropActPct int `gorm:"default:85;comment:已废弃(2026-10-09)：活动野地战斗掉宝概率" json:"drop_act_pct"`
-	// ★ 2026-09-28 「海野采集更高些，给海野加个系数 1~2」：
-	//   海野采集产出在本公式得出后（陆海系数之前）再整体 × 本系数，让海城周边野地采集更划算。
-	//   默认 1.5（海野基础陆海系数 3×1.5=4.5，比同级陆野 4 更高）；1 = 跟陆野拉平；2 = 翻倍。0 / 负 / NULL 无意义 → 回落 1.5。
-	GatherSeaMult float64 `gorm:"default:1.5;comment:海野采集系数" json:"gather_sea_mult"`
+	// ⚠️ 2026-10-21 **已废弃**：旧公式的海野采集系数。
+	//   新公式按野地实际产出资源（粮/钢/油/稀）走「同名资源野地总等级」加成；
+	//   海野改由新字段 GatherSeaBonusMult（倍率，默认 3）控制，本字段不再读取。
+	//   列保留只为不动历史数据；管理端不再提供该项。
+	GatherSeaMult float64 `gorm:"default:1.5;comment:已废弃(2026-10-21)：海野采集系数" json:"gather_sea_mult"`
+	// ★★ 2026-10-21 采集新公式（与线上原版一致）：
+	//   F = M × N × R × A ÷ 2
+	//     M = 卡车数量（默认兵种 ID 3「军用运输卡车/通用运输卡车」）
+	//     N = 整点小时数（16:59 按 16 小时算，向下取整）
+	//     R = 野地加成%（城市名下**同资源**野地总等级 × 每级加成%，默认每级 3%）
+	//     A = 带队军官后勤属性
+	//   例：180000 卡车 × 16 小时 × 42% × 324 后勤 ÷ 2 = 195955200。
+	//
+	//   下面几个参数就是管理端「二战系统配置」可调的公式项：
+	//   GatherTruckTroopID 卡车兵种 ID（默认 3）
+	//   GatherWildBonusPct 每 1 级同资源野地提供的加成%（默认 3）
+	//   GatherFormulaDivisor 公式除数（默认 2）
+	//   GatherSeaBonusMult 海野采集倍率（默认 3）：海野产出 = 公式结果 × 倍率
+	GatherTruckTroopID   int     `gorm:"default:3;comment:采集卡车兵种ID" json:"gather_truck_troop_id"`
+	GatherWildBonusPct   float64 `gorm:"default:3;comment:每级野地加成%" json:"gather_wild_bonus_pct"`
+	GatherFormulaDivisor float64 `gorm:"default:2;comment:采集公式除数" json:"gather_formula_divisor"`
+	// ★ 2026-10-21 海野采集倍率（默认 3）：**海野**（海底森林/岛屿/渔场/矿礁，ezfyIsSeaWildTerrain）
+	//   的产出 = 公式结果 × 该倍率 —— 同参数下海野比陆地野地高 3 倍；陆地野地不乘。
+	//   0 / 负 / NULL → 回落 3（见 ezfyGatherSeaBonusMult）；旧废弃字段 GatherSeaMult 不参与计算。
+	GatherSeaBonusMult float64 `gorm:"default:3;comment:海野采集倍率" json:"gather_sea_bonus_mult"`
 	// ★ 2026-09-28 军校刷新周期可在二战系统配置切换按天/按小时（默认按小时）。
 	RecruitCycleMode int `gorm:"default:2;comment:军校刷新周期(1=按天 2=按小时)" json:"recruit_cycle_mode"`
 	// ★ 2026-10-08 「新玩家落地洲」做成可配置：新玩家首次建城/落地默认落到哪个洲
@@ -1231,6 +1250,11 @@ type EzfyTrainQueue struct {
 	//   列名故意用 free_train（不叫 free，避开保留字风险）；无 gorm default 标签
 	//   （0 是有意义的值：正常扣费建的队列，GORM 不会跳过零值写入）。
 	FreeTrain int `gorm:"comment:免费训练" json:"free"`
+	// ★ 2026-10-21 军工厂队列归属：这条训练队列占用哪一座军工厂的队列位。
+	//   每个军工厂的队列上限 = 自身等级；[全部工厂] 平分时只会选还有空位的厂。
+	//   老数据 / 管理端补单可能为 0，读取时按「老队列」均匀回填到可用厂（不写库），
+	//   所以已有队列的 EndTime 不会被重算。
+	FactoryId int64 `gorm:"default:0;comment:军工厂建筑ID(0=老数据/不占厂)" json:"factory_id"`
 
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
