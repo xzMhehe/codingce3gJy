@@ -506,18 +506,19 @@ type EzfyCfgLimit struct {
 	GatherSeaMult float64 `gorm:"default:1.5;comment:已废弃(2026-10-21)：海野采集系数" json:"gather_sea_mult"`
 	// ★★ 2026-10-21 采集新公式（与线上原版一致）：
 	//   F = M × N × R × A ÷ 2
-	//     M = 卡车数量（默认兵种 ID 3「军用运输卡车/通用运输卡车」）
+	//     M = 部队总兵力（出征部队**所有兵种数量之和**；原说明以运输卡车举例，
+	//         不同兵种的差异只体现在负重，产量贡献一律按数量计）
 	//     N = 整点小时数（16:59 按 16 小时算，向下取整）
 	//     R = 野地加成%（城市名下**同资源**野地总等级 × 每级加成%，默认每级 3%）
 	//     A = 带队军官后勤属性
-	//   例：180000 卡车 × 16 小时 × 42% × 324 后勤 ÷ 2 = 195955200。
+	//   例：180000 兵力 × 16 小时 × 42% × 324 后勤 ÷ 2 = 195955200。
 	//
 	//   下面几个参数就是管理端「二战系统配置」可调的公式项：
-	//   GatherTruckTroopID 卡车兵种 ID（默认 3）
 	//   GatherWildBonusPct 每 1 级同资源野地提供的加成%（默认 3）
 	//   GatherFormulaDivisor 公式除数（默认 2）
 	//   GatherSeaBonusMult 海野采集倍率（默认 3）：海野产出 = 公式结果 × 倍率
-	GatherTruckTroopID   int     `gorm:"default:3;comment:采集卡车兵种ID" json:"gather_truck_troop_id"`
+	// ⚠️ GatherTruckTroopID 已废弃（M 口径改为全部兵种总数，兵种 ID 限定不再参与计算），列保留。
+	GatherTruckTroopID   int     `gorm:"default:3;comment:已废弃(2026-10-21)：采集卡车兵种ID" json:"gather_truck_troop_id"`
 	GatherWildBonusPct   float64 `gorm:"default:3;comment:每级野地加成%" json:"gather_wild_bonus_pct"`
 	GatherFormulaDivisor float64 `gorm:"default:2;comment:采集公式除数" json:"gather_formula_divisor"`
 	// ★ 2026-10-21 海野采集倍率（默认 3）：**海野**（海底森林/岛屿/渔场/矿礁，ezfyIsSeaWildTerrain）
@@ -825,7 +826,7 @@ type EzfyDiamondLog struct {
 	Change int64 `gorm:"comment:变动数量(+入/-出)" json:"change"`
 	// ★ 2026-10-11 「购买宝箱」这类流水的开箱结果在扣款之后才产生 → 先记流水、开箱后回填这里，
 	//   管理端「数据管理→钻石流水」加一列展示（历史行留空）。
-	Extra     string    `gorm:"type:varchar(255);comment:附加信息(宝箱开出的道具)" json:"extra"`
+	Extra     string    `gorm:"type:text;comment:附加信息(宝箱开出的道具，完整不截断)" json:"extra"`
 	Balance   int64     `gorm:"comment:变动后余额" json:"balance"`
 	Reason    string    `gorm:"type:varchar(100);comment:变动原因" json:"reason"`
 	CreatedAt time.Time `gorm:"comment:发生时间" json:"created_at"`
@@ -921,7 +922,8 @@ type EzfyChestLog struct {
 	ChestName string `gorm:"type:varchar(50);comment:宝箱名快照(开箱时)" json:"chest_name"`
 	Count     int    `gorm:"comment:本次开的宝箱数量" json:"count"`
 	// 开箱结果聚合文本，如「获得：黄金×5000、经验×100」（同名合并，与开箱播报同口径）
-	Result    string    `gorm:"type:varchar(255);comment:开出的东西(聚合文本)" json:"result"`
+	// ★ 2026-10-21 改为 text：30/100 连开箱结果会超过 255 字符，旧字段会截断最后几条，核查时看不到全量。
+	Result    string    `gorm:"type:text;comment:开出的东西(聚合文本，完整不截断)" json:"result"`
 	CreatedAt time.Time `gorm:"comment:开箱时间" json:"created_at"`
 }
 

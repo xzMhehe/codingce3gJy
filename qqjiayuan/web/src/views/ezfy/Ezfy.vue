@@ -4001,7 +4001,8 @@ export default {
     },
     // ★ 一键收获：对每支采集中部队结算产出(资源直接入起点城市, 宝物进背包), 并停止采集原地待命
     //   —— 与单支 [停止] 同一个功能，只是一个批量一个单个。
-    //   （玩法细则见代码注释：满一期结算资源+宝物；不满一期只按时长折算资源、无宝物；负重满后超出部分直接入城。）
+    //   （玩法细则见代码注释：满一期结算资源+宝物；不满一期按真实时长连续折算资源、无宝物；
+    //     装不下的部分也先存「待带回」，点[停止采集]/[一键收获]后才进原出发城市。）
     async doHarvestAll () {
       if (!await this.ask('确定收获所有采集中的部队吗？')) return
       // ★★★ 2026-10-15 多 tab 防刷：一键收获账号级 3 秒共享卡控（确认通过后才占冷却，误点取消不占）
@@ -5429,45 +5430,32 @@ export default {
       return hh + '小时' + (m % 60) + '分'
     },
     // ★ 2026-09-28 「累计采集/采集资源实时变化、累加展示，不能只靠刷新」：
-    //   采集中部队由后端下发 gather = { start_ms, period_ms, period_hours, per_food/steel/oil/rare }，
-    //   前端据此每一秒(由 gatherNow 驱动)本地 extrapolate 出「累计时长+累计产出的资源」。
-    //   ★★ 2026-10-21 新公式 F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 2：
-    //   小时数向下取整（16:59=16 小时），前端按整点小时折算，和实际结算口径一致。
+    //   采集中部队由后端下发 gather = { start_ms, period_ms, per_food/steel/oil/rare }，
+    //   前端每一秒(由 gatherNow 驱动)本地外推出「累计时长 + 累计产出的资源」。
+    //   ★★ 2026-10-21 用户要求：**已采行必须逐秒滚动** —— 本地按 elapsed/period_ms
+    //   连续等比例估算展示（不要搞「整点小时」那一套，那只是后台实际入库的口径；
+    //   到点结算以后端数据为准，这里是预览）。
     //   ★ 2026-10-21 海野倍率：后端 per_* 已按海野（海底森林/岛屿/渔场/矿礁）乘过海野倍率，前端直接外推即可。
-    //   ★ 2026-09-28 用户规则：本期已采按负重上限展示，超负重部分丢弃（total 封顶到 carry_cap）。
+    //   ★★ 2026-10-21 用户新规则：装不下的部分**不再丢弃/即时入城** —— 全部先存部队「待带回」，可超负重上限；
+    //   点[停止采集]/[一键收获]后一并进原出发城市。预览不再封顶，total 如实滚大到超过 carry_cap。
     liveGather (o) {
       const g = o && o.gather
       if (!g || !g.period_ms) return null
       const now = this.gatherNow || Date.now()
       const elapsed = Math.max(0, now - g.start_ms) // 毫秒
       if (elapsed <= 0) return null
-      // ★★ 2026-10-21 采集新公式 F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 2：
-      //   小时数向下取整（16:59 按 16 小时算），所以前端也按整点小时折算，
-      //   不再用 elapsed/period_ms 的连续比例（否则显示会比实际结算多）。
-      const periodHours = g.period_hours > 0
-        ? g.period_hours
-        : Math.max(1, Math.round(g.period_ms / 3600000))
-      const hours = Math.floor(elapsed / 3600000)
-      const mk = v => Math.floor((v || 0) * hours / periodHours)
-      let food = mk(g.per_food)
-      let steel = mk(g.per_steel)
-      let oil = mk(g.per_oil)
-      let rare = mk(g.per_rare)
+      // ★ 2026-10-21 连续等比例外推：已采 = 本期产出 × (已驻守毫秒 / 一期毫秒)
+      const mk = v => Math.floor(((v || 0) * elapsed) / g.period_ms)
+      const food = mk(g.per_food)
+      const steel = mk(g.per_steel)
+      const oil = mk(g.per_oil)
+      const rare = mk(g.per_rare)
       const gold = 0
-      let total = food + steel + oil + rare
+      // ★★ 2026-10-21 新规则：产出全部先存「待带回」，可超负重上限（不再封顶收敛）。
+      //   full 只作为「负重已满」的提示，采满后照常继续累加。
+      const total = food + steel + oil + rare
       const cap = o.carry_cap || 0
-      // ★ 2026-09-28 装满负重后「本期已采」不能超过负重，超负重部分丢弃。
-      //   把各分项等比收敛，使 total 封顶到负重 cap（total == cap，负重叠满）。
-      let full = cap > 0 && total >= cap
-      if (cap > 0 && total > cap) {
-        const scale = cap / total
-        food = Math.floor(food * scale)
-        steel = Math.floor(steel * scale)
-        oil = Math.floor(oil * scale)
-        rare = Math.floor(rare * scale)
-        total = Math.min(cap, food + steel + oil + rare)
-        full = total >= cap
-      }
+      const full = cap > 0 && total >= cap
       return { timeText: this.durText(elapsed / 1000), food, steel, oil, rare, gold, total, cap, full }
     },
     // ★ 2026-09-28 给单条军队动态附上实时采集视图 _lg（有 gather 才算采集中）；复用来避免模板算两遍。

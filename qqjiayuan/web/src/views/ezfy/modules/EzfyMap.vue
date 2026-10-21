@@ -128,9 +128,6 @@
                 <template v-if="ezfy.selDetail.terrain === 1 || ezfy.selDetail.terrain === 9">采集可以获得{{ ezfy.selDetail.gather_res }}，可建立城市。</template>
                 <template v-else>采集可以获得{{ ezfy.selDetail.gather_res }}，可能获得{{ (ezfy.selDetail.treasures || []).join('、') }}。</template>
               </div>
-              <div class="old-line gray" v-if="ezfy.selDetail.gather_res">
-                采集产量 = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 2（16:59 按 16 小时算）
-              </div>
             </template>
           </template>
           <div class="old-line" v-else>
@@ -325,7 +322,8 @@
           <div class="old-line red" v-if="!ezfy.attackTroops.length">城内无可出征部队</div>
 
           <!-- ④ 随军资源（★ 2026-10-07 所有出征类型都能带：玩家资源多了可随身带出腾仓库/防被抢。
-               从出发城扣除、占部队负重；采集产出入库时不重复入库，返航/召回原样带回） -->
+               从出发城扣除、占部队负重；采集产出入库时随身资源不重复入库，
+               ★ 2026-10-21 采集产出同样先存「待带回」（可超负重上限），点[停止采集]/[一键收获]后入原出发城市，返航/召回原样带回） -->
           <div class="of-sec">④ 随军资源</div>
           <div class="of-rows">
             <div class="of-row" v-for="res in ezfy.resFields" :key="res.key"
@@ -652,7 +650,8 @@
             军官：{{ o.officer || '无' }}<br/>
             {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}<br/>
             <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
-                 规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。
+                 ★★ 2026-10-21 新规则：产出全部先存部队「待带回(carry)」（可超负重上限，不丢弃），
+                   点[停止采集]/[一键收获]后一并进原出发城市；预览不再封顶。
                  ★★ 2026-10-09 修复「采集队列会整块消失（隐藏情况）」：liveGather 在客户端时钟
                    略慢于服务端 / 缺 gather 字段时返回 null → o._lg 为 undefined，原来直接读
                    o._lg.food 会在渲染期抛 TypeError，**整条队列渲染失败被隐藏**。
@@ -662,9 +661,8 @@
                    （与首页产量同一套 fmtProd：截断取整，展示值不会大于真实值）。「本期已采」→「已采」。 -->
               <span class="green">已采：{{ ezfy.fmtProd(o._lg.food) }}粮/{{ ezfy.fmtProd(o._lg.steel) }}钢/{{ ezfy.fmtProd(o._lg.oil) }}油/{{ ezfy.fmtProd(o._lg.rare) }}稀/{{ ezfy.fmtProd(o._lg.gold) }}金</span><br/>
               <span class="gray">总 {{ ezfy.fmtProd(o._lg.total) }}（负重 {{ ezfy.fmtProd(o._lg.total) }}/{{ ezfy.fmtProd(o.carry_cap) }}）</span>
-              <!-- ★ 2026-10-05 去掉「负重已满, 超出部分会直接入库(可停止或收获)。」这行提示
-                   —— 属于无用提示，玩家看负重条就够。规则仍然生效（见后端
-                   processArrive 采集分支：超出负重部分直接入起点城市，不丢弃），只是不再在界面上提示。 -->
+              <!-- ★★ 2026-10-21 新规则：装不下的部分不再直接入库 —— 全部存「待带回」，可超负重上限，
+                   点[停止采集]/[一键收获]后一并进原出发城市（总 可以大于负重上限）。 -->
               <br/>
             </template>
             <span v-else-if="o.status === 1 && o.arrive_time" class="gray">已采：统计中…</span>

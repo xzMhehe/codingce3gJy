@@ -132,13 +132,9 @@
               <template slot="label">野地获取资源倍率<el-tooltip placement="top" :content="tips.wild_res_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.wild_res_mult" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
-            <!-- ★★ 2026-10-21 采集新公式 F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 2 -->
+            <!-- ★★ 2026-10-21 采集新公式 F = 部队总兵力 × 整点小时 × 野地加成% × 后勤 ÷ 2 -->
             <el-alert type="info" :closable="false" show-icon style="margin-bottom:14px"
-              title="采集公式：F = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数（16:59 按 16 小时算；海野产出再 × 海野采集倍率，默认 3）" />
-            <el-form-item>
-              <template slot="label">采集卡车兵种ID<el-tooltip placement="top" :content="tips.gather_truck_troop_id"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model.number="form.gather_truck_troop_id" :min="1" :max="100000" :step="1" :precision="0" controls-position="right" style="width:180px" />
-            </el-form-item>
+              title="采集公式：F = 部队兵力总数 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数（16:59 按 16 小时算；海野产出再 × 海野采集倍率，默认 3）。其中「部队兵力总数」= 出征部队所有兵种数量之和，不同兵种差异只体现在负重" />
             <el-form-item>
               <template slot="label">每级野地加成(%)<el-tooltip placement="top" :content="tips.gather_wild_bonus_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.gather_wild_bonus_pct" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
@@ -475,8 +471,10 @@ export default {
         gold_prod_mult: 1,
         // ★ 2026-09-28 市长加成倍率（默认 1；0 合法 = 关闭）
         mayor_gain_mult: 1,
-        // ★ 2026-10-21 采集新公式：卡车兵种 3 / 每级野地 3% / 除数 2 / 海野倍率 3
-        gather_truck_troop_id: 3, gather_wild_bonus_pct: 3, gather_formula_divisor: 2,
+        // ★ 2026-10-21 采集新公式：每级野地 3% / 除数 2 / 海野倍率 3
+        //   ⚠️ 2026-10-21 口径修正：M = 部队所有兵种数量之和（不再限定卡车兵种），
+        //   gather_truck_troop_id 字段已废弃，不再展示/管理。
+        gather_wild_bonus_pct: 3, gather_formula_divisor: 2,
         gather_sea_bonus_mult: 3,
         // ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**）
         wild_treasure_cooldown_h: 2,
@@ -520,7 +518,7 @@ export default {
           'gather_max_per_order', 'sell_price_max', 'officer_cap_per_military', 'officer_speed_per_military',
           'mall_buy_max', 'bag_item_max', 'treasure_max', 'recruit_cycle_mode', 'default_continent'],
         troop: ['troop_max', 'wound_expire_days', 'wound_heal_divisor', 'wound_heal_rate', 'heal_all_diamond'],
-        wild: ['wild_troop_mult', 'wild_res_mult', 'gather_truck_troop_id', 'gather_wild_bonus_pct',
+        wild: ['wild_troop_mult', 'wild_res_mult', 'gather_wild_bonus_pct',
           'gather_formula_divisor', 'gather_sea_bonus_mult', 'res_prod_mult', 'gold_prod_mult', 'mayor_gain_mult', 'dispatch_period_h',
           'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_h', 'move_cool_h'],
         battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
@@ -589,13 +587,12 @@ export default {
         wild_troop_mult: '野地 / 海野 / 寇城守军兵力 = 配置值 × 该倍数（可填小数，2 = 翻倍），默认 10',
         wild_res_mult: '野地 / 海野 / 寇城战斗胜利后的战利品资源 × 该倍数（可填小数，2 = 翻倍，5 = 五倍），默认 10。' +
           '只影响「打赢的战利品」，不含驻守采集的产出；地图上选中野地时的「胜利奖励」会同步显示放大后的数值。',
-        // ★★ 2026-10-21 采集新公式：F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 除数
-        gather_truck_troop_id: '采集公式里「卡车数量 M」取哪个兵种：默认 3（军用运输卡车/通用运输卡车）。' +
-          '出征部队里该兵种的数量之和就是 M；其它兵种不参与采集产量。',
+        // ★★ 2026-10-21 采集新公式：F = 部队总兵力 × 整点小时 × 野地加成% × 后勤 ÷ 除数
+        //   （M = 出征部队所有兵种数量之和，兵种差异只体现在负重；卡片兵种 ID 配置已废弃，不再展示）
         gather_wild_bonus_pct: '野地加成 R 的每级百分比，默认 3（即每 1 级 3%）。' +
           'R = 出发城市名下「与该野地同资源」的所有野地总等级 × 本值。' +
           '例：10 级森林 + 4 级森林 = 14 级 → 粮食野地加成 14 × 3% = 42%。',
-        gather_formula_divisor: '采集公式的除数，默认 2：F = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 该值。' +
+        gather_formula_divisor: '采集公式的除数，默认 2：F = 部队兵力总数 × 整点小时 × 野地加成% × 军官后勤 ÷ 该值。' +
           '线上原版为 2；调小 = 产量提高，调大 = 产量降低。',
         // ★ 2026-10-21 海野采集倍率（简约提示：玩家端不展示倍率细节）
         gather_sea_bonus_mult: '海野（海底森林/岛屿/渔场/矿礁）采集产量比陆地野地高 3 倍：海野产出 = 公式结果 × 该倍率，陆地野地不乘。' +
@@ -733,7 +730,6 @@ export default {
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),
             wild_res_mult: pos(Number(r.data.wild_res_mult), 1),
             // ★ 2026-10-21 采集新公式参数：0 无意义 → pos 回落默认
-            gather_truck_troop_id: pos(r.data.gather_truck_troop_id, 3),
             gather_wild_bonus_pct: pos(Number(r.data.gather_wild_bonus_pct), 3),
             gather_formula_divisor: pos(Number(r.data.gather_formula_divisor), 2),
             // ★ 2026-10-21 海野采集倍率：0 无意义 → pos 回落默认 3

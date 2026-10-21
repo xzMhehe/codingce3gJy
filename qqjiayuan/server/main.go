@@ -123,6 +123,8 @@ func runHomeMode(cfg *config.Config) {
 		timedStep("EnsureEzfyUserChestPityTable", func() { seed.EnsureEzfyUserChestPityTable(homeDB) })
 		// ★ 2026-10-16 开箱流水表（管理端「数据管理→宝箱开启」数据源）：同 hazard，skip 分支幂等补建。
 		timedStep("EnsureEzfyChestLogTable", func() { seed.EnsureEzfyChestLogTable(homeDB) })
+		// ★ 2026-10-21 钻石流水 extra（购买宝箱开出的道具）同步扩成 text，避免 30/100 连被截断。
+		timedStep("EnsureEzfyDiamondLogColumns", func() { seed.EnsureEzfyDiamondLogColumns(homeDB) })
 		// ★ 2026-10-14 风云榜周榜表：同 hazard，skip 分支幂等补建（否则战斗结算写榜报表不存在）。
 		timedStep("EnsureEzfyPvpWeekTable", func() { seed.EnsureEzfyPvpWeekTable(homeDB) })
 		// ★ 2026-10-14 风云榜同对手积分封顶表（防小号互刷）：同 hazard，幂等补建。

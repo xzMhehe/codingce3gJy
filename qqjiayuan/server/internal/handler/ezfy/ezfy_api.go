@@ -4083,9 +4083,10 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 				"per_steel":    g.Steel,
 				"per_oil":      g.Oil,
 				"per_rare":     g.Rare,
-				// 公式明细：F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 除数
-				// （★ 2026-10-21 海野倍率只参与产物计算与 per_*，-game 不下发、战报不展示，玩家无感）
-				"trucks":         g.Trucks,
+				// 公式明细：F = 部队总兵力 × 整点小时 × 野地加成% × 后勤 ÷ 除数
+				// （★ 2026-10-21 海野倍率只参与产物计算与 per_*，不向玩家下发/展示；
+				//   本明细仅供调试参考，前端不渲染）
+				"troops":         g.Troops,
 				"wild_bonus_pct": g.WildBonusPct,
 				"logistics":      g.Logistics,
 				"divisor":        g.Divisor,

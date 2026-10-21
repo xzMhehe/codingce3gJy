@@ -1209,13 +1209,16 @@ const (
 	ezfyGatherResMultDef     = 10
 	ezfyOfficerGatherMultDef = 1
 	// ★ 2026-10-21 新采集公式参数：
-	//   F = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数
-	//   卡车兵种默认 3（军用/通用运输卡车）；每级野地默认 3%；除数默认 2；
-	//   海野（海底森林/岛屿/渔场/矿礁）产出再 × 海野倍率（默认 3，比陆地高 3 倍）。
-	ezfyGatherTruckTroopIDDef   = 3
+	//   F = 部队总兵力 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数
+	//   M = 所有兵种数量之和（原说明以运输卡车举例；兵种差异只体现在负重）；
+	//   每级野地默认 3%；除数默认 2；海野（海底森林/岛屿/渔场/矿礁）产出再 × 海野倍率（默认 3）。
 	ezfyGatherWildBonusPctDef   = 3.0
 	ezfyGatherFormulaDivisorDef = 2.0
 	ezfyGatherSeaBonusMultDef   = 3.0
+	// ⚠️ 2026-10-21 采集卡车兵种 ID：**已废弃** —— M 口径改为「所有兵种数量之和」，
+	//   兵种 ID 限定失去意义（原默认 3 = 军用运输卡车/通用运输卡车）。
+	//   保留默认值给老字段 ezfyCfgLimit.GatherTruckTroopID 兜底展示用。
+	ezfyGatherTruckTroopIDDef = 3
 	// ★ 2026-09-28 市长产量加成倍率，默认 1
 	ezfyMayorGainMultDef = 1
 	// ★ 2026-10-21 造兵时间：市长军事加成开关 / 装备套装军事计入开关，默认都开
@@ -1594,21 +1597,6 @@ func ezfyScaleGoldByProdMult(n int64) int64 {
 		return 0
 	}
 	return int64(float64(n) * m)
-}
-
-// ezfyGatherTruckTroopID 采集公式里的「卡车」兵种 ID（默认 3）。
-//
-//	F = 卡车数量 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数
-//
-// 历史默认 3 = 军用运输卡车/通用运输卡车；0 / 负 / NULL → 回落 3。
-func ezfyGatherTruckTroopID() int {
-	if !ezfyCfg.ready() {
-		return ezfyGatherTruckTroopIDDef
-	}
-	if id := ezfyCfg.limit.GatherTruckTroopID; id > 0 {
-		return id
-	}
-	return ezfyGatherTruckTroopIDDef
 }
 
 // ezfyGatherWildBonusPct 每 1 级「同资源野地」提供的采集加成百分比（默认 3%）。

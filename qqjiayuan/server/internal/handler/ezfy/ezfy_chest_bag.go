@@ -1,9 +1,10 @@
 // 二战风云 玩家持有的待开宝箱（ezfy_user_chest）
 //
 // ★ 2026-10-14 用户需求「宝箱也能发放给玩家加个功能」：
-//   商城买的宝箱可选即开（ChestOpen）或只买不开进背包（ChestBuy）；
-//   管理端/活动发放的宝箱进 ezfy_user_chest，玩家在「背包→宝箱」里看数量、点开箱
-//   —— 开箱不扣钱、不扣全库库存，走 ezfy_cfg_chest 同一套奖池（权重抽奖，奖品直发装备/道具背包）。
+//
+//	商城买的宝箱可选即开（ChestOpen）或只买不开进背包（ChestBuy）；
+//	管理端/活动发放的宝箱进 ezfy_user_chest，玩家在「背包→宝箱」里看数量、点开箱
+//	—— 开箱不扣钱、不扣全库库存，走 ezfy_cfg_chest 同一套奖池（权重抽奖，奖品直发装备/道具背包）。
 package ezfy
 
 import (
@@ -171,7 +172,7 @@ func (h *EzfyHandler) ChestBag(c *gin.Context) {
 		}
 		list = append(list, gin.H{
 			"chest_id": r.ChestId, "name": chest.Name, "count": r.Count, "effect": chest.Effect,
-			"open_max": chest.OpenMax,
+			"open_max":   chest.OpenMax,
 			"price_gold": chest.PriceGold, "price_diamond": chest.PriceDiamond,
 			"des": chest.Des, "pool": pool,
 		})
@@ -241,28 +242,15 @@ func (h *EzfyHandler) ChestBagOpen(c *gin.Context) {
 		results = append(results, gin.H{"name": desc})
 	}
 	// ★ 2026-10-14 与 ChestOpen 同口径：同名奖品合并成「名×数量」，开一堆不再刷长串
-	agg, seen := make([]string, 0, len(names)), map[string]int{}
-	for _, nm := range names {
-		seen[nm]++
-	}
-	for _, nm := range names {
-		if seen[nm] > 1 {
-			agg = append(agg, fmt.Sprintf("%s×%d", nm, seen[nm]))
-		} else {
-			agg = append(agg, nm)
-		}
-		seen[nm] = 0
-	}
+	agg := ezfyAggPrizeNames(names)
 	if len(agg) == 0 {
 		agg = []string{"空箱"}
 	}
 	// ★★ 2026-10-16 开箱流水：背包待开宝箱开箱也记一条（管理端「数据管理→宝箱开启」），
 	//   与商城购买即开(ChestOpen)同口径，方便核实「发放的宝箱开出了什么」。
+	// ★ 2026-10-21 result 已改 text，**不再截断**：30/100 连必须能查到全部奖品。
 	if len(names) > 0 {
 		result := "获得：" + strings.Join(agg, "、")
-		if rs := []rune(result); len(rs) > 255 {
-			result = string(rs[:255])
-		}
 		h.DB.Create(&model.EzfyChestLog{
 			UserID: uid, ChestId: chest.ID, ChestName: chest.Name,
 			Count: req.Count, Result: result,

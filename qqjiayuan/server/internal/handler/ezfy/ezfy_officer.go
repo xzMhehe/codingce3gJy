@@ -3993,35 +3993,19 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 	}
 	// ★ 2026-10-13 开箱播报聚合：同名奖品合并成「名×数量」，10 连开出结果不再刷一长串
 	//   （msg 与钻石流水 extra 都用聚合文本；顺序按首次出现）
-	agg := make([]string, 0, len(names))
-	seen := map[string]int{}
-	for _, nm := range names {
-		seen[nm]++
-	}
-	for _, nm := range names {
-		if seen[nm] > 1 {
-			agg = append(agg, fmt.Sprintf("%s×%d", nm, seen[nm]))
-		} else {
-			agg = append(agg, nm)
-		}
-		seen[nm] = 0
-	}
+	agg := ezfyAggPrizeNames(names)
 	// ★ 2026-10-11 把开箱结果回填到扣款时那条钻石流水（管理端「数据管理→钻石流水」新增「开出道具」列）。
 	//   抽奖在扣款之后 → 只能先记流水再回填；extra 为空的历史行前端显示「—」。
+	// ★ 2026-10-21 extra 已改 text，不再截断。
 	if logID > 0 && len(names) > 0 {
 		extra := "获得：" + strings.Join(agg, "、")
-		if rs := []rune(extra); len(rs) > 255 {
-			extra = string(rs[:255])
-		}
 		h.DB.Model(&model.EzfyDiamondLog{}).Where("id = ?", logID).Update("extra", extra)
 	}
 	// ★★ 2026-10-16 开箱流水：无论黄金/钻石购买即开都记一条（管理端「数据管理→宝箱开启」）。
 	//   与钻石流水解耦（黄金买的宝箱不记钻石流水，反馈核实开箱结果就查这张表）。
+	// ★ 2026-10-21 result 已改 text，不再截断。
 	if len(names) > 0 {
 		result := "获得：" + strings.Join(agg, "、")
-		if rs := []rune(result); len(rs) > 255 {
-			result = string(rs[:255])
-		}
 		h.DB.Create(&model.EzfyChestLog{
 			UserID: uid, ChestId: chest.ID, ChestName: chest.Name,
 			Count: req.Count, Result: result,

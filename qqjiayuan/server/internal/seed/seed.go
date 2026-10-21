@@ -386,11 +386,12 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET gather_sea_mult = 1.5 WHERE gather_sea_mult IS NULL OR gather_sea_mult <= 0")
 
-		// ★★ 2026-10-21 采集新公式 F = 卡车 × 整点小时 × 野地加成% × 后勤 ÷ 2：
-		//   ① 卡车兵种 ID（默认 3 = 军用/通用运输卡车）
+		// ★★ 2026-10-21 采集新公式 F = 部队总兵力 × 整点小时 × 野地加成% × 后勤 ÷ 2：
 		//   ② 每 1 级同资源野地提供的加成%（默认 3）
 		//   ③ 公式除数（默认 2）
 		//   各项 0 / NULL 都无意义 → 回填默认值。
+		//   ⚠️ gather_truck_troop_id（卡车兵种 ID）已废弃：M 口径改为「所有兵种数量之和」，
+		//   列保留只为不动历史数据。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_truck_troop_id") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_truck_troop_id int DEFAULT 3")
 		}
@@ -3009,17 +3010,28 @@ func EnsureEzfyUserChestPityTable(db *gorm.DB) {
 	}
 }
 
-// EnsureEzfyChestLogTable 幂等补建 ezfy_chest_logs 开箱流水表（skip 分支也必须能建出来）。
+// EnsureEzfyChestLogTable 幂等补建/升级 ezfy_chest_logs 开箱流水表（skip 分支也必须能建出来）。
 //
 // ★ 2026-10-16 开箱记录表同 hazard：与 EnsureEzfyUserChestTable 同款，HasTable 幂等。
 //
 //	否则多机共享库上开箱写日志直接报表不存在。
+//
+// ★ 2026-10-21 result 由 varchar(255) 扩成 text：30/100 连开箱结果必须完整留存。
+// 这里不再 HasTable 早退，直接 AutoMigrate —— 已有表也会把列类型改到位（幂等）。
 func EnsureEzfyChestLogTable(db *gorm.DB) {
-	if db.Migrator().HasTable(&model.EzfyChestLog{}) {
-		return
-	}
 	if err := db.AutoMigrate(&model.EzfyChestLog{}); err != nil {
-		log.Printf("[seed] 补建 ezfy_chest_logs 表失败: %v", err)
+		log.Printf("[seed] 补建/升级 ezfy_chest_logs 表失败: %v", err)
+	}
+}
+
+// EnsureEzfyDiamondLogColumns 幂等升级 ezfy_diamond_logs 的长文本列（skip 分支必须调用）。
+//
+// ★ 2026-10-21 extra（购买宝箱开出的道具）由 varchar(255) 扩成 text：
+//
+//	与 ezfy_chest_logs.result 同源，30/100 连不再截断。
+func EnsureEzfyDiamondLogColumns(db *gorm.DB) {
+	if err := db.AutoMigrate(&model.EzfyDiamondLog{}); err != nil {
+		log.Printf("[seed] 升级 ezfy_diamond_logs 表失败: %v", err)
 	}
 }
 
