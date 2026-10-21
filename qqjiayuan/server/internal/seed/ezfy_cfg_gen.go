@@ -580,7 +580,8 @@ var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	{ID: 1007, Name: "训练加速2小时", ItemType: 4, Param1: 120, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前训练队列立即减少2小时"},
 	{ID: 1008, Name: "科技加速30分钟", ItemType: 5, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前科技研究立即减少30分钟"},
 	{ID: 1009, Name: "科技加速2小时", ItemType: 5, Param1: 120, PriceDiamond: 4, Stock: 98, Icon: "", Description: "当前科技研究立即减少2小时"},
-	{ID: 1010, Name: "建筑图纸", ItemType: 6, Param1: 1, PriceDiamond: 10, Stock: 97, Icon: "", Description: "建筑升级到10级必需, 每张可升级一次"},
+	// ★ 2026-10-21 用户「商城种子 默认图纸 库存 无限」→ Stock -1（无限，不再按快照 97 回写）。
+	{ID: 1010, Name: "建筑图纸", ItemType: 6, Param1: 1, PriceDiamond: 10, Stock: -1, Icon: "", Description: "建筑升级到10级必需, 每张可升级一次"},
 	{ID: 1011, Name: "增产令+50%(24小时)", ItemType: 7, Param1: 50, PriceDiamond: 10, Stock: 100, Icon: "", Description: "城市资源产量+50%, 持续24小时"},
 	// ★ 2026-10-02 免战保护令改售 10 钻石（黄金太容易得，防滥用囤货）。
 	//   与线上/测试库 ezfy_cfg_item id=12 的现行价格一致。

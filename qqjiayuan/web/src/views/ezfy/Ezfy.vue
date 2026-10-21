@@ -5141,13 +5141,16 @@ export default {
     doConvene () {
       // ★ 2026-10-09 ：卡控 5 秒 → **3 秒**（与后端 /city/convene 双保险，防连点刷人口）
       // ★ 2026-10-20 ：人口达到/超过民居软上限时改为 **5 分钟**（仍可召集，超出部分缓慢回落）
+      // ★ 2026-10-21 ：冷却**按城市**分别记（与后端同口径）——A 城冷却中不影响 B 城。
+      const cid = this.city ? this.city.id : 0
+      const atByCity = this._conveneAtByCity || (this._conveneAtByCity = {})
       const cd = this.conveneCooldownMs
-      if (Date.now() - (this.lastConveneAt || 0) < cd) {
+      if (Date.now() - (atByCity[cid] || 0) < cd) {
         this.notify(cd >= 60000 ? '操作过于频繁, 请 5 分钟后再试' : '操作过于频繁, 请 3 秒后再试')
         return
       }
-      api.post('/games/ezfy/city/convene', {}).then(r => {
-        if (r.code === 0) this.lastConveneAt = Date.now()
+      api.post('/games/ezfy/city/convene', { city_id: cid }).then(r => {
+        if (r.code === 0) atByCity[cid] = Date.now()
         this.alert(r, '召集完成')
       })
     },
@@ -6794,6 +6797,12 @@ export default {
       this.mallCat = c
       this.mallPage = 1
     },
+    // ★ 2026-10-21 商城分类 chip 只显示两字：去掉尾巴「道具」（原值仍用于筛选/统计）。
+    mallCatShort (c) {
+      const s = String(c || '')
+      if (s === '建筑图纸') return '图纸'
+      return s.length > 2 && s.endsWith('道具') ? s.slice(0, -2) : s
+    },
     mallGo (d) {
       const p = this.mallPage + d
       if (p >= 1 && p <= this.mallTotalPages) this.mallPage = p
@@ -8340,6 +8349,18 @@ body.ezfy-ios .ezfy-page textarea {
    原来只绑了 .on class 没写样式 → 选中项和未选看起来一样。
    口径与 .acade-tab a.on 一致：红 + 加粗。 */
 .ezfy-page .ezfy-slot-grid > a.on { color: #c0392b; font-weight: bold; }
+/* ★ 2026-10-21 商城道具分类：每行固定 4 个（多行排布，不再铺成一长行）；
+   名称由 mallCatShort 收成两字，超长时省略号兜底。 */
+.ezfy-page .ezfy-slot-grid.mall-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px 6px;
+}
+.ezfy-page .ezfy-slot-grid.mall-cat-grid > a {
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* ★ 2026-09-25 套装加成展示（用户反馈「套装的加成看不到，不知道买完套装给军官用哪个」）
    三处展示，全部是**纯文本竖排**，窄屏不会横向溢出：
      ① .set-card  —— 装备表里点套装名，在该行下面**跨整行**展开的加成卡
@@ -9281,22 +9302,41 @@ body.ezfy-ios .ezfy-page textarea {
     padding: 1px 0;
   }
 }
-/* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条） */
+/* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条）
+   ★ 2026-10-21 用户「点上一页/下一页位置会变」：改成居中三栏网格，
+     左右两栏宽度固定，中间文字再长也不会把按钮挤走。 */
 .ezfy-page .ezfy-pager {
-  margin: 8px 0 4px;
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr) 4.5em;
+  align-items: center;
+  width: 100%;
+  max-width: 360px;
+  margin: 8px auto 4px;
   /* ★ 2026-09-25 随全站统一：分页条 15 → var(--fs)（所有文字一样大） */
   font-size: var(--fs);
 }
-.ezfy-page .ezfy-pager a {
-  margin: 0 4px;
+.ezfy-page .ezfy-pager > a,
+.ezfy-page .ezfy-pager > span {
+  margin: 0;
+  text-align: center;
+}
+.ezfy-page .ezfy-pager > a {
   text-decoration: none;
+  white-space: nowrap;
+}
+.ezfy-page .ezfy-pager > span {
+  white-space: nowrap;
 }
 .ezfy-page .ezfy-pager a.gray {
   color: #999;
   pointer-events: none;
 }
-.ezfy-page .ezfy-pager span.gray {
-  margin: 0 6px;
+/* 极窄屏（≤350px）：三栏同步收窄 + 字号降 2px，保证中间页数不压到 [下一页]。 */
+@media (max-width: 350px) {
+  .ezfy-page .ezfy-pager {
+    grid-template-columns: 4em minmax(0, 1fr) 4em;
+    font-size: calc(var(--fs) - 2px);
+  }
 }
 /* ★ 2026-09-25 随全站统一：分页条窄屏也不缩（原来 13px） */
 </style>

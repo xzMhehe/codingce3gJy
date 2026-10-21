@@ -81,7 +81,7 @@
               <!-- ★ 2026-09-27 百分比加速道具(item_type=24)：剩余时间减 30%/60%/80% -->
               <a v-for="a in ezfy.accItems(24)" :key="'sbp' + b.id + '_' + a.cfg_id" href="javascript:;"
                  @click="ezfy.doSpeedBuilding(b, a)">[加速{{ ezfy.accLabel(a) }}]</a>
-              <span class="gray" v-if="!ezfy.accItems(3).length && !ezfy.accItems(24).length">(无建筑加速道具)</span>
+              <span class="gray" v-if="!ezfy.accItems(3).length && !ezfy.accItems(24).length"></span>
               <!-- ★ 2026-09-27：升级状态时加 [取消]（取消零退还，建筑保留当前等级，防刷资源/图纸） -->
               <a href="javascript:;" class="red" @click="ezfy.doCancelUpgrade(b)">[取消]</a>
             </template>

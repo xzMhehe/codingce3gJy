@@ -177,11 +177,12 @@
             <a href="javascript:;" :class="{ on: ezfy.mallTab === 'chest' }" @click="ezfy.switchMallTab('chest')">宝箱</a>
           </div>
           <template v-if="ezfy.mallTab === 'item'">
-          <!-- ★ 分类筛选：流式排列自动换行（分类由管理端维护，手机端超宽自动折到下一行） -->
-          <div class="ezfy-slot-grid">
-            <a href="javascript:;" :class="{ on: ezfy.mallCat === '' }" @click="ezfy.setMallCat('')">[全部·{{ ezfy.mallItems.length }}]</a>
+          <!-- ★ 2026-10-21 分类筛选：去掉数字、每行固定 4 个（不再一次性铺成一行），
+               类别名尽量两字（mallCatShort 去掉「道具」尾巴）。 -->
+          <div class="ezfy-slot-grid mall-cat-grid">
+            <a href="javascript:;" :class="{ on: ezfy.mallCat === '' }" @click="ezfy.setMallCat('')">[全部]</a>
             <a v-for="c in ezfy.mallCatsList" :key="'mc' + c" href="javascript:;" :class="{ on: ezfy.mallCat === c }"
-               @click="ezfy.setMallCat(c)">[{{ c }}·{{ ezfy.mallCatCounts[c] || 0 }}]</a>
+               @click="ezfy.setMallCat(c)">[{{ ezfy.mallCatShort(c) }}]</a>
           </div>
           <div class="old-line gray" v-if="ezfy.mallDiamond <= 0">
             钻石余额为 0；需要钻石购买的道具若标价 0 钻石可直接购买，其余需由管理员充值钻石后购买。
@@ -197,7 +198,7 @@
               <!-- ★ 2026-10-20 「全部」视图按分类插入分组标题，同类商品聚在一起 -->
               <tr v-if="!ezfy.mallCat && (idx === 0 || ezfy.mallPaged[idx - 1].category !== it.category)"
                   :key="'mh' + it.category" class="mall-cat-row">
-                <td colspan="4">{{ it.category || '其他' }}（{{ ezfy.mallCatCounts[it.category] || 0 }} 件）</td>
+                <td colspan="4">{{ ezfy.mallCatShort(it.category) || '其他' }}（{{ ezfy.mallCatCounts[it.category] || 0 }} 件）</td>
               </tr>
               <tr :key="'mi' + it.id">
                 <td>{{ it.name }}</td>
@@ -513,7 +514,7 @@
           <template v-if="ezfy.buyItem">
             <div class="old-line">
               <b>{{ ezfy.buyItem.name }}</b>
-              <span v-if="ezfy.buyItem.category" class="gray">[{{ ezfy.buyItem.category }}]</span>
+              <span v-if="ezfy.buyItem.category" class="gray">[{{ ezfy.mallCatShort(ezfy.buyItem.category) }}]</span>
             </div>
             <div class="old-line" v-if="ezfy.buyItem.description">{{ ezfy.buyItem.description }}</div>
             <div class="old-line">

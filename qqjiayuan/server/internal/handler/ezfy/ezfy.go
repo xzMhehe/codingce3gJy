@@ -4610,6 +4610,9 @@ var (
 // ★ 2026-10-05 人口召集卡控（与训练一键加速一致）
 // ★ 2026-10-09  5 秒 → **3 秒**（前端 doConvene 同步改）
 // ★ 2026-10-20 人口达到/超过民居软上限时改为 5 分钟一次（仍可继续召集，超出部分缓慢回落）
+// ★ 2026-10-21 用户反馈「召集按钮卡所有城市」：卡控必须**按城市**独立（key = ezfy_city.id），
+//
+//	不能按玩家 —— 同账号多座城各点各的，A 城冷却中不影响 B 城。
 const (
 	ezfyConveneCooldownMs        = 3000
 	ezfyConveneOverCapCooldownMs = 5 * 60 * 1000
@@ -4617,7 +4620,7 @@ const (
 
 var (
 	ezfyConveneMu   sync.Mutex
-	ezfyConveneMemo = map[uint]int64{}
+	ezfyConveneMemo = map[uint]int64{} // key = city.id
 )
 
 func ezfyPageCacheGet(uid uint, name string) (gin.H, bool) { return nil, false }
@@ -5176,6 +5179,7 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	//   （用户规则：民居上限条件下召集 5 分钟才能点一次，但超过上限仍可召集）。
 	//   放在粮食校验之后：粮食不足等失败不占用冷却，避免玩家被白白锁 5 分钟。
 	//   仍在校验/写库之前 set 时间戳，保证并发双击只有一个请求能走到写库。
+	// ★ 2026-10-21 冷却按**城市**记（city.ID），同账号换城不受上一座城的冷却影响。
 	cdMs := int64(ezfyConveneCooldownMs)
 	if soft := ezfyHouseSoftCap(city.PopMax); soft > 0 && city.Pop >= soft {
 		cdMs = ezfyConveneOverCapCooldownMs
@@ -5183,7 +5187,7 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	{
 		nowCd := time.Now().UnixMilli()
 		ezfyConveneMu.Lock()
-		if last, ok := ezfyConveneMemo[uid]; ok && nowCd-last < cdMs {
+		if last, ok := ezfyConveneMemo[city.ID]; ok && nowCd-last < cdMs {
 			ezfyConveneMu.Unlock()
 			if cdMs >= 60000 {
 				resp.ParamError(c, "操作过于频繁, 请 5 分钟后再试")
@@ -5195,7 +5199,7 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 		if len(ezfyConveneMemo) > 16384 {
 			ezfyConveneMemo = map[uint]int64{}
 		}
-		ezfyConveneMemo[uid] = nowCd
+		ezfyConveneMemo[city.ID] = nowCd
 		ezfyConveneMu.Unlock()
 	}
 	city.Food -= foodCost

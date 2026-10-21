@@ -17,8 +17,8 @@ func TestPvPDefenderWounded(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
 	for _, want := range []string{
 		"defHealTech = ezfyTechEffectValueAt(21, defTech[21])", // 守方科技·治愈伤兵（管理端效果数值）
-		`h.officerHasSkill(cityGuard, "机械改造")`,           // 城守军官技能
-		"h.addWounded(target.ID, g.TroopId, 0, wounded)", // 守方伤兵入营（type=0 伤兵）
+		`h.officerHasSkill(cityGuard, "机械改造")`,                 // 城守军官技能
+		"h.addWounded(target.ID, g.TroopId, 0, wounded)",       // 守方伤兵入营（type=0 伤兵）
 		// 战报里两方的回收比例各算一份（「谁看展示谁的」）
 		"healLineAtk := ezfyHealPctLine(repairedTotal, br.AttackerLosses)",
 		"healLineDef := ezfyHealPctLine(defRepairedTotal, br.DefenderLosses)",
@@ -104,6 +104,62 @@ func TestConveneCooldown(t *testing.T) {
 		if !strings.Contains(src, want) {
 			t.Fatalf("召集卡控提示文案缺「%s」", want)
 		}
+	}
+	// ★ 2026-10-21 用户报「召集按钮卡所有城市」：冷却必须按城市记，不能按玩家 uid。
+	if !strings.Contains(src, "ezfyConveneMemo[city.ID] = nowCd") {
+		t.Fatal("召集卡控未按 city.ID 记录冷却（会卡住同账号其它城市）")
+	}
+	if strings.Contains(src, "ezfyConveneMemo[uid]") {
+		t.Fatal("召集卡控仍按玩家 uid 记录冷却（应改为 city.ID）")
+	}
+	vue := ezfyStripCommentLines(readFrontFile(t, "../../../../web/src/views/ezfy/Ezfy.vue"))
+	for _, want := range []string{"atByCity[cid]", "city_id: cid"} {
+		if !strings.Contains(vue, want) {
+			t.Fatalf("前端 doConvene 未按城市独立冷却/未带上 city_id（缺 %s）", want)
+		}
+	}
+	if strings.Contains(vue, "this.lastConveneAt") {
+		t.Fatal("前端 doConvene 仍在用全账号共享的 lastConveneAt（应改为按城市）")
+	}
+}
+
+// TestMallCatAndPagerLayout 商城分类「去数字 + 每行 4 个 + 两字名」与分页条固定位置。
+func TestMallCatAndPagerLayout(t *testing.T) {
+	shop := ezfyStripCommentLines(readFrontFile(t, "../../../../web/src/views/ezfy/modules/EzfyShop.vue"))
+	for _, want := range []string{"mall-cat-grid", "mallCatShort(c)"} {
+		if !strings.Contains(shop, want) {
+			t.Fatalf("商城分类未按要求改造（缺 %s）", want)
+		}
+	}
+	for _, bad := range []string{"全部·{{ ezfy.mallItems.length }}", "mallCatCounts[c]"} {
+		if strings.Contains(shop, bad) {
+			t.Fatalf("商城分类仍显示数字（发现 %s）", bad)
+		}
+	}
+	vue := ezfyStripCommentLines(readFrontFile(t, "../../../../web/src/views/ezfy/Ezfy.vue"))
+	for _, want := range []string{
+		"mallCatShort (c)",
+		"grid-template-columns: repeat(4, minmax(0, 1fr))",
+		"grid-template-columns: 4.5em minmax(0, 1fr) 4.5em",
+	} {
+		if !strings.Contains(vue, want) {
+			t.Fatalf("商城分类/分页样式缺失（缺 %s）", want)
+		}
+	}
+	// 种子：建筑图纸库存无限（-1）
+	seed := rawFile(t, "../../seed/ezfy_cfg_gen.go")
+	found := false
+	for _, line := range strings.Split(seed, "\n") {
+		if !strings.Contains(line, `Name: "建筑图纸"`) {
+			continue
+		}
+		found = true
+		if !strings.Contains(line, "Stock: -1,") {
+			t.Fatalf("商城种子「建筑图纸」库存未改成无限：%s", line)
+		}
+	}
+	if !found {
+		t.Fatal("商城种子里找不到「建筑图纸」")
 	}
 }
 
