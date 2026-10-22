@@ -265,6 +265,11 @@
 import api from '../../api'
 
 const CFG_KEYS = [
+  // ★ 2026-10-22 修 bug「编辑兵种配置后报兵种不存在」：
+  //   原来这里漏了 'id'，openCfgEdit 只按本数组拷字段 → cfgForm.id 是 undefined，
+  //   保存时 PUT /admin/ezfy-troops-cfg/undefined → 后端 Atoi 失败按 0 查 → 404「兵种不存在」。
+  //   id 只用于拼 URL，后端 ezfyTroopFields 白名单里没有 id，不会被当成可改字段。
+  'id',
   'name', 'name_ally', 'name_axis', 'type', 'icon', 'repair_rate',
   'health', 'atk_ground', 'atk_sea', 'atk_air', 'atk_def', 'defence', 'speed', 'attack_range',
   'carry', 'pop', 'train_time', 'food_keep', 'oil_keep',

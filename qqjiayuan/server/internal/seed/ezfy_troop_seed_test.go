@@ -52,8 +52,8 @@ func TestEzfyNavalBomberTroop(t *testing.T) {
 	if got.Type != 3 {
 		t.Errorf("Type = %d, want 3(空军)", got.Type)
 	}
-	if got.TrainTime != 100 {
-		t.Errorf("训练时间 = %d 秒, want 100（1分40秒）", got.TrainTime)
+	if got.TrainTime != 240 {
+		t.Errorf("训练时间 = %d 秒, want 240（4分钟）", got.TrainTime)
 	}
 	// 原版兵种表数值（兵种.png 第12行；「对城墙」= 对防 AtkDef；对海按用户要求 110）
 	cases := []struct {

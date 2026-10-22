@@ -2,6 +2,7 @@ package seed
 
 import (
 	"log"
+	"strconv"
 
 	"gorm.io/gorm"
 
@@ -22,12 +23,18 @@ import (
 // 只补不覆盖：已存在就跳过，管理端在「兵种配置」里改过的数值不会被启动冲掉。
 const ezfyNavalBomberTroopID = 21
 
-// ezfyNavalBomberAlignKey 一次性对齐的 settings 标记位。
+// ezfyNavalBomberAlignVer 一次性对齐的**版本号**：每次调整 21 号兵的数值就 +1。
 //
 // ★ 2026-10-22 用户二次调整（对海 75→110 / 训练时间 90→100 秒 / 阵营名补全为「型号+海军轰炸机」，
-// 轴心国从日本换成德国 Fw 200 秃鹰）。已经部署过的库（id=21 已在表里）靠 batchKeep 补不进去，
-// 所以用 settings 打标**只对齐一次** —— 之后管理员在「兵种配置」里再怎么调，重启都不会被顶回来。
-const ezfyNavalBomberAlignKey = "ezfy_naval_bomber_align_20261022"
+// 轴心国从日本换成德国 Fw 200 秃鹰）→ ver 1；
+// 用户三次调整（训练时间 100→240 秒）→ ver 2。
+//
+// 已经部署过的库（id=21 已在表里）靠 batchKeep(DoNothing) 补不进去，所以用 settings 存版本号：
+// 库里的版本 < 本常量才对齐一次，之后管理员在「兵种配置」里再怎么调，重启都不会被顶回来。
+const ezfyNavalBomberAlignVer = 2
+
+// ezfyNavalBomberAlignKey settings 里存对齐版本号的 key。
+const ezfyNavalBomberAlignKey = "ezfy_naval_bomber_align_ver"
 
 // EnsureEzfyCfgTroops 单库 skip 模式下幂等补新增兵种配置（1区/2区各自执行一次）。
 func EnsureEzfyCfgTroops(db *gorm.DB) {
@@ -63,17 +70,19 @@ func ensureEzfyTroopByID(db *gorm.DB, id int) {
 	log.Printf("ezfy 补兵种配置 id=%d 跳过：内置清单里没有这一项", id)
 }
 
-// alignEzfyNavalBomber 一次性把「海军轰炸机」的 4 列对齐到最新口径（settings 打标，只跑一次）。
+// alignEzfyNavalBomber 把「海军轰炸机」的 4 列对齐到最新口径（settings 存版本号，每版只跑一次）。
 //
 // 覆盖的列：对海 / 训练时间 / 同盟国名 / 轴心国名。
-// 幂等：settings 有标记就跳过；settings 表不存在时也跳过（新库由 batchKeep 直接插新值）。
+// 幂等：settings 里的版本 >= ezfyNavalBomberAlignVer 就跳过；settings 表不存在时也跳过
+// （新库由 batchKeep 直接插新值）。
 func alignEzfyNavalBomber(db *gorm.DB) {
 	if !db.Migrator().HasTable(&model.EzfyCfgTroop{}) || !db.Migrator().HasTable("settings") {
 		return
 	}
-	var marked int64
-	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", ezfyNavalBomberAlignKey).Scan(&marked)
-	if marked > 0 {
+	var curStr string
+	db.Raw("SELECT `value` FROM settings WHERE `key` = ?", ezfyNavalBomberAlignKey).Scan(&curStr)
+	curVer, _ := strconv.Atoi(curStr)
+	if curVer >= ezfyNavalBomberAlignVer {
 		return
 	}
 	var want *model.EzfyCfgTroop
@@ -94,12 +103,13 @@ func alignEzfyNavalBomber(db *gorm.DB) {
 			"name_axis":  want.NameAxis,
 		})
 	if res.Error != nil {
-		log.Printf("ezfy 海军轰炸机一次性对齐失败（下次启动会重试）: %v", res.Error)
+		log.Printf("ezfy 海军轰炸机对齐失败（下次启动会重试）: %v", res.Error)
 		return
 	}
-	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", ezfyNavalBomberAlignKey, "1")
-	if res.RowsAffected > 0 {
-		log.Printf("ezfy 海军轰炸机已对齐: 对海%d 训练%d秒 %s / %s",
-			want.AtkSea, want.TrainTime, want.NameAlly, want.NameAxis)
-	}
+	// 版本号用 upsert：老版本（含早期 key 名）覆盖写，没有则插入
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?) "+
+		"ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+		ezfyNavalBomberAlignKey, ezfyNavalBomberAlignVer)
+	log.Printf("ezfy 海军轰炸机已对齐到 v%d: 对海%d 训练%d秒 %s / %s",
+		ezfyNavalBomberAlignVer, want.AtkSea, want.TrainTime, want.NameAlly, want.NameAxis)
 }
