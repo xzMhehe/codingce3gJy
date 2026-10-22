@@ -598,14 +598,10 @@ export default {
       buildQueueBase: 5,
       buildQueueBonus: 0,
       buildQueueBonusUntil: 0,
-      // ★ 2026-09-26 民居容量限制 / 召集人口灵活配置（/view 下发，默认都开）
-      housePopLimitOn: true,
-      conveneFlexibleOn: true,
       // ★ 2026-09-26 召集消耗粮食 / 召集人口比例（/view 下发，默认 10 万粮食 / 10%；原来写死固定人口）
+      //   ★ 2026-10-22 人口上限只由民居容量 pop_max 决定，不再有额外开关/上限配置。
       conveneFoodCost: 100000,
       convenePopPct: 10,
-      // ★ 2026-09-26 全局硬性人口上限（/view 下发，0 = 不限），超过禁止召集
-      convenePopMax: 0,
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       // ★ 占用人口（只有训练队列里没出厂的新兵占）：/view 与 /troops 都会下发，谁后到用谁
       popUsed: 0,
@@ -1160,27 +1156,9 @@ export default {
       const v = pop - used
       return v > 0 ? v : 0
     },
-    // ★★ 2026-10-15 修复「城市状态页显示『人口: 78250/18000』，分子比分母还大」：
-    //   原来分母恒取「民居容纳(pop_max)」，但民居只在一个前提下才真正限制人口 ——
-    //   **民居容量限制开 且 召集人口灵活配置关**。线上这两个开关是「开 + 开」，
-    //   召集早已把人口顶到 7.8 万（民居只有 1.8 万），于是分母显得荒谬。
-    //   这里改成展示口径：召集人口上限（0 = 不限）与「生效中的民居软上限」取小；都不生效 = 0 = 不限。
-    //   ★ 与后端 ezfyPopCapOf 完全同口径：min(召集人口上限, 民居软上限)。
-    //   ★★ 2026-10-20 民居容量是**软上限**：超过后仍可继续召集（超出部分缓慢回落），
-    //      所以这里的 cap 只用于展示/回落目标，**不再用来禁用召集按钮**（见 conveneBlocked）。
+    // ★ 2026-10-22 人口上限只由民居容量（pop_max）决定（0 = 没有民居/未知）。
     popCap () {
-      let cap = 0 // 0 = 不限
-      if (this.convenePopMax > 0) cap = this.convenePopMax
-      if (this.housePopLimitOn && !this.conveneFlexibleOn) {
-        const pm = (this.city && this.city.pop_max) || 0
-        if (pm > 0) cap = cap > 0 ? Math.min(cap, pm) : pm
-      }
-      return cap
-    },
-    // 民居软上限是否生效（= 后端 ezfyHouseSoftCap）：生效后超过部分会缓慢回落。
-    houseSoftCapActive () {
-      const pm = (this.city && this.city.pop_max) || 0
-      return this.housePopLimitOn && !this.conveneFlexibleOn && pm > 0
+      return (this.city && this.city.pop_max) || 0
     },
     // ★ 2026-10-22 召集人口 = 当前民居上限 × 后台配置百分比（默认 10%）。
     //   与后端 ezfyConvenePopGainOf 同口径：向下取整，至少 1。
@@ -1190,19 +1168,21 @@ export default {
       const gain = Math.floor(pm * pct / 100)
       return gain > 0 ? gain : 1
     },
-    // 当前人口是否已超过民居软上限（用于展示「超出部分回落中」）。
-    popOverHouseCap () {
-      if (!this.houseSoftCapActive) return false
+    // 当前人口是否已达到/超过民居上限（人口已满时召集只恢复空闲人口，5 分钟冷却）。
+    popAtHouseCap () {
       const pm = (this.city && this.city.pop_max) || 0
       const pop = (this.city && this.city.pop) || this.cityPop || 0
-      return pop > pm
+      return pm > 0 && pop >= pm
     },
-    // 召集冷却：普通 3 秒；人口达到/超过民居软上限时 5 分钟（与后端 Convene 同口径）。
-    conveneCooldownMs () {
+    // 当前人口是否已超过民居上限（老数据/并发才会出现，用于展示「超出部分回落中」）。
+    popOverHouseCap () {
       const pm = (this.city && this.city.pop_max) || 0
       const pop = (this.city && this.city.pop) || this.cityPop || 0
-      if (this.houseSoftCapActive && pop >= pm) return 5 * 60 * 1000
-      return 3000
+      return pm > 0 && pop > pm
+    },
+    // 召集冷却：普通 3 秒；人口达到/超过民居上限时 5 分钟（与后端 Convene 同口径）。
+    conveneCooldownMs () {
+      return this.popAtHouseCap ? 5 * 60 * 1000 : 3000
     },
     // ★ 2026-10-15 免战保护令文案（城市状态页）：「[免战保护中] 剩余 2小时30分」。
     //   剩余时间每秒随 gatherNow 重算（全站统一做法：后端下发绝对到点时间戳，前端本地倒计时）；
@@ -1223,18 +1203,15 @@ export default {
     queueNames () {
       return this.queues
     },
-    // ★ 2026-09-26：召集是否被上限挡住（挡不住才显示可点的 [召集]）
-    // ★★ 2026-10-09 修复「人口贴近上限时召集被整体挡住」：
-    //   原来判的是 `pop + 单次召集人口 > 上限` —— 只要「这一次加完会超上限」就禁用按钮，
-    //   于是 45 万~50 万人口之间（上限 50 万、单次 +5 万）**一次都点不了**，
-    //   明明还差几十万才满（用户报的就是这个）。
-    //   现在只在「人口**已经**达到硬顶」时才禁用；否则允许点，后端按硬顶截断。
-    // ★★ 2026-10-20 民居容量是软上限：超过后**仍然可以召集**（超出部分缓慢回落），
-    //   所以这里只按「召集人口上限」这个硬顶禁用；popCap（含民居软上限）只用于展示。
+    // ★ 2026-10-22 人口上限只由民居容量决定：
+    //   人口未满 → 召集加人口（最多加到民居上限）；
+    //   人口已满 → 只有存在待恢复人口时才能召集（扣待恢复人口恢复空闲）；
+    //   民居容量为 0 或两者都满 → 禁用按钮。
     conveneBlocked () {
-      // 人口取本页展示的 city.pop（与页面上「当前人口」一致），cityPop 兜底
       const pop = (this.city && this.city.pop) || this.cityPop || 0
-      return this.convenePopMax > 0 && pop >= this.convenePopMax
+      const pm = (this.city && this.city.pop_max) || 0
+      if (pm <= 0) return true
+      return pop >= pm && (this.popRecover || 0) <= 0
     },
     // 当前建筑分区: 'm' 军事区 / 's' 资源区
     // 复刻原版 BuildingController: 军事区 = type 2/3/4, 资源区 = type 1
@@ -3039,17 +3016,11 @@ export default {
       if (d.building_pool !== undefined) this.buildingPool = d.building_pool || []
       this.militaryCap = d.military_cap || 33
       this.resourceCap = d.resource_cap || 33
-      // ★ 2026-09-26 两个开关：后端未下发（老版本）时按「开」处理，与后端默认一致
-      this.housePopLimitOn = d.house_pop_limit_on === undefined || d.house_pop_limit_on === null
-        ? true : !!Number(d.house_pop_limit_on)
-      this.conveneFlexibleOn = d.convene_flexible_on === undefined || d.convene_flexible_on === null
-        ? true : !!Number(d.convene_flexible_on)
       // ★ 2026-09-26 召集消耗/收益（后端保证 >= 1，兜底默认 10 万）
-      //   ★ 2026-10-22 收益改为「当前民居上限的 N%」，默认 10%
+      //   ★ 2026-10-22 收益改为「当前民居上限的 N%」，默认 10%；
+      //   人口上限只由民居 pop_max 决定，不再有额外开关/硬上限。
       this.conveneFoodCost = Number(d.convene_food_cost) || 100000
       this.convenePopPct = Math.min(1000000000, Math.max(1, Number(d.convene_pop_pct) || 10))
-      // ★ 2026-09-26 全局硬性人口上限（0 = 不限），超过禁止召集
-      this.convenePopMax = Number(d.convene_pop_max) || 0
       // ★ 2026-10-17 训练一键加速开关（1 开 / 0 关，默认开）：训练页据此展示/隐藏两个一键加速按钮
       this.speedTrainOn = d.speed_train_on === undefined || d.speed_train_on === null
         ? true : !!Number(d.speed_train_on)
@@ -5175,7 +5146,7 @@ export default {
     // ---- 城市操作 ----
     doConvene () {
       // ★ 2026-10-09 ：卡控 5 秒 → **3 秒**（与后端 /city/convene 双保险，防连点刷人口）
-      // ★ 2026-10-20 ：人口达到/超过民居软上限时改为 **5 分钟**（仍可召集，超出部分缓慢回落）
+      // ★ 2026-10-22 ：人口达到/超过民居上限时改为 **5 分钟**（已满时召集只恢复空闲人口）
       // ★ 2026-10-21 ：冷却**按城市**分别记（与后端同口径）——A 城冷却中不影响 B 城。
       const cid = this.city ? this.city.id : 0
       const atByCity = this._conveneAtByCity || (this._conveneAtByCity = {})

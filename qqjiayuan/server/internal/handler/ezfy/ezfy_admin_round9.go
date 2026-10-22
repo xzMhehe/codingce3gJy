@@ -35,8 +35,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
-		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
-		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-22 空闲人口恢复满时间（缺行时默认 1200 秒）
 		PopRecoverSeconds: ezfyPopRecoverSecondsDef,
 		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
@@ -76,8 +74,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
-		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（缺行时默认开，见 ezfyHousePopLimitOn）
-		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
 		// ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%，100 = 必出）
 		RecruitFiveStarRate: ezfyRecruitFiveStarDef,
 		// ★ 军官升星（简化后：功能开关 + 固定成功率 + 每星加成 + 星级上限）
@@ -402,14 +398,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MarchOilOn    *int     `json:"march_oil_on"`
 		WarRequireOn  *int     `json:"war_require_on"`
 		MarchCapOn    *int     `json:"march_cap_on"`
-		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0/1 开关）
-		HousePopLimitOn   *int `json:"house_pop_limit_on"`
-		ConveneFlexibleOn *int `json:"convene_flexible_on"`
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（原来写死 10 万）
+		//   ★ 2026-10-22 人口上限只由民居决定，原「民居容量限制/允许长期超过/召集人口上限」已删除。
 		ConveneFoodCost *int `json:"convene_food_cost"`
 		ConvenePopPct   *int `json:"convene_pop_pct"`
-		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，可配置为 0 关闭限制）
-		ConvenePopMax *int `json:"convene_pop_max"`
 		// ★ 2026-10-22 空闲人口恢复满时间（默认 1200 秒；0/未配置 → 读取端回落默认）
 		PopRecoverSeconds *int `json:"pop_recover_seconds"`
 		// ★ 2026-10-20 超出民居上限人口的每小时回落百分比（按当前超出量，1~100，默认 10）
@@ -484,8 +476,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
-		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
-		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-22 空闲人口恢复满时间（缺行时默认 1200 秒）
 		PopRecoverSeconds: ezfyPopRecoverSecondsDef,
 		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
@@ -519,8 +509,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		GoldProdMult:  ezfyGoldProdMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
-		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置
-		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
 		OfficerStarUpOn:   ezfyStarUpDef,
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
@@ -694,15 +682,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.ConvenePopPct = *in.ConvenePopPct
 	}
-	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
-	//   全局硬性人口上限。0 = 不限（关闭限制），1~10 亿为有效封顶值。
-	if in.ConvenePopMax != nil {
-		if *in.ConvenePopMax < 0 || *in.ConvenePopMax > 1000000000 {
-			resp.ParamError(c, "人口上限需要在 0~1000000000 之间（0 = 不限）")
-			return
-		}
-		lim.ConvenePopMax = *in.ConvenePopMax
-	}
+	// ★ 2026-10-22 人口上限只由民居容量决定（原「召集人口上限」配置已删除）。
 	// ★ 2026-10-22 空闲人口恢复满时间（征兵占用人口从征兵当下起，按此秒数线性恢复满）：
 	//   默认 1200 秒（20 分钟），0 无意义 → 读取端回落默认。
 	if in.PopRecoverSeconds != nil {
@@ -993,15 +973,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	if !setSwitch(in.MarchCapOn, &lim.MarchCapOn, "出征上限") {
-		return
-	}
-	// ★ 2026-09-26：民居容量限制 / 允许长期超过民居上限（0/1 都合法）
-	// ★ 2026-10-20 字段名仍是 ConveneFlexibleOn，管理端显示为「允许长期超过民居上限」；
-	//   关 = 民居是软上限（仍可召集超过，超出部分缓慢回落），不是硬夹。
-	if !setSwitch(in.HousePopLimitOn, &lim.HousePopLimitOn, "民居容量限制") {
-		return
-	}
-	if !setSwitch(in.ConveneFlexibleOn, &lim.ConveneFlexibleOn, "允许长期超过民居上限") {
 		return
 	}
 	// ★ 军官升星的功能开关（0/1 都合法）
@@ -1489,12 +1460,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"march_oil_on":    lim.MarchOilOn,
 		"war_require_on":  lim.WarRequireOn,
 		"march_cap_on":    lim.MarchCapOn,
-		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0 = 关 必须落库）
-		"house_pop_limit_on":  lim.HousePopLimitOn,
-		"convene_flexible_on": lim.ConveneFlexibleOn,
-		"wild_troop_mult":     lim.WildTroopMult,
-		"wild_res_mult":       lim.WildResMult,
-		"gather_res_mult":     lim.GatherResMult,
+		"wild_troop_mult": lim.WildTroopMult,
+		"wild_res_mult":   lim.WildResMult,
+		"gather_res_mult": lim.GatherResMult,
 		// ★ 2026-09-28 采集后勤加成倍率 / 市长加成倍率
 		"officer_gather_mult": lim.OfficerGatherMult,
 		"mayor_gain_mult":     lim.MayorGainMult,
@@ -1546,8 +1514,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比，同样用 map 显式写
 		"convene_food_cost": lim.ConveneFoodCost,
 		"convene_pop_pct":   lim.ConvenePopPct,
-		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，必须显式写否则 0 会被 GORM 吞掉）
-		"convene_pop_max": lim.ConvenePopMax,
 		// ★ 2026-10-22 空闲人口恢复满时间（秒）：同样显式写，避免零值被 GORM default 吞掉
 		"pop_recover_seconds": lim.PopRecoverSeconds,
 		// ★ 2026-10-20 超限人口每 5 分钟回落百分比

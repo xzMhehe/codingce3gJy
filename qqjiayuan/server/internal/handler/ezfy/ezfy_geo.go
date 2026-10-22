@@ -1262,15 +1262,12 @@ func ezfyGarrisonBatchAllCities() bool {
 // 默认值靠两处保证：① DB 列默认值 1（seed 补列时 ALTER ... DEFAULT 1）；
 // ② 老行 NULL 由 seed 回填 1（只回填 NULL，不动 0）。
 const (
-	ezfyRecruitCostDef = 1 // 征兵消耗资源：默认开
-	ezfyFoodUpkeepDef  = 1 // 军队耗粮：默认开
-	ezfyMarchOilDef    = 1 // 出征油耗：默认开
-	ezfyWarRequireDef  = 1 // 宣战功能：默认开（掠夺/征服需先宣战且生效）
-	ezfyMarchCapDef    = 1 // 出征兵力上限：默认开（按司令部等级算）
-	// ★ 2026-09-26 「召集人口那里加两个开关」
-	ezfyHousePopLimitDef = 1  // 民居容量限制：默认开（民居容量决定人口上限）
-	ezfyConveneFlexDef   = 1  // 允许超过民居上限（原名召集人口灵活配置）：默认开（可突破民居容量）
-	ezfyWildMultDef      = 10 // 野地兵力倍数：默认 10
+	ezfyRecruitCostDef = 1  // 征兵消耗资源：默认开
+	ezfyFoodUpkeepDef  = 1  // 军队耗粮：默认开
+	ezfyMarchOilDef    = 1  // 出征油耗：默认开
+	ezfyWarRequireDef  = 1  // 宣战功能：默认开（掠夺/征服需先宣战且生效）
+	ezfyMarchCapDef    = 1  // 出征兵力上限：默认开（按司令部等级算）
+	ezfyWildMultDef    = 10 // 野地兵力倍数：默认 10
 	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 10
 	ezfyWildResMultDef = 10
 	// ⚠️ 2026-10-21 旧采集公式参数（已废弃，仅保留默认值给老字段兜底/兼容）
@@ -1338,60 +1335,34 @@ func ezfyTrainMayorEquipOn() bool {
 	return ezfyCfg.limit.TrainMayorEquipOn != 0
 }
 
-// ezfyHousePopLimitOn 民居容量是否限制人口上限（关 = 民居不限制人口，人口可无限增长）
+// ezfyPopGatherPlan 计算一次「召集人口」的收益口径（Convene 与移民法案 ItemType 31 共用）。
 //
-// ★ 2026-09-26 「召集人口那里加个民居容量限制开关，默认开」。
-//
-//	关掉后 calcResource 里的人口自然增长不再按 pop_max 封顶（pop_max 仍照常计算/展示）。
-func ezfyHousePopLimitOn() bool {
-	if !ezfyCfg.ready() {
-		return ezfyHousePopLimitDef != 0
+//	★ 2026-10-22 用户规则：人口上限只由民居容量决定。
+//	  ① 人口未满 popMax：最多加 `want` 人口，但不超过 `popMax - pop`；
+//	     新增人口同时进入总人口与空闲人口（idleOnly=false）。
+//	  ② 人口已满/超过 popMax：不再增加总人口，只把「待恢复人口」扣减成空闲人口，
+//	     最多扣 `want`，且不超过当前待恢复人口（idleOnly=true）。
+//	     这样空闲人口最多恢复到「人口上限 − 建筑/训练占用」，不会凭空超过上限。
+//	  ③ popMax <= 0（没有民居）：无法召集，返回 0。
+func ezfyPopGatherPlan(pop, popMax, want, recover int64) (gain int64, idleOnly bool) {
+	if popMax <= 0 || want <= 0 {
+		return 0, false
 	}
-	return ezfyCfg.limit.HousePopLimitOn != 0
-}
-
-// ezfyConveneFlexOn 召集人口是否可突破民居上限（关 = 召集同样受民居容量约束）
-//
-// ★ 2026-09-26 「召集人口灵活配置，默认开（现有行为：可突破上限）」。
-// 注意：只有在「民居容量限制」也开着时，民居上限才存在；两者都开时才需要在 Convene 里卡上限。
-func ezfyConveneFlexOn() bool {
-	if !ezfyCfg.ready() {
-		return ezfyConveneFlexDef != 0
+	if pop < popMax {
+		gain = popMax - pop
+		if want < gain {
+			gain = want
+		}
+		return gain, false
 	}
-	return ezfyCfg.limit.ConveneFlexibleOn != 0
-}
-
-// ezfyPopCapOf 计算「展示用人口上限 / 超限回落目标」的纯函数（0 = 不限）。
-//
-//	★ 2026-10-20 用户口径（修正）：
-//	  ① 召集人口上限（> 0 才生效，0 = 不限）—— **硬上限**，自然增长/召集都不能超过；
-//	  ② 民居容纳（仅当「民居容量限制」开、且「允许长期超过民居上限」关、且 pop_max > 0 时生效）
-//	     —— **软上限**：可以继续召集超过它，但超出部分会缓慢回落到它（见 ezfySettlePopOverCap）。
-//	     pop_max = 0（城里没有民居/脏数据）不参与，避免把人口夹成 0。
-//	  两者都生效时取小，作为**展示上限 / 回落目标**；绝不用于阻止召集（召集只看①）。
-//
-//	⚠️ 前端 `web/src/views/ezfy/Ezfy.vue::popCap` 必须与本函数完全同口径（展示用）。
-func ezfyPopCapOf(houseOn, flexOn bool, popMax, conveneMax int64) int64 {
-	cap := int64(0)
-	if conveneMax > 0 {
-		cap = conveneMax
+	if recover < 0 {
+		recover = 0
 	}
-	if houseOn && !flexOn && popMax > 0 && (cap == 0 || popMax < cap) {
-		cap = popMax
+	gain = recover
+	if want < gain {
+		gain = want
 	}
-	return cap
-}
-
-// ezfyHouseSoftCap 当前配置下的「民居软上限」（0 = 不生效）。
-//
-//	仅当「民居容量限制」开 + 「允许长期超过民居上限」关 + pop_max > 0 时生效。
-//	生效后：人口可以继续召集超过它，但超出部分会按 ezfyPopOverCapDecayPct 缓慢回落，
-//	且人口达到/超过它时召集冷却为 5 分钟（见 Convene）。
-func ezfyHouseSoftCap(popMax int64) int64 {
-	if !ezfyHousePopLimitOn() || ezfyConveneFlexOn() || popMax <= 0 {
-		return 0
-	}
-	return popMax
+	return gain, true
 }
 
 // ============ 召集人口：消耗粮食 / 获得人口 ============
@@ -1404,9 +1375,6 @@ func ezfyHouseSoftCap(popMax int64) int64 {
 const (
 	ezfyConveneFoodCostDef = 100000 // 召集一次消耗粮食，默认 10 万
 	ezfyConvenePopPctDef   = 10     // 召集一次获得人口 = 当前民居上限的 N%，默认 10%
-	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
-	//   全局硬性人口上限，默认 0 = 不限。⚠️ 0 是有效值（不限），不能用 ezfyLimitOr 兜底。
-	ezfyConvenePopMaxDef = 0
 )
 
 // ezfyConveneFoodCostCfg 召集一次消耗的粮食（默认 10 万）
@@ -1441,16 +1409,6 @@ func ezfyConvenePopGainWithPct(popMax, pct int64) int64 {
 // ezfyConvenePopGainOf 按当前民居上限和后台配置的百分比计算单次召集人口。
 func ezfyConvenePopGainOf(popMax int64) int64 {
 	return ezfyConvenePopGainWithPct(popMax, ezfyConvenePopPctCfg())
-}
-
-// ezfyConvenePopMaxCfg 召集硬性人口上限（0 = 不限）。
-//
-// ⚠️ 0 是有效值（= 不限上限），直接返回配置值，不能用 ezfyLimitOr（那会把它兜底成别的数）。
-func ezfyConvenePopMaxCfg() int64 {
-	if !ezfyCfg.ready() {
-		return ezfyConvenePopMaxDef
-	}
-	return int64(ezfyCfg.limit.ConvenePopMax)
 }
 
 // ============ 空闲人口「慢恢复」（2026-10-13）============
@@ -2128,8 +2086,6 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时给默认 10 万 / 10%）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
-		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
-		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
 		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
 		WildTroopMult:      ezfyWildMultDef,
@@ -2142,8 +2098,6 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		GatherSeaBonusMult:   ezfyGatherSeaBonusMultDef,
 		RecruitCostOn:        ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
-		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（缺行时同样要显式给默认开）
-		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径（线上现值 0.1 = 训练近乎免费）
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-10-21 造兵时间市长军事加成 / 装备套装军事计入（缺行时默认都开）
@@ -2371,8 +2325,10 @@ func ezfyTroopSortKey(id int) int {
 // ★ 2026-10-03 性能：/troops 是 30s 轮询接口，之前每次全表 SELECT ezfy_cfg_troop
 //
 //	经跨 WAN 到 RDS（单次 13~37ms）；配置早已整表载入缓存，直接读内存即可。
+//
 // ★ 2026-10-22 由「按 id 升序」改为「按 ezfyTroopSortKey」——让新增的海军轰炸机
-//   排到轰炸机后面，而不是因为 id=21 掉到列表最后（城防兵种之后）。
+//
+//	排到轰炸机后面，而不是因为 id=21 掉到列表最后（城防兵种之后）。
 func (c *ezfyConfigCache) sortedTroops() []model.EzfyCfgTroop {
 	ids := make([]int, 0, len(c.troops))
 	for id := range c.troops {

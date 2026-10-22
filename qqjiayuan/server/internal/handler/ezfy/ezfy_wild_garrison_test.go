@@ -93,7 +93,8 @@ func TestWildGarrison(t *testing.T) {
 		t.Fatal("有玩家守军的附属野地仍可能自动战斗")
 	}
 	//   详情接口下发 has_defender（口径与守军构建一致：6/7 + status 1/3）
-	if !strings.Contains(order, `"has_defender": hasDefender`) {
+	//   注意：源码里 gin.H 的键值会按最长键对齐，冒号后可能是多个空格，不能写死单空格。
+	if !strings.Contains(strings.Join(strings.Fields(order), " "), `"has_defender": hasDefender`) {
 		t.Fatal("野地详情未下发 has_defender（前端无法禁用自动战斗）")
 	}
 	if !strings.Contains(order, `Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", w.ID)`) {

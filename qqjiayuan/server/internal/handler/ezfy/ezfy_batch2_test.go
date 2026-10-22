@@ -85,7 +85,7 @@ func TestNewCityRules(t *testing.T) {
 	}
 }
 
-// TestConveneCooldown 人口召集卡控：普通 3 秒；人口达到/超过民居软上限时 5 分钟。
+// TestConveneCooldown 人口召集卡控：普通 3 秒；人口达到/超过民居上限时 5 分钟。
 func TestConveneCooldown(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy.go"), "\r\n", "\n")
 	if strings.Contains(src, "nowCd-last < 5000") {
@@ -95,7 +95,7 @@ func TestConveneCooldown(t *testing.T) {
 		t.Fatal("普通召集卡控不是 3 秒")
 	}
 	if !strings.Contains(src, "ezfyConveneOverCapCooldownMs = 5 * 60 * 1000") {
-		t.Fatal("超过民居软上限后的召集卡控不是 5 分钟")
+		t.Fatal("超过民居上限后的召集卡控不是 5 分钟")
 	}
 	if !strings.Contains(src, "nowCd-last < cdMs") {
 		t.Fatal("召集卡控没有按 cdMs（3 秒 / 5 分钟）判断")
@@ -183,41 +183,26 @@ func TestMallBuyMaxDefault999(t *testing.T) {
 	}
 }
 
-// TestConveneClampToCap 人口召集「贴近上限」时必须还能召集（截断到上限），不能整单拒绝。
-//
-// ★★ 2026-10-09 用户报「人口 46 万时再召集却不行了，应该仍可以召集、只不过是召集到上限为止」：
-//
-//	线上 `convene_pop_max` = 50 万、单次召集约 5 万 → 原判定
-//	`city.Pop + popGain > popCap` 会把「加完会超上限」整单拒绝，
-//	于是人口 45 万以上的 400 座城**一次也召集不了**，明明还差几十万才满。
-//
-// 现在改成：能加多少加多少（刚好加到上限），粮食按比例收；
-// 只有「人口已经达到/超过上限」才拒绝。
-func TestConveneClampToCap(t *testing.T) {
-	body := ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) Convene(")
+// TestConveneAtHouseCap 人口召集以民居上限为准：未满截断到上限，已满只恢复空闲人口。
+func TestConveneAtHouseCap(t *testing.T) {
+	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) Convene("))
 
-	// 1) ★★ 2026-10-20 只按「召集人口上限」硬顶截断，不能整单拒绝；
-	//    民居容量是软上限，不参与截断（超过后仍可召集，超出部分缓慢回落）。
 	for _, want := range []string{
-		"popCap := ezfyConvenePopMaxCfg()",
-		"if popCap > 0 && city.Pop+popGain > popCap",
-		"popGain = popCap - city.Pop",
+		"ezfyPopGatherPlan(city.Pop, city.PopMax, popGain, city.PopRecover)",
+		"foodCost = foodCost * gain / baseGain",
+		"city.Pop += gain",
+		"city.PopRecover -= gain",
+		"人口和空闲人口均已满",
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("Convene 未按召集人口硬顶截断（缺 %s）", want)
+			t.Fatalf("Convene 未按民居上限两阶段召集（缺 %s）", want)
 		}
 	}
-	// 2) 截断后粮食要按比例收，否则会出现「花 20 万粮只加 2 点人口」
-	if !strings.Contains(body, "foodCost = foodCost * popGain / baseGain") {
-		t.Fatal("Convene 截断后粮食没按比例折算")
-	}
-	// 3) 已经到硬顶时仍要拒绝（不能返回 0 人口却扣粮）
-	if !strings.Contains(body, "city.Pop >= popCap") {
-		t.Fatal("Convene 未处理「人口已达召集上限」的拒绝分支")
-	}
-	// 4) 防回退：不能再引用已删除的「有效上限」硬夹逻辑
-	if strings.Contains(body, "ezfyEffPopCap") {
-		t.Fatal("Convene 仍引用 ezfyEffPopCap（民居软上限会错误地挡住召集）")
+	// 防回退：不能再用已删除的开关/硬上限配置
+	for _, banned := range []string{"ezfyConvenePopMaxCfg", "ezfyHouseSoftCap", "ezfyHousePopLimitOn"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("Convene 仍引用已删除的 %s", banned)
+		}
 	}
 }
 

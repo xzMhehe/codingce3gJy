@@ -607,20 +607,15 @@ type EzfyCfgLimit struct {
 	// ★ 出征兵力上限（关 = 出征不限兵力，随便带多少；司令部等级那套上限失效）
 	MarchCapOn int `gorm:"comment:出征上限开启" json:"march_cap_on"`
 
-	// ★ 2026-09-26 「召集人口那里加『民居容量限制』『召集人口灵活配置』两个开关」：
-	//   ① HousePopLimitOn 民居容量限制：1 开（默认）= 民居容量决定人口上限 pop_max，
-	//      人口自然增长到 pop_max 封顶；0 关 = 民居不再限制人口，人口可无限增长。
-	//   ② ConveneFlexibleOn 允许长期超过民居上限（原名召集人口灵活配置）：
-	//      1 开（默认）= 召集可突破 pop_max，且不回落（原有行为）；
-	//      0 关 = 民居容量是**软上限**：仍然可以继续召集超过 pop_max，
-	//      但超出部分会按 PopOverCapDecayPct（默认 100%/5 分钟，即 5 分钟内回落完）缓慢回落到 pop_max，
-	//      且人口达到/超过民居容量时召集冷却为 5 分钟（见 Convene）。
-	//   ⚠️ 两个都是开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
-	HousePopLimitOn   int `gorm:"comment:民居容量限制开关（关 = 民居不限制人口上限）" json:"house_pop_limit_on"`
-	ConveneFlexibleOn int `gorm:"comment:允许长期超过民居上限（关 = 超限部分缓慢回落）" json:"convene_flexible_on"`
+	// ★ 2026-10-22 人口上限只由民居容量（EzfyCity.PopMax）决定：
+	//   自然增长到 pop_max 封顶；人口未满时召集同时增加总人口和空闲人口，
+	//   人口已满时召集/移民法案只恢复空闲人口。原「民居容量限制」、
+	//   「允许长期超过民居上限」、「召集人口上限」三个配置已删除。
+	//
 	// ★ 2026-10-20 用户反馈「超民居上限的人口回落有点慢」→ 回落速度做成二战系统配置。
 	// ★ 2026-10-21 「调到 100% 还要 1 小时，要求 5 分钟内回落」→ 单位改为「%/5 分钟」：
 	//   每 5 分钟按「当前超出量 × 该百分比」回落（默认 100%/5 分钟 = 5 分钟回落完）。
+	//   仅用于老数据/并发产生的 `pop > pop_max` 超限回落，正常玩法不会超限。
 	//   0 / 未配置无意义 → 读取端回落默认 100。
 	PopOverCapDecayPct int `gorm:"default:100;comment:超限人口每5分钟回落百分比（按超出量，默认100）" json:"pop_over_cap_decay_pct"`
 
@@ -629,10 +624,6 @@ type EzfyCfgLimit struct {
 	//   召集消耗粮食仍为固定值。两者 0 无意义 → 回落默认（seed 走 addLimitCol）。
 	ConveneFoodCost int `gorm:"comment:召集消耗粮食" json:"convene_food_cost"`
 	ConvenePopPct   int `gorm:"comment:召集人口占当前民居上限的百分比（默认10，可超过100）" json:"convene_pop_pct"`
-	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
-	//   全局硬性人口上限（0 = 不限/不额外封顶；>0 时召集后人口不得超过它）。
-	//   ⚠️ 0 是有意义的（= 不限），不能带 gorm:"default:x" 标签，seed 走 addLimitCol 且别用 <=0 回填覆盖正向值。
-	ConvenePopMax int `gorm:"comment:召集硬性人口上限（0 = 不限，超过禁止召集）" json:"convene_pop_max"`
 
 	// ★ 2026-10-13 用户规则「用完的人口不会立即恢复，是一点一点恢复到当前人口数量的」：
 	// ★ 2026-10-22 用户规则：不再配置「每小时恢复量」，改为「多少秒内空闲人口恢复满」，默认 1200 秒。
@@ -1197,9 +1188,9 @@ type EzfyCity struct {
 	//	「待恢复人口」，不等出厂；之后按 `ezfy_cfg_limit.pop_recover_seconds`
 	//	（默认 1200 秒内恢复满）线性减回 0。
 	//
-	//	空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（下限 0），
-	//	上限 = min(召集人口上限, 人口 − 建筑占用)，所以待恢复人口天然保证空闲不超上限。
-	//	★ 移民法案道具（ItemType 31）就是直接把这笔待恢复人口扣掉，等于立刻恢复空闲人口。
+	//	空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（下限 0）。
+	//	★ 人口未满民居上限时，召集同时增加总人口与空闲人口；人口已满时，
+	//	召集/移民法案（ItemType 31）直接扣减这笔待恢复人口，等于立刻恢复空闲人口。
 	PopRecover int64 `gorm:"comment:待恢复人口(训练已消耗、还没回到空闲)" json:"pop_recover"`
 	// ★ 2026-10-13 待恢复人口上次结算时间戳(ms)，0 = 还没结算过（首次结算只记时间、不恢复）。
 	PopRecoverAt int64 `gorm:"comment:待恢复人口上次结算时间戳(ms)" json:"pop_recover_at"`
@@ -1207,9 +1198,9 @@ type EzfyCity struct {
 	//   有新训练消耗人口时重新起算（默认 1200 秒后恢复满）。
 	PopRecoverEndAt int64 `gorm:"comment:待恢复人口恢复截止时间戳(ms)" json:"pop_recover_end_at"`
 	// ★ 2026-10-20 超出民居上限的人口回落上次结算时间戳(ms)，0 = 当前未超限/刚进入超限。
-	//   仅当「民居容量限制开 + 允许长期超过民居上限关」时生效：
-	//   超出部分按 ezfyPopOverCapDecayPct（默认 100%/5 分钟）缓慢回落到 pop_max，
-	//   不是立刻夹平（用户规则）。详见 calcResourceD。
+	//   民居容量是唯一人口上限：正常玩法人口不会超过 pop_max；
+	//   老数据/并发产生的超出部分按 ezfyPopOverCapDecayPct（默认 100%/5 分钟）
+	//   缓慢回落到 pop_max，不是立刻夹平。详见 calcResourceD。
 	PopOverCapAt int64 `gorm:"comment:超限人口回落上次结算时间戳(ms,0=未超限)" json:"pop_over_cap_at"`
 	Gold         int64 `gorm:"comment:黄金" json:"gold"`
 	Food         int64 `gorm:"comment:粮食" json:"food"`
