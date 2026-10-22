@@ -32,7 +32,7 @@
           <br/>
           <!-- ★ 2026-10-09 用户反馈「起新城现在是仅黄金」：文案原来写死「消耗10万黄金」，
                而后端早已改成**五项资源各 10 万**（粮食/钢铁/石油/稀矿/黄金），且坐标必须是自己的附属野地。 -->
-          <div class="panel-title">起新城 (粮食/钢铁/石油/稀矿/{{ ezfy.resNames.gold }} 各10万)</div>
+          <div class="panel-title">起新城 (资源各10万)</div>
           <div class="old-line gray">
             军衔「{{ ezfy.rankData.mine ? ezfy.rankData.mine.rank_name : ezfy.rankName }}」可建
             <b>{{ ezfy.rankData.mine ? ezfy.rankData.mine.city_max : '-' }}</b> 座，
