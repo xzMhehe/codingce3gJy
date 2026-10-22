@@ -1260,9 +1260,13 @@ func (h *EzfyAdmin) AdminEzfyTrainDelete(c *gin.Context) {
 				if ct.PopRecover < 0 {
 					ct.PopRecover = 0
 				}
+				if ct.PopRecover == 0 {
+					ct.PopRecoverEndAt = 0
+				}
 				h.DB.Model(&model.EzfyCity{}).Where("id = ?", ct.ID).Updates(map[string]interface{}{
-					"pop_recover":    ct.PopRecover,
-					"pop_recover_at": ct.PopRecoverAt,
+					"pop_recover":        ct.PopRecover,
+					"pop_recover_at":     ct.PopRecoverAt,
+					"pop_recover_end_at": ct.PopRecoverEndAt,
 				})
 			}
 		}

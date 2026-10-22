@@ -592,9 +592,10 @@ type EzfyCfgLimit struct {
 	ConvenePopMax int `gorm:"comment:召集硬性人口上限（0 = 不限，超过禁止召集）" json:"convene_pop_max"`
 
 	// ★ 2026-10-13 用户规则「用完的人口不会立即恢复，是一点一点恢复到当前人口数量的」：
-	//   空闲人口每小时恢复量（默认 1 万）。作用点见 EzfyCity.PopRecover。
-	//   0 / 未配置无意义 → 回落默认 10000（seed 走 addLimitCol）。
-	PopRecoverPerHour int `gorm:"comment:空闲人口每小时恢复量（默认 1 万）" json:"pop_recover_per_hour"`
+	// ★ 2026-10-22 用户规则：不再配置「每小时恢复量」，改为「多少秒内空闲人口恢复满」，默认 1200 秒。
+	//   作用点见 EzfyCity.PopRecover / PopRecoverEndAt。
+	//   0 / 未配置无意义 → 回落默认 1200（seed 走 addLimitCol / EnsureEzfyLimitColumns）。
+	PopRecoverSeconds int `gorm:"comment:空闲人口恢复满所需秒数（默认1200）" json:"pop_recover_seconds"`
 
 	// ============ 军官升星（2026-09-22 ，2026-09-23 按简化）============
 	//
@@ -1131,8 +1132,8 @@ type EzfyCity struct {
 	// ★ 2026-10-13 用户规则「空闲人口不该一训练完就立刻恢复，要一点一点恢复到当前人口」：
 	//
 	//	★ 2026-10-18「用完就恢复」：**训练开始（消耗人口）当下**就把占用人口转成这里的
-	//	「待恢复人口」，不等出厂；之后按 `ezfy_cfg_limit.pop_recover_per_hour`
-	//	（默认 1 万/小时）慢慢减回 0。
+	//	「待恢复人口」，不等出厂；之后按 `ezfy_cfg_limit.pop_recover_seconds`
+	//	（默认 1200 秒内恢复满）线性减回 0。
 	//
 	//	空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（下限 0），
 	//	上限 = min(召集人口上限, 人口 − 建筑占用)，所以待恢复人口天然保证空闲不超上限。
@@ -1140,6 +1141,9 @@ type EzfyCity struct {
 	PopRecover int64 `gorm:"comment:待恢复人口(训练已消耗、还没回到空闲)" json:"pop_recover"`
 	// ★ 2026-10-13 待恢复人口上次结算时间戳(ms)，0 = 还没结算过（首次结算只记时间、不恢复）。
 	PopRecoverAt int64 `gorm:"comment:待恢复人口上次结算时间戳(ms)" json:"pop_recover_at"`
+	// ★ 2026-10-22 本轮待恢复人口的恢复截止时间戳(ms)，0 = 当前没有恢复任务。
+	//   有新训练消耗人口时重新起算（默认 1200 秒后恢复满）。
+	PopRecoverEndAt int64 `gorm:"comment:待恢复人口恢复截止时间戳(ms)" json:"pop_recover_end_at"`
 	// ★ 2026-10-20 超出民居上限的人口回落上次结算时间戳(ms)，0 = 当前未超限/刚进入超限。
 	//   仅当「民居容量限制开 + 允许长期超过民居上限关」时生效：
 	//   超出部分按 ezfyPopOverCapDecayPct（默认 100%/5 分钟）缓慢回落到 pop_max，

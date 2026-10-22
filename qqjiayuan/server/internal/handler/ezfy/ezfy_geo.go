@@ -1391,12 +1391,12 @@ func ezfyConvenePopMaxCfg() int64 {
 // 是一点一点恢复到当前人口数量的」。
 //
 //	所以训练开始（消耗人口）当下，占用人口就转成 ezfy_city.pop_recover（不等出厂），
-//	按本值（默认 1 万/小时）慢慢减回 0（见 ezfySettlePopRecover）。
-const ezfyPopRecoverPerHourDef = 10000 // 空闲人口每小时恢复量，默认 1 万
+//	按本值（默认 1200 秒内恢复满）线性减回 0（见 ezfySettlePopRecover）。
+const ezfyPopRecoverSecondsDef = 1200 // 空闲人口恢复满所需秒数，默认 1200 秒（20 分钟）
 
-// ezfyPopRecoverPerHour 空闲人口每小时恢复量（默认 1 万；0/未配置 → 回落默认）。
-func ezfyPopRecoverPerHour() int64 {
-	return int64(ezfyLimitOr(ezfyCfg.limit.PopRecoverPerHour, ezfyPopRecoverPerHourDef))
+// ezfyPopRecoverSeconds 空闲人口恢复满所需秒数（默认 1200；0/未配置 → 回落默认）。
+func ezfyPopRecoverSeconds() int64 {
+	return int64(clampInt(ezfyLimitOr(ezfyCfg.limit.PopRecoverSeconds, ezfyPopRecoverSecondsDef), 1, 1000000000))
 }
 
 // ============ 军官升星配置（2026-09-22 ，2026-09-23 按简化）============
@@ -1705,6 +1705,7 @@ func ezfyGatherLevelPow() float64 {
 // ezfyGatherSeaBonusMult 海野采集倍率（默认 3）。
 //
 // ★ 2026-10-21 用户规则「海野需要比陆地野地高 3 倍」：新采集公式 F = M × N × R × A ÷ 2 的
+//
 //	计算结果，在**海野**（海底森林 / 岛屿 / 渔场 / 矿礁）上再 × 该倍率 —— 同参数下
 //	海野产出 = 陆野产出 × 3。陆地野地不乘（倍率 1）。
 //	管理端「二战系统配置 → 野地与行军」可调；0 / 负 / NULL → 回落默认 3。

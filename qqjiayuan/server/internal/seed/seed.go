@@ -235,10 +235,10 @@ func Run(db *gorm.DB, staticDir string) {
 		//   全局硬性人口上限，默认 0 = 不限。addLimitCol 只在 NULL/<=0 时回填 0，
 		//   不会覆盖管理端配的正向值（配 0 仍表示不限）。
 		addLimitCol("convene_pop_max", 0)
-		// ★ 2026-10-13 空闲人口「慢恢复」速率（默认 1 万/小时）：
-		//   训练完不再瞬间归还人口，转成待恢复人口按此速度一点点回到空闲（见 ezfySettlePopRecover）。
-		//   0 无意义（读取端回落默认 1 万）→ 用 addLimitCol 补列 + 回填。
-		addLimitCol("pop_recover_per_hour", 10000)
+		// ★ 2026-10-22 空闲人口恢复满时间（默认 1200 秒 = 20 分钟）：
+		//   训练完不再瞬间归还人口，转成待恢复人口，在配置时间内线性恢复满（见 ezfySettlePopRecover）。
+		//   0 无意义（读取端回落默认 1200）→ 用 addLimitCol 补列 + 回填。
+		addLimitCol("pop_recover_seconds", 1200)
 		// ★ 2026-10-20 超限人口回落速度（默认 100%/5 分钟，按当前超出量计算）。
 		// ★ 2026-10-21 用户要求「100% 也要 5 分钟内回落」→ 单位改为每 5 分钟：
 		//   100 = 5 分钟内回落到民居上限。
@@ -3287,6 +3287,12 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = 24 WHERE move_cool_h IS NULL")
+	// ★ 2026-10-22 空闲人口恢复满时间（默认 1200 秒）：
+	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "pop_recover_seconds") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pop_recover_seconds int DEFAULT 1200")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET pop_recover_seconds = 1200 WHERE pop_recover_seconds IS NULL OR pop_recover_seconds <= 0")
 	// ★ 2026-10-14 风云榜统计开关（默认 1 = 开）。
 	//   ⚠️ 0 合法（= 关闭统计）→ 只补列 + 只回填 NULL，**不能**用 `<= 0` 兜底（会把关掉的又打开）。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "pvp_rank_on") {

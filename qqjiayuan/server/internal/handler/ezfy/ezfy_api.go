@@ -686,9 +686,13 @@ func (h *EzfyHandler) CancelTrain(c *gin.Context) {
 		if city.PopRecover < 0 {
 			city.PopRecover = 0
 		}
+		if city.PopRecover == 0 {
+			city.PopRecoverEndAt = 0
+		}
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"pop_recover":    city.PopRecover,
-			"pop_recover_at": city.PopRecoverAt,
+			"pop_recover":        city.PopRecover,
+			"pop_recover_at":     city.PopRecoverAt,
+			"pop_recover_end_at": city.PopRecoverEndAt,
 		})
 	}
 	h.DB.Delete(&model.EzfyTrainQueue{}, q.ID)

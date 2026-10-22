@@ -605,7 +605,7 @@ export default {
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       // ★ 占用人口（只有训练队列里没出厂的新兵占）：/view 与 /troops 都会下发，谁后到用谁
       popUsed: 0,
-      // ★ 待恢复人口（训练完的人口不瞬间归还，按「空闲人口每小时恢复量」慢慢恢复）：
+      // ★ 待恢复人口（训练完的人口不瞬间归还，按「空闲人口恢复满时间」线性恢复）：
       //   空闲人口 = 人口 − 占用 − 待恢复（见 freePop）。/view 与 /troops 都会下发。
       popRecover: 0,
       // 与 popUsed 同一次响应里的「人口」，保证「空闲 = 人口 - 占用」恒成立
@@ -1146,7 +1146,7 @@ export default {
       //   已训练完成的部队（城内驻军 / 出征在外）都不占人口位置（用户 2026-09-21 的规则）。
       //   原来只减 troopsData.pop_used（且只有进过「军队」页才有值）→ 首页空闲人口会显示成满人口。
       // ★ 2026-10-13 再扣掉「待恢复人口 pop_recover」：训练完的士兵占用的人口不再瞬间归还，
-      //   而是按 空闲人口每小时恢复量 一点点恢复（见后端 ezfySettlePopRecover / ezfyPopFree）。
+      //   而是按「空闲人口恢复满时间」一点点恢复（见后端 ezfySettlePopRecover / ezfyPopFree）。
       //   不扣的话，训练完的一瞬间空闲人口会虚增 —— 用户反馈的「训练完立即恢复」bug。
       const used = (this.popUsed || 0) + (this.popRecover || 0)
       const pop = this.cityPop || this.city.pop || 0

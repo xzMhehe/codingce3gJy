@@ -3,6 +3,8 @@ package ezfy
 import (
 	"strings"
 	"testing"
+
+	"qqjiayuan/server/internal/model"
 )
 
 // ============ 人口上限口径守卫（2026-10-20 修正版）============
@@ -105,6 +107,7 @@ func TestTrainPopRecoverStartsAtConscription(t *testing.T) {
 	for _, want := range []string{
 		"h.ezfySettlePopRecover(city)",
 		"city.PopRecover += int64(cfg.Pop) * int64(count)",
+		"city.PopRecoverEndAt = now + ezfyPopRecoverSeconds()*1000",
 	} {
 		if !strings.Contains(train, want) {
 			t.Fatalf("trainTroopLocked 未在征兵当下转入待恢复人口（缺 %s）：\n%s", want, train)
@@ -114,6 +117,33 @@ func TestTrainPopRecoverStartsAtConscription(t *testing.T) {
 	collect := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) collectTrainQueue("))
 	if strings.Contains(collect, "PopRecover +=") {
 		t.Fatalf("collectTrainQueue 出厂时仍在累加待恢复人口（应在征兵当下算）：\n%s", collect)
+	}
+}
+
+// TestSettlePopRecoverByConfiguredSeconds 「多少秒内空闲人口恢复满」：
+//
+//	默认 1200 秒；按截止时间线性恢复，到点必须归零，不能按旧的固定每小时恢复量慢慢磨。
+func TestSettlePopRecoverByConfiguredSeconds(t *testing.T) {
+	if got := ezfyPopRecoverSeconds(); got != 1200 {
+		t.Fatalf("空闲人口恢复满默认应为 1200 秒，got %d", got)
+	}
+	const durationMs = int64(1200 * 1000)
+	const start = int64(1700000000000)
+	city := &model.EzfyCity{PopRecover: 1000}
+	// 首次结算：起算一整轮，不瞬间恢复
+	ezfySettlePopRecoverAt(city, start, durationMs)
+	if city.PopRecover != 1000 || city.PopRecoverAt != start || city.PopRecoverEndAt != start+durationMs {
+		t.Fatalf("首次结算应只起算恢复窗口，got %+v", city)
+	}
+	// 半程：恢复一半
+	ezfySettlePopRecoverAt(city, start+durationMs/2, durationMs)
+	if city.PopRecover != 500 {
+		t.Fatalf("半程应剩 500，got %d", city.PopRecover)
+	}
+	// 到点：恢复满
+	ezfySettlePopRecoverAt(city, start+durationMs, durationMs)
+	if city.PopRecover != 0 || city.PopRecoverEndAt != 0 {
+		t.Fatalf("到点应恢复满，got %+v", city)
 	}
 }
 

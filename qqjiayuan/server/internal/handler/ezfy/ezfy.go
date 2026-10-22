@@ -1350,10 +1350,10 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	if city.PopRecover > city.Pop {
 		city.PopRecover = city.Pop
 	}
-	// ★ 2026-10-13 空闲人口「慢恢复」：把待恢复人口按小时线性减回 0
+	// ★ 2026-10-13 空闲人口「慢恢复」：把待恢复人口按配置的「恢复满秒数」线性减回 0
 	//   （用户规则：征兵当下就占用、不该立即恢复空闲人口，要一点一点恢复）。
 	//   与人口自然增长同一处结算 —— 所有接口必经懒结算，口径唯一。
-	//   落库随下面的「写合并」一起走（pop_recover / pop_recover_at）。
+	//   落库随下面的「写合并」一起走（pop_recover / pop_recover_at / pop_recover_end_at）。
 	h.ezfySettlePopRecover(city)
 	// ★ 「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
 	// ★ 2026-10-17 人机免耗粮：bot_food_free=1 时人机（city.IsBot=1）的军队不扣维护粮，
@@ -1494,8 +1494,9 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 			"feelings": city.Feelings, "grievance": city.Grievance,
 			"pop": city.Pop, "pop_max": city.PopMax,
-			// ★ 2026-10-13 空闲人口慢恢复的两个字段一起写（与上面的内存结算同口径）
+			// ★ 2026-10-13 空闲人口慢恢复的三个字段一起写（与上面的内存结算同口径）
 			"pop_recover": city.PopRecover, "pop_recover_at": city.PopRecoverAt,
+			"pop_recover_end_at": city.PopRecoverEndAt,
 			// ★ 2026-10-20 超限人口回落时间戳（与上面 ezfySettlePopOverCap 同口径）
 			"pop_over_cap_at": city.PopOverCapAt,
 			"gold":            city.Gold, "food": city.Food, "steel": city.Steel,
@@ -2764,18 +2765,22 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 		h.DB.Create(&q)
 	}
 	// ★★ 2026-10-18 「用完就恢复」改造：训练开始（消耗人口）的**当下**就把占用人口
-	//   转入「待恢复人口」，从这一刻起按「空闲人口每小时恢复量」开始恢复 ——
+	//   转入「待恢复人口」，从这一刻起按「空闲人口恢复满时间」开始恢复 ——
 	//   不再等训练出厂（原逻辑是 collectTrainQueue 出厂时才转 recover）。
-	//   ⚠️ 必须先在内存里结算掉旧账再累加（ezfySettlePopRecover 内部推进 pop_recover_at），
-	//   否则新加的一笔会从旧的恢复游标起算，被「一次性恢复光」。
+	//   ⚠️ 必须先在内存里结算掉旧账再累加，否则新加的一笔会从旧的恢复进度起算。
+	//   ★ 2026-10-22：有新消耗时重新起算一整轮（默认 1200 秒后恢复满）。
 	//   城防(type 4)不占人口、人机城(IsBot=1)不占人口、征兵开关关闭时不占人口 → 均跳过。
 	if recruitCost && cfg.Type != 4 && city.IsBot == 0 {
 		h.ezfySettlePopRecover(city)
+		now := time.Now().UnixMilli()
 		city.PopRecover += int64(cfg.Pop) * int64(count)
+		city.PopRecoverAt = now
+		city.PopRecoverEndAt = now + ezfyPopRecoverSeconds()*1000
 		// 直接落库：/troops 这类不跑 calcResource 的路径也要能存住。
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"pop_recover":    city.PopRecover,
-			"pop_recover_at": city.PopRecoverAt,
+			"pop_recover":        city.PopRecover,
+			"pop_recover_at":     city.PopRecoverAt,
+			"pop_recover_end_at": city.PopRecoverEndAt,
 		})
 	}
 	h.taskProgress(city.UserID, "train_troop", count)
@@ -2786,7 +2791,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 //
 // ★★ 2026-10-18 「用完就恢复」改造后，训练中占用的人口**已并入「待恢复人口」**：
 //
-//	训练开始时（trainTroopLocked）占用人口即转入 pop_recover，从当下按小时恢复。
+//	训练开始时（trainTroopLocked）占用人口即转入 pop_recover，从当下按配置的恢复满时间线性恢复。
 //	因此「训练中占用」不再是独立的扣减项，本函数恒返回 0 —— 空闲人口口径统一为
 //	「总人口 − 建筑占用 − 待恢复人口」（见 ezfyPopFree）。
 //
@@ -2871,50 +2876,78 @@ func (h *EzfyHandler) cityPopUsedD(city *model.EzfyCity, buildings []model.EzfyC
 //
 // ★ 2026-10-13 用户规则（原话）：「玩家军队训练完会立即恢复（这是 bug），
 // 这种用完的人口不会立即恢复，是一点一点恢复到当前人口数量的」。
+// ★ 2026-10-22 用户规则：恢复速度改为「多少秒内空闲人口恢复满」，默认 1200 秒。
 //
 //	`pop_recover` = 训练**开始（消耗人口）时**占用的人口（见 trainTroopLocked），
-//	本函数按 ezfyPopRecoverPerHour()（默认 1 万/小时）把它减回 0。
+//	`pop_recover_end_at` = 本轮恢复截止时间；本函数按配置时长把它线性减回 0。
 //	纯内存计算、**不查库**；落库由 calcResourceD 的「写合并」顺带写（见那里的说明）。
 //
-// ⚠️⚠️ 时间推进必须用「本次真正兑换成人头的那部分时间」，**不能**直接 `At = now`：
+// ⚠️ 时间推进必须保留「上次结算时间」，**不能**直接只用 now：
 //
-//	前端每 30 秒轮询一次 /view，而恢复速率是 1 万/小时 ≈ 2.78 人/秒，
-//	若每次结算都无条件把 At 清零，`恢复量 = 速率 × 时长` 会长期取整成 0
-//	（30 秒 → 83 人，其实不为 0；但 /troops 之类的高频接口间隔只有几百毫秒 → 恒为 0），
-//	时间余量被反复丢弃 → 待恢复人口永远减不下去（等于这个功能失效）。
+//	高频接口间隔可能只有几百毫秒；若每次都把上次时间清成 now，
+//	`恢复量 = 待恢复 × 已过时间 / 剩余时间` 会长期取整成 0，待恢复人口永远减不下去。
 func (h *EzfyHandler) ezfySettlePopRecover(city *model.EzfyCity) {
 	if city == nil {
 		return
 	}
-	now := time.Now().UnixMilli()
-	// 首次见到该城（老数据 pop_recover_at = 0）：只记时间，不恢复
-	// —— 否则会把「建城至今」的全部时间一次性算成恢复量。
+	ezfySettlePopRecoverAt(city, time.Now().UnixMilli(), ezfyPopRecoverSeconds()*1000)
+}
+
+// ezfySettlePopRecoverAt 按指定时间/恢复窗口结算，方便单测。
+//
+// 恢复按「截止时间」线性进行：本轮从首次结算时间到 end_at 之间，把当时的待恢复人口减到 0。
+// `at` 只是上次结算时间，用于计算本次应减多少；有新训练消耗人口时由调用方重置 end_at，
+// 相当于重新起算一整轮。
+func ezfySettlePopRecoverAt(city *model.EzfyCity, now, durationMs int64) {
+	if city == nil {
+		return
+	}
+	if durationMs < 1000 {
+		durationMs = 1000
+	}
+	// 没有待恢复人口：只把时间点跟到 now（下次训练消耗人口时重新起算）。
+	if city.PopRecover <= 0 {
+		city.PopRecover = 0
+		city.PopRecoverAt = now
+		city.PopRecoverEndAt = 0
+		return
+	}
+	// 首次见到该城（老数据 pop_recover_end_at = 0）：从现在起算一整轮，不瞬间恢复。
+	if city.PopRecoverEndAt <= 0 {
+		city.PopRecoverAt = now
+		city.PopRecoverEndAt = now + durationMs
+		return
+	}
+	// 已到截止时间：恢复满。
+	if now >= city.PopRecoverEndAt {
+		city.PopRecover = 0
+		city.PopRecoverAt = now
+		city.PopRecoverEndAt = 0
+		return
+	}
+	// 时间戳异常/首次结算：只记时间，下次继续。
 	if city.PopRecoverAt <= 0 || city.PopRecoverAt > now {
 		city.PopRecoverAt = now
 		return
 	}
-	// 没有待恢复人口：只把时间点跟到 now（下次训练消耗人口时重新起算）
-	if city.PopRecover <= 0 {
-		city.PopRecover = 0
-		city.PopRecoverAt = now
+	elapsed := now - city.PopRecoverAt
+	window := city.PopRecoverEndAt - city.PopRecoverAt
+	if elapsed <= 0 || window <= 0 {
 		return
 	}
-	rate := ezfyPopRecoverPerHour()
-	if rate <= 0 {
-		city.PopRecoverAt = now
-		return
-	}
-	dec := rate * (now - city.PopRecoverAt) / 3600000
+	// 用 float64 防「待恢复人口 × 毫秒」在极端配置下溢出 int64。
+	dec := int64(float64(city.PopRecover) * float64(elapsed) / float64(window))
 	if dec <= 0 {
 		return // 还不足 1 人：保留时间余量，下次继续攒
 	}
 	if dec >= city.PopRecover {
 		city.PopRecover = 0
 		city.PopRecoverAt = now
+		city.PopRecoverEndAt = 0
 		return
 	}
 	city.PopRecover -= dec
-	city.PopRecoverAt += dec * 3600000 / rate // 只推进真正用掉的时间，余量留给下次
+	city.PopRecoverAt = now
 }
 
 // ezfyPopOverCapDecayPctDef 超限人口回落速度默认值（100 = 5 分钟内回落完）。
@@ -3836,13 +3869,20 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			return "人口已达召集上限, 空闲人口也已满, 无需使用移民法案"
 		}
 		// 条件原子扣减：并发/状态已变时不扣道具
+		city.PopRecover -= room
+		if city.PopRecover == 0 {
+			city.PopRecoverEndAt = 0
+		}
 		res := h.DB.Model(&model.EzfyCity{}).
 			Where("id = ? AND pop_recover >= ?", city.ID, room).
-			Update("pop_recover", gorm.Expr("pop_recover - ?", room))
+			Updates(map[string]interface{}{
+				"pop_recover":        gorm.Expr("pop_recover - ?", room),
+				"pop_recover_at":     city.PopRecoverAt,
+				"pop_recover_end_at": city.PopRecoverEndAt,
+			})
 		if res.Error != nil || res.RowsAffected == 0 {
 			return "城市状态已变化, 请刷新后重试"
 		}
-		city.PopRecover -= room
 		h.consumeItem(uid, cfgId, "使用道具")
 		if room < int64(param) {
 			return fmt.Sprintf("使用成功: 空闲人口+%d（已达上限, 本次只恢复这么多）", room)

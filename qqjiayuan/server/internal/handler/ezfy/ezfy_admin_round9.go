@@ -36,8 +36,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
-		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
-		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
+		// ★ 2026-10-22 空闲人口恢复满时间（缺行时默认 1200 秒）
+		PopRecoverSeconds: ezfyPopRecoverSecondsDef,
 		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
 		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
@@ -121,6 +121,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	}
 	if lim.ConvenePopPct < 1 || lim.ConvenePopPct > 1000000000 {
 		lim.ConvenePopPct = ezfyConvenePopPctDef
+	}
+	// ★ 2026-10-22 空闲人口恢复满时间兜底（0/未配置/越界 → 默认 1200 秒）
+	if lim.PopRecoverSeconds < 1 || lim.PopRecoverSeconds > 1000000000 {
+		lim.PopRecoverSeconds = ezfyPopRecoverSecondsDef
 	}
 	// ★ 集结令上限兜底：老行没这列时可能是 0，回落到默认 99（0 无意义 = 禁用道具）
 	if lim.GatherMaxPerOrder <= 0 {
@@ -385,8 +389,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConvenePopPct   *int `json:"convene_pop_pct"`
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，可配置为 0 关闭限制）
 		ConvenePopMax *int `json:"convene_pop_max"`
-		// ★ 2026-10-13 空闲人口每小时恢复量（默认 1 万；0 → 读取端回落默认）
-		PopRecoverPerHour *int `json:"pop_recover_per_hour"`
+		// ★ 2026-10-22 空闲人口恢复满时间（默认 1200 秒；0/未配置 → 读取端回落默认）
+		PopRecoverSeconds *int `json:"pop_recover_seconds"`
 		// ★ 2026-10-20 超出民居上限人口的每小时回落百分比（按当前超出量，1~100，默认 10）
 		PopOverCapDecayPct *int `json:"pop_over_cap_decay_pct"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
@@ -457,8 +461,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
-		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
-		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
+		// ★ 2026-10-22 空闲人口恢复满时间（缺行时默认 1200 秒）
+		PopRecoverSeconds: ezfyPopRecoverSecondsDef,
 		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
 		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
@@ -658,14 +662,14 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.ConvenePopMax = *in.ConvenePopMax
 	}
-	// ★ 2026-10-13 空闲人口每小时恢复量（征兵占用人口从征兵当下起按此速度慢慢恢复）：
-	//   0 无意义（读取端回落默认 1 万）→ 只拦负数与防呆上界，不主动归一。
-	if in.PopRecoverPerHour != nil {
-		if *in.PopRecoverPerHour < 0 || *in.PopRecoverPerHour > 1000000000 {
-			resp.ParamError(c, "空闲人口每小时恢复量需要在 0~1000000000 之间")
+	// ★ 2026-10-22 空闲人口恢复满时间（征兵占用人口从征兵当下起，按此秒数线性恢复满）：
+	//   默认 1200 秒（20 分钟），0 无意义 → 读取端回落默认。
+	if in.PopRecoverSeconds != nil {
+		if *in.PopRecoverSeconds < 1 || *in.PopRecoverSeconds > 1000000000 {
+			resp.ParamError(c, "空闲人口恢复满时间需要在 1~1000000000 秒之间")
 			return
 		}
-		lim.PopRecoverPerHour = *in.PopRecoverPerHour
+		lim.PopRecoverSeconds = *in.PopRecoverSeconds
 	}
 	// ★ 2026-10-20 超限人口每 5 分钟回落百分比（按当前超出量）：
 	//   1~100 有意义（100 = 5 分钟内回落全部超出人口），0 会让人口永远不回落。
@@ -715,6 +719,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	if lim.ConvenePopPct < 1 || lim.ConvenePopPct > 1000000000 {
 		lim.ConvenePopPct = ezfyConvenePopPctDef
+	}
+	// ★ 2026-10-22 空闲人口恢复满时间兜底（0/未配置/越界 → 默认 1200 秒）
+	if lim.PopRecoverSeconds < 1 || lim.PopRecoverSeconds > 1000000000 {
+		lim.PopRecoverSeconds = ezfyPopRecoverSecondsDef
 	}
 	// ★ 战斗/经济数值（「民心扣除后台可配置，默认 2」+「军官工资合理消耗」）
 	//   这几个值 0 无意义，所以只接受 >= 1。
@@ -1462,8 +1470,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"convene_pop_pct":   lim.ConvenePopPct,
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，必须显式写否则 0 会被 GORM 吞掉）
 		"convene_pop_max": lim.ConvenePopMax,
-		// ★ 2026-10-13 空闲人口每小时恢复量：同样显式写，避免零值被 GORM default 吞掉
-		"pop_recover_per_hour": lim.PopRecoverPerHour,
+		// ★ 2026-10-22 空闲人口恢复满时间（秒）：同样显式写，避免零值被 GORM default 吞掉
+		"pop_recover_seconds": lim.PopRecoverSeconds,
 		// ★ 2026-10-20 超限人口每 5 分钟回落百分比
 		"pop_over_cap_decay_pct": lim.PopOverCapDecayPct,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）

@@ -144,7 +144,7 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"atk_troop": b.AtkTroop, "atk_troop_eff": ezfyBotAtkTroopOf(b.Level, b.AtkTroop),
 			"atk_type": b.AtkType, "atk_type_eff": ezfyBotOrderTypeOf(b.AtkType), // 0=默认征服，1侦查/2掠夺/3征服
 			// ★ 2026-10-19 是否自动发言（编辑人机-基本信息可调）：0=关闭 1=开启
-			"chat_on": b.ChatOn,
+			"chat_on":     b.ChatOn,
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
 			"next_act_at":     b.NextActAt,
 			"status_text":     ezfyBotStatusText(b, now),
@@ -764,7 +764,14 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 			}
 		}
 		if in.PopRecover != nil && *in.PopRecover >= 0 {
+			now := time.Now().UnixMilli()
 			upd["pop_recover"] = *in.PopRecover
+			upd["pop_recover_at"] = now
+			if *in.PopRecover > 0 {
+				upd["pop_recover_end_at"] = now + ezfyPopRecoverSeconds()*1000
+			} else {
+				upd["pop_recover_end_at"] = 0
+			}
 		}
 		if len(upd) > 0 {
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(upd)

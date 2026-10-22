@@ -384,10 +384,11 @@
               <el-input-number v-model.number="form.convene_pop_pct" :min="1" :max="1000000000" :step="1" controls-position="right" style="width: 200px" />
               <span class="unit-hint">% · 当前民居上限</span>
             </el-form-item>
-            <!-- ★ 2026-10-13 「训练完人口不再瞬间归还，一点点恢复到当前人口」：恢复速率配置 -->
+            <!-- ★ 2026-10-22 「空闲人口恢复满时间」：训练消耗人口后按配置秒数线性恢复满 -->
             <el-form-item>
-              <template slot="label">空闲人口每小时恢复量<el-tooltip placement="top" :content="tips.pop_recover_per_hour"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model="form.pop_recover_per_hour" :min="0" :max="1000000000" :step="1000" controls-position="right" style="width: 200px" />
+              <template slot="label">空闲人口恢复满时间<el-tooltip placement="top" :content="tips.pop_recover_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.pop_recover_seconds" :min="1" :max="1000000000" :step="10" controls-position="right" style="width: 200px" />
+              <span class="unit-hint">秒 · 默认 1200 秒（20 分钟）</span>
             </el-form-item>
             <!-- ★ 2026-10-14 风云榜统计开关（与「排行榜 → 风云榜」页的开关同一项，两处都能改） -->
             <el-form-item>
@@ -501,8 +502,8 @@ export default {
         convene_food_cost: 100000, convene_pop_pct: 10,
         // ★ 2026-09-26：召集硬性人口上限（0 = 不限）
         convene_pop_max: 0,
-        // ★ 2026-10-13：空闲人口每小时恢复量（训练完人口不再瞬间归还，按此速度慢慢恢复，默认 1 万）
-        pop_recover_per_hour: 10000,
+        // ★ 2026-10-22：空闲人口恢复满时间（默认 1200 秒；训练消耗人口后按此时间线性恢复）
+        pop_recover_seconds: 1200,
         // ★ 2026-10-20：超出民居上限的人口每 5 分钟回落百分比（按当前超出量，默认 100%/5 分钟 = 5 分钟内回落完）
         pop_over_cap_decay_pct: 100,
         // ★ 2026-10-14 风云榜统计开关（1 = 开：战斗结算写周榜；0 = 关：完全不统计）
@@ -531,7 +532,7 @@ export default {
         switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'train_mayor_military_on',
           'train_mayor_equip_on', 'food_upkeep_on', 'march_oil_on',
           'house_pop_limit_on', 'convene_flexible_on', 'pop_over_cap_decay_pct',
-          'convene_food_cost', 'convene_pop_pct', 'convene_pop_max', 'pop_recover_per_hour', 'pvp_rank_on'],
+          'convene_food_cost', 'convene_pop_pct', 'convene_pop_max', 'pop_recover_seconds', 'pvp_rank_on'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
           'recruit_five_star_rate'],
       },
@@ -666,8 +667,8 @@ export default {
           '允许超过 100%：填 250 = 召集一次获得民居上限的 2.5 倍人口。',
         convene_pop_max: '城市人口**硬上限**（自然增长、召集、空闲人口都不会超过）。开关关掉 = 不限。' +
           '民居容量是软上限（超出部分缓慢回落），两者不冲突：本项达到后不能再召集，民居软上限只决定回落到多少',
-        pop_recover_per_hour: '训练完的士兵占用的空闲人口不再瞬间归还，而是按此速率每小时慢慢恢复（默认 1 万）。' +
-          '填 0 = 按默认 1 万/小时。玩家可用「移民法案」道具（2 钻石）瞬间恢复 1 万空闲人口',
+        pop_recover_seconds: '训练消耗人口后，这部分空闲人口不会瞬间归还，而是在该时间内线性恢复满（默认 1200 秒 = 20 分钟）。' +
+          '有新训练消耗人口时会重新起算；玩家可用「移民法案」道具（2 钻石）瞬间恢复 1 万空闲人口',
         pvp_rank_on: '开 = 玩家对战结算按自然周写入风云榜（现行为）；关 = 完全不统计（榜单为空，历史周榜保留，重新开启即继续累计）。' +
           '与「排行榜 → 风云榜」页顶部的开关是同一项配置',
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
@@ -782,8 +783,8 @@ export default {
             convene_food_cost: pos(r.data.convene_food_cost, 100000),
             convene_pop_pct: Math.min(1000000000, Math.max(1, Number(r.data.convene_pop_pct) || 10)),
             convene_pop_max: pos(r.data.convene_pop_max, 0),
-            // ★ 2026-10-13 空闲人口每小时恢复量（0 无意义 → 回落默认 1 万）
-            pop_recover_per_hour: pos(r.data.pop_recover_per_hour, 10000),
+            // ★ 2026-10-22 空闲人口恢复满时间（0/未配置 → 回落默认 1200 秒）
+            pop_recover_seconds: Math.min(1000000000, Math.max(1, Number(r.data.pop_recover_seconds) || 1200)),
             // ★ 2026-10-20 超限人口回落速度（1~100，越界/未配置回落默认 100%/5 分钟）
             pop_over_cap_decay_pct: (Number(r.data.pop_over_cap_decay_pct) >= 1 && Number(r.data.pop_over_cap_decay_pct) <= 100)
               ? Number(r.data.pop_over_cap_decay_pct) : 100,
