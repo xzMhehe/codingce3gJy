@@ -57,6 +57,9 @@ func seedEzfy(db *gorm.DB) {
 			log.Printf("ezfy 阵营兵种名写入失败 id=%d: %v", t.ID, err)
 		}
 	}
+	// ★ 2026-10-22 新增兵种「海军轰炸机」一次性对齐（对海/训练时间/阵营全名）：
+	//   batchKeep 是 DoNothing，已部署过的库补不进去，靠 settings 打标只对齐一次。
+	alignEzfyNavalBomber(db)
 
 	// —— 科技：主表每次对齐；等级表**保护 effect_value**（见 seedEzfyTechLevels） ——
 	//
