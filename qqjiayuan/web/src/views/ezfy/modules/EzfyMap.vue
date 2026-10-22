@@ -122,7 +122,13 @@
               </div>
               <!-- ★ 2026-10-11 修复「野地归属描述消失」：归属行原来挂在上面掉落宝物的 v-else 上，
                    野地一旦配置了掉落宝物就永远走不到它 → 归属描述丢了。改为独立显示，不受宝物影响。 -->
-              <div class="old-line">归属：{{ ezfy.selDetail.owner || '中立' }}</div>
+              <!-- ★ 2026-10-22 野地归属的玩家名可点：进该玩家统帅页（games/ezfy?cur=playerinfo），
+                   与城主名/聊天/排行点玩家名同入口；中立或「我」保持纯文本。 -->
+              <div class="old-line">
+                <template v-if="ezfy.selDetail.owner && !ezfy.selDetail.mine && ezfy.selDetail.owner_user_id">归属：<a
+                  href="javascript:;" @click="ezfy.openPlayer(ezfy.selDetail.owner_user_id)">{{ ezfy.selDetail.owner }}</a></template>
+                <template v-else>归属：{{ ezfy.selDetail.owner || '中立' }}</template>
+              </div>
               <div class="old-line" v-if="ezfy.selDetail.gather_res">
                 <!-- ★ 2026-09-28 平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
                 <template v-if="ezfy.selDetail.terrain === 1 || ezfy.selDetail.terrain === 9">采集可以获得{{ ezfy.selDetail.gather_res }}，可建立城市。</template>

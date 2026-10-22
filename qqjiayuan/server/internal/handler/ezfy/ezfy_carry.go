@@ -2,6 +2,10 @@ package ezfy
 
 import (
 	"encoding/json"
+	"log"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/model"
 )
@@ -25,21 +29,13 @@ type ezfyCarry struct {
 
 func (c ezfyCarry) total() int64 { return c.Food + c.Steel + c.Oil + c.Rare + c.Gold }
 
-// ezfyCarryFit 按「资源最大值」（二战系统配置，不写死）计算一次入城能装多少、超出多少。
+// ezfyCarryFitAt 按「资源最大值」（二战系统配置，不写死）计算一次入城能装多少、超出多少。
 //
 // ★★ 2026-10-17 用户口径（派遣/运输/返航带回的拉资源）：
 //
 //	目标城/出发城按配置上限封顶累加，装不下的部分原路带回或系统回收。
 //	返回 (可入库量, 超出量)。
-func (h *EzfyHandler) ezfyCarryFit(cityID uint, c ezfyCarry) (fit, excess ezfyCarry) {
-	if cityID <= 0 {
-		return c, ezfyCarry{}
-	}
-	var city model.EzfyCity
-	if err := h.DB.Select("food", "steel", "oil", "rare", "gold").
-		First(&city, cityID).Error; err != nil {
-		return c, ezfyCarry{}
-	}
+func ezfyCarryFitAt(cur, inc ezfyCarry) (fit, excess ezfyCarry) {
 	fitRes := func(cur, inc int64, res string) (int64, int64) {
 		if inc <= 0 {
 			return 0, 0
@@ -54,36 +50,71 @@ func (h *EzfyHandler) ezfyCarryFit(cityID uint, c ezfyCarry) (fit, excess ezfyCa
 		}
 		return room, inc - room
 	}
-	fit.Food, excess.Food = fitRes(city.Food, c.Food, "food")
-	fit.Steel, excess.Steel = fitRes(city.Steel, c.Steel, "steel")
-	fit.Oil, excess.Oil = fitRes(city.Oil, c.Oil, "oil")
-	fit.Rare, excess.Rare = fitRes(city.Rare, c.Rare, "rare")
-	fit.Gold, excess.Gold = fitRes(city.Gold, c.Gold, "gold")
+	fit.Food, excess.Food = fitRes(cur.Food, inc.Food, "food")
+	fit.Steel, excess.Steel = fitRes(cur.Steel, inc.Steel, "steel")
+	fit.Oil, excess.Oil = fitRes(cur.Oil, inc.Oil, "oil")
+	fit.Rare, excess.Rare = fitRes(cur.Rare, inc.Rare, "rare")
+	fit.Gold, excess.Gold = fitRes(cur.Gold, inc.Gold, "gold")
 	return fit, excess
 }
 
-// ezfyCarryFitTo 计算「携带资源入目标城」：按配置上限封顶，返回可入库量与超出量。
-// 超出量由调用方原路带回出发城（记进 order.Carry / Resources）。
-func (h *EzfyHandler) ezfyCarryFitTo(city *model.EzfyCity, c ezfyCarry) (fit, excess ezfyCarry) {
-	fitRes := func(cur, inc int64, res string) (int64, int64) {
-		if inc <= 0 {
-			return 0, 0
-		}
-		max := ezfyResMaxOf(res) // 二战系统配置的「资源最大值」，不写死
-		room := max - cur
-		if room < 0 {
-			room = 0
-		}
-		if inc <= room {
-			return inc, 0
-		}
-		return room, inc - room
+// ezfyDeliverCarryToCity 把运输/派遣/返航携带的资源送入目标城。
+//
+// ★★ 2026-10-22 修复「A 城黄金拉到 B 城后被吞」：
+//
+//	原来的顺序是「先用库里的旧资源快照算 fit → 再 calcResource 结算目标城产量 →
+//	最后用 ezfyResAddExpr 原子累加」。如果 B 城黄金还差一点到上限，而这段时间
+//	待结算的黄金产量刚好把剩余容量填满，最后 SQL 封顶就会把运来的黄金吞掉；
+//	而 fit 早在结算前就算好了，超出量没记进 order.Carry，玩家看不到也拿不回。
+//
+//	现在统一为：
+//	  ① 先把目标城懒结算到当前（待落库产量/工资/耗粮都算进来）；
+//	  ② 再按结算后的资源算 fit；
+//	  ③ 事务内锁住城市行，用「内存结算值」与「库里最新值」的较大者再算一次，
+//	     并把可入库量原子累加。这样并发到达也不会都按同一份旧快照装货，
+//	     装不下的部分会如实返回给调用方（原路带回/系统回收），不会静默消失。
+func (h *EzfyHandler) ezfyDeliverCarryToCity(city *model.EzfyCity, c ezfyCarry) (fit, excess ezfyCarry) {
+	if city == nil || city.ID == 0 {
+		return ezfyCarry{}, c
 	}
-	fit.Food, excess.Food = fitRes(city.Food, c.Food, "food")
-	fit.Steel, excess.Steel = fitRes(city.Steel, c.Steel, "steel")
-	fit.Oil, excess.Oil = fitRes(city.Oil, c.Oil, "oil")
-	fit.Rare, excess.Rare = fitRes(city.Rare, c.Rare, "rare")
-	fit.Gold, excess.Gold = fitRes(city.Gold, c.Gold, "gold")
+	if c.total() <= 0 {
+		return ezfyCarry{}, ezfyCarry{}
+	}
+	// ① 必须先结算；否则待落库的产量会在入库后的下一次懒结算里把容量吃掉。
+	h.calcResource(city, h.officerList(city.ID))
+
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		var locked model.EzfyCity
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&locked, city.ID).Error; err != nil {
+			return err
+		}
+		// ② 取较大值：内存值含尚未落库的产量，库值含并发请求已入库的增减量。
+		cur := ezfyCarry{
+			Food:  maxInt64(city.Food, locked.Food),
+			Steel: maxInt64(city.Steel, locked.Steel),
+			Oil:   maxInt64(city.Oil, locked.Oil),
+			Rare:  maxInt64(city.Rare, locked.Rare),
+			Gold:  maxInt64(city.Gold, locked.Gold),
+		}
+		fit, excess = ezfyCarryFitAt(cur, c)
+		if fit.total() <= 0 {
+			return nil
+		}
+		// ③ 行已锁定，按 fit 原子累加。封顶表达式仍保留，防止任何越界写入。
+		return tx.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+			"food":  ezfyResAddExpr("food", fit.Food),
+			"steel": ezfyResAddExpr("steel", fit.Steel),
+			"oil":   ezfyResAddExpr("oil", fit.Oil),
+			"rare":  ezfyResAddExpr("rare", fit.Rare),
+			"gold":  ezfyResAddExpr("gold", fit.Gold),
+		}).Error
+	})
+	if err != nil {
+		// 写库失败时绝不能让资源消失：整批按「装不下」退回，由调用方记进 Carry/返航。
+		log.Printf("【二战】资源入库失败(city=%d): %v，本次资源按原路带回处理", city.ID, err)
+		return ezfyCarry{}, c
+	}
 	return fit, excess
 }
 

@@ -550,7 +550,6 @@
           <div class="old-line">
             名将：<b>{{ ezfy.officerDetail.officer.general_name || ezfy.officerDetail.officer.name }}</b>
             <span class="gray" v-if="ezfy.officerDetail.officer.general_name && ezfy.officerDetail.officer.general_name !== ezfy.officerDetail.officer.name">
-              （当前已改名为「{{ ezfy.officerDetail.officer.name }}」）
             </span>
           </div>
           <div class="old-line" v-if="ezfy.officerDetail.officer.general_star || ezfy.officerDetail.officer.general_level">

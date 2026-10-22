@@ -506,6 +506,9 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	//   这里顺带下发布尔 mine（口径与 owner 完全同源），前端据此灰掉那三个命令；
 	//   后端 createOrder 里也有同样校验，防止绕过前端直接下单。
 	owner, isMine := "", false
+	// ★ 2026-10-22 野地归属玩家名可点：除昵称外一并下发玩家 user_id，
+	//   前端据此走 openPlayer → games/ezfy?cur=playerinfo（与城主名同入口）。
+	var ownerUserId uint
 	var w model.EzfyWildland
 	// ★ 2026-10-16 一个坐标只应有一条野地记录（唯一索引 uk_wildland_xy 保证）；
 	//   Order("id DESC") 是兜底：万一存量重复还没被启动清理收口，也取**最新**那条（= 最后占领者），
@@ -513,6 +516,7 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	if err := h.DB.Where("x = ? AND y = ?", x, y).Order("id DESC").First(&w).Error; err == nil && w.CityId > 0 {
 		var oc model.EzfyCity
 		if err := h.DB.First(&oc, w.CityId).Error; err == nil {
+			ownerUserId = oc.UserID
 			if oc.UserID == uid {
 				owner = "我"
 				isMine = true
@@ -549,16 +553,17 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		//   「预览 1 万、真打给 5 万」，玩家反而以为算错了。两边必须同一口径。
 		"res_min": ezfyScaleByWildResMult(cfg.ResMin), "res_max": ezfyScaleByWildResMult(cfg.ResMax),
 		"res_mult": ezfyWildResMult(), "terrain": ezfyTerrainEx(x, y),
-		"terrain_name": terrainName,
-		"continent":    ezfyRegionName(x, y),
-		"treasures":    treasures,
-		"gather_res":   gatherRes,
-		"treasure":     cfg.Treasure, // 寇城宝物档次(初级/中级/高级)
-		"owner":        owner,
-		"mine":         isMine,      // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
-		"collecting":   collecting,  // ★ 2026-10-11 正在被采集（不能征服/掠夺）
-		"has_defender": hasDefender, // ★ 2026-10-19 有玩家守军 → 出征页强制手动指挥
-		"is_starred":   starCnt > 0, // ★ 2026-09-30 收藏态
+		"terrain_name":  terrainName,
+		"continent":     ezfyRegionName(x, y),
+		"treasures":     treasures,
+		"gather_res":    gatherRes,
+		"treasure":      cfg.Treasure, // 寇城宝物档次(初级/中级/高级)
+		"owner":         owner,
+		"owner_user_id": ownerUserId, // ★ 归属玩家 user_id（前端点名字进统帅页 playerinfo；未占领=0）
+		"mine":          isMine,      // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
+		"collecting":    collecting,  // ★ 2026-10-11 正在被采集（不能征服/掠夺）
+		"has_defender":  hasDefender, // ★ 2026-10-19 有玩家守军 → 出征页强制手动指挥
+		"is_starred":    starCnt > 0, // ★ 2026-09-30 收藏态
 	})
 }
 
@@ -2405,14 +2410,9 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 		// ★★ 2026-10-17 用户口径：返航带回出发城同样按「资源最大值」封顶累加
 		//   （上限读二战系统配置，不写死），装不下的部分**系统回收**；
 		//   战报如实显示实际入库量与回收量。
-		fit, rec := h.ezfyCarryFit(city.ID, c)
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food":  ezfyResAddExpr("food", fit.Food),
-			"steel": ezfyResAddExpr("steel", fit.Steel),
-			"oil":   ezfyResAddExpr("oil", fit.Oil),
-			"rare":  ezfyResAddExpr("rare", fit.Rare),
-			"gold":  ezfyResAddExpr("gold", fit.Gold),
-		})
+		// ★★ 2026-10-22 修复同款吞资源：必须先懒结算出发城，再算 fit。
+		//   否则待落库产量会在返航入库之后把容量吃掉，而 fit 按旧快照算出的超出量不会退回。
+		fit, rec := h.ezfyDeliverCarryToCity(city, c)
 		// ★ 2026-10-11 文案改中性：本函数现在承接**所有**出征类型的返航资源入城
 		//   （不止采集），别再说「采集部队」。标题前缀「部队返航」被战报分类依赖，保持不变。
 		h.addReport(uid, 5, "部队返航: 资源已入库",
@@ -3281,16 +3281,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★★ 2026-10-17 用户口径（上限读二战系统配置 res_max_*，不写死）：
 		//   运输到达目标城按「资源最大值」封顶累加，装不下的部分**原路带回出发城**
 		//   （记进 Carry，随部队返航入出发城，同样封顶）。
-		fit, exc := h.ezfyCarryFitTo(&target, ezfyCarry{Food: f, Steel: s, Oil: o, Rare: r, Gold: g})
-		if fit.total() > 0 {
-			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-				"food":  ezfyResAddExpr("food", fit.Food),
-				"steel": ezfyResAddExpr("steel", fit.Steel),
-				"oil":   ezfyResAddExpr("oil", fit.Oil),
-				"rare":  ezfyResAddExpr("rare", fit.Rare),
-				"gold":  ezfyResAddExpr("gold", fit.Gold),
-			})
-		}
+		// ★★ 2026-10-22 修复「黄金被吞」：ezfyDeliverCarryToCity 会先把目标城
+		//   懒结算到当前再算 fit，避免待落库产量占满剩余容量后 SQL 封顶把运来的资源吞掉。
+		fit, exc := h.ezfyDeliverCarryToCity(&target, ezfyCarry{Food: f, Steel: s, Oil: o, Rare: r, Gold: g})
 		if exc.total() > 0 {
 			order.Carry = carryJSON(exc) // 装不下的原路带回出发城
 		} else {
@@ -3436,21 +3429,15 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★★ 2026-10-17 用户口径（上限读二战系统配置 res_max_*，不写死）：
 		//   派遣到达目标城按「资源最大值」封顶累加，装不下的部分**原路带回出发城**
 		//   （记进 back → Carry，随部队返航入出发城，同样封顶）。
+		// ★★ 2026-10-22 修复「黄金被吞」：原先先算 fit、再 calcResource 结算目标城，
+		//   待落库产量会占掉容量，最后 SQL 封顶吞掉随军资源且不记 back。
+		//   现在统一交给 ezfyDeliverCarryToCity（先结算目标城、再算 fit、事务内入库）。
 		res := h.parseResMap(order.Resources)
-		back := ezfyCarry{}
-		fit, exc := h.ezfyCarryFitTo(&target, ezfyCarry{
+		fit, exc := h.ezfyDeliverCarryToCity(&target, ezfyCarry{
 			Food: res["food"], Steel: res["steel"], Oil: res["oil"], Rare: res["rare"], Gold: res["gold"],
 		})
-		back = exc
+		back := exc
 		if fit.total() > 0 {
-			h.calcResource(&target, h.officerList(target.ID))
-			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-				"food":  ezfyResAddExpr("food", fit.Food),
-				"steel": ezfyResAddExpr("steel", fit.Steel),
-				"oil":   ezfyResAddExpr("oil", fit.Oil),
-				"rare":  ezfyResAddExpr("rare", fit.Rare),
-				"gold":  ezfyResAddExpr("gold", fit.Gold),
-			})
 			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
 				fit.Food, fit.Steel, fit.Oil, fit.Rare, fit.Gold)
 		}
