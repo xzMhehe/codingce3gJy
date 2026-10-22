@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestEzfyLootPeriodSuffix 采集宝物播报的期数后缀：1 期不写，多期注明「本次共结算N期」。
+// TestEzfyLootPeriodSuffix 采集宝物播报的期数后缀：1 期不写，多期注明「共结算N期」。
 //
 // ★ 2026-10-22 用户规则：世界频道只播「最近一期」的宝物，补算多期必须说明白，
 // 否则玩家会以为少给了（原来是把 24 期的明细全堆在一条播报里）。
@@ -17,8 +17,8 @@ func TestEzfyLootPeriodSuffix(t *testing.T) {
 		{1, ""},
 		{0, ""},
 		{-1, ""},
-		{2, "（本次共结算2期）"},
-		{24, "（本次共结算24期）"},
+		{2, "（共结算2期）"},
+		{24, "（共结算24期）"},
 	}
 	for _, c := range cases {
 		if got := ezfyLootPeriodSuffix(c.periods); got != c.want {

@@ -2610,7 +2610,7 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 //
 //	原来一次离线补算最多 24 期，一条播报就把 24 期的宝物全列出来（实测 12 件以上，
 //	一条就占满频道）。现在 loot 里**只收「最近一期」掉的宝物**，periods 记录本次
-//	实际结算了多少期，flush 时在末尾注明「本次共结算N期」——
+//	实际结算了多少期，flush 时在末尾注明「共结算N期」——
 //	条数不变（每人每轮结算仍 1 条），单条内容却只有 1~2 件。
 type ezfyLootBatch struct {
 	name    string   // 玩家昵称（首次掉落时取一次，避免每件宝物都查一次）
@@ -2629,7 +2629,7 @@ func (b *ezfyLootBatch) add(loot string) {
 // ezfyLootPeriodSuffix 采集宝物播报的「期数」后缀。
 //
 // ★ 2026-10-22 播报只列最近一期，补算多期时必须说明白，否则玩家会以为少给了：
-// 只结算 1 期不写后缀，多期写成「（本次共结算N期）」。
+// 只结算 1 期不写后缀，多期写成「（共结算N期）」。
 func ezfyLootPeriodSuffix(periods int64) string {
 	if periods <= 1 {
 		return ""
@@ -2773,7 +2773,7 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	left := h.envTreasureLeft(env, uid)
 	treasureNames := []string{} // 本次结算的**全部**宝物（只写战报，不用于世界播报）
 	// ★ 2026-10-22 用户规则「播报的是总的，改成播报按期，不然太多了」：
-	//   世界频道**只播最近一期**掉的宝物（1~2 件），补算多期时末尾注明「本次共结算N期」；
+	//   世界频道**只播最近一期**掉的宝物（1~2 件），补算多期时末尾注明「共结算N期」；
 	//   原来一条播报会把 24 期的明细全堆出来（实测 12 件以上，一条占满频道）。
 	//   战报里仍然列全部（玩家要能核对）。
 	lastLoot := []string{}

@@ -2310,17 +2310,44 @@ func (c *ezfyConfigCache) troop(id int) *model.EzfyCfgTroop {
 	return nil
 }
 
-// sortedTroops 返回按 id 升序的兵种配置切片（读进程内缓存，不发 SQL）。
+// ezfyTroopNavalBomber 「海军轰炸机」兵种 ID（★ 2026-10-22 新增）。
+//
+// 只能用新号：1~20 是老兵种的固定 ID，玩家已训的部队按 troop_id 落库，
+// 复用/挤占任何一个号都会让老兵种变成别的兵种。
+const ezfyTroopNavalBomber = 21
+
+// ezfyTroopSortKey 兵种**展示**顺序的排序键（不影响任何数值与落库 ID）。
+//
+// 默认按 ID；只有「海军轰炸机(21)」例外 —— 它是轰炸机的对海特化型，
+// 按强度/分组应该排在 轰炸机(11) 之后、特种兵(12) 之前，
+// 但新兵种又必须用新 ID，所以用 115（= 11*10+5）把它插进去。
+// 其余兵种 id*10 保持原相对顺序不变。
+func ezfyTroopSortKey(id int) int {
+	if id == ezfyTroopNavalBomber {
+		return 11*10 + 5
+	}
+	return id * 10
+}
+
+// sortedTroops 返回按「展示顺序」排好的兵种配置切片（读进程内缓存，不发 SQL）。
 //
 // ★ 2026-10-03 性能：/troops 是 30s 轮询接口，之前每次全表 SELECT ezfy_cfg_troop
 //
 //	经跨 WAN 到 RDS（单次 13~37ms）；配置早已整表载入缓存，直接读内存即可。
+// ★ 2026-10-22 由「按 id 升序」改为「按 ezfyTroopSortKey」——让新增的海军轰炸机
+//   排到轰炸机后面，而不是因为 id=21 掉到列表最后（城防兵种之后）。
 func (c *ezfyConfigCache) sortedTroops() []model.EzfyCfgTroop {
 	ids := make([]int, 0, len(c.troops))
 	for id := range c.troops {
 		ids = append(ids, id)
 	}
-	sort.Ints(ids)
+	sort.Slice(ids, func(i, j int) bool {
+		ki, kj := ezfyTroopSortKey(ids[i]), ezfyTroopSortKey(ids[j])
+		if ki != kj {
+			return ki < kj
+		}
+		return ids[i] < ids[j]
+	})
 	out := make([]model.EzfyCfgTroop, 0, len(ids))
 	for _, id := range ids {
 		out = append(out, c.troops[id])

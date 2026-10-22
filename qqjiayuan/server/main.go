@@ -137,6 +137,8 @@ func runHomeMode(cfg *config.Config) {
 		timedStep("EnsureEzfyActLevelTable", func() { seed.EnsureEzfyActLevelTable(homeDB) })
 		// ★ 2026-10-22 新道具「征募告示」：skip 分支不跑全量种子，不补就买不到。
 		timedStep("EnsureEzfyBuildQueueItem", func() { seed.EnsureEzfyBuildQueueItem(homeDB) })
+		// ★ 2026-10-22 新兵种「海军轰炸机」(id 21)：同上，skip 部署不补就没有这个兵种（1区/2区都要）。
+		timedStep("EnsureEzfyCfgTroops", func() { seed.EnsureEzfyCfgTroops(homeDB) })
 		// ★ 2026-10-17 统帅称号三张表（定义/持有/日结算）：同 hazard，skip 分支幂等补建。
 		timedStep("EnsureEzfyTitleTables", func() { seed.EnsureEzfyTitleTables(homeDB) })
 		// ★ 2026-10-17 人机模块四张表（档案/攻击计划/日志/租约锁）：同 hazard，幂等补建。

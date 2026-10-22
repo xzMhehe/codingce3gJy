@@ -276,6 +276,15 @@ var ezfyEzfyCfgTroop = []model.EzfyCfgTroop{
 	{ID: 18, Name: "榴弹炮", Type: 4, Health: 150, AtkSea: 32, AtkGround: 35, AtkAir: 28, AtkDef: 0, Defence: 40, Speed: 0, AttackRange: 5300, Carry: 0, Pop: 2, FoodKeep: 0, OilKeep: 0, Food: 700, Steel: 3000, Oil: 1400, Rare: 2500, TrainTime: 100, Require: "围墙（3级）武器科技(4级)弹道学(4级)", Icon: "18.png", RepairRate: 13},
 	{ID: 19, Name: "反坦克炮", Type: 4, Health: 230, AtkSea: 55, AtkGround: 53, AtkAir: 40, AtkDef: 0, Defence: 65, Speed: 0, AttackRange: 5200, Carry: 0, Pop: 5, FoodKeep: 0, OilKeep: 0, Food: 1100, Steel: 2200, Oil: 6800, Rare: 3800, TrainTime: 195, Require: "围墙（6级）武器科技(8级)掩体防御（5级）", Icon: "19.png", RepairRate: 7},
 	{ID: 20, Name: "防空炮", Type: 4, Health: 280, AtkSea: 38, AtkGround: 30, AtkAir: 70, AtkDef: 0, Defence: 65, Speed: 0, AttackRange: 2850, Carry: 0, Pop: 5, FoodKeep: 0, OilKeep: 0, Food: 1100, Steel: 3400, Oil: 2200, Rare: 6800, TrainTime: 195, Require: "围墙（6级）武器科技(8级)掩体防御（5级）", Icon: "20.png", RepairRate: 7},
+	// ★ 2026-10-22 新增「海军轰炸机」（空军·对海特化，用户需求）：
+	//   数值取自原版兵种表（参考材料/开发文档/兵种.png 第 12 行），
+	//   注意该表「对城墙」列其实就是**对防**(AtkDef) → 40。
+	//   训练时间按用户要求改成 1分30秒（原版 2分10秒 = 130 秒）。
+	//   阵营名：同盟国 = 美国格鲁曼 TBF「复仇者」(舰载鱼雷轰炸机)，
+	//           轴心国 = 日本中岛「九七式舰攻」(B5N，珍珠港/中途岛主力舰载攻击机)。
+	//   ★ 只能用新 ID 21：1~20 是老兵种固定 ID，玩家已训部队按 ID 落库，不能挤占；
+	//     展示顺序由 ezfyTroopSortKey 插到 轰炸机(11) 与 特种兵(12) 之间。
+	{ID: 21, NameAxis: "九七式舰攻", NameAlly: "TBF 复仇者", Name: "海军轰炸机", Type: 3, Health: 130, AtkSea: 75, AtkGround: 25, AtkAir: 15, AtkDef: 40, Defence: 21, Speed: 1500, AttackRange: 100, Carry: 50, Pop: 10, FoodKeep: 8, OilKeep: 100, Food: 300, Steel: 1200, Oil: 1600, Rare: 600, TrainTime: 90, Require: "军工厂(8级)停机坪(8级)武器科技(8级)弹道学(6级)", Icon: "21.png", RepairRate: 8},
 }
 
 var ezfyEzfyCfgTech = []model.EzfyCfgTech{
