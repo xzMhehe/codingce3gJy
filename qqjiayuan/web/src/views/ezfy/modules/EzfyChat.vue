@@ -26,8 +26,7 @@
             <div class="panel-title">系统消息</div>
             <div class="old-line" v-for="ch in ezfy.worldChats" :key="'cs' + ch.id">
               [<span class="orange">系统</span>]
-              <span class="gray">{{ ezfy.fmtTime(ch.created_at) }}</span>
-              : {{ ch.content }}
+              <span class="gray">{{ ezfy.fmtChatTime(ch.created_at) }}</span>: {{ ch.content }}
             </div>
             <div class="old-line gray" v-if="!ezfy.worldChats.length">(暂无系统消息)</div>
             <div class="ezfy-pager" v-if="ezfy.chatTotalPages > 1">
@@ -54,8 +53,7 @@
             </div>
             <div class="old-line" v-for="ch in ezfy.worldChats" :key="'c' + ch.id">
               [<span class="orange">{{ ezfy.chatChannel === 2 ? '军团' : '世界' }}</span>]
-              <span class="gray">{{ ezfy.fmtTime(ch.created_at) }}</span>
-              <a href="javascript:;" @click="ezfy.openPlayer(ch.user_id)"><span
+              <span class="gray">{{ ezfy.fmtChatTime(ch.created_at) }}</span>{{ ' ' }}<a href="javascript:;" @click="ezfy.openPlayer(ch.user_id)"><span
                  v-for="(c, ci) in ezfy.nickChars(ch.user_name)" :key="'ncc' + ci"
                  :style="ezfy.nickColorAt(ch.color, ci)">{{ c }}</span></a>: {{ ch.content }}
             </div>

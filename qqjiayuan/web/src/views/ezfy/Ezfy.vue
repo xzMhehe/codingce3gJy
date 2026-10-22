@@ -7157,6 +7157,12 @@ export default {
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
         ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
     },
+    // ★ 2026-10-22 聊天频道（世界/军团/系统）时间只显示到分钟，不显示秒。
+    //   战报/邮件等仍用 fmtTime（需要秒级时间）；这里只做聊天展示裁剪。
+    fmtChatTime (t) {
+      const s = this.fmtTime(t)
+      return s ? s.slice(0, 16) : ''
+    },
     // ---- 页面内提示 / 确认（替代 alert / confirm / prompt）----
     notify (text, type) {
       const t = String(text === undefined || text === null ? '' : text)
