@@ -85,6 +85,9 @@
         前往 <a href="javascript:;" @click="ezfy.go('map')">地图</a> 出征
       </div>
       <div class="old-line">
+        <a href="javascript:;" @click="ezfy.go('techs')">科研中心</a>
+      </div>
+      <div class="old-line">
         <a href="javascript:;" @click="ezfy.go('citystatus')">城市状态</a><span class="home-gap"></span><a href="javascript:;" @click="ezfy.go('wilds')">附属野地</a>
       </div>
       <div class="old-line">【世界聊天】<a href="javascript:;" @click="ezfy.go('chat')">[进入]</a></div>

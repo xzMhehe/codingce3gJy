@@ -13,8 +13,8 @@
             训练消耗人口（恢复中）：{{ ezfy.popRecover }}
           </div>
           <div class="old-line" v-for="t in ezfy.trainCfgs" :key="'tt' + t.id">
-            <!-- ★ 2026-09-28 军队列表只留名称和类型，属性/消耗/前提都进[训练]详情页看 -->
-            <a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a>({{ ezfy.troopTypeName(t.type) }})
+            <!-- ★ 2026-10-22 训练页兵种行去掉「(陆军/海军/空军)」类型，改为「兵种名 : 现有数量 [训练]」 -->
+            <a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a> : {{ ezfy.troopCount(t.id) }}
             <a href="javascript:;" @click="ezfy.openTrainPre(t, 'troop')">[训练]</a><br/>
           </div>
           <div class="panel-title">训练队列({{ ezfy.queues.length }})</div>
