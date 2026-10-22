@@ -2193,6 +2193,7 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 	}
 	// ★ 2026-10-13 采集宝物播报防刷屏：本轮批量结算（多支采集队到点）掉落的宝物
 	//   攒进 lootBatch，循环结束统一 flush 成一条合并播报（见 ezfyLootBatch）。
+	// ★ 2026-10-22 每支队伍只攒「最近一期」的宝物，期数累加到 periods（播报注明共结算N期）。
 	var lootBatch *ezfyLootBatch
 	for i := range orders {
 		order := &orders[i]
@@ -2604,9 +2605,17 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 //	批量入口（processOrders 轮询 / 一键收获）一次结算多支部队时，把掉落的宝物名攒进
 //	本批次，循环结束统一 flush 成**一条**合并播报；单条结算（停止采集/召回）不传
 //	批次，保持原样立即播报。
+//
+// ★ 2026-10-22 用户反馈「播报的是总的，改成播报按期，不然太多了」：
+//
+//	原来一次离线补算最多 24 期，一条播报就把 24 期的宝物全列出来（实测 12 件以上，
+//	一条就占满频道）。现在 loot 里**只收「最近一期」掉的宝物**，periods 记录本次
+//	实际结算了多少期，flush 时在末尾注明「本次共结算N期」——
+//	条数不变（每人每轮结算仍 1 条），单条内容却只有 1~2 件。
 type ezfyLootBatch struct {
-	name string   // 玩家昵称（首次掉落时取一次，避免每件宝物都查一次）
-	loot []string // 本批次掉落的宝物名
+	name    string   // 玩家昵称（首次掉落时取一次，避免每件宝物都查一次）
+	loot    []string // 本批次「最近一期」掉落的宝物名
+	periods int      // 本批次累计结算的采集期数（>1 时播报注明）
 }
 
 // add 记录一件掉落的宝物。
@@ -2617,11 +2626,24 @@ func (b *ezfyLootBatch) add(loot string) {
 	b.loot = append(b.loot, loot)
 }
 
+// ezfyLootPeriodSuffix 采集宝物播报的「期数」后缀。
+//
+// ★ 2026-10-22 播报只列最近一期，补算多期时必须说明白，否则玩家会以为少给了：
+// 只结算 1 期不写后缀，多期写成「（本次共结算N期）」。
+func ezfyLootPeriodSuffix(periods int64) string {
+	if periods <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("（共结算%d期）", periods)
+}
+
 // ezfyLootBatchFlush 结算批次结束：有掉落则发一条合并播报（无掉落直接返回）。
 //
 // ★ 2026-10-13 用户反馈「相同宝物按数量展示，不然播报太长」：
 //
 //	同种宝物聚合统计后拼接，形如「红宝石戒指×3」（全部宝物都带 ×N，顺序按本批首次掉落）。
+//
+// ★ 2026-10-22 只播最近一期 + 注明结算期数（见 ezfyLootBatch 注释）。
 func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 	if b == nil || len(b.loot) == 0 {
 		return
@@ -2641,8 +2663,8 @@ func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 	for _, n := range order {
 		parts = append(parts, fmt.Sprintf("%s×%d", n, cnt[n]))
 	}
-	h.ezfySysChat("恭喜玩家 %s 采集收获宝物 %d 件: %s",
-		b.name, len(b.loot), strings.Join(parts, "、"))
+	h.ezfySysChat("恭喜玩家 %s 采集收获宝物 %d 件: %s%s",
+		b.name, len(b.loot), strings.Join(parts, "、"), ezfyLootPeriodSuffix(int64(b.periods)))
 }
 
 // settleDispatch 常驻采集结算(每满一个采集周期一期)
@@ -2749,37 +2771,53 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	//   装不下就不再给，并且**停止采集**（原地待命，与 [停止采集] 同语义），战报里给一句简约提示。
 	treasureMax := ezfyTreasureMax()
 	left := h.envTreasureLeft(env, uid)
-	treasureNames := []string{}
+	treasureNames := []string{} // 本次结算的**全部**宝物（只写战报，不用于世界播报）
+	// ★ 2026-10-22 用户规则「播报的是总的，改成播报按期，不然太多了」：
+	//   世界频道**只播最近一期**掉的宝物（1~2 件），补算多期时末尾注明「本次共结算N期」；
+	//   原来一条播报会把 24 期的明细全堆出来（实测 12 件以上，一条占满频道）。
+	//   战报里仍然列全部（玩家要能核对）。
+	lastLoot := []string{}
 	want := 0
 	for i := int64(0); i < periods; i++ {
-		want++
+		n := 1
 		if rand.Intn(100) < ezfyTreasureExtraPct {
-			want++
+			n++ // 每期另有 20% 概率多 1 件
+		}
+		want += n
+		// 按期生成，顺便记下「最近一期」的掉落（宝物满导致后面几期没掉时，
+		// lastLoot 停在最后一个真正有掉落的期，播报不会变成空）。
+		cur := make([]string, 0, n)
+		for k := 0; k < n && len(treasureNames) < left; k++ {
+			eq := h.randomTerrainTreasure(terrain)
+			if eq == nil || city == nil {
+				continue // 平原/沿海平原无珠宝
+			}
+			h.envAddEquip(env, city, eq)
+			treasureNames = append(treasureNames, eq.Name)
+			cur = append(cur, eq.Name)
+		}
+		if len(cur) > 0 {
+			lastLoot = cur
 		}
 	}
 	treasureFull := left <= 0 || want > left
-	for k := 0; k < want && len(treasureNames) < left; k++ {
-		eq := h.randomTerrainTreasure(terrain)
-		if eq == nil || city == nil {
-			continue // 平原/沿海平原无珠宝
-		}
-		h.envAddEquip(env, city, eq)
-		treasureNames = append(treasureNames, eq.Name)
-	}
 	if len(treasureNames) > 0 {
 		desc += fmt.Sprintf("获得宝物(已直接放入宝物): %s\n", strings.Join(treasureNames, ", "))
 		// ★ 2026-10-13 采集宝物播报防刷屏：批量结算（一键收获/轮询）传入 lootBatch 时，
-		//   宝物并入批次由调用方合并成**一条**播报；单条结算（停止采集/召回）仍逐件立即播报。
+		//   宝物并入批次由调用方合并成**一条**播报；单条结算（停止采集/召回）立即播报。
+		// ★ 2026-10-22 并入批次的只有「最近一期」的 lastLoot，并累计结算期数。
 		if len(lootBatch) > 0 && lootBatch[0] != nil {
 			if lootBatch[0].name == "" {
 				lootBatch[0].name = h.ezfyProfileName(uid)
 			}
-			for _, tn := range treasureNames {
+			lootBatch[0].periods += int(periods)
+			for _, tn := range lastLoot {
 				lootBatch[0].add(tn)
 			}
-		} else {
-			h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物: %s",
-				h.ezfyProfileName(uid), level, wl.X, wl.Y, strings.Join(treasureNames, ", "))
+		} else if len(lastLoot) > 0 {
+			h.ezfySysChat("恭喜玩家 %s 采集收获宝物 %d 件: %s%s",
+				h.ezfyProfileName(uid), len(lastLoot), strings.Join(lastLoot, "、"),
+				ezfyLootPeriodSuffix(periods))
 		}
 	} else if !treasureFull {
 		desc += "本期无宝物(该地形不出珠宝)。\n"

@@ -280,7 +280,7 @@
                         <span class="gray">{{ p.slot }} · {{ p.level }}级 · 商城在售</span>
                       </div>
                       <div class="sc-b">装备加成：<b class="green">{{ ezfy.equipAttrText(p) || '（这件没有额外属性加成）' }}</b></div>
-                      <div class="sc-b gray" v-if="ezfy.setOf(p.set_id)">所属套装：{{ ezfy.setOf(p.set_id).name }}（点套装名看套装加成）</div>
+                      <div class="sc-b gray" v-if="ezfy.setOf(p.set_id)">所属套装：{{ ezfy.setOf(p.set_id).name }}</div>
                       <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
                     </template>
                     <!-- ② 点「套装名」→ 只看套装加成 -->

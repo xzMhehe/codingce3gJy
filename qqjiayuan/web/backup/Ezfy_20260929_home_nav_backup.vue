@@ -2770,7 +2770,7 @@
                         <span class="gray">{{ p.slot }} · {{ p.level }}级 · 商城在售</span>
                       </div>
                       <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(p) || '（这件没有额外属性加成）' }}</b></div>
-                      <div class="sc-b gray" v-if="setOf(p.set_id)">所属套装：{{ setOf(p.set_id).name }}（点套装名看套装加成）</div>
+                      <div class="sc-b gray" v-if="setOf(p.set_id)">所属套装：{{ setOf(p.set_id).name }}</div>
                       <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
                     </template>
                     <!-- ② 点「套装名」→ 只看套装加成 -->
@@ -3531,7 +3531,7 @@
                       <span class="gray">{{ e.slot || e.type }} · {{ e.level }}级</span>
                     </div>
                     <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
-                    <div class="sc-b gray" v-if="setOf(e.set_id)">所属套装：{{ setOf(e.set_id).name }}（点套装名看套装加成）</div>
+                    <div class="sc-b gray" v-if="setOf(e.set_id)">所属套装：{{ setOf(e.set_id).name }}</div>
                     <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
                   </template>
                   <!-- ② 点「套装名」→ 只看套装加成 -->
@@ -3625,7 +3625,7 @@
                       <span class="gray">{{ e.slot || e.type }} · {{ e.level }}级</span>
                     </div>
                     <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
-                    <div class="sc-b gray" v-if="setOf(e.set_id)">所属套装：{{ setOf(e.set_id).name }}（点套装名看套装加成）</div>
+                    <div class="sc-b gray" v-if="setOf(e.set_id)">所属套装：{{ setOf(e.set_id).name }}</div>
                     <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
                   </template>
                   <template v-else-if="setOf(e.set_id)">
@@ -3919,7 +3919,7 @@
                       <span class="gray">{{ g.first.slot || g.first.type }} · 已穿戴</span>
                     </div>
                     <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(g.first) || '（这件没有额外属性加成）' }}</b></div>
-                    <div class="sc-b gray" v-if="setOf(g.first.set_id)">所属套装：{{ setOf(g.first.set_id).name }}（点套装名看套装加成）</div>
+                    <div class="sc-b gray" v-if="setOf(g.first.set_id)">所属套装：{{ setOf(g.first.set_id).name }}</div>
                     <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
                   </template>
                   <!-- ② 点「套装名」→ 只看套装加成 -->
@@ -4004,7 +4004,7 @@
                       <span class="gray">{{ g.first.slot || g.first.type }} · {{ g.first.level }}级 · 背包 {{ g.count }} 件</span>
                     </div>
                     <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(g.first) || '（这件没有额外属性加成）' }}</b></div>
-                    <div class="sc-b gray" v-if="setOf(g.first.set_id)">所属套装：{{ setOf(g.first.set_id).name }}（点套装名看套装加成）</div>
+                    <div class="sc-b gray" v-if="setOf(g.first.set_id)">所属套装：{{ setOf(g.first.set_id).name }}</div>
                     <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
                   </template>
                   <!-- ② 点「套装名」→ 只看套装加成 -->
