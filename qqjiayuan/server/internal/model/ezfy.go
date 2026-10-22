@@ -581,10 +581,11 @@ type EzfyCfgLimit struct {
 	//   0 / 未配置无意义 → 读取端回落默认 100。
 	PopOverCapDecayPct int `gorm:"default:100;comment:超限人口每5分钟回落百分比（按超出量，默认100）" json:"pop_over_cap_decay_pct"`
 
-	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」：
-	//   召集消耗粮食 + 召集获得人口，默认各 10 万。0 无意义 → 回落默认（seed 走 addLimitCol）。
+	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」。
+	// ★ 2026-10-22 用户规则：召集获得人口不再固定，改为「当前民居上限 × N%」，默认 10%。
+	//   召集消耗粮食仍为固定值。两者 0 无意义 → 回落默认（seed 走 addLimitCol）。
 	ConveneFoodCost int `gorm:"comment:召集消耗粮食" json:"convene_food_cost"`
-	ConvenePopGain  int `gorm:"comment:召集获得人口" json:"convene_pop_gain"`
+	ConvenePopPct   int `gorm:"comment:召集人口占当前民居上限的百分比（默认10，可超过100）" json:"convene_pop_pct"`
 	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 	//   全局硬性人口上限（0 = 不限/不额外封顶；>0 时召集后人口不得超过它）。
 	//   ⚠️ 0 是有意义的（= 不限），不能带 gorm:"default:x" 标签，seed 走 addLimitCol 且别用 <=0 回填覆盖正向值。

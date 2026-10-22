@@ -227,9 +227,10 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = 24 WHERE move_cool_h IS NULL")
 		// ★ 背包上限默认值当天由 1000 改 5000：把「仍停在旧默认 1000」的行一次性提升（见函数注释）。
 		ezfyBumpBagItemMaxDefault(db)
-		// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
+		// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：粮食默认 10 万
 		addLimitCol("convene_food_cost", 100000)
-		addLimitCol("convene_pop_gain", 100000)
+		// ★ 2026-10-22 召集人口改为「当前民居上限的 N%」，默认 10%（不再使用固定的 convene_pop_gain）
+		addLimitCol("convene_pop_pct", 10)
 		// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 		//   全局硬性人口上限，默认 0 = 不限。addLimitCol 只在 NULL/<=0 时回填 0，
 		//   不会覆盖管理端配的正向值（配 0 仍表示不限）。

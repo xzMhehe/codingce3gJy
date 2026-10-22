@@ -169,7 +169,7 @@ func TestMallCatAndPagerLayout(t *testing.T) {
 //
 // ★★ 2026-10-09 用户报「人口 46 万时再召集却不行了，应该仍可以召集、只不过是召集到上限为止」：
 //
-//	线上 `convene_pop_max` = 50 万、`convene_pop_gain` = 5 万 → 原判定
+//	线上 `convene_pop_max` = 50 万、单次召集约 5 万 → 原判定
 //	`city.Pop + popGain > popCap` 会把「加完会超上限」整单拒绝，
 //	于是人口 45 万以上的 400 座城**一次也召集不了**，明明还差几十万才满。
 //
@@ -200,6 +200,41 @@ func TestConveneClampToCap(t *testing.T) {
 	// 4) 防回退：不能再引用已删除的「有效上限」硬夹逻辑
 	if strings.Contains(body, "ezfyEffPopCap") {
 		t.Fatal("Convene 仍引用 ezfyEffPopCap（民居软上限会错误地挡住召集）")
+	}
+}
+
+// TestConvenePopGainByHouseCap 召集人口按「当前民居上限 × 配置百分比」计算（默认 10%）。
+//
+// ★ 2026-10-22 用户规则：「[召集] 改成当前民居上限的 10%，默认；二战系统配置可配默认 10%，
+// 原来是写固定的（默认 1 万）这个配置去掉」。
+func TestConvenePopGainByHouseCap(t *testing.T) {
+	for _, c := range []struct {
+		popMax int64
+		pct    int64
+		want   int64
+	}{
+		{0, 10, 1},        // 异常/无民居：至少 1，避免召集 0 收益
+		{100, 10, 10},     // 1 级民居
+		{47200, 10, 4720}, // 线上示例：4.72 万 × 10%
+		{180000, 10, 18000},
+		{47200, 150, 70800}, // 允许超过 100%：150% = 1.5 倍民居上限
+		{10000, 250, 25000}, // 250% = 2.5 倍民居上限
+		{333, 10, 33},       // 向下取整
+	} {
+		if got := ezfyConvenePopGainWithPct(c.popMax, c.pct); got != c.want {
+			t.Fatalf("pop_max=%d pct=%d%% 召集人口=%d，期望 %d", c.popMax, c.pct, got, c.want)
+		}
+	}
+	// 默认配置（10%）走 ezfyConvenePopGainOf 的完整路径
+	if got := ezfyConvenePopGainOf(47200); got != 4720 {
+		t.Fatalf("默认配置下 pop_max=47200 召集人口=%d，期望 4720", got)
+	}
+	body := ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) Convene(")
+	if !strings.Contains(body, "popGain := ezfyConvenePopGainOf(city.PopMax)") {
+		t.Fatal("Convene 未按当前民居上限计算召集人口")
+	}
+	if strings.Contains(body, "ezfyConvenePopGainCfg") {
+		t.Fatal("Convene 仍在引用已删除的固定召集人数配置")
 	}
 }
 

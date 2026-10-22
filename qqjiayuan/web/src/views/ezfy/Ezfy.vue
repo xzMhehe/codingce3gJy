@@ -597,9 +597,9 @@ export default {
       // ★ 2026-09-26 民居容量限制 / 召集人口灵活配置（/view 下发，默认都开）
       housePopLimitOn: true,
       conveneFlexibleOn: true,
-      // ★ 2026-09-26 召集消耗粮食 / 召集获得人口（/view 下发，默认各 10 万；原来写死）
+      // ★ 2026-09-26 召集消耗粮食 / 召集人口比例（/view 下发，默认 10 万粮食 / 10%；原来写死固定人口）
       conveneFoodCost: 100000,
-      convenePopGain: 100000,
+      convenePopPct: 10,
       // ★ 2026-09-26 全局硬性人口上限（/view 下发，0 = 不限），超过禁止召集
       convenePopMax: 0,
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
@@ -1174,6 +1174,14 @@ export default {
     houseSoftCapActive () {
       const pm = (this.city && this.city.pop_max) || 0
       return this.housePopLimitOn && !this.conveneFlexibleOn && pm > 0
+    },
+    // ★ 2026-10-22 召集人口 = 当前民居上限 × 后台配置百分比（默认 10%）。
+    //   与后端 ezfyConvenePopGainOf 同口径：向下取整，至少 1。
+    convenePopGain () {
+      const pm = (this.city && this.city.pop_max) || 0
+      const pct = this.convenePopPct || 0
+      const gain = Math.floor(pm * pct / 100)
+      return gain > 0 ? gain : 1
     },
     // 当前人口是否已超过民居软上限（用于展示「超出部分回落中」）。
     popOverHouseCap () {
@@ -3021,8 +3029,9 @@ export default {
       this.conveneFlexibleOn = d.convene_flexible_on === undefined || d.convene_flexible_on === null
         ? true : !!Number(d.convene_flexible_on)
       // ★ 2026-09-26 召集消耗/收益（后端保证 >= 1，兜底默认 10 万）
+      //   ★ 2026-10-22 收益改为「当前民居上限的 N%」，默认 10%
       this.conveneFoodCost = Number(d.convene_food_cost) || 100000
-      this.convenePopGain = Number(d.convene_pop_gain) || 100000
+      this.convenePopPct = Math.min(1000000000, Math.max(1, Number(d.convene_pop_pct) || 10))
       // ★ 2026-09-26 全局硬性人口上限（0 = 不限），超过禁止召集
       this.convenePopMax = Number(d.convene_pop_max) || 0
       // ★ 2026-10-17 训练一键加速开关（1 开 / 0 关，默认开）：训练页据此展示/隐藏两个一键加速按钮

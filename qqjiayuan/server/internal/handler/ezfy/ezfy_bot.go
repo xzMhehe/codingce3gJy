@@ -732,9 +732,9 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 
 	// 1) 人口：空闲人口低于人口上限的 40% → 召集
 	//
-	// ★ 2026-10-17 实测修正：召集一次固定 20 万粮、给 5 万人口，但会被**民居人口上限**截断。
-	//   1 级民居上限只有 100 → 花 20 万粮只换 100 人口，极亏。
-	//   所以要求民居先升到 2 级（pop_max ≥ 300）才召集；否则跳过，让建筑步骤继续升民居。
+	// ★ 2026-10-17 实测修正：召集会被**民居人口上限**影响（单次量现在 = 民居上限 × 10%，
+	//   默认 10%，见 ezfyConvenePopGainOf）。民居等级太低时收益很小，所以要求民居先升到
+	//   2 级（pop_max ≥ 300）才召集；否则跳过，让建筑步骤继续升民居。
 	if city.PopMax >= 300 && int64(city.Pop) < int64(city.PopMax)*2/5 {
 		cost := ezfyConveneFoodCostCfg()
 		if city.Food >= cost {

@@ -32,8 +32,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		WildItemCooldownH: ezfyWildItemCooldownDef,
 		// ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭冷却**，同样不参与 <=0 兜底）
 		MoveCoolH: ezfyMoveCoolDef,
-		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
-		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
+		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
+		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
@@ -115,12 +115,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.TreasureMax <= 0 {
 		lim.TreasureMax = ezfyTreasureMaxDef
 	}
-	// ★ 2026-09-26 召集消耗粮食 / 获得人口兜底（0 无意义），默认各 10 万
+	// ★ 2026-09-26 召集消耗粮食 / 召集人口百分比兜底（0 无意义），默认 10 万 / 10%
 	if lim.ConveneFoodCost <= 0 {
 		lim.ConveneFoodCost = ezfyConveneFoodCostDef
 	}
-	if lim.ConvenePopGain <= 0 {
-		lim.ConvenePopGain = ezfyConvenePopGainDef
+	if lim.ConvenePopPct < 1 || lim.ConvenePopPct > 1000000000 {
+		lim.ConvenePopPct = ezfyConvenePopPctDef
 	}
 	// ★ 集结令上限兜底：老行没这列时可能是 0，回落到默认 99（0 无意义 = 禁用道具）
 	if lim.GatherMaxPerOrder <= 0 {
@@ -380,9 +380,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0/1 开关）
 		HousePopLimitOn   *int `json:"house_pop_limit_on"`
 		ConveneFlexibleOn *int `json:"convene_flexible_on"`
-		// ★ 2026-09-26：召集消耗粮食 / 召集获得人口（原来写死 10 万）
+		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（原来写死 10 万）
 		ConveneFoodCost *int `json:"convene_food_cost"`
-		ConvenePopGain  *int `json:"convene_pop_gain"`
+		ConvenePopPct   *int `json:"convene_pop_pct"`
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，可配置为 0 关闭限制）
 		ConvenePopMax *int `json:"convene_pop_max"`
 		// ★ 2026-10-13 空闲人口每小时恢复量（默认 1 万；0 → 读取端回落默认）
@@ -453,8 +453,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WildItemCooldownH: ezfyWildItemCooldownDef,
 		// ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭冷却**，同样不参与 <=0 兜底）
 		MoveCoolH: ezfyMoveCoolDef,
-		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
-		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
+		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
+		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
@@ -632,8 +632,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		lim.MoveCoolH = *in.MoveCoolH
 	}
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：
-	//   两个值 0 都无意义（召集不要钱 / 召集不给人口），所以只接受 >= 1；
-	//   上界卡在 10 亿（MySQL int 上限约 21 亿），避免误填天文数字把列写溢出。
+	//   粮食 0 无意义（召集不要钱），只接受 >= 1；上界卡在 10 亿（MySQL int 上限约 21 亿）。
+	//   ★ 2026-10-22 人口改为「当前民居上限的百分比」，接受 1~10 亿，允许超过 100%
+	//   （例如 250 = 每次召集获得民居上限的 2.5 倍人口）。
 	if in.ConveneFoodCost != nil {
 		if *in.ConveneFoodCost < 1 || *in.ConveneFoodCost > 1000000000 {
 			resp.ParamError(c, "召集消耗粮食需要在 1~1000000000 之间")
@@ -641,12 +642,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.ConveneFoodCost = *in.ConveneFoodCost
 	}
-	if in.ConvenePopGain != nil {
-		if *in.ConvenePopGain < 1 || *in.ConvenePopGain > 1000000000 {
-			resp.ParamError(c, "召集获得人口需要在 1~1000000000 之间")
+	if in.ConvenePopPct != nil {
+		if *in.ConvenePopPct < 1 || *in.ConvenePopPct > 1000000000 {
+			resp.ParamError(c, "召集人口比例需要在 1~1000000000 之间（当前民居上限的百分比，可超过 100）")
 			return
 		}
-		lim.ConvenePopGain = *in.ConvenePopGain
+		lim.ConvenePopPct = *in.ConvenePopPct
 	}
 	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 	//   全局硬性人口上限。0 = 不限（关闭限制），1~10 亿为有效封顶值。
@@ -708,12 +709,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.TreasureMax <= 0 {
 		lim.TreasureMax = ezfyTreasureMaxDef
 	}
-	// ★ 2026-09-26 召集消耗粮食 / 获得人口兜底：老数据/新列可能是 0，归一化到默认 10 万
+	// ★ 2026-09-26 召集消耗粮食 / 召集人口百分比兜底：老数据/新列可能是 0，归一化到默认 10 万 / 10%
 	if lim.ConveneFoodCost <= 0 {
 		lim.ConveneFoodCost = ezfyConveneFoodCostDef
 	}
-	if lim.ConvenePopGain <= 0 {
-		lim.ConvenePopGain = ezfyConvenePopGainDef
+	if lim.ConvenePopPct < 1 || lim.ConvenePopPct > 1000000000 {
+		lim.ConvenePopPct = ezfyConvenePopPctDef
 	}
 	// ★ 战斗/经济数值（「民心扣除后台可配置，默认 2」+「军官工资合理消耗」）
 	//   这几个值 0 无意义，所以只接受 >= 1。
@@ -1456,9 +1457,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"sys_sell_steel": lim.SysSellSteel,
 		"sys_sell_oil":   lim.SysSellOil,
 		"sys_sell_rare":  lim.SysSellRare,
-		// ★ 2026-09-26：召集消耗粮食 / 召集获得人口，同样用 map 显式写
+		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比，同样用 map 显式写
 		"convene_food_cost": lim.ConveneFoodCost,
-		"convene_pop_gain":  lim.ConvenePopGain,
+		"convene_pop_pct":   lim.ConvenePopPct,
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，必须显式写否则 0 会被 GORM 吞掉）
 		"convene_pop_max": lim.ConvenePopMax,
 		// ★ 2026-10-13 空闲人口每小时恢复量：同样显式写，避免零值被 GORM default 吞掉

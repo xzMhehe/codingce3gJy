@@ -380,8 +380,9 @@
               <el-input-number v-model="form.convene_food_cost" :min="1" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
             </el-form-item>
             <el-form-item>
-              <template slot="label">召集获得人口<el-tooltip placement="top" :content="tips.convene_pop_gain"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model="form.convene_pop_gain" :min="1" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
+              <template slot="label">召集人口比例<el-tooltip placement="top" :content="tips.convene_pop_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.convene_pop_pct" :min="1" :max="1000000000" :step="1" controls-position="right" style="width: 200px" />
+              <span class="unit-hint">% · 当前民居上限</span>
             </el-form-item>
             <!-- ★ 2026-10-13 「训练完人口不再瞬间归还，一点点恢复到当前人口」：恢复速率配置 -->
             <el-form-item>
@@ -496,8 +497,8 @@ export default {
         recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
         // ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（默认都开）
         house_pop_limit_on: 1, convene_flexible_on: 1,
-        // ★ 2026-09-26：召集消耗粮食 / 召集获得人口（原来写死 10 万）
-        convene_food_cost: 100000, convene_pop_gain: 100000,
+        // ★ 2026-09-26：召集消耗粮食 / 召集人口比例（默认 10 万粮食 / 10%；原来写死固定人口）
+        convene_food_cost: 100000, convene_pop_pct: 10,
         // ★ 2026-09-26：召集硬性人口上限（0 = 不限）
         convene_pop_max: 0,
         // ★ 2026-10-13：空闲人口每小时恢复量（训练完人口不再瞬间归还，按此速度慢慢恢复，默认 1 万）
@@ -530,7 +531,7 @@ export default {
         switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'train_mayor_military_on',
           'train_mayor_equip_on', 'food_upkeep_on', 'march_oil_on',
           'house_pop_limit_on', 'convene_flexible_on', 'pop_over_cap_decay_pct',
-          'convene_food_cost', 'convene_pop_gain', 'convene_pop_max', 'pop_recover_per_hour', 'pvp_rank_on'],
+          'convene_food_cost', 'convene_pop_pct', 'convene_pop_max', 'pop_recover_per_hour', 'pvp_rank_on'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
           'recruit_five_star_rate'],
       },
@@ -660,7 +661,9 @@ export default {
           '100 → 5 分钟内回到民居上限；50 → 约 10 分钟；10 → 约 50 分钟。' +
           '只影响「民居容量限制」开且「允许长期超过民居上限」关的城市。',
         convene_food_cost: '玩家点一次「召集」消耗的粮食数，默认 10 万（=100000）',
-        convene_pop_gain: '玩家点一次「召集」获得的人口数，默认 10 万（=100000）',
+        convene_pop_pct: '玩家点一次「召集」获得的人口 = 当前民居上限 × 该百分比，默认 10%。' +
+          '例如民居上限 5 万 → 召集一次 +5000 人口；向下取整，至少 1 人。' +
+          '允许超过 100%：填 250 = 召集一次获得民居上限的 2.5 倍人口。',
         convene_pop_max: '城市人口**硬上限**（自然增长、召集、空闲人口都不会超过）。开关关掉 = 不限。' +
           '民居容量是软上限（超出部分缓慢回落），两者不冲突：本项达到后不能再召集，民居软上限只决定回落到多少',
         pop_recover_per_hour: '训练完的士兵占用的空闲人口不再瞬间归还，而是按此速率每小时慢慢恢复（默认 1 万）。' +
@@ -777,7 +780,7 @@ export default {
             house_pop_limit_on: sw(r.data.house_pop_limit_on),
             convene_flexible_on: sw(r.data.convene_flexible_on),
             convene_food_cost: pos(r.data.convene_food_cost, 100000),
-            convene_pop_gain: pos(r.data.convene_pop_gain, 100000),
+            convene_pop_pct: Math.min(1000000000, Math.max(1, Number(r.data.convene_pop_pct) || 10)),
             convene_pop_max: pos(r.data.convene_pop_max, 0),
             // ★ 2026-10-13 空闲人口每小时恢复量（0 无意义 → 回落默认 1 万）
             pop_recover_per_hour: pos(r.data.pop_recover_per_hour, 10000),

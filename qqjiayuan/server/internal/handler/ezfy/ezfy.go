@@ -28,8 +28,9 @@ const (
 	// ★ 建筑数量上限（军事区/资源区各 36、民居 33）已迁到 ezfy_cfg_limit 表，
 	//   管理端「二战风云 → 建筑上限配置」可维护，见 ezfyLimit()。
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：
-	//   召集消耗粮食 / 获得人口已迁到 ezfy_cfg_limit（convene_food_cost / convene_pop_gain），
-	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainCfg。
+	//   召集消耗粮食 / 获得人口已迁到 ezfy_cfg_limit（convene_food_cost / convene_pop_pct），
+	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainOf。
+	//   ★ 2026-10-22 获得人口不再是固定人数，而是「当前民居上限 × N%」（默认 10%）。
 	// ★ 2026-10-09 「起新城资源各 10 万」（前端文案原来还写着「消耗10万黄金」）→ 5 万改回 10 万。
 	ezfyNewCityResCost = 100000 // 起新城消耗: 粮食/钢铁/石油/稀矿/黄金 各 10 万（★ 2026-09-28 曾为 10 万黄金；2026-10-09 由各 5 万改回各 10 万）
 	ezfyOilDivGrid     = 300    // 出征耗油: 每格耗油 = 总兵力/300
@@ -4548,8 +4549,9 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		"house_pop_limit_on":  ezfyHousePopLimitOn(),
 		"convene_flexible_on": ezfyConveneFlexOn(),
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（前端文案与按钮禁用都要用，勿再写死 10 万）
+		//   ★ 2026-10-22 获得人口改为「当前民居上限 × convene_pop_pct%」，由前端按本城 pop_max 计算。
 		"convene_food_cost": ezfyConveneFoodCostCfg(),
-		"convene_pop_gain":  ezfyConvenePopGainCfg(),
+		"convene_pop_pct":   ezfyConvenePopPctCfg(),
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限），前端提示与按钮禁用都要用
 		"convene_pop_max": ezfyConvenePopMaxCfg(),
 		// ★ 2026-10-17 训练一键加速开关（1 开 / 0 关）：训练页据此决定是否展示「训练一键加速 / 所有城市训练一键加速」
@@ -5149,7 +5151,8 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	//   「军队耗粮 + 军官工资」并回写全部资源，导致玩家一点召集就看到粮食(及其它)一起掉。
 	//   召集是即时操作，只用当前已落库的粮食/人口判断与扣减，只写 food 和 pop 两列即可。
 	foodCost := ezfyConveneFoodCostCfg()
-	popGain := ezfyConvenePopGainCfg()
+	// ★ 2026-10-22 单次召集人口 = 当前民居上限 × 后台配置百分比（默认 10%），不再固定 1 万/10 万。
+	popGain := ezfyConvenePopGainOf(city.PopMax)
 	baseGain := popGain // 未截断前的「单次召集人口」，用于按比例折算粮食
 	// ★★ 2026-10-09 用户报「人口 46 万时再召集被整体拒绝，应该仍能召集、只是加到上限为止」：
 	//   原来两个上限都是「本次召集后会超上限 → **整单拒绝**」→ 人口已经贴近上限的玩家

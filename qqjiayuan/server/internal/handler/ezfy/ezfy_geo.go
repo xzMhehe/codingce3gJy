@@ -1330,11 +1330,12 @@ func ezfyHouseSoftCap(popMax int64) int64 {
 //
 // ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」。
 // 原来写死在 ezfy.go 的 const（ezfyConveneFoodCost / ezfyConvenePopGain），现迁到
-// ezfy_cfg_limit（convene_food_cost / convene_pop_gain），管理端「二战系统配置」可维护。
-// 0 / 未配置无意义 → 回落默认 10 万（seed 用 addLimitCol 只回填 NULL，不覆盖管理端的值）。
+// ezfy_cfg_limit（convene_food_cost / convene_pop_pct），管理端「二战系统配置」可维护。
+// ★ 2026-10-22 用户规则：召集获得人口改为「当前民居上限的 N%」，默认 10%，不再配置固定人数。
+// 0 / 未配置无意义 → 回落默认（seed 用 addLimitCol 只回填 NULL，不覆盖管理端的值）。
 const (
 	ezfyConveneFoodCostDef = 100000 // 召集一次消耗粮食，默认 10 万
-	ezfyConvenePopGainDef  = 100000 // 召集一次获得人口，默认 10 万
+	ezfyConvenePopPctDef   = 10     // 召集一次获得人口 = 当前民居上限的 N%，默认 10%
 	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 	//   全局硬性人口上限，默认 0 = 不限。⚠️ 0 是有效值（不限），不能用 ezfyLimitOr 兜底。
 	ezfyConvenePopMaxDef = 0
@@ -1345,9 +1346,33 @@ func ezfyConveneFoodCostCfg() int64 {
 	return int64(ezfyLimitOr(ezfyCfg.limit.ConveneFoodCost, ezfyConveneFoodCostDef))
 }
 
-// ezfyConvenePopGainCfg 召集一次获得的人口（默认 10 万）
-func ezfyConvenePopGainCfg() int64 {
-	return int64(ezfyLimitOr(ezfyCfg.limit.ConvenePopGain, ezfyConvenePopGainDef))
+// ezfyConvenePopPctCfg 召集一次获得人口占当前民居上限的百分比（默认 10%，下限 1，可超过 100%）
+func ezfyConvenePopPctCfg() int64 {
+	return int64(clampInt(ezfyLimitOr(ezfyCfg.limit.ConvenePopPct, ezfyConvenePopPctDef), 1, 1000000000))
+}
+
+// ezfyConvenePopGainWithPct 按当前民居上限和百分比计算单次召集人口：max(1, popMax × pct / 100)。
+//
+// ★ 2026-10-22 用户规则：「[召集] 改成当前民居上限的 10%，默认；二战系统配置可配默认 10%」。
+// 百分比允许超过 100（例如 250 = 2.5 倍民居上限）。向下取整，至少 1 人；
+// popMax 异常（<= 0）时也只给 1 人，避免召集变成 0 收益。
+func ezfyConvenePopGainWithPct(popMax, pct int64) int64 {
+	if popMax < 0 {
+		popMax = 0
+	}
+	if pct < 0 {
+		pct = 0
+	}
+	gain := popMax * pct / 100
+	if gain < 1 {
+		gain = 1
+	}
+	return gain
+}
+
+// ezfyConvenePopGainOf 按当前民居上限和后台配置的百分比计算单次召集人口。
+func ezfyConvenePopGainOf(popMax int64) int64 {
+	return ezfyConvenePopGainWithPct(popMax, ezfyConvenePopPctCfg())
 }
 
 // ezfyConvenePopMaxCfg 召集硬性人口上限（0 = 不限）。
@@ -2019,8 +2044,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	//   与「默认开」的语义相反（见 ezfyRecruitCostOn / ezfyFoodUpkeepOn / ezfyMarchOilOn）。
 	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
-		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
-		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
+		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时给默认 10 万 / 10%）
+		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）

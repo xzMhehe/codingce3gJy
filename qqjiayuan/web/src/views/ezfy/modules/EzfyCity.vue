@@ -91,7 +91,7 @@
           <template v-else>
             上限: {{ ezfy.convenePopMax > 0 ? ezfy.fmtBig(ezfy.convenePopMax) : '不限' }}<br/>
           </template>
-          <!-- 花费粮食/获得人口都读管理端配置（默认各 10 万），勿再写死 -->
+          <!-- 花费粮食读管理端配置；召集人口 = 当前民居上限 × 配置百分比（默认 10%），勿再写死固定人数 -->
           花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
           <div class="old-line">{{ ezfy.resNames.food }}: {{ ezfy.city.food }}</div>
           <!-- ★ 2026-10-09 「去掉按钮样式」：改成与全站一致的 [链接] 写法
