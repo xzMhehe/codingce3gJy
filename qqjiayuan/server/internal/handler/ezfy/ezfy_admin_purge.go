@@ -154,6 +154,7 @@ var ezfyPurgeGlobalTables = []string{
 	"ezfy_cfg_resource", "ezfy_cfg_rank", "ezfy_cfg_limit", "ezfy_word_filter",
 	// 全局玩法 / 地图
 	"ezfy_act_wild",     // 活动野地（全服共享的配置）
+	"ezfy_act_level",    // 活动目标等级配置（全服共享的配置）
 	"ezfy_activity",     // 节日活动
 	"ezfy_corps_mall",   // 军团商城**配置**（玩家购买流水是 ezfy_corps_mall_log，已清）
 	"ezfy_exchange_tpl", // 交易行挂单模板

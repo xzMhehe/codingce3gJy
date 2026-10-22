@@ -139,8 +139,8 @@ func Run(db *gorm.DB, staticDir string) {
 	// 二战风云：建筑数量上限配置（单行，军事区/资源区各 36）
 	// ★ 2026-09-26 按线上现值对齐：36/36/33/20。
 	if db.Migrator().HasTable("ezfy_cfg_limit") {
-		db.Exec("INSERT INTO ezfy_cfg_limit(id, military_max, resource_max, house_max, factory_max) " +
-			"VALUES(1, 36, 36, 33, 20) ON DUPLICATE KEY UPDATE id = id")
+		db.Exec("INSERT INTO ezfy_cfg_limit(id, military_max, resource_max, house_max, factory_max, build_queue_max) " +
+			"VALUES(1, 36, 36, 33, 20, 5) ON DUPLICATE KEY UPDATE id = id")
 	}
 
 	// 二战风云：游戏ID 首次 = 家园ID（老档案补数据；已有值的不动）
@@ -3235,6 +3235,13 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gold_prod_mult double DEFAULT 1")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
+	// ★ 2026-10-22 每城建造队列基础上限（默认 5）：
+	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
+	//   0 无意义（等于全城不能建造），所以统一回落 5；征募告示的临时层数另存 ezfy_city_effect。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "build_queue_max") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN build_queue_max int DEFAULT 5")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET build_queue_max = 5 WHERE build_queue_max IS NULL OR build_queue_max <= 0")
 	// ★ 2026-10-05 战斗掉落概率可配置
 	//   中级/高级/特殊宝物掉率阈值（默认 18/4/1）+ 活动野地掉宝总概率（默认 85）
 	for _, c := range []struct {

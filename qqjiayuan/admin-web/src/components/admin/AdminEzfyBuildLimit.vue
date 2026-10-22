@@ -32,6 +32,12 @@
               <template slot="label">军工厂数量上限<el-tooltip placement="top" :content="tips.factory_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.factory_max" :min="0" :max="999" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-22 每城建造队列基础上限（默认 5）：军事区/资源区共用，
+                 「征募告示」道具可在基础上再叠加临时队列（最多 10 个，24 小时）。 -->
+            <el-form-item>
+              <template slot="label">建造队列基础上限<el-tooltip placement="top" :content="tips.build_queue_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.build_queue_max" :min="1" :max="999" controls-position="right" style="width:180px" />
+            </el-form-item>
             <el-form-item>
               <template slot="label">首页公告展示条数<el-tooltip placement="top" :content="tips.notice_home_count"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.notice_home_count" :min="0" :max="10" controls-position="right" style="width:180px" />
@@ -460,6 +466,8 @@ export default {
       activeTab: 'build',
       form: {
         military_max: 33, resource_max: 33, house_max: 10, factory_max: 0,
+        // ★ 2026-10-22 每城建造队列基础上限（默认 5）
+        build_queue_max: 5,
         notice_home_count: 1, gather_max_per_order: 50, sell_price_max: 100, mall_buy_max: 999,
         bag_item_max: 5000,
         treasure_max: 5000,
@@ -528,7 +536,7 @@ export default {
       },
       // ★ 2026-10-18 分 tab 保存：每个 tab 所属字段清单，保存时只提交当前分类（后端按字段判空部分更新）
       fieldGroups: {
-        build: ['military_max', 'resource_max', 'house_max', 'factory_max', 'notice_home_count',
+        build: ['military_max', 'resource_max', 'house_max', 'factory_max', 'build_queue_max', 'notice_home_count',
           'gather_max_per_order', 'sell_price_max', 'officer_cap_per_military', 'officer_speed_per_military',
           'mall_buy_max', 'bag_item_max', 'treasure_max', 'recruit_cycle_mode', 'default_continent'],
         troop: ['troop_max', 'wound_expire_days', 'wound_heal_divisor', 'wound_heal_rate', 'heal_all_diamond'],
@@ -556,6 +564,7 @@ export default {
         resource_max: '资源区建筑（农田、炼钢厂、石油基地、稀矿厂）最多可建数量，默认 36',
         house_max: '民居最多可建数量，默认 33',
         factory_max: '军工厂最多可建数量，填 0 = 不限（当前线上值 20）',
+        build_queue_max: '每座城市同时进行的建造/升级数量上限（军事区+资源区共用），默认 5；玩家可用「征募告示」道具临时 +1 个（24 小时，最多叠加 10 个）',
         notice_home_count: '游戏首页公告栏展示的公告条数，填 0 = 首页不展示，默认 1',
         gather_max_per_order: '单次出征最多可使用几个集结令，默认 99',
         sell_price_max: '玩家挂单出售资源的单价上限（黄金/单位）：1:100 = 卖 1 粮食价格不能超过 100，数量随意；默认 100，0 = 回落默认',
@@ -709,6 +718,8 @@ export default {
             resource_max: r.data.resource_max,
             house_max: r.data.house_max,
             factory_max: r.data.factory_max,
+            // ★ 2026-10-22 建造队列基础上限（0 无意义 → 回落 5）
+            build_queue_max: pos(r.data.build_queue_max, 5),
             notice_home_count: r.data.notice_home_count === undefined || r.data.notice_home_count === null
               ? 1 : r.data.notice_home_count,
             gather_max_per_order: pos(r.data.gather_max_per_order, 50),

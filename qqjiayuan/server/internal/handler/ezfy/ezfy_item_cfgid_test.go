@@ -50,6 +50,11 @@ func TestNoHardcodedItemCfgID(t *testing.T) {
 				if strings.HasSuffix(name, "Def") {
 					continue // 默认值常量
 				}
+				// ★ 2026-10-22 补：`ezfyAttachItem = 1` 是**邮件附件类型枚举**（1=道具），
+				//   不是道具 cfg_id —— 误报（该常量在 ezfy_mail_attach.go，与 cfg_id 无关）。
+				if strings.HasSuffix(name, "AttachItem") {
+					continue
+				}
 				t.Fatalf("%s:%d 硬编码了道具 cfg_id（%s = %s）——\n"+
 					"道具 cfg_id 已统一迁到 1001+，请改为按名字解析（ezfyCfg.itemIDByName）：\n%s",
 					f, i+1, name, m[2], line)

@@ -374,6 +374,12 @@ func (h *EzfyHandler) playerOwnsActWildGeneral(uid uint, x, y int) bool {
 // 陆地：装甲车 50% / 轻型坦克 30% / 重型坦克 20%
 // 海洋：驱逐舰 40% / 潜艇 30% / 战列舰 20% / 航母 10%
 func ezfyActivityDefender(actType, level, terrain int) []ezfyUnitGroup {
+	// ★ 2026-10-22 管理端「活动目标配置」：配了守军就优先用配置（范围随机），空则走内置默认。
+	if cfg := ezfyActLevelCfg(actType, level); cfg != nil && strings.TrimSpace(cfg.Troops) != "" {
+		if groups := parseActWildTroops(cfg.Troops); len(groups) > 0 {
+			return groups
+		}
+	}
 	var base int64
 	switch actType {
 	case ezfyActKou:
@@ -690,10 +696,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	prestigeGain := 0
 	if win {
 		// 奖励：资源（档位基础值 × 类型倍数）+ 黄金（元宝）+ 必定掉宝 + 大量声望
-		// ★ 2026-09-29 活动野地配置：奖励可配，缺省回退默认
-		res := ezfyActRewardBase(actType, level)
-		gold := ezfyActGoldReward(actType, level)
-		prestigeGain = ezfyActPrestigeReward(actType, level)
+		// ★ 2026-10-22 优先用「活动目标配置」里按类型+等级维护的奖励；缺省回退内置默认。
+		res, gold, actPrestige := ezfyActRewardOf(actType, level)
+		prestigeGain = actPrestige
+		// ★ 2026-09-29 活动野地「按坐标配置」：奖励可配，优先于等级配置。
 		if aw != nil && aw.Enabled == 1 {
 			if aw.Res > 0 {
 				res = aw.Res
@@ -718,15 +724,26 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		h.saveCityRes(city)
 
 		report += fmt.Sprintf("\n战利品: 粮%d 钢%d 油%d 稀矿%d 黄金%d", res, res, res, res, gold)
-		// ★ 2026-10-09 「掉落 都走手动配置的」：活动野地**不再走旧的随机掉宝**
+		// ★ 2026-10-09 「掉落 都走手动配置的」：活动目标**不再走旧的随机掉宝**
 		//   （原 `wildlandLoot` + 全局概率 drop_t2/t3/t4 + drop_act_pct，已废弃），
-		//   只按下面 `aw.Treasures`（活动野地配置里手动配的必掉宝物）发放。
-		// ★ 2026-09-29 必掉宝物多行配置 [[cfg_id,数量]]：胜利后按配置掉落多件（增强宝，保证进背包）
+		//   只按活动中手动配置的必掉宝物发放：
+		//   · 活动野地坐标级配置 `aw.Treasures` 优先（个别坐标特调）；
+		//   · 否则走「活动目标配置」按类型+等级维护的宝物（2026-10-22）。
+		treasuresRaw := ""
 		if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Treasures) != "" {
+			treasuresRaw = aw.Treasures
+		} else if cfg := ezfyActLevelCfg(actType, level); cfg != nil {
+			treasuresRaw = cfg.Treasures
+		}
+		if strings.TrimSpace(treasuresRaw) != "" {
 			// ★ 2026-10-11 宝物库存上限（默认 5000，二战系统配置可配）：装不下的不入包，战报给简约提示。
 			left := h.ezfyTreasureLeft(city.UserID)
-			for _, tr := range parseActWildTreasures(aw.Treasures) {
+			for _, tr := range parseActWildTreasures(treasuresRaw) {
 				if e := ezfyCfg.equipment(tr[0]); e != nil {
+					// 套装件只能开宝箱获得（与野地类型掉落同口径），配置误选时跳过。
+					if e.SetId > 0 {
+						continue
+					}
 					give := tr[1]
 					if give > left {
 						give = left
@@ -743,6 +760,33 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 						report += fmt.Sprintf("\n宝物已达上限(%d), %s×%d 未能入包", ezfyTreasureMax(), e.Name, tr[1]-give)
 					}
 				}
+			}
+		}
+		// ★ 2026-10-22 「活动目标配置 → 掉落道具」：逐条按概率掉落商城道具，
+		//   受背包单件上限约束；掉到后写战报并全服播报（与野地道具掉落同口径）。
+		if cfg := ezfyActLevelCfg(actType, level); cfg != nil && strings.TrimSpace(cfg.DropItems) != "" {
+			lootNames := []string{}
+			bagMax := ezfyBagItemMax()
+			for _, d := range parseWildlandItemDrops(cfg.DropItems) {
+				if rand.Intn(100) >= d[2] {
+					continue
+				}
+				it := ezfyCfg.item(d[0])
+				if it == nil {
+					continue
+				}
+				if have := h.itemCount(uid, d[0]); have+d[1] > bagMax {
+					report += fmt.Sprintf("\n背包已满, %s×%d 未能入包", it.Name, d[1])
+					continue
+				}
+				h.addItem(uid, d[0], d[1])
+				report += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
+				lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
+			}
+			if len(lootNames) > 0 {
+				h.ezfySysChat("恭喜玩家 %s 在 %s(%d,%d) 缴获: %s",
+					h.ezfyProfileName(uid), label, order.TargetX, order.TargetY,
+					strings.Join(lootNames, "、"))
 			}
 		}
 		h.addPrestige(uid, prestigeGain)
@@ -854,22 +898,54 @@ func ezfyActPrestigeReward(actType, level int) int {
 	return p
 }
 
+// ezfyActRewardOf 活动目标胜利奖励：优先取「活动目标配置」按类型+等级维护的值，
+// 未配置（行不存在或值为 0）回退代码内置默认。
+//
+// ★ 2026-10-22 用户需求：三类活动目标的资源 / 黄金 / 声望要能在
+// 二战管理 → 地图管理 → 活动目标配置 里维护。
+func ezfyActRewardOf(actType, level int) (res int64, gold int64, prestige int) {
+	res = ezfyActRewardBase(actType, level)
+	gold = ezfyActGoldReward(actType, level)
+	prestige = ezfyActPrestigeReward(actType, level)
+	if cfg := ezfyActLevelCfg(actType, level); cfg != nil {
+		if cfg.Res > 0 {
+			res = cfg.Res
+		}
+		if cfg.Gold > 0 {
+			gold = cfg.Gold
+		}
+		if cfg.Prestige > 0 {
+			prestige = cfg.Prestige
+		}
+	}
+	return
+}
+
 // ezfyActWildlandView 活动目标详情（守军预览 + 奖励预览 + 说明）
 func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin.H {
 	level := ezfyActivityLevel(x, y)
 	terrain := ezfyTerrain(x, y)
-	// ★ 2026-09-29 活动野地配置：等级/守军/奖励 优先用 ezfy_act_wild（enabled=1）
+	// ★ 2026-09-29 活动野地配置：等级优先用 ezfy_act_wild（enabled=1）
 	aw := ezfyActWildAt(x, y)
 	if aw != nil && aw.Enabled == 1 && aw.Level >= 1 && aw.Level <= 3 {
 		level = aw.Level
 	}
+	// ★ 2026-10-22 活动目标等级配置（三类通用）
+	actCfg := ezfyActLevelCfg(actType, level)
 	defs := ezfyActivityDefender(actType, level, terrain)
 	troops := []gin.H{}
 	var total int64
 	// ★ 2026-10-14 配置守军改为范围格式：预览按 [[兵种id,最小,最大]] 展示 min~max
 	//   （不再随机取值，保证玩家看到的范围 = 实际打的随机区间；act_total 按「最大守军」算）
+	// ★ 2026-10-22 先看坐标级配置（活动野地特调），再看等级配置，最后才用内置默认。
+	troopRaw := ""
 	if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Troops) != "" {
-		if rgs := parseActWildTroopRanges(aw.Troops); rgs != nil {
+		troopRaw = aw.Troops
+	} else if actCfg != nil {
+		troopRaw = actCfg.Troops
+	}
+	if strings.TrimSpace(troopRaw) != "" {
+		if rgs := parseActWildTroopRanges(troopRaw); rgs != nil {
 			for _, rg := range rgs {
 				tid, lo, hi := int(rg[0]), rg[1], rg[2]
 				total += hi
@@ -889,9 +965,7 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 			})
 		}
 	}
-	res := ezfyActRewardBase(actType, level)
-	gold := ezfyActGoldReward(actType, level)
-	prestige := ezfyActPrestigeReward(actType, level)
+	res, gold, prestige := ezfyActRewardOf(actType, level)
 	if aw != nil && aw.Enabled == 1 {
 		if aw.Res > 0 {
 			res = aw.Res
@@ -906,6 +980,10 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 	jewelName := ""
 	if j := h.randomJewel(terrain); j != nil {
 		jewelName = j.Name
+	}
+	actDesc := ezfyActTargetDesc(actType)
+	if actCfg != nil && strings.TrimSpace(actCfg.Des) != "" {
+		actDesc = actCfg.Des
 	}
 	officerName := ""
 	officerKind := 0
@@ -926,7 +1004,7 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		"name":     ezfyActTargetLabel(actType, level),
 		"act_type": actType, "act_level": level,
 		"act_name":  ezfyActTargetName(actType),
-		"act_desc":  ezfyActTargetDesc(actType),
+		"act_desc":  actDesc,
 		"act_total": total,
 		"troops":    troops,
 		"res_min":   res,

@@ -55,7 +55,10 @@
           <div class="old-line">
             已有 {{ ezfy.zoneCount }}/{{ ezfy.zoneCap }}
           </div>
-          <div class="old-line">建造中队列数：{{ ezfy.buildQueueCount }}
+          <div class="old-line">建造中队列数：{{ ezfy.buildQueueCount }}/{{ ezfy.buildQueueLimit }}
+            <span v-if="ezfy.buildQueueActiveBonus > 0" class="green">
+              [征募告示+{{ ezfy.buildQueueActiveBonus }}，剩余{{ ezfy.fmtLeft(Math.floor((ezfy.buildQueueBonusUntil - ezfy.gatherNow) / 1000)) }}]
+            </span>
             <a href="javascript:;" @click="ezfy.openBuildPre(ezfy.cur === 'buildm' ? 'm' : 's')">建造</a>
           </div>
           <!-- 已建建筑: 一行一个 —— 名称 (N级) 升级 一键9级 拆除 -->

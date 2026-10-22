@@ -24,6 +24,7 @@ import (
 // 管理端「系统配置」页：建筑上限 + 各项数值 + 玩法开关，一次全量返回。
 func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
+		BuildQueueMax:     ezfyBuildQueueDefaultMax,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef, BagItemMax: ezfyBagItemMaxDef,
 		TreasureMax: ezfyTreasureMaxDef,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
@@ -116,6 +117,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 宝物库存上限兜底（0 无意义），默认 5000
 	if lim.TreasureMax <= 0 {
 		lim.TreasureMax = ezfyTreasureMaxDef
+	}
+	// ★ 2026-10-22 建造队列基础上限兜底（0 无意义），默认 5
+	if lim.BuildQueueMax <= 0 {
+		lim.BuildQueueMax = ezfyBuildQueueDefaultMax
 	}
 	// ★ 2026-09-26 召集消耗粮食 / 召集人口百分比兜底（0 无意义），默认 10 万 / 10%
 	if lim.ConveneFoodCost <= 0 {
@@ -325,6 +330,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ResourceMax             *int     `json:"resource_max"`
 		HouseMax                *int     `json:"house_max"`
 		FactoryMax              *int     `json:"factory_max"`
+		// ★ 2026-10-22 每城建造队列基础上限（默认 5；征募告示的临时层数另加）
+		BuildQueueMax           *int     `json:"build_queue_max"`
 		NoticeHomeCount         *int     `json:"notice_home_count"`
 		GatherMaxPerOrder       *int     `json:"gather_max_per_order"`
 		SellPriceMax            *int     `json:"sell_price_max"`
@@ -457,6 +464,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
+		BuildQueueMax:     ezfyBuildQueueDefaultMax,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef, BagItemMax: ezfyBagItemMaxDef,
 		TreasureMax: ezfyTreasureMaxDef,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
@@ -574,6 +582,14 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	} else if in.FactoryMax != nil {
 		lim.FactoryMax = v
+	}
+	// ★ 建造队列基础上限：下限恒为 1（0 等于全城不能建造，无意义），上界 999 防呆。
+	if in.BuildQueueMax != nil {
+		if *in.BuildQueueMax < 1 || *in.BuildQueueMax > 999 {
+			resp.ParamError(c, "建造队列上限需要在 1~999 之间")
+			return
+		}
+		lim.BuildQueueMax = *in.BuildQueueMax
 	}
 	if v, ok := check(in.NoticeHomeCount, "首页公告条数"); !ok {
 		return

@@ -188,6 +188,40 @@ type EzfyActWild struct {
 
 func (EzfyActWild) TableName() string { return "ezfy_act_wild" }
 
+// EzfyActLevel 活动目标「等级配置」（地图管理 →「活动目标配置」tab）
+//
+// ★ 2026-10-22 用户需求：活动野地 / 活动寇城 / 特殊城市 三类活动目标，
+// 位置可以先不维护，但**每个等级的兵力、资源、宝物、掉落道具**必须能在管理端维护。
+//
+// 运行时按 (ActType, Level) 取配置：
+//   - Troops 空 → 走代码内置的陆/海守军默认配比；
+//   - Res/Gold/Prestige 为 0 → 走代码内置默认奖励；
+//   - Treasures 空 → 不额外掉落宝物；
+//   - DropItems 空 → 不额外掉落商城道具。
+//
+// 坐标级「活动野地」配置（EzfyActWild）仍然优先于本表，用于个别坐标特调。
+type EzfyActLevel struct {
+	ID      uint `gorm:"primaryKey;comment:主键ID" json:"id"`
+	ActType int  `gorm:"uniqueIndex:uk_act_level;comment:活动类型 1活动野地 2活动寇城 3特殊城市" json:"act_type"`
+	Level   int  `gorm:"uniqueIndex:uk_act_level;comment:活动等级1-3" json:"level"`
+	// Troops 守军配置 JSON [[兵种id,最小,最大],...]（兼容旧格式 [兵种id,数量]），空=用默认守军
+	Troops string `gorm:"type:varchar(1000);comment:守军JSON [[兵种id,min,max],...]" json:"troops"`
+	// Res 每次胜利资源奖励（粮/钢/油/稀矿各加），0=用默认
+	Res int64 `gorm:"default:0;comment:资源奖励，0=用默认" json:"res"`
+	// Gold 黄金（元宝）奖励，0=用默认
+	Gold int64 `gorm:"default:0;comment:黄金奖励，0=用默认" json:"gold"`
+	// Prestige 声望奖励，0=用默认
+	Prestige int `gorm:"default:0;comment:声望奖励，0=用默认" json:"prestige"`
+	// Treasures 必掉宝物 JSON [[装备cfg_id,数量],...]
+	Treasures string `gorm:"type:varchar(500);comment:必掉宝物JSON [[cfg_id,count],...]" json:"treasures"`
+	// DropItems 商城道具掉落 JSON [[道具cfg_id,数量,概率%],...]
+	DropItems string `gorm:"type:varchar(1000);comment:商城道具掉落JSON [[cfg_id,count,pct],...]" json:"drop_items"`
+	Des       string `gorm:"type:varchar(500);comment:说明" json:"des"`
+	UpdatedAt time.Time
+}
+
+func (EzfyActLevel) TableName() string { return "ezfy_act_level" }
+
 // 地图格子标记类型
 const (
 	EzfyMarkNone    = 0 // 无（按哈希）
@@ -356,6 +390,9 @@ type EzfyCfgLimit struct {
 	ResourceMax int `gorm:"default:36;comment:资源区建筑数量上限（type 1）" json:"resource_max"`     // 资源区建筑数量上限（type 1）
 	HouseMax    int `gorm:"default:33;comment:民居数量上限" json:"house_max"`                   // 民居数量上限
 	FactoryMax  int `gorm:"default:20;comment:军工厂数量上限（0 = 不限）" json:"factory_max"`        // 军工厂数量上限（0 = 不限）
+	// ★ 2026-10-22 用户规则「军事区、资源区建造队列默认每个城市最多 5 个，
+	//   二战系统配置可调整上限」：这里是**基础上限**，「征募告示」的临时层数另加。
+	BuildQueueMax int `gorm:"default:5;comment:每城建造队列基础上限" json:"build_queue_max"`
 	// ★ 「首页公告默认只能展示一条，管理端可以配置」→ 首页外露公告条数（默认 1）
 	NoticeHomeCount int `gorm:"default:1;comment:公告家园数量" json:"notice_home_count"`
 	// ★ 「出征集结令上限后台管理系统可维护，最大默认 99」→ 单次出征最多用几个集结令（默认 99）
@@ -1743,7 +1780,7 @@ type EzfyTreasureSign struct {
 
 func (EzfyTreasureSign) TableName() string { return "ezfy_treasure_sign" }
 
-// EzfyCityEffect 城市效果：1增产 2免战
+// EzfyCityEffect 城市效果：1增产 2免战 3恫疑虚喝 4建造队列+Param1层
 type EzfyCityEffect struct {
 	ID         uint  `gorm:"primaryKey;comment:主键ID" json:"id"`
 	CityId     int64 `gorm:"uniqueIndex:uk_city_effect;comment:城市ID" json:"city_id"`

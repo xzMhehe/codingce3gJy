@@ -625,6 +625,12 @@ var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	//   创建军团时自动消耗 1 个（无则提示先到商城购买），不能直接在背包手动使用。
 	{ID: 1043, Name: "军团联络令", ItemType: 32, Param1: 1, PriceDiamond: 10, Stock: -1, Icon: "",
 		Category: "钻石道具", Description: "创建军团需要联络凭证，创建军团时消耗1个"},
+	// ★ 2026-10-22 征募告示（ItemType 33）：
+	//   用户规则：「使用后当前城市多 1 个建造队列，有效期 24 小时；可叠加使用，最多使用 10 个」。
+	//   Param1 固定 1（每次 +1 队列），叠加层数/到期时间存 ezfy_city_effect(effect_type=4)。
+	//   ★ 定价暂按 10 钻石，管理端「道具配置」可随时调整；库存 -1 = 无限。
+	{ID: 1044, Name: "征募告示", ItemType: 33, Param1: 1, PriceDiamond: 10, Stock: -1, Icon: "",
+		Category: "内政道具", Description: "使用后当前城市建造队列+1，持续24小时，可叠加使用，最多10个"},
 }
 
 var ezfyEzfyCfgTaskType = []model.EzfyCfgTaskType{

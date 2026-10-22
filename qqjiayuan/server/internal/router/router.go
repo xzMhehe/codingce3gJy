@@ -1673,6 +1673,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.GET("/ezfy-act-wilds/:id/attacks", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildAttacks)
 						admin.DELETE("/ezfy-act-wilds/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildDelete)
 						admin.POST("/ezfy-act-wilds/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildBatchDelete)
+						// 活动目标等级配置（活动野地 / 活动寇城 / 特殊城市；2026-10-22）
+						admin.GET("/ezfy-act-levels", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActLevelList)
+						admin.POST("/ezfy-act-levels", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActLevelSave)
+						admin.DELETE("/ezfy-act-levels/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActLevelDelete)
 						// 地图格子覆盖（改土地类型 / 设寇城·活动寇城）
 						admin.GET("/ezfy-map-tiles", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTiles)
 						admin.GET("/ezfy-map-tile", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileCell)

@@ -158,11 +158,25 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 	// ★ 第九轮：军事区 / 资源区数量上限分开（线上现值各 36，管理端可维护）
 	mil, res := areaCountsOf(list)
 	lim := ezfyLimit()
+	// ★ 2026-10-22 建造队列：行内 status<>0 的数量 + 基础上限 + 征募告示加成。
+	//   注意 checkBuildingDone 已把到点建筑结算并同步回 list，因此这里不会把已完成算进队列。
+	queueCount := 0
+	for i := range list {
+		if list[i].Status != 0 {
+			queueCount++
+		}
+	}
+	qstate := h.ezfyBuildQueueStateOf(city.ID)
 	data := gin.H{
 		"buildings": views, "pool": pool,
 		"area_count": mil + res, "area_cap": lim.MilitaryMax + lim.ResourceMax,
 		"military_count": mil, "military_cap": lim.MilitaryMax,
 		"resource_count": res, "resource_cap": lim.ResourceMax,
+		"build_queue_count":      queueCount,
+		"build_queue_base":       qstate.Base,
+		"build_queue_max":        qstate.Max,
+		"build_queue_bonus":      qstate.Bonus,
+		"build_queue_bonus_until": qstate.UntilTime,
 	}
 	ezfyPageCacheSet(uid, "buildings", data)
 	resp.OK(c, data)
@@ -2340,8 +2354,8 @@ func ezfyCategoryOf(category string, itemType int, priceDiamond int64) string {
 	// 20 = 信号弹（计谋消耗品）
 	case 20:
 		return "计谋道具"
-	// 31 = 移民法案（人口召集）
-	case 31:
+	// 31 = 移民法案（人口召集）；33 = 征募告示（建造队列加速）
+	case 31, 33:
 		return "内政道具"
 	// 32 = 军团联络令
 	case 32:

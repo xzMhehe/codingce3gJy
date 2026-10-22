@@ -265,6 +265,84 @@
           </div>
         </el-tab-pane>
 
+        <!-- ================= 活动目标等级配置（活动野地 / 活动寇城 / 特殊城市） ================= -->
+        <el-tab-pane label="活动目标配置" name="actcfg">
+          <div class="toolbar">
+            <el-select v-model.number="alType" style="width:150px" @change="alPage = 1; loadActLevels()">
+              <el-option label="全部类型" :value="-1" />
+              <el-option label="活动野地" :value="1" />
+              <el-option label="活动寇城" :value="2" />
+              <el-option label="特殊城市" :value="3" />
+            </el-select>
+            <el-input-number v-model.number="alLevel" :min="0" :max="3" controls-position="right" style="width:130px" />
+            <el-button type="primary" icon="el-icon-search" @click="alPage = 1; loadActLevels()">查询</el-button>
+            <span class="td-sub">等级填 0 = 不限</span>
+            <div class="grow" />
+            <el-button type="success" icon="el-icon-plus" @click="openAlCreate">新增等级配置</el-button>
+          </div>
+
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
+            <template slot="title">
+              维护三类活动目标（活动野地 / 活动寇城 / 特殊城市）每个等级的守军、资源、黄金、声望、必掉宝物、掉落道具。
+              坐标级「活动野地」配置优先于这里；守军留空 = 按内置陆/海默认配比。
+            </template>
+          </el-alert>
+
+          <el-table :data="actLevels" v-loading="loadingAl" stripe border>
+            <el-table-column prop="id" label="ID" width="60" align="center" />
+            <el-table-column label="活动类型" width="110" align="center">
+              <template slot-scope="{row}">
+                <el-tag size="mini" :type="row.act_type === 3 ? 'danger' : (row.act_type === 2 ? 'warning' : 'success')">
+                  {{ row.act_type_name }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="level" label="等级" width="65" align="center" />
+            <el-table-column label="守军配置" min-width="210" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="row.troops" class="td-blue">{{ alTroopText(row.troops) }}</span>
+                <span v-else class="td-sub">默认（陆/海自动配比）</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="奖励" min-width="150">
+              <template slot-scope="{row}">
+                <div v-if="row.res" class="td-mono">资源: {{ fmtN(row.res) }}</div>
+                <div v-else class="td-sub">资源: 默认</div>
+                <div v-if="row.gold" class="td-mono">黄金: {{ fmtN(row.gold) }}</div>
+                <div v-else class="td-sub">黄金: 默认</div>
+                <div v-if="row.prestige" class="td-mono">声望: {{ fmtN(row.prestige) }}</div>
+                <div v-else class="td-sub">声望: 默认</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="必掉宝物" min-width="140" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="row.treasures" class="td-blue">{{ alTreasureText(row.treasures) }}</span>
+                <span v-else class="td-sub">未配置</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="掉落道具" min-width="150" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="row.drop_items" class="td-blue">{{ alDropText(row.drop_items) }}</span>
+                <span v-else class="td-sub">未配置</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="des" label="说明" min-width="180" show-overflow-tooltip />
+            <el-table-column label="操作" width="140" align="center" fixed="right">
+              <template slot-scope="{row}">
+                <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openAlEdit(row)" />
+                <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delAl(row)" />
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="pager-bar">
+            <div class="pager-info">共 <b>{{ alTotal }}</b> 条 · 每页 {{ alSize }} 条</div>
+            <el-pagination v-show="alTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="alTotal" :page-size="alSize"
+                           :current-page="alPage" :page-sizes="[10, 20, 50, 100]"
+                           @current-change="p => { alPage = p; loadActLevels() }"
+                           @size-change="s => { alSize = s; alPage = 1; loadActLevels() }" />
+          </div>
+        </el-tab-pane>
+
         <el-tab-pane label="野地维护" name="wildlands">
           <div class="toolbar">
             <el-input v-model="wildWord" placeholder="城名 / 城池ID / 坐标" clearable style="width:190px"
@@ -800,6 +878,90 @@
       </div>
     </el-dialog>
 
+    <!-- ============ 新增 / 编辑 活动目标等级配置 ============ -->
+    <el-dialog :title="al.id ? ('编辑活动目标配置 · #' + al.id) : '新增活动目标配置'"
+               :visible.sync="alDlg" width="700px" :close-on-click-modal="false">
+      <el-form label-width="110px" size="small">
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="活动类型" required>
+              <el-select v-model.number="al.act_type" style="width:100%">
+                <el-option label="活动野地" :value="1" />
+                <el-option label="活动寇城" :value="2" />
+                <el-option label="特殊城市" :value="3" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="等级" required>
+              <el-input-number v-model.number="al.level" :min="1" :max="3" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="守军配置">
+          <div v-for="(r, i) in alTroops" :key="'alt' + i" class="wild-troop-row">
+            <el-select v-model.number="r.troop_id" filterable placeholder="选择兵种" style="width:280px">
+              <el-option v-for="t in troopCfgs" :key="'altc' + t.id"
+                         :label="t.name + (t.type_name ? '（' + t.type_name + '）' : '')" :value="t.id" />
+            </el-select>
+            <span class="td-sub">最小</span>
+            <el-input-number v-model.number="r.min" :min="1" controls-position="right" style="width:115px" />
+            <span class="td-sub">~最大</span>
+            <el-input-number v-model.number="r.max" :min="1" controls-position="right" style="width:115px" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="alTroops.splice(i, 1)" />
+          </div>
+          <div class="old-line" v-if="!alTroops.length">（未配置守军，按内置陆/海默认配比）</div>
+          <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAlTroop">添加兵种</el-button>
+        </el-form-item>
+        <el-form-item label="资源奖励">
+          <el-input-number v-model.number="al.res" :min="0" controls-position="right" style="width:100%" />
+          <span class="td-sub">粮 / 钢 / 油 / 稀矿 各加这么多；0 = 用默认</span>
+        </el-form-item>
+        <el-form-item label="黄金奖励">
+          <el-input-number v-model.number="al.gold" :min="0" controls-position="right" style="width:100%" />
+          <span class="td-sub">黄金（元宝）奖励；0 = 用默认</span>
+        </el-form-item>
+        <el-form-item label="声望奖励">
+          <el-input-number v-model.number="al.prestige" :min="0" controls-position="right" style="width:100%" />
+          <span class="td-sub">军功声望；0 = 用默认</span>
+        </el-form-item>
+        <el-form-item label="必掉宝物">
+          <div v-for="(tr, ti) in alTreasures" :key="'altj' + ti" class="wild-troop-row">
+            <el-select v-model.number="tr.treasure_id" filterable placeholder="选择宝物" style="width:320px">
+              <el-option v-for="e in treasures" :key="'altjc' + e.id"
+                         :label="e.name + (e.type ? '（' + e.type + '）' : '')" :value="e.id" />
+            </el-select>
+            <span class="td-sub">数量</span>
+            <el-input-number v-model.number="tr.count" :min="1" controls-position="right" style="width:115px" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="alTreasures.splice(ti, 1)" />
+          </div>
+          <div class="old-line" v-if="!alTreasures.length">（未配置，打赢不掉宝物）</div>
+          <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAlTreasure">添加宝物</el-button>
+        </el-form-item>
+        <el-form-item label="掉落道具">
+          <div v-for="(d, di) in alDrops" :key="'altd' + di" class="wild-troop-row">
+            <el-select v-model.number="d.cfg_id" filterable placeholder="选择商城道具" style="width:280px">
+              <el-option v-for="it in itemCfgs" :key="'altdc' + it.id" :label="it.name" :value="it.id" />
+            </el-select>
+            <span class="td-sub">数量</span>
+            <el-input-number v-model.number="d.count" :min="1" controls-position="right" style="width:100px" />
+            <span class="td-sub">概率%</span>
+            <el-input-number v-model.number="d.pct" :min="1" :max="100" controls-position="right" style="width:100px" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="alDrops.splice(di, 1)" />
+          </div>
+          <div class="old-line" v-if="!alDrops.length">（未配置，打赢不掉商城道具）</div>
+          <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAlDrop">添加道具</el-button>
+        </el-form-item>
+        <el-form-item label="说明">
+          <el-input v-model="al.des" type="textarea" :rows="2" maxlength="500" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="alDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveAl">保 存</el-button>
+      </div>
+    </el-dialog>
+
     <!-- ============ 活动野地 · 被打记录（2026-10-01） ============ -->
     <el-dialog title="活动野地被攻打记录" :visible.sync="awAttDlg" width="720px" :close-on-click-modal="false">
       <div class="td-sub" style="margin-bottom:10px" v-if="awAttRow">
@@ -861,6 +1023,11 @@ function emptyWc () {
     // 弹窗内的可视化行（保存时序列化回 JSON 字段）
     wcTroops: [], wcDrops: [], wcTreasures: [] }
 }
+// ★ 2026-10-22 活动目标等级配置（活动野地 / 活动寇城 / 特殊城市）
+function emptyActLevel () {
+  return { id: 0, act_type: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0,
+    treasures: '', drop_items: '', des: '' }
+}
 
 export default {
   name: 'AdminEzfyMap',
@@ -891,6 +1058,12 @@ export default {
       wcDropDlg: { visible: false, kind: '', title: '', rows: [], legacy: '' },
       // 活动野地配置（2026-09-29）
       actWilds: [], awTotal: 0, awPage: 1, awSize: 15, awWord: '', awEnabled: -1, loadingAw: false,
+      // 活动目标等级配置（2026-10-22：活动野地 / 活动寇城 / 特殊城市）
+      actLevels: [], alTotal: 0, alPage: 1, alSize: 15, alType: -1, alLevel: 0, loadingAl: false,
+      alDlg: false, al: emptyActLevel(),
+      alTroops: [], // 可视化守军行 [{troop_id,min,max}]
+      alTreasures: [], // 可视化必掉宝物行 [{treasure_id,count}]
+      alDrops: [], // 可视化掉落道具行 [{cfg_id,count,pct}]
       awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1 },
       awOfficerKind: 1, // 活动野地守将类型：0未选 1普通 2名将（按下拉里军官的 kind 推断）
       awStarFilter: 0, // 活动野地守将星级筛选（0=全部）
@@ -954,7 +1127,7 @@ export default {
       return list
     }
   },
-  mounted () { this.loadCities(); this.loadMapOptions(); this.loadTiles(); this.loadActWilds() },
+  mounted () { this.loadCities(); this.loadMapOptions(); this.loadTiles(); this.loadActWilds(); this.loadActLevels() },
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     fmtN (v) {
@@ -975,6 +1148,7 @@ export default {
       else if (this.tab === 'areas') this.loadAreas()
       else if (this.tab === 'stars') this.loadStars()
       else if (this.tab === 'actwild') this.loadActWilds()
+      else if (this.tab === 'actcfg') this.loadActLevels()
     },
     loadCities () {
       this.loadingCity = true
@@ -1311,6 +1485,117 @@ export default {
           if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadActWilds() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    // ---- 活动目标等级配置（2026-10-22） ----
+    loadActLevels () {
+      this.loadingAl = true
+      api.get('/admin/ezfy-act-levels', {
+        params: { page: this.alPage, size: this.alSize, act_type: this.alType, level: this.alLevel }
+      }).then(r => {
+        this.loadingAl = false
+        if (r.code === 0) {
+          this.actLevels = r.data.list || []
+          this.alTotal = r.data.total || 0
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.loadingAl = false })
+    },
+    openAlCreate () {
+      this.al = emptyActLevel()
+      this.alTroops = []
+      this.alTreasures = []
+      this.alDrops = []
+      this.alDlg = true
+    },
+    openAlEdit (row) {
+      this.al = Object.assign(emptyActLevel(), row)
+      this.alTroops = this.parseAwTroops(row.troops)
+      this.alTreasures = this.parseAwTreasures(row.treasures)
+      this.alDrops = this.parseWcDrops(row.drop_items)
+      this.alDlg = true
+    },
+    addAlTroop () {
+      const first = this.troopCfgs[0]
+      if (first) this.alTroops.push({ troop_id: first.id, min: 100, max: 200 })
+    },
+    addAlTreasure () {
+      const first = this.treasures[0]
+      if (first) this.alTreasures.push({ treasure_id: first.id, count: 1 })
+    },
+    addAlDrop () {
+      const first = this.itemCfgs[0]
+      if (first) this.alDrops.push({ cfg_id: first.id, count: 1, pct: 5 })
+    },
+    saveAl () {
+      const a = this.al
+      if (!(Number(a.act_type) >= 1 && Number(a.act_type) <= 3)) { this.$message.warning('请选择活动类型'); return }
+      if (!(Number(a.level) >= 1 && Number(a.level) <= 3)) { this.$message.warning('活动等级只能是 1~3'); return }
+      const troopRows = (this.alTroops || [])
+        .filter(r => Number(r.troop_id) > 0 && Number(r.min) > 0)
+        .map(r => {
+          const lo = Number(r.min) || 0
+          const hi = Math.max(lo, Number(r.max) || 0)
+          return [Number(r.troop_id), lo, hi]
+        })
+      const treasureRows = (this.alTreasures || [])
+        .filter(r => Number(r.treasure_id) > 0 && Number(r.count) > 0)
+        .map(r => [Number(r.treasure_id), Number(r.count)])
+      const dropRows = (this.alDrops || [])
+        .filter(r => Number(r.cfg_id) > 0 && Number(r.count) > 0)
+        .map(r => [Number(r.cfg_id), Number(r.count), Number(r.pct) > 0 ? Number(r.pct) : 100])
+      const payload = {
+        id: Number(a.id) || 0,
+        act_type: Number(a.act_type),
+        level: Number(a.level),
+        troops: troopRows.length ? JSON.stringify(troopRows) : '',
+        res: Number(a.res) || 0,
+        gold: Number(a.gold) || 0,
+        prestige: Number(a.prestige) || 0,
+        treasures: treasureRows.length ? JSON.stringify(treasureRows) : '',
+        drop_items: dropRows.length ? JSON.stringify(dropRows) : '',
+        des: a.des || ''
+      }
+      this.saving = true
+      api.post('/admin/ezfy-act-levels', payload).then(r => {
+        this.saving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已保存')
+          this.alDlg = false
+          this.loadActLevels()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.saving = false })
+    },
+    delAl (row) {
+      this.$confirm('删除「' + row.act_type_name + ' ' + row.level + '级」配置？删除后将回退内置默认。', '提示',
+        { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-act-levels/' + row.id).then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadActLevels() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    treasureName (id) {
+      const e = (this.treasures || []).find(x => Number(x.id) === Number(id)) ||
+        (this.jewels || []).find(x => Number(x.id) === Number(id))
+      return e ? e.name : ('宝物#' + id)
+    },
+    alTroopText (raw) {
+      const rows = this.parseAwTroops(raw)
+      if (!rows.length) return ''
+      return rows.map(r => {
+        const t = (this.troopCfgs || []).find(x => Number(x.id) === Number(r.troop_id))
+        const name = t ? t.name : ('兵种' + r.troop_id)
+        const fmt = v => Number(v).toLocaleString()
+        return Number(r.max) > Number(r.min) ? name + ' ' + fmt(r.min) + '~' + fmt(r.max) : name + ' ' + fmt(r.min)
+      }).join('、')
+    },
+    alTreasureText (raw) {
+      const rows = this.parseAwTreasures(raw)
+      if (!rows.length) return ''
+      return rows.map(r => this.treasureName(r.treasure_id) + ' x' + Number(r.count).toLocaleString()).join('、')
+    },
+    alDropText (raw) {
+      const rows = this.parseWcDrops(raw)
+      if (!rows.length) return ''
+      return rows.map(r => this.wcItemName(r.cfg_id) + ' x' + Number(r.count).toLocaleString() + '(' + r.pct + '%)').join('、')
     },
     // 下拉数据（兵种 + 军官池 + 珠宝）
     loadMapOptions () {

@@ -2124,6 +2124,10 @@ func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64
 }
 
 func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string {
+	// ★ 2026-10-22 同一城市的「检查队列数 → 开工」串行化，防止并发连点突破队列上限。
+	lock := ezfyBuildQueueLock(city.ID)
+	lock.Lock()
+	defer lock.Unlock()
 	h.refreshCity(city.UserID, city)
 	cfg := ezfyCfg.building(buildingId)
 	if cfg == nil {
@@ -2174,6 +2178,10 @@ func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string
 	if buildingId == 19 && !h.isSeaCity(city) {
 		return "航海协会只能建在沿海城市(沿海平原上的城市)"
 	}
+	// ★ 2026-10-22 建造队列上限（军事区/资源区共用；征募告示可临时增加）
+	if msg := h.ezfyBuildQueueFullMsg(city.ID); msg != "" {
+		return msg
+	}
 	if !h.pay(city, lv) {
 		return "资源不足"
 	}
@@ -2194,6 +2202,10 @@ func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string
 }
 
 func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) string {
+	// ★ 2026-10-22 队列校验 + 开工串行化
+	lock := ezfyBuildQueueLock(city.ID)
+	lock.Lock()
+	defer lock.Unlock()
 	h.refreshCity(city.UserID, city)
 	var b model.EzfyCityBuilding
 	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b).Error; err != nil {
@@ -2230,6 +2242,10 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 	if needBlueprint && h.itemCount(city.UserID, ezfyBlueprintItemID()) <= 0 {
 		return fmt.Sprintf("升级到%d级需要建筑图纸", target)
 	}
+	// ★ 2026-10-22 建造队列上限（升级也占用一个队列）
+	if msg := h.ezfyBuildQueueFullMsg(city.ID); msg != "" {
+		return msg
+	}
 	if !h.pay(city, lv) {
 		return "资源不足"
 	}
@@ -2261,6 +2277,10 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 //	现在按 targetLevel 结算（资源/图纸都只算到目标级），并且施工一次到位。
 //	返回 (实际目标等级, 错误信息)；错误信息为空表示成功。
 func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, targetLevel int) (int, string) {
+	// ★ 2026-10-22 队列校验 + 开工串行化
+	lock := ezfyBuildQueueLock(city.ID)
+	lock.Lock()
+	defer lock.Unlock()
 	h.refreshCity(city.UserID, city)
 	var b model.EzfyCityBuilding
 	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b).Error; err != nil {
@@ -2288,6 +2308,10 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, tar
 			return 0, fmt.Sprintf("该建筑已是%d级", b.Level)
 		}
 		return 0, "该建筑已满级"
+	}
+	// ★ 2026-10-22 一键升级也占用一个建造队列；先校验，避免算完资源/图纸才发现队列满。
+	if msg := h.ezfyBuildQueueFullMsg(city.ID); msg != "" {
+		return 0, msg
 	}
 	var needFood, needSteel, needOil, needRare, needGold int64
 	needBlueprint := 0
@@ -3674,6 +3698,14 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 	if (cfg.ItemType == 6 || cfg.ItemType == 11 || cfg.ItemType == 12) && count > 1 {
 		return cfg.Name + "每次只能使用1个"
 	}
+	// ★ 2026-10-22 征募告示：可叠加，最多 10 层。批量使用前先整体校验，
+	//   避免「用了 9 个后第 10 个失败」导致前端把成功提示显示成报错。
+	if cfg.ItemType == 33 {
+		if bonus := h.ezfyBuildQueueStateOf(city.ID).Bonus; bonus+count > ezfyBuildQueueStackMax {
+			return fmt.Sprintf("「%s」最多叠加%d个（当前已叠加%d个）",
+				cfg.Name, ezfyBuildQueueStackMax, bonus)
+		}
+	}
 	// 需要指定军官的道具（★ 19 = 军官升星卡，也要选军官）
 	needOfficer := cfg.ItemType == 10 || cfg.ItemType == 11 || cfg.ItemType == 12 || cfg.ItemType == 19
 	if needOfficer && officerId <= 0 {
@@ -4125,6 +4157,14 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		return fmt.Sprintf("【%s】请在「军官 → 军官详情」页面使用", cfg.Name)
 	case 32: // 军团联络令：创建军团时自动消耗（不在背包直接点）
 		return fmt.Sprintf("【%s】请在「军团 → 创建军团」页面使用，创建成功后自动消耗", cfg.Name)
+	case 33: // 征募告示：当前城市建造队列 +1（24 小时，最多叠加 10 层）
+		stacks, _, msg := h.ezfyAddBuildQueueEffect(city.ID)
+		if msg != "" {
+			return msg
+		}
+		h.consumeItem(uid, cfgId, "使用道具")
+		return fmt.Sprintf("使用成功: 当前城市建造队列+1（征募告示 %d/%d，有效期24小时）",
+			stacks, ezfyBuildQueueStackMax)
 	default:
 		return "道具类型错误"
 	}

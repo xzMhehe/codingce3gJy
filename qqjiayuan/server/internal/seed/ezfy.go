@@ -93,8 +93,10 @@ func seedEzfy(db *gorm.DB) {
 	seedEzfyNotices(db)
 	seedEzfyOfficerItems(db)
 	seedEzfyMoveItems(db)
+	seedEzfyBuildQueueItems(db) // ★ 2026-10-22 征募告示（建造队列 +1，可叠 10 个）
 	seedEzfyLoveCardItems(db)
 	seedEzfyActivities(db)
+	seedEzfyActLevels(db)
 	seedEzfyResources(db)
 	seedEzfyRanks(db)
 

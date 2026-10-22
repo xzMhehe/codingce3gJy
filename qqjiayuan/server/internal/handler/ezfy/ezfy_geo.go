@@ -332,6 +332,17 @@ func ezfyActWildAt(x, y int) *model.EzfyActWild {
 	return c.actWilds[ezfyTileKey(x, y)]
 }
 
+// ezfyActLevelCfg 取活动目标「类型 + 等级」配置（没有则 nil）。
+//
+// ★ 2026-10-22 管理端「地图管理 → 活动目标配置」维护；运行时用于
+// 守军 / 资源 / 黄金 / 声望 / 必掉宝物 / 掉落道具。
+func ezfyActLevelCfg(actType, level int) *model.EzfyActLevel {
+	c := &ezfyCfg
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.actLevels[actType*100+level]
+}
+
 // ezfyMarkKindAt 取某格的「标记类型」（0=无 1=寇城 2=活动寇城 3=活动野地 4=特殊城市）
 func ezfyMarkKindAt(x, y int) int {
 	if t := ezfyTileAt(x, y); t != nil {
@@ -654,6 +665,8 @@ type ezfyConfigCache struct {
 	tiles map[int64]model.EzfyMapTile
 	// 活动野地配置（key = x*100000+y），2026-09-29 地图管理「活动野地」tab 维护
 	actWilds map[int64]*model.EzfyActWild
+	// ★ 2026-10-22 活动目标等级配置（key = 类型*100+等级），地图管理「活动目标配置」tab 维护
+	actLevels map[int]*model.EzfyActLevel
 	// ★ 2026-10-05 地图瓦片表的「廉价指纹」（行数+最大id+最大updated_at）：
 	//   周期刷新时先比它，只有变了才真去拉瓦片 —— 修「多机改地形不生效」。
 	heavyFp uint64
@@ -696,6 +709,9 @@ func ezfyLimit() model.EzfyCfgLimit {
 	}
 	if l.HouseMax <= 0 {
 		l.HouseMax = 10
+	}
+	if l.BuildQueueMax <= 0 {
+		l.BuildQueueMax = ezfyBuildQueueDefaultMax
 	}
 	return l
 }
@@ -2049,6 +2065,17 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	}
 	c.actWilds = awm
 
+	// ★ 2026-10-22 活动目标等级配置（活动野地/活动寇城/特殊城市）：
+	//   管理端「地图管理 → 活动目标配置」维护；表很小，每次刷新全量读取。
+	var als []model.EzfyActLevel
+	db.Find(&als)
+	alm := make(map[int]*model.EzfyActLevel, len(als))
+	for _, a := range als {
+		cp := a
+		alm[cp.ActType*100+cp.Level] = &cp
+	}
+	c.actLevels = alm
+
 	// 军衔配置（管理端可维护；表为空时回落内置默认，保证排名逻辑永远可用）
 	var rks []model.EzfyCfgRank
 	db.Order("id").Find(&rks)
@@ -2061,6 +2088,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	// ★ 三个玩法开关的默认值也必须写在这里：缺行时如果留 0，会变成「全关」，
 	//   与「默认开」的语义相反（见 ezfyRecruitCostOn / ezfyFoodUpkeepOn / ezfyMarchOilOn）。
 	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
+		// ★ 2026-10-22 每城建造队列基础上限（缺行时默认 5；征募告示的临时层数另加）
+		BuildQueueMax: ezfyBuildQueueDefaultMax,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时给默认 10 万 / 10%）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,

@@ -594,6 +594,10 @@ export default {
       // ★ 军事区/资源区各自上限（/view 下发，默认各 36）
       militaryCap: 36,
       resourceCap: 36,
+      // ★ 2026-10-22 建造队列：基础上限 + 征募告示临时层数（/buildings 下发）
+      buildQueueBase: 5,
+      buildQueueBonus: 0,
+      buildQueueBonusUntil: 0,
       // ★ 2026-09-26 民居容量限制 / 召集人口灵活配置（/view 下发，默认都开）
       housePopLimitOn: true,
       conveneFlexibleOn: true,
@@ -1276,6 +1280,15 @@ export default {
     },
     buildQueueCount () {
       return this.buildings.filter(b => b.status !== 0).length
+    },
+    // ★ 2026-10-22 征募告示：只有未过期时层数才计入上限（倒计时随 gatherNow 自动失效）
+    buildQueueActiveBonus () {
+      const now = this.gatherNow || Date.now()
+      return this.buildQueueBonusUntil > now ? (this.buildQueueBonus || 0) : 0
+    },
+    buildQueueLimit () {
+      const base = this.buildQueueBase > 0 ? this.buildQueueBase : 5
+      return base + this.buildQueueActiveBonus
     },
     // 正式军官(不含俘虏)
     myOfficers () {
@@ -3138,6 +3151,9 @@ export default {
           this.buildingPool = r.data.pool || []
           if (r.data.military_cap) this.militaryCap = r.data.military_cap
           if (r.data.resource_cap) this.resourceCap = r.data.resource_cap
+          if (r.data.build_queue_base > 0) this.buildQueueBase = r.data.build_queue_base
+          this.buildQueueBonus = r.data.build_queue_bonus || 0
+          this.buildQueueBonusUntil = r.data.build_queue_bonus_until || 0
         }
       })
     },
@@ -6940,6 +6956,8 @@ export default {
           this.useItem = null
           this.loadBag()
           this.load()
+          // ★ 2026-10-22 征募告示会改变当前城市队列上限，立刻刷新建筑数据
+          if (it.item_type === 33) this.loadBuildings()
         } else this.notify(r.msg || '使用失败')
       })
     },
