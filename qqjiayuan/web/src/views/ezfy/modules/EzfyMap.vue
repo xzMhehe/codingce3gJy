@@ -715,11 +715,11 @@
               <td>
                 <!-- ★★ 2026-10-18 附属野地可派兵驻守: [增援] 对所有野地常驻显示
                      (驻军与采集部队并存, 不占「一块野地一支采集队」名额) -->
-                <a href="javascript:;" @click="ezfy.openWildReinforce(w)">[增援]</a>
+                <a href="javascript:;" title="增援驻守" @click="ezfy.openWildReinforce(w)">[驻]</a>
                 <!-- ★ 2026-09-28 平原/沿海平原可建城、采集无宝物, 附属野地列表不再提供采集, 仅保留[放弃] -->
                 <a v-if="w.idle_order_id && w.idle_carry_full" class="red" href="javascript:;"
                    @click="ezfy.stopCollect(ezfy.wildOrderArg(w, w.idle_order_id))">[停止]</a>
-                <a v-if="w.status === 0 && !w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" href="javascript:;" @click="ezfy.openWildGather(w)">[采集]</a>
+                <a v-if="w.status === 0 && !w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" href="javascript:;" title="采集" @click="ezfy.openWildGather(w)">[采]</a>
                 <a v-else-if="w.idle_order_id && !w.idle_carry_full && w.terrain !== 1 && w.terrain !== 9" class="red" href="javascript:;" @click="ezfy.startCollect(w.idle_order_id)">[开始采集]</a>
                 <!-- ★ 2026-09-28 用户反馈「采集中只能[放弃]，没法[停止]」：
                      后端现在会下发 gather_order_id（见 ezfy.go 的 wildViews），
@@ -730,7 +730,7 @@
                 <!-- ★ 2026-09-28 用户反馈「采集中 别展示 放弃按钮」：
                      采集中(status=1)时操作列只留 [停止]；[放弃] 会让整块野地连同采集部队一起处理掉，
                      应当先停止采集再放弃，故采集中隐藏。 -->
-                <a v-if="w.status !== 1" class="red" href="javascript:;" @click="ezfy.doAbandon(w)">[放弃]</a>
+                <a v-if="w.status !== 1" class="red" href="javascript:;" title="放弃" @click="ezfy.doAbandon(w)">[弃]</a>
               </td>
             </tr>
           </table>

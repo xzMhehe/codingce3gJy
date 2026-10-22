@@ -621,17 +621,52 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 			"currency": e.Currency, "currency_name": ezfyMoneyName(e.Currency)})
 	}
 	city := h.getOrCreateCity(uid)
+	profile := h.ensureProfile(uid)
 	// ★ 2026-10-04 玩家挂单上限 = 交易所等级×2（与 ExchangeSell 卡控同口径，前端展示用）
 	sellMax := h.buildingLevel(city.ID, ezfyBuildingExchange) * 2
 	resp.OK(c, gin.H{"orders": views, "total": total, "page": page, "size": size,
 		"mine": mineViews, "mtotal": mtotal, "mpage": mpage, "msize": msize,
 		"sell_max": sellMax,
 		"gold":     city.Gold,
-		"diamond":  h.ensureProfile(uid).Diamond,
+		"diamond":  profile.Diamond,
 		// ★ 2026-09-30 向系统出售资源：下发回收比例 / 手续费 / 黄金上限，供前端展示与判断
 		"sys_sell_ratio": ezfySysSellRatioMap(),
-		"sys_sell_fee":   ezfySysSellFeePct,
-		"gold_max":       ezfyResMaxOf("gold")})
+		"sys_sell_fee":   ezfySysSellFeePct(),
+		// ★ 2026-10-22 每日限额：已售数量（跨天按 0 下发）+ 每种资源上限（0 = 不限）
+		"sys_sell_used":        ezfySysSellUsedMap(profile),
+		"sys_sell_daily_limit": ezfySysSellDailyLimit(),
+		"gold_max":             ezfyResMaxOf("gold")})
+}
+
+// ezfySysSellToday 系统回收统计用的自然日 key（服务器本地时间）。
+func ezfySysSellToday() string { return time.Now().Format("20060102") }
+
+// ezfySysSellUsedOf 取玩家本日某资源已向系统出售的数量（跨天视为 0）。
+func ezfySysSellUsedOf(p model.EzfyProfile, esType int) int64 {
+	if p.SysSellDay != ezfySysSellToday() {
+		return 0
+	}
+	switch esType {
+	case 1:
+		return p.SysSellFood
+	case 2:
+		return p.SysSellSteel
+	case 3:
+		return p.SysSellOil
+	case 4:
+		return p.SysSellRare
+	}
+	return 0
+}
+
+// ezfySysSellUsedMap 本日四种资源的已售数量（供交易所页展示）。
+func ezfySysSellUsedMap(p model.EzfyProfile) map[int]int64 {
+	return map[int]int64{
+		1: ezfySysSellUsedOf(p, 1),
+		2: ezfySysSellUsedOf(p, 2),
+		3: ezfySysSellUsedOf(p, 3),
+		4: ezfySysSellUsedOf(p, 4),
+	}
 }
 
 func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
@@ -856,10 +891,29 @@ func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": msg})
 }
 
-// ezfySysSellFeePct 向系统出售资源的手续费百分比（默认 10 = 10%）。
+// ezfyTreasureSellFeePct 宝物出售给系统的手续费百分比。
 //
-// ★ 2026-09-30 「玩家获得的黄金手续费：玩家获取的黄金价格 10% 扣除」。
-const ezfySysSellFeePct = 10
+// ★ 保持原规则 10% 不变；资源回收手续费另见 ezfySysSellFeePct()（默认 30%）。
+const ezfyTreasureSellFeePct = 10
+
+// ezfySysSellAdd 把本次出售数量累加到玩家的「本日系统回收」计数（跨天先清零）。
+func ezfySysSellAdd(p *model.EzfyProfile, esType int, count int64) {
+	today := ezfySysSellToday()
+	if p.SysSellDay != today {
+		p.SysSellDay = today
+		p.SysSellFood, p.SysSellSteel, p.SysSellOil, p.SysSellRare = 0, 0, 0, 0
+	}
+	switch esType {
+	case 1:
+		p.SysSellFood += count
+	case 2:
+		p.SysSellSteel += count
+	case 3:
+		p.SysSellOil += count
+	case 4:
+		p.SysSellRare += count
+	}
+}
 
 // ezfySysSellRatioMap 向系统出售资源回收比例 map（es_type → 每100单位黄金），供前端展示。
 func ezfySysSellRatioMap() map[int]int {
@@ -872,7 +926,8 @@ func ezfySysSellRatioMap() map[int]int {
 //   - 把资源**直接卖给系统**（不走挂单，不产生订单行）；
 //   - 直接扣城市资源、加城市黄金；
 //   - 每 100 单位 → 按配置比例换黄金（默认粮10/钢10/油20/稀25，交易行维护可配）；
-//   - 玩家实得黄金再扣 10% 手续费；
+//   - 玩家实得黄金再扣手续费（默认 30%，管理端可配；见 ezfySysSellFeePct）；
+//   - 每种资源每天还有出售数量上限（默认 100 万，0 = 不限；见 ezfySysSellDailyLimit）；
 //   - 黄金仍受「黄金资源最大值」（res_max_gold）硬上限约束；若本次到账会超上限，
 //     超出部分会丢失，必须提醒玩家（gold_lost=true + lost_gold），没超过不提醒。
 func (h *EzfyHandler) ExchangeSysSell(c *gin.Context) {
@@ -914,6 +969,19 @@ func (h *EzfyHandler) ExchangeSysSell(c *gin.Context) {
 		resp.ParamError(c, fmt.Sprintf("%s不足(现有%d)", ezfyResNames[req.EsType], stock))
 		return
 	}
+	// ★ 2026-10-22 每日出售数量卡控：在扣资源**之前**校验，避免超限请求白扣资源。
+	profile := h.ensureProfile(uid)
+	sold := ezfySysSellUsedOf(profile, req.EsType)
+	dailyLimit := ezfySysSellDailyLimit()
+	if dailyLimit > 0 && sold+req.EsCount > dailyLimit {
+		remain := dailyLimit - sold
+		if remain < 0 {
+			remain = 0
+		}
+		resp.ParamError(c, fmt.Sprintf("今日%s向系统出售已达上限（每日最多%d，已售%d，还可售%d）",
+			ezfyResNames[req.EsType], dailyLimit, sold, remain))
+		return
+	}
 	// 扣资源
 	switch req.EsType {
 	case 1:
@@ -926,10 +994,11 @@ func (h *EzfyHandler) ExchangeSysSell(c *gin.Context) {
 		city.Rare -= req.EsCount
 	}
 
-	// 换算黄金：每 100 单位 → N 黄金；实得再扣 10% 手续费
+	// 换算黄金：每 100 单位 → N 黄金；实得再扣手续费（默认 30%）
 	ratio := int64(ezfySysSellRatio(req.EsType))
 	base := req.EsCount * ratio / 100
-	received := base * (100 - ezfySysSellFeePct) / 100
+	feePct := ezfySysSellFeePct()
+	received := base * int64(100-feePct) / 100
 	fee := base - received
 
 	// 黄金封顶与丢量判断：受「黄金资源最大值」硬上限约束
@@ -941,15 +1010,38 @@ func (h *EzfyHandler) ExchangeSysSell(c *gin.Context) {
 	}
 	lost := (before + received) - after
 	city.Gold = after
+
+	// 记录本日已售数量（跨天自动清零），供后续请求卡控 + 前端展示。
+	// ★ 先落计数再落城市：计数写失败就直接返回，城里的资源/黄金尚未写库，不会出现「卖了但没占额度」。
+	ezfySysSellAdd(&profile, req.EsType, req.EsCount)
+	if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", profile.ID).Updates(map[string]interface{}{
+		"sys_sell_day":   profile.SysSellDay,
+		"sys_sell_food":  profile.SysSellFood,
+		"sys_sell_steel": profile.SysSellSteel,
+		"sys_sell_oil":   profile.SysSellOil,
+		"sys_sell_rare":  profile.SysSellRare,
+	}).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
 	h.saveCityRes(&city)
 
-	msg := fmt.Sprintf("向系统出售 %s×%d 成功，获得 %d 黄金（手续费已扣 %d）",
-		ezfyResNames[req.EsType], req.EsCount, received, fee)
+	msg := fmt.Sprintf("向系统出售 %s×%d 成功，获得 %d 黄金（已扣 %d%% 手续费 %d）",
+		ezfyResNames[req.EsType], req.EsCount, received, feePct, fee)
+	if dailyLimit > 0 {
+		remain := dailyLimit - sold - req.EsCount
+		if remain < 0 {
+			remain = 0
+		}
+		msg += fmt.Sprintf("；今日该资源剩余可售 %d", remain)
+	}
 	if lost > 0 {
 		msg += fmt.Sprintf("；因超过黄金上限丢失 %d", lost)
 	}
 	resp.OK(c, gin.H{"msg": msg, "received_gold": received, "fee": fee,
-		"gold_lost": lost > 0, "lost_gold": lost})
+		"fee_pct": feePct, "daily_limit": dailyLimit,
+		"daily_used": sold + req.EsCount,
+		"gold_lost":  lost > 0, "lost_gold": lost})
 }
 
 // ezfyTreasureSellPrice 宝物出售给系统的单价（黄金/件）。
@@ -963,7 +1055,7 @@ const ezfyTreasureSellPrice = 200000
 //
 // ★ 2026-10-08 「宝物卖给系统」：
 //   - 只卖**未穿戴**的采集宝物（ezfy_equipment.officer_id = 0，且 cfg_id 属采集宝物）;
-//   - 统一 20 万黄金/件，玩家实得再扣 10% 手续费（ezfySysSellFeePct）;
+//   - 统一 20 万黄金/件，玩家实得再扣 10% 手续费（ezfyTreasureSellFeePct）;
 //   - 删除对应宝物记录，黄金入账并受「黄金资源最大值」硬上限约束（超出丢量提示）。
 func (h *EzfyHandler) ExchangeTreasureSell(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -1008,7 +1100,7 @@ func (h *EzfyHandler) ExchangeTreasureSell(c *gin.Context) {
 	}
 	// 结算黄金：单价×数量 → 实得扣 10% 手续费
 	base := int64(req.Count) * ezfyTreasureSellPrice
-	received := base * (100 - ezfySysSellFeePct) / 100
+	received := base * (100 - ezfyTreasureSellFeePct) / 100
 	fee := base - received
 
 	city := h.getOrCreateCity(uid)

@@ -67,6 +67,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		GarrisonBatchScope: ezfyGarrisonBatchScopeCurrent,
 		// ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金，默认粮10/钢10/油20/稀25）
 		SysSellFood: 10, SysSellSteel: 10, SysSellOil: 20, SysSellRare: 25,
+		// ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（默认 100 万，0 = 不限）
+		SysSellFee: ezfySysSellFeeDefault, SysSellDailyLimit: ezfySysSellDailyLimitDef,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult: ezfyResProdMultDef,
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，默认 1；0 合法 = 黄金产量归零）
@@ -315,6 +317,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.SysSellRare <= 0 {
 		lim.SysSellRare = 25
 	}
+	// ★ 2026-10-22 系统回收手续费（0/越界无意义 → 默认 30）；每日上限 0 = 不限，是合法值，不兜底。
+	if lim.SysSellFee <= 0 || lim.SysSellFee > 90 {
+		lim.SysSellFee = ezfySysSellFeeDefault
+	}
 	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
 	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
@@ -326,10 +332,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 // factory_max = 0 表示军工厂不限数量（线上现值为 20）。
 func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	var in struct {
-		MilitaryMax             *int     `json:"military_max"`
-		ResourceMax             *int     `json:"resource_max"`
-		HouseMax                *int     `json:"house_max"`
-		FactoryMax              *int     `json:"factory_max"`
+		MilitaryMax *int `json:"military_max"`
+		ResourceMax *int `json:"resource_max"`
+		HouseMax    *int `json:"house_max"`
+		FactoryMax  *int `json:"factory_max"`
 		// ★ 2026-10-22 每城建造队列基础上限（默认 5；征募告示的临时层数另加）
 		BuildQueueMax           *int     `json:"build_queue_max"`
 		NoticeHomeCount         *int     `json:"notice_home_count"`
@@ -451,6 +457,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		SysSellSteel *int `json:"sys_sell_steel"`
 		SysSellOil   *int `json:"sys_sell_oil"`
 		SysSellRare  *int `json:"sys_sell_rare"`
+		// ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（默认 100 万，0 = 不限）
+		SysSellFee        *int   `json:"sys_sell_fee"`
+		SysSellDailyLimit *int64 `json:"sys_sell_daily_limit"`
 		// ★ 2026-10-14 风云榜统计开关（0 = 关，1 = 开；0 合法）
 		PvpRankOn *int `json:"pvp_rank_on"`
 		// ★ 2026-10-17 训练一键加速开关（0 = 关 = 前端隐藏按钮 + 后端拒绝；1 = 开 = 默认）
@@ -537,6 +546,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef,
 		// ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金）
 		SysSellFood: 10, SysSellSteel: 10, SysSellOil: 20, SysSellRare: 25,
+		// ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（默认 100 万，0 = 不限）
+		SysSellFee: ezfySysSellFeeDefault, SysSellDailyLimit: ezfySysSellDailyLimitDef,
 		// ★ 2026-10-14 风云榜统计开关（默认开）
 		PvpRankOn: 1}
 	h.DB.First(&lim, 1)
@@ -552,6 +563,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	if lim.SysSellRare <= 0 {
 		lim.SysSellRare = 25
+	}
+	// ★ 2026-10-22 系统回收手续费（0/越界无意义 → 默认 30）；每日上限 0 = 不限，是合法值，不兜底。
+	if lim.SysSellFee <= 0 || lim.SysSellFee > 90 {
+		lim.SysSellFee = ezfySysSellFeeDefault
 	}
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
@@ -1107,6 +1122,22 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if !sysSellSet(in.SysSellRare, &lim.SysSellRare, "稀矿回收比例") {
 		return
 	}
+	// ★ 2026-10-22 系统回收手续费：1~90（30% 时商城大资源包整套卖出已低于购买价）。
+	if in.SysSellFee != nil {
+		if *in.SysSellFee < 1 || *in.SysSellFee > 90 {
+			resp.ParamError(c, "系统回收手续费需要在 1~90 之间（默认 30）")
+			return
+		}
+		lim.SysSellFee = *in.SysSellFee
+	}
+	// ★ 2026-10-22 每日每种资源上限：0 = 不限；负数非法，上限 100 亿防呆。
+	if in.SysSellDailyLimit != nil {
+		if *in.SysSellDailyLimit < 0 || *in.SysSellDailyLimit > 10000000000 {
+			resp.ParamError(c, "每日每种资源上限需要在 0~10000000000 之间（0 = 不限）")
+			return
+		}
+		lim.SysSellDailyLimit = *in.SysSellDailyLimit
+	}
 	// ★ 2026-10-14 风云榜统计开关：0 = 关（不统计）、1 = 开。**0 是合法值**（关掉统计），
 	//   所以只拦非法枚举，不做 <=0 兜底。
 	if in.PvpRankOn != nil {
@@ -1509,6 +1540,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"sys_sell_steel": lim.SysSellSteel,
 		"sys_sell_oil":   lim.SysSellOil,
 		"sys_sell_rare":  lim.SysSellRare,
+		// ★ 2026-10-22 系统回收手续费 / 每日每种资源上限（0 = 不限，必须显式写否则 0 会被 GORM 吞掉）
+		"sys_sell_fee":         lim.SysSellFee,
+		"sys_sell_daily_limit": lim.SysSellDailyLimit,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比，同样用 map 显式写
 		"convene_food_cost": lim.ConveneFoodCost,
 		"convene_pop_pct":   lim.ConvenePopPct,

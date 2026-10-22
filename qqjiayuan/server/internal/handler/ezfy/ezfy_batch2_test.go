@@ -278,10 +278,27 @@ func TestBgTickOfflineSettle(t *testing.T) {
 //
 // ★★ 2026-10-09 用户反馈「交易所下架资源会被吃掉」：city 是上次落库的旧值，
 // 直接退回 + 整行写回 → 产量凭空少一截。退回被封顶丢弃时也要明确提示。
+// TestSysSellFeeBlocksMallPackArbitrage 商城「大资源包」买价 5 万，整套卖给系统毛收入 6.5 万。
+//
+// ★★ 2026-10-22 用户反馈套利漏洞：10% 手续费后实得 58,500 > 50,000，净赚 8,500。
+// 默认手续费必须高到让这条套利亏钱，否则改配置时很容易把漏洞放回来。
+func TestSysSellFeeBlocksMallPackArbitrage(t *testing.T) {
+	const packPrice int64 = 50000 // 大资源包（ezfy_cfg_gen.go ID 1002）
+	const packEach int64 = 100000 // 粮/钢/油/稀各 10 万
+	gross := packEach * int64(10+10+20+25) / 100
+	net := gross * int64(100-ezfySysSellFeeDefault) / 100
+	if net >= packPrice {
+		t.Fatalf("默认手续费 %d%% 仍有套利空间：卖得 %d >= 买价 %d", ezfySysSellFeeDefault, net, packPrice)
+	}
+	if ezfySysSellDailyLimitDef <= 0 {
+		t.Fatalf("每日回收上限默认值必须为正数，当前 %d", ezfySysSellDailyLimitDef)
+	}
+}
+
 func TestExchangeCancelSettlesFirst(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_chat_exchange.go"), "\r\n", "\n")
 	i := strings.Index(src, "func (h *EzfyHandler) ExchangeCancel(")
-	j := strings.Index(src, "// ezfySysSellFeePct")
+	j := strings.Index(src, "func (h *EzfyHandler) ExchangeSysSell(")
 	if i < 0 || j <= i {
 		t.Fatal("找不到 ExchangeCancel 函数区间")
 	}

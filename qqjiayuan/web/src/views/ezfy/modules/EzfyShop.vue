@@ -690,7 +690,12 @@
             </select><br/>
             数量: <input v-model="ezfy.sellSysCount" type="number" style="width:90px"/><br/>
             <div class="old-line gray">
-              每100单位 → {{ ezfy.sysSellRatio[ezfy.sellSysType] || 0 }} {{ ezfy.resNames.gold }}，实得再扣 {{ ezfy.sysSellFee }}%（应得 {{ ezfy.sysSellPreview() }} {{ ezfy.resNames.gold }}）
+              每100单位 → {{ ezfy.sysSellRatio[ezfy.sellSysType] || 0 }} {{ ezfy.resNames.gold }}，扣除 {{ ezfy.sysSellFee }}% 手续费后实得 {{ ezfy.sysSellPreview() }} {{ ezfy.resNames.gold }}
+            </div>
+            <div class="old-line gray">
+              今日该资源：已售 {{ ezfy.fmtN(ezfy.sysSellUsedCount()) }}
+              <template v-if="ezfy.sysSellDailyLimit > 0">/ {{ ezfy.fmtN(ezfy.sysSellDailyLimit) }}，还可售 {{ ezfy.fmtN(ezfy.sysSellRemain()) }}</template>
+              <template v-else>（不限量）</template>
             </div>
             <button @click="ezfy.doExchangeSysSell">[向系统出售]</button>
             <div v-if="ezfy.sysSellLostWarn" class="red">{{ ezfy.sysSellLostWarn }}</div>

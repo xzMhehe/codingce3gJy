@@ -903,7 +903,10 @@ export default {
       sellSysType: '1',
       sellSysCount: 0,
       sysSellRatio: { 1: 10, 2: 10, 3: 20, 4: 25 },
-      sysSellFee: 10,
+      sysSellFee: 30,
+      // ★ 2026-10-22 每日每种资源回收上限（0 = 不限）+ 今日已售数量
+      sysSellDailyLimit: 1000000,
+      sysSellUsed: { 1: 0, 2: 0, 3: 0, 4: 0 },
       sysSellLostWarn: '',
       goldMax: 0,
       trainSel: null,
@@ -4693,6 +4696,9 @@ export default {
           // ★ 2026-09-30 向系统出售资源：读回回收比例 / 手续费 / 黄金上限
           if (r.data.sys_sell_ratio) this.sysSellRatio = r.data.sys_sell_ratio
           if (r.data.sys_sell_fee) this.sysSellFee = r.data.sys_sell_fee
+          // ★ 2026-10-22 每日每种资源回收上限 + 今日已售（0 = 不限）
+          if (r.data.sys_sell_daily_limit != null) this.sysSellDailyLimit = Number(r.data.sys_sell_daily_limit) || 0
+          if (r.data.sys_sell_used) this.sysSellUsed = r.data.sys_sell_used
           if (r.data.gold_max != null) this.goldMax = r.data.gold_max
         }
       })
@@ -5270,7 +5276,8 @@ export default {
       this.orderCalc = null
       this.go('orderpre')
     },
-    doAbandon (w) {
+    async doAbandon (w) {
+      if (!await this.ask('确定放弃野地(' + w.x + ',' + w.y + ')吗?')) return
       api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r, '已放弃该野地', () => {
         // ★ 2026-10-05 修复「放弃附属野地后列表不刷新」：成功后重拉附属野地列表
         //   （含野地 + 占领城市两块，wildfull 接口返回）
@@ -6984,6 +6991,16 @@ export default {
     doExchangeCancel (e) {
       // ★ 2026-10-06 连点防抖（同一张挂单）
       this.once('exCancel' + e.id, () => api.post('/games/ezfy/exchange/cancel', { id: e.id }).then(r => this.alert(r, '挂单已撤销', () => this.loadExchange())))
+    },
+    // ★ 2026-10-22 今日该资源已售数量 / 剩余可售（上限 0 = 不限）
+    sysSellUsedCount () {
+      return Number((this.sysSellUsed || {})[this.sellSysType] || 0)
+    },
+    sysSellRemain () {
+      const limit = Number(this.sysSellDailyLimit) || 0
+      if (limit <= 0) return -1
+      const remain = limit - this.sysSellUsedCount()
+      return remain > 0 ? remain : 0
     },
     // ★ 2026-09-30 向系统出售资源：预览应得黄金（与后端同口径整数除法）
     sysSellPreview () {

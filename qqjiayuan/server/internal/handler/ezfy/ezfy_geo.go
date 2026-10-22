@@ -797,6 +797,41 @@ func ezfySysSellRatio(esType int) int {
 	return 0
 }
 
+// ezfySysSellFeeDefault 向系统出售资源的手续费默认值（%）。
+//
+// ★ 2026-10-22 用户反馈「商城大资源包 5 万买、交易所卖 6.5 万，扣 10% 仍赚」：
+//
+//	整套资源卖出毛收入 65,000，10% 手续费后 58,500 > 50,000，套利 8,500。
+//	手续费提到 30% 后实得 45,500 < 50,000，套利变成亏损。
+const ezfySysSellFeeDefault = 30
+
+// ezfySysSellDailyLimitDef 每日每种资源向系统出售的默认上限（0 = 不限）。
+// 默认 100 万：足够正常玩家处理富余资源，又能卡住脚本无限刷/一次性倾泻。
+const ezfySysSellDailyLimitDef int64 = 1000000
+
+// ezfySysSellFeePct 向系统出售资源的手续费百分比（0~90，默认 30）。
+//
+// 0 / 越界视为未配置 → 回落默认 30，避免管理端误配成 0 后套利漏洞重新打开。
+func ezfySysSellFeePct() int {
+	if ezfyCfg.ready() {
+		if n := ezfyCfg.limit.SysSellFee; n > 0 && n <= 90 {
+			return n
+		}
+	}
+	return ezfySysSellFeeDefault
+}
+
+// ezfySysSellDailyLimit 每日每种资源向系统出售的数量上限（0 = 不限）。
+func ezfySysSellDailyLimit() int64 {
+	if !ezfyCfg.ready() {
+		return ezfySysSellDailyLimitDef
+	}
+	if n := ezfyCfg.limit.SysSellDailyLimit; n > 0 {
+		return n
+	}
+	return 0
+}
+
 // ezfyOfficerCapPerMil 出征军官每 1 点军事累加的出征上限（二战系统配置可调，默认 2000）
 func ezfyOfficerCapPerMil() int {
 	if n := ezfyCfg.limit.OfficerCapPerMilitary; n > 0 {
@@ -2089,7 +2124,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	//   与「默认开」的语义相反（见 ezfyRecruitCostOn / ezfyFoodUpkeepOn / ezfyMarchOilOn）。
 	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
 		// ★ 2026-10-22 每城建造队列基础上限（缺行时默认 5；征募告示的临时层数另加）
-		BuildQueueMax: ezfyBuildQueueDefaultMax,
+		BuildQueueMax:     ezfyBuildQueueDefaultMax,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时给默认 10 万 / 10%）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
@@ -2115,6 +2150,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		TrainMayorMilitaryOn: ezfyTrainMayorMilitaryDef, TrainMayorEquipOn: ezfyTrainMayorEquipDef,
 		// ★ 2026-10-08 新玩家落地洲缺行兜底（默认欧洲；0/越界行读取时回落见 ezfyDefaultContinent）
 		DefaultContinent: ezfyDefaultMoveContinent,
+		// ★ 2026-10-22 系统回收手续费 / 每日每种资源上限缺行兜底
+		SysSellFee: ezfySysSellFeeDefault, SysSellDailyLimit: ezfySysSellDailyLimitDef,
 		// ★ 2026-10-22 驻军批量操作范围缺行兜底（默认当前城市，见 ezfyGarrisonBatchAllCities）
 		GarrisonBatchScope: ezfyGarrisonBatchScopeCurrent,
 		// ★ 2026-10-12 迁城冷却小时数缺行兜底（默认 24；0 合法 = 关闭，见 ezfyMoveCoolH）
@@ -2150,24 +2187,24 @@ func ezfyDefaultRanks() []model.EzfyCfgRank {
 	return []model.EzfyCfgRank{
 		{ID: 1, Name: "列兵", Post: "士兵", NeedPrestige: 0, CityMax: 1},
 		{ID: 2, Name: "上等兵", Post: "班长", NeedPrestige: 1000, CityMax: 2},
-		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 3000, CityMax: 3},
-		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 6000, CityMax: 4},
-		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 10000, CityMax: 5},
-		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 30000, CityMax: 6},
-		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 50000, CityMax: 7},
-		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 80000, CityMax: 8},
-		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 120000, CityMax: 9},
-		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 200000, CityMax: 10},
-		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 300000, CityMax: 11},
-		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 500000, CityMax: 12},
-		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 1000000, CityMax: 13},
-		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 2000000, CityMax: 14},
-		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 4000000, CityMax: 15},
-		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 8000000, CityMax: 16},
-		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 16000000, CityMax: 17},
-		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 32000000, CityMax: 18},
-		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 64000000, CityMax: 19},
-		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 100000000, CityMax: 20},
+		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 3000, CityMax: 2},
+		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 6000, CityMax: 3},
+		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 10000, CityMax: 3},
+		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 30000, CityMax: 4},
+		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 50000, CityMax: 4},
+		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 80000, CityMax: 5},
+		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 120000, CityMax: 5},
+		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 200000, CityMax: 6},
+		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 300000, CityMax: 6},
+		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 500000, CityMax: 7},
+		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 1000000, CityMax: 7},
+		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 2000000, CityMax: 8},
+		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 4000000, CityMax: 8},
+		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 8000000, CityMax: 9},
+		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 16000000, CityMax: 9},
+		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 32000000, CityMax: 10},
+		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 64000000, CityMax: 10},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 100000000, CityMax: 10},
 	}
 }
 

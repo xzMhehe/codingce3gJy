@@ -51,6 +51,17 @@
               <template slot="label">挂单出售单价上限<el-tooltip placement="top" :content="tips.sell_price_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.sell_price_max" :min="0" :max="100000" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-22 系统回收（资源直接卖系统）手续费 + 每日每种资源上限 -->
+            <el-form-item>
+              <template slot="label">系统回收手续费(%)<el-tooltip placement="top" :content="tips.sys_sell_fee"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.sys_sell_fee" :min="1" :max="90" controls-position="right" style="width:180px" />
+              <span class="unit-hint">默认 30%</span>
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">系统回收每日上限<el-tooltip placement="top" :content="tips.sys_sell_daily_limit"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.sys_sell_daily_limit" :min="0" :max="10000000000" :step="100000" controls-position="right" style="width:180px" />
+              <span class="unit-hint">每种资源；0 = 不限</span>
+            </el-form-item>
             <!-- ★ 2026-09-28 军官军事加成：每点累加出征上限 + 每点加速（二战系统配置可调） -->
             <el-form-item>
               <template slot="label">军官军事每点上限<el-tooltip placement="top" :content="tips.officer_cap_per_military"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -469,6 +480,8 @@ export default {
         // ★ 2026-10-22 每城建造队列基础上限（默认 5）
         build_queue_max: 5,
         notice_home_count: 1, gather_max_per_order: 50, sell_price_max: 100, mall_buy_max: 999,
+        // ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（默认 100 万，0 = 不限）
+        sys_sell_fee: 30, sys_sell_daily_limit: 1000000,
         bag_item_max: 5000,
         treasure_max: 5000,
         officer_cap_per_military: 2000, officer_speed_per_military: 0.1,
@@ -537,7 +550,8 @@ export default {
       // ★ 2026-10-18 分 tab 保存：每个 tab 所属字段清单，保存时只提交当前分类（后端按字段判空部分更新）
       fieldGroups: {
         build: ['military_max', 'resource_max', 'house_max', 'factory_max', 'build_queue_max', 'notice_home_count',
-          'gather_max_per_order', 'sell_price_max', 'officer_cap_per_military', 'officer_speed_per_military',
+          'gather_max_per_order', 'sell_price_max', 'sys_sell_fee', 'sys_sell_daily_limit',
+          'officer_cap_per_military', 'officer_speed_per_military',
           'mall_buy_max', 'bag_item_max', 'treasure_max', 'recruit_cycle_mode', 'default_continent'],
         troop: ['troop_max', 'wound_expire_days', 'wound_heal_divisor', 'wound_heal_rate', 'heal_all_diamond'],
         wild: ['wild_troop_mult', 'wild_res_mult', 'gather_wild_bonus_pct',
@@ -568,6 +582,10 @@ export default {
         notice_home_count: '游戏首页公告栏展示的公告条数，填 0 = 首页不展示，默认 1',
         gather_max_per_order: '单次出征最多可使用几个集结令，默认 99',
         sell_price_max: '玩家挂单出售资源的单价上限（黄金/单位）：1:100 = 卖 1 粮食价格不能超过 100，数量随意；默认 100，0 = 回落默认',
+        sys_sell_fee: '玩家把资源直接卖给系统时扣除的手续费百分比，默认 30%。' +
+          '低于约 24% 时，商城「大资源包」低买高卖仍有利润（5 万买入整套卖系统毛收入 6.5 万），建议保持 30%。',
+        sys_sell_daily_limit: '每个玩家每天每种资源最多可卖给系统的数量，默认 100 万；填 0 = 不限。' +
+          '按自然日重置（服务器本地时间），出售前校验，超限会提示已售/剩余额度。',
         officer_cap_per_military: '出征军官每 1 点军事属性累加的出征上限，默认 2000（与司令部/科技/集结令叠加），0 = 回落默认',
         officer_speed_per_military: '出征军官每 1 点军事属性加成的行军速度（%）：0.1 = 每点 +0.1%，1000 军事约 2 倍速；0 = 回落默认',
         mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 999',
@@ -724,6 +742,12 @@ export default {
               ? 1 : r.data.notice_home_count,
             gather_max_per_order: pos(r.data.gather_max_per_order, 50),
             sell_price_max: pos(r.data.sell_price_max, 100),
+            // ★ 2026-10-22 系统回收手续费（0/越界无意义 → 默认 30）
+            sys_sell_fee: pos(r.data.sys_sell_fee, 30),
+            // ★ 2026-10-22 每日每种资源上限：**0 合法 = 不限**，不能用 pos()（会把 0 改回 100 万）
+            sys_sell_daily_limit: (r.data.sys_sell_daily_limit === undefined || r.data.sys_sell_daily_limit === null ||
+              isNaN(Number(r.data.sys_sell_daily_limit)))
+              ? 1000000 : Math.max(0, Number(r.data.sys_sell_daily_limit)),
             officer_cap_per_military: pos(r.data.officer_cap_per_military, 2000),
             officer_speed_per_military: (r.data.officer_speed_per_military === undefined || r.data.officer_speed_per_military === null)
               ? 0.1 : r.data.officer_speed_per_military,

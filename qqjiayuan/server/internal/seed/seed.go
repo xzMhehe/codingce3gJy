@@ -201,6 +201,15 @@ func Run(db *gorm.DB, staticDir string) {
 		//   已有数据的库（线上 100、测试库 2000）**不会**被这行改掉，要单独跑一次 SQL。
 		addLimitCol("officer_salary_per_level", 20)
 		addLimitCol("wound_heal_divisor", 50)
+		// ★ 2026-10-22 系统回收手续费（默认 30%）：0 无意义 → 回填 30。
+		addLimitCol("sys_sell_fee", 30)
+		// ★ 2026-10-22 每日每种资源回收上限（默认 100 万）：**0 合法 = 不限**，
+		//   所以不能走 addLimitCol（它带 `WHERE col <= 0` 回填，会把管理员设的 0 改回 100 万）
+		//   → 只补列 + 只回填 NULL。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "sys_sell_daily_limit") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN sys_sell_daily_limit bigint DEFAULT 1000000")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET sys_sell_daily_limit = 1000000 WHERE sys_sell_daily_limit IS NULL")
 		// ★ 商城单次购买上限（★ 2026-10-22 用户规则：集结令等消耗道具单次购买上限统一 999）
 		addLimitCol("mall_buy_max", 999)
 		// ★ 2026-10-11 「玩家背包道具上限卡控，默认 5000，超过就不能再买」：
@@ -3235,6 +3244,16 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gold_prod_mult double DEFAULT 1")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
+	// ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（默认 100 万；0 = 不限）。
+	//   手续费 0 无意义 → 回填 30；每日上限 0 合法 → 只回填 NULL，避免把「不限」改回 100 万。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "sys_sell_fee") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN sys_sell_fee int DEFAULT 30")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET sys_sell_fee = 30 WHERE sys_sell_fee IS NULL OR sys_sell_fee <= 0")
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "sys_sell_daily_limit") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN sys_sell_daily_limit bigint DEFAULT 1000000")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET sys_sell_daily_limit = 1000000 WHERE sys_sell_daily_limit IS NULL")
 	// ★ 2026-10-22 每城建造队列基础上限（默认 5）：
 	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
 	//   0 无意义（等于全城不能建造），所以统一回落 5；征募告示的临时层数另存 ezfy_city_effect。

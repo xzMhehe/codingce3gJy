@@ -708,13 +708,23 @@ type EzfyCfgLimit struct {
 	WoundExpireDays int `gorm:"default:3;comment:伤兵过期天数" json:"wound_expire_days"`
 
 	// ★ 2026-09-30 「玩家可向系统出售资源获得黄金，比例可配置」：
-	//   玩家把资源**直接卖给系统**（不走挂单），每 100 单位 → N 黄金，实得再扣 10% 手续费。
+	//   玩家把资源**直接卖给系统**（不走挂单），每 100 单位 → N 黄金，实得再扣手续费。
 	//   默认：粮食 100:10、钢铁 100:10、石油 100:20、稀矿 100:25。
 	//   0 无意义 → 回落各自默认值（见 ezfySysSellRatio）。
 	SysSellFood  int `gorm:"default:10;comment:粮食回收比例(每100单位黄金)" json:"sys_sell_food"`
 	SysSellSteel int `gorm:"default:10;comment:钢铁回收比例(每100单位黄金)" json:"sys_sell_steel"`
 	SysSellOil   int `gorm:"default:20;comment:石油回收比例(每100单位黄金)" json:"sys_sell_oil"`
 	SysSellRare  int `gorm:"default:25;comment:稀矿回收比例(每100单位黄金)" json:"sys_sell_rare"`
+
+	// ★ 2026-10-22 用户反馈「商城大资源包 5 万买、交易所卖 6.5 万，扣 10% 仍赚」：
+	//   系统回收手续费从写死 10% 改成可配置，默认 30%。大资源包整套卖出：
+	//   65,000 × (1 − 30%) = 45,500 < 50,000，低买高卖套利直接变亏。
+	//   ⚠️ 0 / 越界（>90）无意义 → 读取端回落默认 30（见 ezfySysSellFeePct）。
+	SysSellFee int `gorm:"default:30;comment:系统回收手续费%" json:"sys_sell_fee"`
+	// ★ 2026-10-22 每日每种资源向系统出售的数量上限（默认 100 万；0 = 不限）。
+	//   在手续费之外再加一层数量卡控，防止脚本无限刷/一次性倾泻资源。
+	//   按玩家、按自然日统计（计数落在 ezfy_profile.sys_sell_*）。
+	SysSellDailyLimit int64 `gorm:"default:1000000;comment:系统回收每日每种资源上限(0=不限)" json:"sys_sell_daily_limit"`
 
 	// ============ 战力榜权重（★ 2026-10-02 兵力榜 → 战力榜）============
 	//
@@ -844,6 +854,15 @@ type EzfyProfile struct {
 	// ★ 2026-10-10 首页布局：0=跟随默认(新布局) 1=新布局 2=老布局（统帅页单选切换）
 	//   玩家 10000（首个管理员）由 seed 幂等置为 2 保留现在的首页老布局。
 	HomeLayout int `gorm:"default:0;comment:首页布局(0/1新布局 2老布局)" json:"home_layout"`
+
+	// ★ 2026-10-22 向系统出售资源的每日限额计数（按玩家、按自然日重置）。
+	//   目的：卡控「商城买大资源包 → 交易所卖给系统」的套利/脚本刷金。
+	//   日期不同时视为新的一天（读取/出售时惰性清零），不改玩家其它数据。
+	SysSellDay   string `gorm:"type:varchar(8);default:'';comment:系统回收统计日期(YYYYMMDD)" json:"-"`
+	SysSellFood  int64  `gorm:"default:0;comment:今日向系统出售粮食数量" json:"-"`
+	SysSellSteel int64  `gorm:"default:0;comment:今日向系统出售钢铁数量" json:"-"`
+	SysSellOil   int64  `gorm:"default:0;comment:今日向系统出售石油数量" json:"-"`
+	SysSellRare  int64  `gorm:"default:0;comment:今日向系统出售稀矿数量" json:"-"`
 
 	// ★ 2026-10-11 用户规则「打野地掉落宝物太频繁了，即使我配置了 1%」→
 	//   记录该玩家**上一次打野地掉到宝物**的时间戳(ms)，0 = 从未掉过。
