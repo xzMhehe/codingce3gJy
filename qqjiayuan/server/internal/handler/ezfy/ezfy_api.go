@@ -2454,7 +2454,7 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 	prof := h.ensureProfile(uid)
 	resp.OK(c, gin.H{
 		"items": views, "categories": cats, "diamond": prof.Diamond,
-		// ★ 单次购买数量上限（管理端「建筑上限配置」页维护，线上现值 99）
+		// ★ 单次购买数量上限（管理端「建筑上限配置」页维护，2026-10-22 默认 999）
 		//   前端输入框 max / 前端校验都用它，避免和写死的 99 打架。
 		"buy_max": ezfyMallBuyMaxCfg(),
 		// ★ 2026-10-11 背包单件道具上限（默认 1000，管理端「系统配置」页可维护）：
@@ -2481,8 +2481,8 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		resp.ParamError(c, "数量错误")
 		return
 	}
-	// ★ 单次购买数量上限（管理端可配置）
-	//   上限读 ezfy_cfg_limit.mall_buy_max（管理端「建筑上限配置」页维护），线上现值 99。
+	// ★ 单次购买数量上限（管理端可配置，2026-10-22 默认 999）
+	//   上限读 ezfy_cfg_limit.mall_buy_max（管理端「建筑上限配置」页维护）。
 	if mx := ezfyMallBuyMaxCfg(); req.Count > mx {
 		resp.ParamError(c, fmt.Sprintf("单次最多购买 %d 个", mx))
 		return
@@ -2492,7 +2492,7 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		resp.ParamError(c, "道具不存在")
 		return
 	}
-	// ★ 库存校验（管理端在「数据管理 → 道具配置」维护，默认 100）
+	// ★ 库存校验（管理端在「数据管理 → 道具配置」维护；-1 = 无限，0 = 售罄）
 	//   从库里读最新值，不用配置缓存 —— 管理端改完立即生效，不用等缓存重载。
 	//   ★ 用户规则：库存 **-1 = 无限**，可以任意购买（不做数量校验、也不扣库存）。
 	var live model.EzfyCfgItem

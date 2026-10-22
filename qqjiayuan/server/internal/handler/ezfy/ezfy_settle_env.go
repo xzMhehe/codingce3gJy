@@ -75,6 +75,36 @@ func (h *EzfyHandler) batchWildlands(ids []int64) map[int64]*model.EzfyWildland 
 	return out
 }
 
+// batchCities 按城市 ID 批量取城（一次 IN 查询），供批量结算 / 多城资源满判定复用。
+//
+// ★ 2026-10-22 一键采集切到「全部城市」后，不能再像当前城那样只查一次资源是否满；
+//
+//	这里按订单涉及的城市一次取回，避免每支部队 / 每座城各打一条 SQL。
+func (h *EzfyHandler) batchCities(ids []int64) map[int64]*model.EzfyCity {
+	out := map[int64]*model.EzfyCity{}
+	if len(ids) == 0 {
+		return out
+	}
+	uniq := make([]int64, 0, len(ids))
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			uniq = append(uniq, id)
+		}
+	}
+	if len(uniq) == 0 {
+		return out
+	}
+	var list []model.EzfyCity
+	h.DB.Where("id IN ?", uniq).Find(&list)
+	for i := range list {
+		c := list[i]
+		out[int64(c.ID)] = &c
+	}
+	return out
+}
+
 // ezfyCityAtResMax 该城五项资源是否已全部到达「资源最大值」（= 满了，再采集也入不了库）。
 //
 // ★ 与 `ezfyAtResMax` 同口径，但吃**已取好的城市对象**（批量结算已预取），省一条查询。
@@ -123,12 +153,7 @@ func (h *EzfyHandler) newSettleEnv(orders []model.EzfyOrder) *ezfySettleEnv {
 		}
 	}
 	if len(cityIDs) > 0 {
-		var cities []model.EzfyCity
-		h.DB.Where("id IN ?", cityIDs).Find(&cities)
-		for i := range cities {
-			c := cities[i]
-			e.cities[int64(c.ID)] = &c
-		}
+		e.cities = h.batchCities(cityIDs)
 		// ★ 2026-10-21 采集新公式的野地加成：一次取回这批城市名下所有野地，
 		//   按「城市 → 资源 → 总等级」预先汇总（同城多支采集队共享，避免 N+1）。
 		var cityWilds []model.EzfyWildland

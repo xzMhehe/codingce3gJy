@@ -552,14 +552,16 @@ var ezfyEzfyCfgWildland = []model.EzfyCfgWildland{
 }
 
 // ★ 2026-09-27 「道具 /games/ezfy?cur=mall 价格我改了，更新下初始化种子」：
-//   以下 价格 / 库存 全部取线上库快照值（39.105.151.141 qq_jiayuan.ezfy_cfg_item）。
-//   与上一版（2026-09-26）的差异：
-//     · ID 10 建筑图纸 钻石 40→10；
-//     · 库存同步线上现值：ID 2 大资源包 0→60、ID 11 增产令 0→100。
-//   其余（ID 1、3~9、12）价格与库存与线上一致，不动。
 //
-//	Stock 写成 0（即「不写」）= 线上已售罄；但 stock 列自带 DB 默认值 100 而 GORM 会跳过带 default 标签字段的零值，
-//	所以「售罄」这个状态要靠 seedEzfy 里紧跟 batch 之后那段显式 Update 落地（当前快照无售罄项，段代码暂休眠）。
+//	以下 价格 取线上库快照值（39.105.151.141 qq_jiayuan.ezfy_cfg_item）。
+//	与上一版（2026-09-26）的差异：
+//	  · ID 10 建筑图纸 钻石 40→10；
+//	  · ID 2 大资源包、ID 11 增产令价格同步线上。
+//
+// ★ 2026-10-22 用户规则「商城道具库存都改成无限」：
+//
+//	道具商城内所有消耗品统一 Stock -1（-1 = 无限库存），不再按线上快照回写有限库存。
+//	老库由 seed 里的一次性迁移统一改成 -1（带 settings 标记，之后管理端改库存不会被覆盖）。
 //
 // ★★ 2026-10-10 道具 cfg_id 全体 **+1000**（1~41 → 1001~1041）：
 //
@@ -571,35 +573,35 @@ var ezfyEzfyCfgWildland = []model.EzfyCfgWildland{
 //	  老库不用手工改；所有引用表（ezfy_item / ezfy_item_use_logs / 宝箱奖池 / 野地掉落 / 军团商城）
 //	  一并 +1000。★ 新增道具请从 **1001+** 取号，别再回到 1~35。
 var ezfyEzfyCfgItem = []model.EzfyCfgItem{
-	{ID: 1001, Name: "小资源包", ItemType: 1, Param1: 10000, PriceGold: 10000, Stock: 100, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各1万"},
-	{ID: 1002, Name: "大资源包", ItemType: 1, Param1: 100000, PriceGold: 50000, Stock: 60, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各10万"},
-	{ID: 1003, Name: "黄金卡", ItemType: 2, Param1: 10000, PriceDiamond: 10, Stock: 100, Icon: "", Description: "使用后获得黄金1万"},
-	{ID: 1004, Name: "建筑加速30分钟", ItemType: 3, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前建筑升级立即减少30分钟"},
-	{ID: 1005, Name: "建筑加速2小时", ItemType: 3, Param1: 120, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前建筑升级立即减少2小时"},
-	{ID: 1006, Name: "训练加速30分钟", ItemType: 4, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前训练队列立即减少30分钟"},
-	{ID: 1007, Name: "训练加速2小时", ItemType: 4, Param1: 120, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前训练队列立即减少2小时"},
-	{ID: 1008, Name: "科技加速30分钟", ItemType: 5, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前科技研究立即减少30分钟"},
-	{ID: 1009, Name: "科技加速2小时", ItemType: 5, Param1: 120, PriceDiamond: 4, Stock: 98, Icon: "", Description: "当前科技研究立即减少2小时"},
+	{ID: 1001, Name: "小资源包", ItemType: 1, Param1: 10000, PriceGold: 10000, Stock: -1, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各1万"},
+	{ID: 1002, Name: "大资源包", ItemType: 1, Param1: 100000, PriceGold: 50000, Stock: -1, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各10万"},
+	{ID: 1003, Name: "黄金卡", ItemType: 2, Param1: 10000, PriceDiamond: 10, Stock: -1, Icon: "", Description: "使用后获得黄金1万"},
+	{ID: 1004, Name: "建筑加速30分钟", ItemType: 3, Param1: 30, PriceDiamond: 2, Stock: -1, Icon: "", Description: "当前建筑升级立即减少30分钟"},
+	{ID: 1005, Name: "建筑加速2小时", ItemType: 3, Param1: 120, PriceDiamond: 4, Stock: -1, Icon: "", Description: "当前建筑升级立即减少2小时"},
+	{ID: 1006, Name: "训练加速30分钟", ItemType: 4, Param1: 30, PriceDiamond: 2, Stock: -1, Icon: "", Description: "当前训练队列立即减少30分钟"},
+	{ID: 1007, Name: "训练加速2小时", ItemType: 4, Param1: 120, PriceDiamond: 4, Stock: -1, Icon: "", Description: "当前训练队列立即减少2小时"},
+	{ID: 1008, Name: "科技加速30分钟", ItemType: 5, Param1: 30, PriceDiamond: 2, Stock: -1, Icon: "", Description: "当前科技研究立即减少30分钟"},
+	{ID: 1009, Name: "科技加速2小时", ItemType: 5, Param1: 120, PriceDiamond: 4, Stock: -1, Icon: "", Description: "当前科技研究立即减少2小时"},
 	// ★ 2026-10-21 用户「商城种子 默认图纸 库存 无限」→ Stock -1（无限，不再按快照 97 回写）。
 	{ID: 1010, Name: "建筑图纸", ItemType: 6, Param1: 1, PriceDiamond: 10, Stock: -1, Icon: "", Description: "建筑升级到10级必需, 每张可升级一次"},
-	{ID: 1011, Name: "增产令+50%(24小时)", ItemType: 7, Param1: 50, PriceDiamond: 10, Stock: 100, Icon: "", Description: "城市资源产量+50%, 持续24小时"},
+	{ID: 1011, Name: "增产令+50%(24小时)", ItemType: 7, Param1: 50, PriceDiamond: 10, Stock: -1, Icon: "", Description: "城市资源产量+50%, 持续24小时"},
 	// ★ 2026-10-02 免战保护令改售 10 钻石（黄金太容易得，防滥用囤货）。
 	//   与线上/测试库 ezfy_cfg_item id=12 的现行价格一致。
 	// ★ 2026-10-16 用户规则：「免战道具改成 8 小时，冷却时间 8 小时」。
 	//   Param1 = 免战保护持续小时数（24 → 8）；使用冷却见 handler/ezfy/ezfy_geo.go 的 ezfyPeaceCoolH。
-	{ID: 1012, Name: "免战保护令(8小时)", ItemType: 8, Param1: 8, PriceDiamond: 10, Stock: 81, Icon: "", Description: "城市8小时内免遭掠夺与征服"},
+	{ID: 1012, Name: "免战保护令(8小时)", ItemType: 8, Param1: 8, PriceDiamond: 10, Stock: -1, Icon: "", Description: "城市8小时内免遭掠夺与征服"},
 	// ★ 2026-09-27 百分比加速道具（「时间减少 30/60/80%」，价格 2/4/6 钻石）：
 	//   ItemType 24 建筑加速% / 25 训练加速% / 26 科技加速%，Param1 = 百分比，
-	//   使用时按「剩余时间」直接减对应百分比。价格/库存与线上一致，库存 100。
-	{ID: 1028, Name: "建筑加速30%", ItemType: 24, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前建筑升级剩余时间减少30%"},
-	{ID: 1029, Name: "建筑加速60%", ItemType: 24, Param1: 60, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前建筑升级剩余时间减少60%"},
-	{ID: 1030, Name: "建筑加速80%", ItemType: 24, Param1: 80, PriceDiamond: 6, Stock: 100, Icon: "", Description: "当前建筑升级剩余时间减少80%"},
-	{ID: 1031, Name: "训练加速30%", ItemType: 25, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前训练队列剩余时间减少30%"},
-	{ID: 1032, Name: "训练加速60%", ItemType: 25, Param1: 60, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前训练队列剩余时间减少60%"},
-	{ID: 1033, Name: "训练加速80%", ItemType: 25, Param1: 80, PriceDiamond: 6, Stock: 100, Icon: "", Description: "当前训练队列剩余时间减少80%"},
-	{ID: 1034, Name: "科技加速30%", ItemType: 26, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少30%"},
-	{ID: 1035, Name: "科技加速60%", ItemType: 26, Param1: 60, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少60%"},
-	{ID: 1036, Name: "科技加速80%", ItemType: 26, Param1: 80, PriceDiamond: 6, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少80%"},
+	//   使用时按「剩余时间」直接减对应百分比。价格与线上一致，库存统一 -1（无限）。
+	{ID: 1028, Name: "建筑加速30%", ItemType: 24, Param1: 30, PriceDiamond: 2, Stock: -1, Icon: "", Description: "当前建筑升级剩余时间减少30%"},
+	{ID: 1029, Name: "建筑加速60%", ItemType: 24, Param1: 60, PriceDiamond: 4, Stock: -1, Icon: "", Description: "当前建筑升级剩余时间减少60%"},
+	{ID: 1030, Name: "建筑加速80%", ItemType: 24, Param1: 80, PriceDiamond: 6, Stock: -1, Icon: "", Description: "当前建筑升级剩余时间减少80%"},
+	{ID: 1031, Name: "训练加速30%", ItemType: 25, Param1: 30, PriceDiamond: 2, Stock: -1, Icon: "", Description: "当前训练队列剩余时间减少30%"},
+	{ID: 1032, Name: "训练加速60%", ItemType: 25, Param1: 60, PriceDiamond: 4, Stock: -1, Icon: "", Description: "当前训练队列剩余时间减少60%"},
+	{ID: 1033, Name: "训练加速80%", ItemType: 25, Param1: 80, PriceDiamond: 6, Stock: -1, Icon: "", Description: "当前训练队列剩余时间减少80%"},
+	{ID: 1034, Name: "科技加速30%", ItemType: 26, Param1: 30, PriceDiamond: 2, Stock: -1, Icon: "", Description: "当前科技研究剩余时间减少30%"},
+	{ID: 1035, Name: "科技加速60%", ItemType: 26, Param1: 60, PriceDiamond: 4, Stock: -1, Icon: "", Description: "当前科技研究剩余时间减少60%"},
+	{ID: 1036, Name: "科技加速80%", ItemType: 26, Param1: 80, PriceDiamond: 6, Stock: -1, Icon: "", Description: "当前科技研究剩余时间减少80%"},
 	// ★ 2026-09-28 「商城道具新增 5 个资源道具（2钻礼包，各 1000 万资源）」：
 	//   2钻礼包1~5 对应 黄金/粮食/钢铁/石油/稀矿，统一 2 钻石、无限库存(-1)。
 	//   Category 显式写「资源道具」：方便管理端一眼看出归类（item_type 也会自动归到资源道具）。

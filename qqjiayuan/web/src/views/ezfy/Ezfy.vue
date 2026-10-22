@@ -780,8 +780,8 @@ export default {
       mallCatsList: [], mallCat: '', mallPage: 1, mallPageSize: 10, mallDiamond: 0,
       // ★ 商城分栏：item=道具（原有） equipment=装备套装（用黄金/钻石买）
       mallTab: 'item',
-      // ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 99）
-      mallBuyMax: 99,
+      // ★ 单次购买数量上限（管理端「建筑上限配置」页维护，2026-10-22 默认 999）
+      mallBuyMax: 999,
       // ★ 2026-10-11 背包单件道具上限（管理端「系统配置」页维护，默认 5000）
       mallBagMax: 5000,
       bagItems: [],
@@ -4640,8 +4640,8 @@ export default {
           // ★ 分类页签 + 钻石余额（钻石只能管理端充值）
           this.mallCatsList = r.data.categories || []
           this.mallDiamond = r.data.diamond || 0
-          // ★ 单次购买上限（管理端可配，默认 99）
-          this.mallBuyMax = parseInt(r.data.buy_max) > 0 ? parseInt(r.data.buy_max) : 99
+          // ★ 单次购买上限（管理端可配，2026-10-22 默认 999）
+          this.mallBuyMax = parseInt(r.data.buy_max) > 0 ? parseInt(r.data.buy_max) : 999
           // ★ 2026-10-11 背包单件道具上限（默认 5000）
           this.mallBagMax = parseInt(r.data.bag_max) > 0 ? parseInt(r.data.bag_max) : 5000
           if (this.mallCat && this.mallCatsList.indexOf(this.mallCat) < 0) this.mallCat = ''
@@ -6855,7 +6855,7 @@ export default {
     //   无限库存(-1)的道具只看配置值。原来这里写死 999，和 doBuy 里的 99 打架。
     //   ★ 2026-10-11 叠加「背包单件上限」：已有 have 个，最多再买 bagMax - have 个。
     buyMaxOf (it) {
-      const cfgMax = parseInt(this.mallBuyMax) > 0 ? parseInt(this.mallBuyMax) : 9999
+      const cfgMax = parseInt(this.mallBuyMax) > 0 ? parseInt(this.mallBuyMax) : 999
       const bagMax = parseInt(this.mallBagMax) > 0 ? parseInt(this.mallBagMax) : 5000
       const bagLeft = Math.max(0, bagMax - (parseInt(it.have) || 0))
       let cap = cfgMax

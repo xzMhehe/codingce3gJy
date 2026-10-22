@@ -62,6 +62,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		RecruitCycleMode:     ezfyRecruitCycleHourlyDef,
 		// ★ 2026-10-08 新玩家落地洲（缺行时给默认欧洲）
 		DefaultContinent: ezfyDefaultMoveContinent,
+		// ★ 2026-10-22 驻军批量操作范围（缺行时默认当前城市）
+		GarrisonBatchScope: ezfyGarrisonBatchScopeCurrent,
 		// ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金，默认粮10/钢10/油20/稀25）
 		SysSellFood: 10, SysSellSteel: 10, SysSellOil: 20, SysSellRare: 25,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
@@ -103,7 +105,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
-	// ★ 商城单次购买上限兜底（0 无意义 = 禁止购买），默认 99
+	// ★ 商城单次购买上限兜底（0 无意义 = 禁止购买），默认 999
 	if lim.MallBuyMax <= 0 {
 		lim.MallBuyMax = ezfyMallBuyMaxDef
 	}
@@ -203,6 +205,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 2026-10-08 新玩家落地洲兜底（老行 0 / 越界 → 回落默认欧洲）
 	if lim.DefaultContinent < 1 || lim.DefaultContinent > 7 {
 		lim.DefaultContinent = ezfyDefaultMoveContinent
+	}
+	// ★ 2026-10-22 驻军批量操作范围兜底（老行 0 / 非法值 → 默认当前城市）
+	if lim.GarrisonBatchScope != ezfyGarrisonBatchScopeCurrent && lim.GarrisonBatchScope != ezfyGarrisonBatchScopeAll {
+		lim.GarrisonBatchScope = ezfyGarrisonBatchScopeCurrent
 	}
 	// ★ 军官升星的数值项：0 无意义 → 回落默认值（开关项不兜底，0 = 关）
 	if lim.OfficerStarChance <= 0 {
@@ -372,6 +378,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		RecruitCycleMode *int `json:"recruit_cycle_mode"`
 		// ★ 2026-10-08：新玩家落地洲（1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）
 		DefaultContinent *int `json:"default_continent"`
+		// ★ 2026-10-22 驻军批量操作范围（1=当前城市 2=全部城市）
+		GarrisonBatchScope *int `json:"garrison_batch_scope"`
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
 		ResProdMult *float64 `json:"res_prod_mult"`
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，默认 1；**0 合法 = 黄金产量归零**）
@@ -487,6 +495,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		RecruitCycleMode:     ezfyRecruitCycleHourlyDef,
 		// ★ 2026-10-08 新玩家落地洲（缺行时给默认欧洲）
 		DefaultContinent: ezfyDefaultMoveContinent,
+		// ★ 2026-10-22 驻军批量操作范围（缺行时默认当前城市）
+		GarrisonBatchScope: ezfyGarrisonBatchScopeCurrent,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult:   ezfyResProdMultDef,
 		GoldProdMult:  ezfyGoldProdMultDef,
@@ -701,7 +711,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.GatherMaxPerOrder <= 0 {
 		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
 	}
-	// ★ 商城单次购买上限兜底：老数据可能是 0（该列刚加），归一化到默认 99
+	// ★ 商城单次购买上限兜底：老数据可能是 0（该列刚加），归一化到默认 999
 	if lim.MallBuyMax <= 0 {
 		lim.MallBuyMax = ezfyMallBuyMaxDef
 	}
@@ -897,6 +907,16 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.DefaultContinent = m
+	}
+	// ★ 2026-10-22 驻军批量操作范围：1=当前城市（默认）/ 2=全部城市。
+	//   ⚠️ 老库 0 在读取端按当前城市处理；管理端保存时归一化，避免把 0 写回去。
+	if in.GarrisonBatchScope != nil {
+		m := *in.GarrisonBatchScope
+		if m != ezfyGarrisonBatchScopeCurrent && m != ezfyGarrisonBatchScopeAll {
+			resp.ParamError(c, "驻军批量操作范围只能是 1(当前城市) 或 2(全部城市)")
+			return
+		}
+		lim.GarrisonBatchScope = m
 	}
 	// ★ 2026-09-26 城市资源产量倍率：允许小数，**且 0 合法**（= 产量归零）。
 	//   用户原话：「默认 1，可以调整 >= 0 的任意数量」—— 所以只拦负数。
@@ -1266,6 +1286,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.DefaultContinent < 1 || lim.DefaultContinent > 7 {
 		lim.DefaultContinent = ezfyDefaultMoveContinent
 	}
+	// ★ 2026-10-22 驻军批量操作范围兜底（老行 0 / 非法值 → 默认当前城市）
+	if lim.GarrisonBatchScope != ezfyGarrisonBatchScopeCurrent && lim.GarrisonBatchScope != ezfyGarrisonBatchScopeAll {
+		lim.GarrisonBatchScope = ezfyGarrisonBatchScopeCurrent
+	}
 	// ★ 军官升星数值兜底（老行可能是 0 / NULL）；开关不兜底
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
@@ -1364,6 +1388,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		{"ransom_cost", ezfyRansomCostDefault},
 		// ★ 2026-10-08 新玩家落地洲：老库补列 + NULL/越界(含0) 兜底欧洲
 		{"default_continent", ezfyDefaultMoveContinent},
+		// ★ 2026-10-22 驻军批量操作范围：老库补列 + NULL/0 兜底当前城市
+		{"garrison_batch_scope", ezfyGarrisonBatchScopeCurrent},
 	} {
 		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
 			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
@@ -1438,6 +1464,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"recruit_cycle_mode": lim.RecruitCycleMode,
 		// ★ 2026-10-08 新玩家落地洲
 		"default_continent": lim.DefaultContinent,
+		// ★ 2026-10-22 驻军批量操作范围（1=当前城市 2=全部城市，显式写避免被 GORM 吞）
+		"garrison_batch_scope": lim.GarrisonBatchScope,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1，0 = 产量归零）
 		"res_prod_mult": lim.ResProdMult,
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，0 = 黄金产量归零）

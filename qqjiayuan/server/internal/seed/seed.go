@@ -125,9 +125,9 @@ func Run(db *gorm.DB, staticDir string) {
 		//   这里补上「删老索引 + 一次性复制老记录到另外两榜」（幂等）。
 		EnsureEzfyPvpExcludeTable(db)
 	}
-	// 二战风云：道具库存列是后加的，老行回填默认 100
+	// 二战风云：道具库存列是后加的，老行 NULL 回填 -1（无限库存）
 	if db.Migrator().HasTable("ezfy_cfg_item") {
-		db.Exec("UPDATE ezfy_cfg_item SET stock = 100 WHERE stock IS NULL")
+		db.Exec("UPDATE ezfy_cfg_item SET stock = -1 WHERE stock IS NULL")
 		// 钻石售价 / 商城分类（第九轮新增）
 		db.Exec("UPDATE ezfy_cfg_item SET price_diamond = 0 WHERE price_diamond IS NULL")
 		db.Exec("UPDATE ezfy_cfg_item SET category = '' WHERE category IS NULL")
@@ -201,8 +201,8 @@ func Run(db *gorm.DB, staticDir string) {
 		//   已有数据的库（线上 100、测试库 2000）**不会**被这行改掉，要单独跑一次 SQL。
 		addLimitCol("officer_salary_per_level", 20)
 		addLimitCol("wound_heal_divisor", 50)
-		// ★ 商城单次购买上限（「原来卡控 1-99，改成可配置的」，2026-09-26 按线上现值 99）
-		addLimitCol("mall_buy_max", 99)
+		// ★ 商城单次购买上限（★ 2026-10-22 用户规则：集结令等消耗道具单次购买上限统一 999）
+		addLimitCol("mall_buy_max", 999)
 		// ★ 2026-10-11 「玩家背包道具上限卡控，默认 5000，超过就不能再买」：
 		//   同一种道具的持有上限（0 无意义 → 回填默认 5000）。★ 当天由 1000 上调为 5000。
 		addLimitCol("bag_item_max", 5000)
@@ -227,6 +227,9 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = 24 WHERE move_cool_h IS NULL")
 		// ★ 背包上限默认值当天由 1000 改 5000：把「仍停在旧默认 1000」的行一次性提升（见函数注释）。
 		ezfyBumpBagItemMaxDefault(db)
+		// ★ 2026-10-22 用户规则：商城单次购买上限 15 → 999；商城道具库存全部无限。
+		ezfyBumpMallBuyMax999Default(db)
+		ezfyUnlimitMallItemStockDefault(db)
 		// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：粮食默认 10 万
 		addLimitCol("convene_food_cost", 100000)
 		// ★ 2026-10-22 召集人口改为「当前民居上限的 N%」，默认 10%（不再使用固定的 convene_pop_gain）
@@ -244,6 +247,9 @@ func Run(db *gorm.DB, staticDir string) {
 		//   100 = 5 分钟内回落到民居上限。
 		//   0 无意义（= 人口永远不回落）→ 用 addLimitCol 补列 + 回填。
 		addLimitCol("pop_over_cap_decay_pct", 100)
+		// ★ 2026-10-22 驻军批量操作范围（1=当前城市 默认 / 2=全部城市）：
+		//   0 是「老库未配置」→ 回填 1，保持现行为；管理端保存只接受 1/2。
+		addLimitCol("garrison_batch_scope", 1)
 		// ★ 2026-10-13 用户需求「回合战斗公式能维护起来，放到二战系统配置」：
 		//   战斗引擎 5 个硬编码机制常量配置化（默认值 = 移植前的硬编码值）。
 		//   这几个值 0 都无意义（= 未配置/配置错，读取端回落默认）→ 用 addLimitCol 补列+回填。
@@ -3269,8 +3275,17 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) +
 			" WHERE " + c.col + " IS NULL OR " + c.col + " <= 0")
 	}
+	// ★ 2026-10-22 商城单次购买上限（默认 999）：老库补列 + NULL/<=0 回填；
+	//   已有 15/99 等旧配置由下面的 ezfyBumpMallBuyMax999Default 一次性统一成 999。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "mall_buy_max") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN mall_buy_max int DEFAULT 999")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET mall_buy_max = 999 WHERE mall_buy_max IS NULL OR mall_buy_max <= 0")
 	// ★ 2026-10-11 背包上限默认值当天由 1000 上调为 5000：把仍停在旧默认 1000 的行一次性提升。
 	ezfyBumpBagItemMaxDefault(db)
+	// ★ 2026-10-22 用户规则：商城单次购买上限 15 → 999；商城道具库存全部无限。
+	ezfyBumpMallBuyMax999Default(db)
+	ezfyUnlimitMallItemStockDefault(db)
 	// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2）：⚠️ 0 合法（= 关闭）→ 只补列 + 只回填 NULL，
 	//   不能走上面那个 `WHERE IS NULL OR <= 0` 的循环。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_treasure_cooldown_h") {
@@ -3293,6 +3308,12 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pop_recover_seconds int DEFAULT 1200")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET pop_recover_seconds = 1200 WHERE pop_recover_seconds IS NULL OR pop_recover_seconds <= 0")
+	// ★ 2026-10-22 驻军批量操作范围（1=当前城市 默认 / 2=全部城市）：
+	//   老库补列 + NULL/非法值回填 1，保持「一键采集/收获/召回只作用于当前城市」的现行为。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "garrison_batch_scope") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN garrison_batch_scope int DEFAULT 1")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET garrison_batch_scope = 1 WHERE garrison_batch_scope IS NULL OR garrison_batch_scope < 1 OR garrison_batch_scope > 2")
 	// ★ 2026-10-14 风云榜统计开关（默认 1 = 开）。
 	//   ⚠️ 0 合法（= 关闭统计）→ 只补列 + 只回填 NULL，**不能**用 `<= 0` 兜底（会把关掉的又打开）。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "pvp_rank_on") {
@@ -3345,6 +3366,43 @@ func ezfyBumpBagItemMaxDefault(db *gorm.DB) {
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET bag_item_max = 5000 WHERE bag_item_max = 1000")
 	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", "ezfy_bag_item_max_bump_5000", "1")
+}
+
+// ezfyBumpMallBuyMax999Default 一次性把商城单次购买上限提升到 999。
+//
+// ★ 2026-10-22 用户规则：「集结令购买上限 15 改成 999，其他消耗道具单次购买也都 999」。
+// 历史配置里线上是 15（代码旧默认 99），所以把所有已有行统一调整为 999。
+// 用 settings 打标**只跑一次** —— 之后管理员即使调低，下次重启也不会再被顶回 999。
+// 幂等：settings 无标记才执行；表不存在直接跳过。
+func ezfyBumpMallBuyMax999Default(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_limit") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", "ezfy_mall_buy_max_bump_999").Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET mall_buy_max = 999 WHERE mall_buy_max IS NULL OR mall_buy_max <> 999")
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", "ezfy_mall_buy_max_bump_999", "1")
+}
+
+// ezfyUnlimitMallItemStockDefault 一次性把商城道具库存统一改成无限（-1）。
+//
+// ★ 2026-10-22 用户规则：「商城道具库存都改成无限」。
+// 迁移本身只跑一次（settings 标记），避免每次重启都覆盖老库/后台改过的库存；
+// 基础道具种子本身也已统一写 Stock: -1，保证新库初始化后仍是无限。
+func ezfyUnlimitMallItemStockDefault(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_item") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", "ezfy_mall_item_stock_unlimited").Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	db.Exec("UPDATE ezfy_cfg_item SET stock = -1 WHERE stock IS NULL OR stock <> -1")
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", "ezfy_mall_item_stock_unlimited", "1")
 }
 
 // EnsureEzfyBattleLockColumns 幂等补 ezfy_battle 的「指挥室本回合锁定」列（skip 分支必须调用）。

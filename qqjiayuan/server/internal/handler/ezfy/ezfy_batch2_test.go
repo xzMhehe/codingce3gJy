@@ -165,6 +165,24 @@ func TestMallCatAndPagerLayout(t *testing.T) {
 	}
 }
 
+// TestMallBuyMaxDefault999 商城单次购买上限默认值必须是 999（集结令原 15）。
+//
+// ★ 2026-10-22 用户规则：「集结令购买上限 15 改成 999；其他消耗道具单次购买也都 999」。
+func TestMallBuyMaxDefault999(t *testing.T) {
+	if ezfyMallBuyMaxDef != 999 {
+		t.Fatalf("商城单次购买默认上限 = %d，应为 999", ezfyMallBuyMaxDef)
+	}
+	vue := ezfyStripCommentLines(readFrontFile(t, "../../../../web/src/views/ezfy/Ezfy.vue"))
+	for _, want := range []string{
+		"mallBuyMax: 999",
+		"parseInt(r.data.buy_max) > 0 ? parseInt(r.data.buy_max) : 999",
+	} {
+		if !strings.Contains(vue, want) {
+			t.Fatalf("商城购买上限前端兜底未同步为 999（缺 %s）", want)
+		}
+	}
+}
+
 // TestConveneClampToCap 人口召集「贴近上限」时必须还能召集（截断到上限），不能整单拒绝。
 //
 // ★★ 2026-10-09 用户报「人口 46 万时再召集却不行了，应该仍可以召集、只不过是召集到上限为止」：

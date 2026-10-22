@@ -737,7 +737,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 					left -= give
 					if give > 0 {
 						report += fmt.Sprintf("\n掉落宝物: %s ×%d", e.Name, give)
-						h.ezfySysChat("恭喜玩家 %s 缴获宝物：%s", h.ezfyProfileName(city.UserID), e.Name)
+						h.ezfySysChat("恭喜玩家 %s 缴获宝物: %s", h.ezfyProfileName(city.UserID), e.Name)
 					}
 					if give < tr[1] {
 						report += fmt.Sprintf("\n宝物已达上限(%d), %s×%d 未能入包", ezfyTreasureMax(), e.Name, tr[1]-give)

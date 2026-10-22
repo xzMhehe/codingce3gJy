@@ -25,7 +25,7 @@
                   <a href="javascript:;" @click="ezfy.selectPm(ezfy.pmPeer.id)">[刷新]</a>
                 </div>
                 <div class="old-line" v-for="m in ezfy.pmChat" :key="'pc' + m.id">
-                  <span :class="m.sender_id === ezfy.myUserId ? 'green' : ''">{{ m.sender_id === ezfy.myUserId ? '我' : ezfy.pmPeer.gname }}</span>：{{ m.content }}
+                  <span :class="m.sender_id === ezfy.myUserId ? 'green' : ''">{{ m.sender_id === ezfy.myUserId ? '我' : ezfy.pmPeer.gname }}</span>: {{ m.content }}
                   <span class="gray">({{ ezfy.fmtTime(m.created_at) }})</span>
                 </div>
                 <div class="old-line gray" v-if="!ezfy.pmChat.length">(还没有聊天记录，发一条试试)</div>

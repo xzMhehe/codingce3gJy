@@ -3101,16 +3101,20 @@ func ezfyGatherHoursText(hoursF float64) string {
 // ★ 2026-09-24 修复「提前结束采集提示采集资源0」: 只要驻守过(哪怕几秒)就按比例折算,
 //
 //	至少给 1 点资源, 不再设 1 分钟硬门槛。
-func (h *EzfyHandler) settleDispatchOnRecall(uid uint, order *model.EzfyOrder, now int64) {
+func (h *EzfyHandler) settleDispatchOnRecall(uid uint, order *model.EzfyOrder, now int64, envs ...*ezfySettleEnv) {
 	if order.ArriveTime <= 0 {
 		return // 空闲驻守: 还没开始采集, 没有产出
 	}
+	var env *ezfySettleEnv
+	if len(envs) > 0 {
+		env = envs[0]
+	}
 	if now >= order.ArriveTime {
-		h.settleDispatch(uid, order, now, nil)
+		h.settleDispatch(uid, order, now, env)
 		return
 	}
 	// 未满一期: 提前召回, 资源按已驻守时长比例结算, 不做宝物
-	h.settlePartialCollect(uid, order, now, "提前召回", nil)
+	h.settlePartialCollect(uid, order, now, "提前召回", env)
 }
 
 // settlePartialCollect 未满一个采集周期的部分结算(「停止采集」/「提前召回」共用):

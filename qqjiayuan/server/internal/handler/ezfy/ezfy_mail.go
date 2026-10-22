@@ -504,7 +504,8 @@ func (h *EzfyHandler) PrivChatWith(c *gin.Context) {
 		Where("sender_id = ? AND receiver_id = ? AND is_read = 0", peerID, uid).Update("is_read", 1)
 	gid, gname := h.ezfyGameName(peer.ID, peer.Nickname)
 	resp.OK(c, gin.H{"peer": gin.H{
-		"id": peer.ID, "username": peer.Username, "nickname": peer.Nickname,
+		// 私聊里的昵称统一用游戏昵称，家园昵称只在游戏没填昵称时兜底（见 ezfyGameName）。
+		"id": peer.ID, "username": peer.Username, "nickname": gname,
 		"gid": gid, "gname": gname,
 	}, "list": msgs, "total": total, "page": page, "size": size})
 }

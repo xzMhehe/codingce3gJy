@@ -830,8 +830,8 @@ const (
 	ezfyRansomCostDefault   = 500 // 赎城所需钻石（默认 500）
 	ezfyOfficerSalaryDef    = 20  // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
 	ezfyWoundHealDivisorDef = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
-	// ★ 商城单次购买数量上限（默认 99）
-	ezfyMallBuyMaxDef = 99
+	// ★ 商城单次购买数量上限（默认 999；2026-10-22 由 99 上调，线上原配置 15 也由 seed 一次性抬高）
+	ezfyMallBuyMaxDef = 999
 	// ★ 背包单件道具持有上限（默认 5000）：同一种道具在玩家背包里不得超过它。
 	//   Buy 时卡控；0 无意义 → 读取端回落该默认值。存量超额不回溯（「超过的暂时先这样」）。
 	//   ★ 2026-10-11 当天由 1000 上调为 5000（「背包上限默认也 5000」）。
@@ -847,6 +847,11 @@ const (
 	// ★ 2026-10-12 迁城冷却小时数（默认 24）：迁城成功后**该城**要等这么久才能再迁。
 	//   0 = 关闭迁城冷却（合法值，不走 ezfyLimitOr）。
 	ezfyMoveCoolDef = 24
+	// ★ 2026-10-22 驻军批量操作范围：一键采集/收获/召回默认只处理当前城市，
+	//   二战系统配置可切到全部城市。1=当前城市（默认） 2=全部城市；
+	//   老库 0 按当前城市处理（不写库也能保持现行为）。
+	ezfyGarrisonBatchScopeCurrent = 1
+	ezfyGarrisonBatchScopeAll     = 2
 	// ★ 免战保护令的使用冷却小时数。
 	//   2026-10-02 上线时是 24 小时 → 2026-10-12 改成 4 小时
 	//   → 2026-10-16 用户规则：「免战道具改成 8 小时，冷却时间 8 小时」。
@@ -1114,9 +1119,9 @@ func ezfyWoundHealRate() float64 {
 	return v / 100
 }
 
-// ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 99）
+// ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 999）
 //
-// ★ 「商城购买卡控改成可配置的」（2026-09-26 线上现值 = 99）。
+// ★ 「商城购买卡控改成可配置的」（2026-09-26 线上现值 = 99 → 2026-10-22 统一 999）。
 //
 //	前端输入框 max、前端校验、后端校验**都**读这一个值，避免两边不一致。
 func ezfyMallBuyMaxCfg() int {
@@ -1184,6 +1189,18 @@ func ezfyMoveCoolH() int {
 // ezfyMoveCoolMs 迁城冷却毫秒数（0 = 关闭冷却）。
 func ezfyMoveCoolMs() int64 {
 	return int64(ezfyMoveCoolH()) * 3600000
+}
+
+// ezfyGarrisonBatchAllCities 驻军批量操作（一键采集/收获/召回）是否作用于全部城市。
+//
+// ★ 2026-10-22 用户规则：默认仍是**当前城市**（与军情→驻军列表口径一致），
+// 只有管理端二战系统配置显式选了「全部城市」(2) 才放开。
+// ⚠️ 老库该列为 0 / 未加载时，必须回落到「当前城市」，不能因为零值误开全城。
+func ezfyGarrisonBatchAllCities() bool {
+	if !ezfyCfg.ready() {
+		return false
+	}
+	return ezfyCfg.limit.GarrisonBatchScope == ezfyGarrisonBatchScopeAll
 }
 
 // ============ 系统配置：玩法开关 + 野地兵力倍数 ============
@@ -2069,6 +2086,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		TrainMayorMilitaryOn: ezfyTrainMayorMilitaryDef, TrainMayorEquipOn: ezfyTrainMayorEquipDef,
 		// ★ 2026-10-08 新玩家落地洲缺行兜底（默认欧洲；0/越界行读取时回落见 ezfyDefaultContinent）
 		DefaultContinent: ezfyDefaultMoveContinent,
+		// ★ 2026-10-22 驻军批量操作范围缺行兜底（默认当前城市，见 ezfyGarrisonBatchAllCities）
+		GarrisonBatchScope: ezfyGarrisonBatchScopeCurrent,
 		// ★ 2026-10-12 迁城冷却小时数缺行兜底（默认 24；0 合法 = 关闭，见 ezfyMoveCoolH）
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 50 亿 / 3 天）

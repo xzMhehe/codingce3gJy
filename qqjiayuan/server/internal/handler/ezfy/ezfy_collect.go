@@ -27,20 +27,35 @@ import (
 //	原来只按 `user_id` 过滤 —— 玩家有多座城时，会把**别的城市**的空闲驻军也一起下达采集，
 //	而军情→驻军 tab 是按当前城展示的（ReportDynamics 传 city_id）→ 玩家看到的列表里
 //	根本没有那几支部队，却提示「已对 N 支下达」，与「一键召回」（已按 city_id 收口）也不一致。
-//	现在与 一键召回 同口径：只处理 `city_id = 当前城` 的空闲驻军。
+//	现在默认仍与 一键召回 同口径：只处理 `city_id = 当前城` 的空闲驻军。
+//
+// ★★ 2026-10-22 用户规则：默认本城市，但二战系统配置可改成「全部城市」。
+//
+//	全部城市时**不再查 currentCity**，订单按 user_id + 状态一次取回；
+//	资源是否已满按订单涉及的城**一次 IN 查询**批量判定（不逐城/逐支查）。
 func (h *EzfyHandler) CollectAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
-	current := h.currentCity(uid)
+	allCities := ezfyGarrisonBatchAllCities()
+	var current model.EzfyCity
+	if !allCities {
+		current = h.currentCity(uid)
+	}
 
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND city_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0",
-		uid, current.ID).
-		Order("id ASC").Find(&orders)
+	q := h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid)
+	if !allCities {
+		q = q.Where("city_id = ?", current.ID)
+	}
+	q.Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
-		resp.ParamError(c, "当前城市没有空闲的驻军部队(派采集队请到「附属野地 → [采集]」; 已开始采集的部队等待结算即可)")
+		msg := "当前城市没有空闲的驻军部队(派采集队请到「附属野地 → [采集]」; 已开始采集的部队等待结算即可)"
+		if allCities {
+			msg = "所有城市都没有空闲的驻军部队(派采集队请到「附属野地 → [采集]」; 已开始采集的部队等待结算即可)"
+		}
+		resp.ParamError(c, msg)
 		return
 	}
 	// ★★ 2026-09-28 资源已满的守卫：一键采集前逐城判定，避免「采完了收获却是 0」。
@@ -49,18 +64,25 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 	//	原实现每支都要打 3 次跨库往返（查野地 + 查城判资源是否满 + 写订单），20 支 = 60 次，
 	//	线上（1核1G + 跨 WAN）就是几秒的转圈。现在：
 	//	  · 野地一次 `WHERE id IN (...)` 批量取回；
-	//	  · 本接口只处理**当前城市**的空闲驻军 → 资源是否已满只需判一次（原来每支都判同一座城）；
+	//	  · 当前城市只判一次资源是否满；全部城市则一次 IN 查询取回涉及的城市再判；
 	//	  · 整批的 arrive_time / collect_start **完全相同** → 一条 `WHERE id IN (...)` 批量下达。
-	//	整批固定 3 次往返，与部队支数无关。
-	atMax := h.ezfyAtResMax(int64(current.ID))
-	// ★★ 2026-10-21 负重满后资源不再产出；一键采集不能把这些负重未清的部队
-	//   直接重新开起来，必须先[一键收获]/[停止]清空负重才能重新采集资源。
+	//	整批固定常数次往返，与部队支数/城市数无关。
 	techs := h.techMapOf(uid)
 	wildIDs := make([]int64, 0, len(orders))
+	cityIDs := make([]int64, 0, len(orders))
 	for i := range orders {
 		wildIDs = append(wildIDs, orders[i].TargetId)
+		cityIDs = append(cityIDs, orders[i].CityId)
 	}
 	wilds := h.batchWildlands(wildIDs)
+	cityAtMax := map[int64]bool{}
+	if allCities {
+		for id, city := range h.batchCities(cityIDs) {
+			cityAtMax[id] = h.ezfyCityAtResMax(city)
+		}
+	} else {
+		cityAtMax[int64(current.ID)] = h.ezfyAtResMax(int64(current.ID))
+	}
 
 	fullMsg := ""
 	okIDs := make([]int64, 0, len(orders))
@@ -73,7 +95,7 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 			fail++
 			continue
 		}
-		if atMax {
+		if cityAtMax[order.CityId] {
 			// 起点城市五项资源全满 → 采集无意义，跳过（不报错，其它城照常采）
 			fullMsg = "出发城市资源已达上限, 采集产出无法入库; 请先消耗资源或提升资源最大值配置"
 			skip++
@@ -194,15 +216,23 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 //	所以本接口 = 对每支在采集的部队走一遍「结算 → 入起点城 → 停止采集(原地待命)」。
 //	（原实现只结算 carry 不落库、还要等召回返航，导致玩家以为资源丢了。）
 //
-// ★★ 2026-10-09 与「一键采集 / 一键召回」同口径：只处理**当前城市**出发的采集部队
+// ★★ 2026-10-09 与「一键采集 / 一键召回」同口径：默认只处理**当前城市**出发的采集部队
 //
 //	（军情→驻军 tab 本身就是按当前城展示的，批量操作不该越界到别的城）。
+//
+// ★★ 2026-10-22 二战系统配置可改成「全部城市」：多取一些订单，
+//
+//	后面的 newSettleEnv / envFlush 本来就是多城批处理，查询次数不随城市数增长。
 func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
-	current := h.currentCity(uid)
+	allCities := ezfyGarrisonBatchAllCities()
+	var current model.EzfyCity
+	if !allCities {
+		current = h.currentCity(uid)
+	}
 	var req struct {
 		Force bool `json:"force"` // ★ 2026-09-30 资源已满时的强制确认: 确认后 force=true 才真正结算
 	}
@@ -211,11 +241,17 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	var orders []model.EzfyOrder
 	// ★★ 2026-10-21 兼容「空闲但负重未清」的部队（旧规则自动停止留下的数据/异常状态）。
 	//   一键收获必须能把这类部队一起收掉，否则玩家清不掉负重、也就无法重新点[采集]。
-	h.DB.Where("user_id = ? AND city_id = ? AND order_type = 7 AND status = 1 AND (arrive_time > 0 OR (carry IS NOT NULL AND carry <> ''))",
-		uid, current.ID).
-		Order("id ASC").Find(&orders)
+	q := h.DB.Where("user_id = ? AND order_type = 7 AND status = 1 AND (arrive_time > 0 OR (carry IS NOT NULL AND carry <> ''))", uid)
+	if !allCities {
+		q = q.Where("city_id = ?", current.ID)
+	}
+	q.Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
-		resp.ParamError(c, "当前城市没有可收获的采集部队")
+		msg := "当前城市没有可收获的采集部队"
+		if allCities {
+			msg = "所有城市都没有可收获的采集部队"
+		}
+		resp.ParamError(c, msg)
 		return
 	}
 
@@ -301,9 +337,14 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
 
-	// ★ 2026-10-08 「一键召回只召回当前城市的」：以玩家**当前城市**(current_city_id)为起点，
+	// ★ 2026-10-08 「一键召回只召回当前城市的」：默认以玩家**当前城市**(current_city_id)为起点，
 	//   只召回**从这座城出发**的外出部队（采集/驻军），不再把玩家所有城的外出部队一起召回。
-	current := h.currentCity(uid)
+	// ★ 2026-10-22 二战系统配置可改成「全部城市」；此时不再查 currentCity，直接按 user_id 取。
+	allCities := ezfyGarrisonBatchAllCities()
+	var current model.EzfyCity
+	if !allCities {
+		current = h.currentCity(uid)
+	}
 
 	var orders []model.EzfyOrder
 	// ★ 2026-10-02 「一键召回」需覆盖出站驻军：
@@ -314,11 +355,18 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	//   （用户反馈「一键召回也召回不了」）。野地驻军无需再判「目标城属于他人」——
 	//   能挂在野地上的驻军本身就是「驻守别人的地」（自己的地不允许增援，createOrder 已拦）。
 	allyCity := h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id <> ?", uid)
-	h.DB.Where("user_id = ? AND city_id = ? AND ((order_type = 7 AND status = 1) OR (order_type = 6 AND status = 3 AND result = '' AND (target_type IN (1,2) OR (target_type = 3 AND target_id IN (?)))))",
-		uid, current.ID, allyCity).
-		Order("id ASC").Find(&orders)
+	q := h.DB.Where("user_id = ? AND ((order_type = 7 AND status = 1) OR (order_type = 6 AND status = 3 AND result = '' AND (target_type IN (1,2) OR (target_type = 3 AND target_id IN (?)))))",
+		uid, allyCity)
+	if !allCities {
+		q = q.Where("city_id = ?", current.ID)
+	}
+	q.Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
-		resp.ParamError(c, "当前城市没有可召回的外出部队(采集/驻军)")
+		msg := "当前城市没有可召回的外出部队(采集/驻军)"
+		if allCities {
+			msg = "所有城市都没有可召回的外出部队(采集/驻军)"
+		}
+		resp.ParamError(c, msg)
 		return
 	}
 	n, skipped := 0, 0
@@ -326,6 +374,19 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	//   单独召回在后面还有一道同样的卡控，这里跳过并回报数量。
 	//   一次查出所有野地战场坐标，循环内只查 map（避免每支部队一条 COUNT）。
 	activeWildBattles := h.ezfyWildlandBattleCoords(uid)
+	// ★★ 2026-10-22 性能：全部城市时待召回的采集队可能来自多座城，
+	//   先用 newSettleEnv 一次预取野地/城市/科技/野地加成，避免逐支结算反复跨库查询；
+	//   战报与宝物也由 envFlush 批量落库。
+	var settleOrders []model.EzfyOrder
+	for i := range orders {
+		if orders[i].OrderType == 7 && orders[i].ArriveTime > 0 {
+			settleOrders = append(settleOrders, orders[i])
+		}
+	}
+	var env *ezfySettleEnv
+	if len(settleOrders) > 0 {
+		env = h.newSettleEnv(settleOrders)
+	}
 	var gained int64
 	for i := range orders {
 		order := &orders[i]
@@ -339,7 +400,7 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 			// 产出入负重(carry)，随返航到达时由 finishReturn 入城。
 			if order.ArriveTime > 0 {
 				before = parseCarry(order.Carry).total()
-				h.settleDispatchOnRecall(uid, order, now)
+				h.settleDispatchOnRecall(uid, order, now, env)
 				gained += parseCarry(order.Carry).total() - before
 			}
 			if order.Status != 1 {
@@ -352,12 +413,18 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 				"return_time": now + travel, "carry": order.Carry})
 		n++
 	}
+	// 批量结算攒下的战报/宝物统一落库（没有环境时是 no-op）。
+	h.envFlush(env)
 	if n == 0 {
 		if skipped > 0 {
 			resp.ParamError(c, "附属野地正在战斗, 参战部队不能召回；请先到「军情 → 军队动态 → [指挥]」结束战斗")
 			return
 		}
-		resp.ParamError(c, "当前城市没有可召回的外出部队(采集/驻军)")
+		msg := "当前城市没有可召回的外出部队(采集/驻军)"
+		if allCities {
+			msg = "所有城市都没有可召回的外出部队(采集/驻军)"
+		}
+		resp.ParamError(c, msg)
 		return
 	}
 	msg := fmt.Sprintf("已召回 %d 支部队返航", n)

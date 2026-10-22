@@ -319,6 +319,16 @@
 
           <!-- ⑤ 玩法开关 -->
           <el-tab-pane label="玩法开关" name="switch">
+            <!-- ★ 2026-10-22 驻军 [一键采集]/[一键收获]/[一键召回] 的操作范围：
+                 默认只处理当前城市（与军情→驻军列表一致），可切换为账号下全部城市。 -->
+            <el-form-item>
+              <template slot="label">驻军批量操作范围<el-tooltip placement="top" :content="tips.garrison_batch_scope"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-select v-model="form.garrison_batch_scope" style="width:180px">
+                <el-option label="当前城市（默认）" :value="1" />
+                <el-option label="全部城市" :value="2" />
+              </el-select>
+              <span class="unit-hint">[一键采集] / [一键收获] / [一键召回]</span>
+            </el-form-item>
             <el-form-item>
               <template slot="label">宣战功能<el-tooltip placement="top" :content="tips.war_require_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.war_require_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
@@ -450,7 +460,7 @@ export default {
       activeTab: 'build',
       form: {
         military_max: 33, resource_max: 33, house_max: 10, factory_max: 0,
-        notice_home_count: 1, gather_max_per_order: 50, sell_price_max: 100, mall_buy_max: 9999,
+        notice_home_count: 1, gather_max_per_order: 50, sell_price_max: 100, mall_buy_max: 999,
         bag_item_max: 5000,
         treasure_max: 5000,
         officer_cap_per_military: 2000, officer_speed_per_military: 0.1,
@@ -488,6 +498,8 @@ export default {
         recruit_cycle_mode: 2,
         // ★ 2026-10-08 新玩家落地洲（默认欧洲）
         default_continent: 1,
+        // ★ 2026-10-22 驻军批量操作范围（1=当前城市 默认，2=全部城市）
+        garrison_batch_scope: 1,
         speed_train_rate: 100, wound_heal_rate: 100, heal_all_diamond: 100,
         speed_train_on: 1,
         // ★ 2026-10-21 造兵时间：市长军事加成 / 装备套装军事计入（默认都开）
@@ -532,7 +544,8 @@ export default {
         switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'train_mayor_military_on',
           'train_mayor_equip_on', 'food_upkeep_on', 'march_oil_on',
           'house_pop_limit_on', 'convene_flexible_on', 'pop_over_cap_decay_pct',
-          'convene_food_cost', 'convene_pop_pct', 'convene_pop_max', 'pop_recover_seconds', 'pvp_rank_on'],
+          'convene_food_cost', 'convene_pop_pct', 'convene_pop_max', 'pop_recover_seconds', 'pvp_rank_on',
+          'garrison_batch_scope'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
           'recruit_five_star_rate'],
       },
@@ -548,7 +561,7 @@ export default {
         sell_price_max: '玩家挂单出售资源的单价上限（黄金/单位）：1:100 = 卖 1 粮食价格不能超过 100，数量随意；默认 100，0 = 回落默认',
         officer_cap_per_military: '出征军官每 1 点军事属性累加的出征上限，默认 2000（与司令部/科技/集结令叠加），0 = 回落默认',
         officer_speed_per_military: '出征军官每 1 点军事属性加成的行军速度（%）：0.1 = 每点 +0.1%，1000 军事约 2 倍速；0 = 回落默认',
-        mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 99',
+        mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 999',
         bag_item_max: '【单个道具】的持有上限（不是整个背包的总量）：同一种道具最多能持有多少个；购买/掉落超过就不再入包，默认 5000',
         treasure_max: '【宝物总库存】上限（所有采集宝物合计，不是每种各 5000）：采集/掉落/开箱/签到超过就不再入包，默认 5000',
         troop_max: '单座城市的兵力上限（含训练队列中尚未出厂的新兵），超出将拒绝训练或恢复，默认 50 亿',
@@ -623,6 +636,10 @@ export default {
           '冷却中玩家点迁城会提示「该城市迁城冷却中, 剩余N小时」。',
         // ★ 2026-10-08 新玩家落地洲
         default_continent: '新玩家首次建城、以及没有指定洲时默认落到的洲（默认欧洲）。选哪个洲，内测玩家就聚在哪个洲，方便互相征服/侦查/掠夺。',
+        // ★ 2026-10-22 驻军批量操作范围
+        garrison_batch_scope: '「一键采集 / 一键收获 / 一键召回」的处理范围。当前城市（默认）= 只处理当前城市出发的驻军，' +
+          '与「军情 → 驻军」列表口径一致；全部城市 = 一次处理账号下所有城市的驻军，适合多城玩家。' +
+          '全部城市会读取/结算更多部队，但后端已按批预取野地、城市与科技数据（查询次数不随部队数增长），前端仍保留 3 秒防连点。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
         speed_train_on: '训练一键加速开关：开 = 训练页展示并使用「训练一键加速 / 所有城市训练一键加速」；关 = 按钮隐藏、接口也拒绝（默认开）',
         // ★ 2026-09-27：资源最大值 = **每项资源唯一硬上限**，产量/获取统一累加到该值为止（不再看仓储）
@@ -699,7 +716,7 @@ export default {
             officer_cap_per_military: pos(r.data.officer_cap_per_military, 2000),
             officer_speed_per_military: (r.data.officer_speed_per_military === undefined || r.data.officer_speed_per_military === null)
               ? 0.1 : r.data.officer_speed_per_military,
-            mall_buy_max: pos(r.data.mall_buy_max, 9999),
+            mall_buy_max: pos(r.data.mall_buy_max, 999),
             bag_item_max: pos(r.data.bag_item_max, 5000),
             treasure_max: pos(r.data.treasure_max, 5000),
             troop_max: pos(r.data.troop_max, 1000000000),
@@ -751,6 +768,8 @@ export default {
             recruit_cycle_mode: (r.data.recruit_cycle_mode === 1) ? 1 : 2,
             // ★ 2026-10-08 新玩家落地洲：1~7，非法回落欧洲
             default_continent: (r.data.default_continent >= 1 && r.data.default_continent <= 7) ? r.data.default_continent : 1,
+            // ★ 2026-10-22 驻军批量操作范围：只有明确 2 才是全部城市，老库 0 / 非法值都回落当前城市
+            garrison_batch_scope: Number(r.data.garrison_batch_scope) === 2 ? 2 : 1,
             // ★ 2026-09-28 市长加成倍率：**0 合法 = 关闭**, 不能用 pos()（会把 0 改回 1）
             mayor_gain_mult: (r.data.mayor_gain_mult === undefined || r.data.mayor_gain_mult === null)
               ? 1 : Number(r.data.mayor_gain_mult),

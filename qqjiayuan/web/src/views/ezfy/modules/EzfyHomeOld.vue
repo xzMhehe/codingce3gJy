@@ -96,13 +96,13 @@
         [<span class="orange">{{ ch.tag }}</span>]
         <!-- ★ 2026-09-28 bug修复: 冒号+内容从 v-if/v-else 判断结构移出外层,
              否则 Vue 会把紧跟 v-if 的「：{{content}}」静文并进 else 分支,
-             导致有 user_id 的玩家消息只出昵称不出内容。现在两层分支都只负责出「昵称：」/「系统：」头, 内容恒在 -->
+             导致有 user_id 的玩家消息只出昵称不出内容。现在两层分支都只负责出「昵称:」/「系统:」头, 内容恒在 -->
         <span v-if="ch.user_id">
           <a href="javascript:;" @click="ezfy.openPlayer(ch.user_id)"><span
              v-for="(c, ci) in ezfy.nickChars(ch.user_name)" :key="'nc' + ci"
-             :style="ezfy.nickColorAt(ch.color, ci)">{{ c }}</span></a>：
+             :style="ezfy.nickColorAt(ch.color, ci)">{{ c }}</span></a>:
         </span>
-        <span v-else>{{ ch.tag == '系统' ? '系统：' : ch.tag + '：' }}</span>
+        <span v-else>{{ ch.tag == '系统' ? '系统:' : ch.tag + ':' }}</span>
         {{ ch.content }}
       </div>
       <div class="old-line gray" v-if="!ezfy.homeChats.length">(暂无消息)</div>

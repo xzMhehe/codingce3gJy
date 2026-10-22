@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +35,12 @@ const (
 	ezfyHomeChatLimit = 2
 )
 
+// ezfySysChatText 系统消息展示统一用英文冒号（用户反馈：系统消息里中文/英文冒号混用）。
+// 老消息也在这里做展示归一化，不必改库。
+func ezfySysChatText(s string) string {
+	return strings.ReplaceAll(s, "：", ":")
+}
+
 // ezfySysChat 往**系统频道**写一条消息（talk_type=0，只读）。
 //
 // 用途：把「军衔晋升 / 采集到宝物 / 战斗掉落装备 / 招募到五星军官」这类值得全服看到的事件
@@ -47,6 +54,7 @@ func (h *EzfyHandler) ezfySysChat(format string, args ...interface{}) {
 	} else {
 		content = filtered
 	}
+	content = ezfySysChatText(content)
 	if r := []rune(content); len(r) > ezfySysChatMaxRune {
 		content = string(r[:ezfySysChatMaxRune])
 	}
@@ -162,7 +170,8 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 			Offset((page - 1) * size).Limit(size).Find(&msgs)
 		mviews := make([]gin.H, 0, len(msgs))
 		for _, m := range msgs {
-			mviews = append(mviews, gin.H{"id": m.ID, "user_name": m.UserName, "content": m.Content,
+			mviews = append(mviews, gin.H{"id": m.ID, "user_name": m.UserName,
+				"content":    ezfySysChatText(m.Content),
 				"created_at": m.CreatedAt, "talk_type": 0})
 		}
 		out["notices"] = nviews
@@ -289,16 +298,41 @@ func (h *EzfyHandler) chatCooldownLeft(uid uint) int64 {
 }
 
 // liveNicknames 批量取玩家**当前**的昵称与昵称颜色
-// (聊天表里存的是发消息时的快照, 玩家改了个性昵称后要能实时反映)
+// (聊天表里存的是发消息时的快照, 玩家改了游戏昵称后要能实时反映)
+//
+// ★ 2026-10-22 用户反馈「聊天里的玩家私聊显示的是家园昵称」：
+//
+//	昵称必须用二战游戏档案 ezfy_profile.nickname（游戏昵称）；
+//	家园 users.nickname 只在游戏还没填昵称时兜底。
+//	昵称颜色仍取家园 users.color（二战档案没有单独的聊天颜色字段）。
 func (h *EzfyHandler) liveNicknames(ids []uint) map[uint][2]string {
 	out := map[uint][2]string{}
 	if len(ids) == 0 {
 		return out
 	}
+	// 游戏昵称（二战库）
+	gameNames := map[uint]string{}
+	var profs []model.EzfyProfile
+	h.DB.Select("user_id", "nickname").Where("user_id IN ?", ids).Find(&profs)
+	for _, p := range profs {
+		if n := trimSpace(p.Nickname); n != "" {
+			gameNames[p.UserID] = n
+		}
+	}
+	// 家园昵称只做兜底；颜色取家园 users.color
 	var us []model.User
 	h.home().Select("id, nickname, color").Where("id IN ?", ids).Find(&us)
 	for _, u := range us {
-		out[u.ID] = [2]string{u.Nickname, u.Color}
+		name := gameNames[u.ID]
+		if name == "" {
+			name = u.Nickname
+		}
+		out[u.ID] = [2]string{name, u.Color}
+	}
+	for uid, name := range gameNames {
+		if _, ok := out[uid]; !ok {
+			out[uid] = [2]string{name, ""}
+		}
 	}
 	return out
 }
@@ -325,9 +359,10 @@ func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
 //	[私聊] —— 发给我的私信
 //	[系统] —— talk_type = 0 的系统消息
 //
-// ★ 昵称/颜色一律**实时**从 users 表取(不是发消息时存的快照),
+// ★ 昵称/颜色一律**实时**取(不是发消息时存的快照):
 //
-//	这样玩家改了个性昵称、换了昵称颜色, 聊天里也会跟着变。
+//	昵称优先取二战档案 ezfy_profile.nickname（游戏昵称），
+//	颜色取家园 users.color；玩家改名/换色后聊天里也会跟着变。
 //
 // ★ 展示规则()：取**最新 N 条**（ezfyHomeChatLimit），按时间**升序**排列（最早的在上、最新的在下）。
 func (h *EzfyHandler) HomeChat(c *gin.Context) {
@@ -343,19 +378,8 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	}
 	rows := []row{}
 
-	// 实时昵称/颜色(用户 id -> {昵称, 颜色})
-	nickOf := func(ids []uint) map[uint][2]string {
-		out := map[uint][2]string{}
-		if len(ids) == 0 {
-			return out
-		}
-		var us []model.User
-		h.home().Select("id, nickname, color").Where("id IN ?", ids).Find(&us)
-		for _, u := range us {
-			out[u.ID] = [2]string{u.Nickname, u.Color}
-		}
-		return out
-	}
+	// 实时昵称/颜色(用户 id -> {游戏昵称, 颜色})：统一走 liveNicknames，
+	// 私聊预览也必须是游戏昵称，不能显示家园昵称。
 	ids := []uint{}
 	push := func(id uint) { ids = append(ids, id) }
 
@@ -408,7 +432,8 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 
 	// 系统
 	for _, m := range sys {
-		rows = append(rows, row{"sys-" + strconv.Itoa(int(m.ID)), "系统", m.UserName, "", m.Content, m.CreatedAt})
+		rows = append(rows, row{"sys-" + strconv.Itoa(int(m.ID)), "系统", m.UserName, "",
+			ezfySysChatText(m.Content), m.CreatedAt})
 	}
 	// 军团(我的军团)
 	for _, m := range cs {
@@ -426,8 +451,8 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 		rows = append(rows, row{"pub-" + strconv.Itoa(int(m.ID)), "世界", m.UserName, "", m.Content, m.CreatedAt})
 	}
 
-	// 用实时昵称/颜色覆盖快照
-	nick := nickOf(ids)
+	// 用实时昵称/颜色覆盖快照（游戏昵称优先，家园昵称兜底）
+	nick := h.liveNicknames(ids)
 	fix := func(r *row, uid uint) {
 		if uid == 0 {
 			return

@@ -334,8 +334,9 @@ type EzfyCfgItem struct {
 	PriceGold   int64  `gorm:"comment:黄金价格" json:"price_gold"`
 	Icon        string `gorm:"type:varchar(50);comment:图标" json:"icon"`
 	Description string `gorm:"type:varchar(500);comment:描述" json:"description"`
-	// ★ 商城库存（管理端「数据管理 → 道具配置」可改），默认 100；0 = 售罄
-	Stock int `gorm:"default:100;comment:库存" json:"stock"`
+	// ★ 商城库存（管理端「数据管理 → 道具配置」可改）；-1 = 无限，0 = 售罄。
+	//   ★ 2026-10-22 用户规则「商城道具库存都改成无限」→ 新道具默认 -1。
+	Stock int `gorm:"default:-1;comment:库存(-1=无限)" json:"stock"`
 	// ★ 钻石售价：> 0 表示这是「钻石道具」，只能用钻石购买（黄金价 price_gold 忽略）。
 	//   管理端「数据管理 → 道具配置」可维护。
 	PriceDiamond int64 `gorm:"comment:钻石价格" json:"price_diamond"`
@@ -387,10 +388,9 @@ type EzfyCfgLimit struct {
 	// ★ 用户反馈「恢复伤兵需要黄金」→ 恢复 1 个伤兵消耗
 	//   ceil(该兵种总造价 / 该值) 黄金，最低 1 黄金。默认 50。
 	WoundHealDivisor int `gorm:"default:50;comment:伤兵治疗Divisor" json:"wound_heal_divisor"`
-	// ★ 「商城购买卡控改成可配置的」→
-	//   商城单次购买数量上限（下限恒为 1）。线上现值 99。
+	// ★ 2026-10-22 用户规则：商城单次购买上限统一 999（集结令原 15）。
 	//   读不到或 <= 0 时回落默认值（0 无意义 = 等于禁止购买）。
-	MallBuyMax int `gorm:"default:99;comment:Mall购买上限" json:"mall_buy_max"`
+	MallBuyMax int `gorm:"default:999;comment:Mall购买上限" json:"mall_buy_max"`
 	// ★ 2026-10-11 用户规则：「玩家背包道具上限卡控，默认 5000，超过就不能再买，二战系统配置可配置」：
 	//   同一种道具在玩家背包里的**持有上限**（ezfy_item.count 不得超过它）。
 	//   Buy 时按「已有 + 本次购买 <= 上限」卡控；<= 0 无意义 → 读取端回落默认 5000。
@@ -531,6 +531,12 @@ type EzfyCfgLimit struct {
 	//   （大洲 ID：1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲，默认欧洲）。
 	//   0 / 越界读取端回落默认欧洲，见 ezfyDefaultContinent()。
 	DefaultContinent int `gorm:"default:1;comment:新玩家落地洲(1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲)" json:"default_continent"`
+
+	// ★ 2026-10-22 用户规则「驻军 [一键采集]/[一键收获]/[一键召回] 默认本城市，
+	//   二战系统配置可以改成全部城市」：
+	//   1 = 当前城市（默认，与军情→驻军列表口径一致）；2 = 全部城市。
+	//   ⚠️ 0 是「老库未配置」→ 读取端按当前城市处理，管理端展示也回落 1。
+	GarrisonBatchScope int `gorm:"default:1;comment:驻军批量操作范围(1=当前城市 2=全部城市)" json:"garrison_batch_scope"`
 
 	// ★ 2026-09-27 「资源产量也做成累加」：**每项资源的唯一硬上限**，默认 21 亿 = 2100000000。
 	//   产量与一切获取方式都无条件累加到该值为止，不再看仓储/库存上限。

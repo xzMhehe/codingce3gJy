@@ -571,10 +571,12 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	//   结果 14 经验书 / 15 军官技能书 / 16 重修书 / 18 阵营转换道具 全部库存 = 0，
 	//   玩家买的时候被 `Buy` 里的库存校验拦成「已售罄」—— 看着就是「没上架」。
 	//   军官类道具定位是**常驻消耗品**（跟迁城道具一样），统一给 -1 = 无限库存。
-	// ★ 2026-09-26 「初始化数据按线上现值对齐」：下面价格/库存一律取线上库快照值。
+	// ★ 2026-10-22 用户规则「商城道具库存都改成无限」：军官道具、迁城道具也统一 Stock -1。
+	//   老库由启动补列时的 ezfyUnlimitMallItemStockDefault 一次性迁移改成 -1
+	//   （带 settings 标记，之后后台改库存不覆盖）。
+	// ★ 2026-09-26 「初始化数据按线上现值对齐」：下面价格取线上库快照值。
 	// ★ 2026-09-27 按线上现值更新种子：招生简章 20→2 钻石、改名卡 250000 黄金→10 钻石、
-	//   阵营转换道具 500→10 钻石、集结令 20→1 钻石、信号弹 20→2 钻石；
-	//   库存：军官洗点卡 96→-1、信号弹 100→0、军官改名卡 79→-1。
+	//   阵营转换道具 500→10 钻石、集结令 20→1 钻石、信号弹 20→2 钻石。
 	rows := []model.EzfyCfgItem{
 		{ID: 1013, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: -1,
 			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
@@ -603,7 +605,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Description: "出征时使用: 每使用1个本次出征兵力上限+10万"},
 		// ★ 2026-09-23 「军官升星卡」改名「星级徽章」，固定 20% 概率升 1 星、最高 5 星，
 		//   失败消耗徽章、不降星级与属性（星级上限/失败保留开关仍走管理端「系统配置」页）。
-		{ID: 1023, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 50, Stock: 100,
+		{ID: 1023, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 50, Stock: -1,
 			Category:    "军官道具",
 			Description: "对军官使用, 每枚有20%概率升1星, 最高五星; 失败消耗徽章, 不降低星级和属性"},
 		// ★ 2026-09-23 「玩家自己的军官也能改名」：消耗「军官改名卡」，
@@ -614,7 +616,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		// ★ 2026-09-22 「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗」。
 		//   ★ Category 显式写「计谋道具」，管理端筛选可直接看到功能分类。
 		//   Category 不是「黄金道具/钻石道具」→ 不锁货币 → 前端两种价格都列出来让玩家选。
-		{ID: 1024, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: 0,
+		{ID: 1024, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: -1,
 			Category:    "计谋道具",
 			Description: "计谋消耗品: 发动计谋时消耗, 每条计谋需要的数量不同"},
 	}
@@ -676,17 +678,17 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 //	高级迁城计划   30 钻石
 //	沿海迁城计划   30 钻石
 //
-// 库存按线上现值：迁城计划 / 高级迁城计划 100，沿海迁城计划 99（-1 = 无限）。
+// 库存：★ 2026-10-22 用户规则「商城道具库存都改成无限」→ 三件迁城道具统一 -1。
 func seedEzfyMoveItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 1020, Name: "迁城计划", ItemType: 16, Param1: 1,
-			PriceGold: 0, PriceDiamond: 10, Stock: 100, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 10, Stock: -1, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 仅陆地城市可用, 选择一个大洲, 城市随机迁移到该洲内未被占领的平原"},
 		{ID: 1021, Name: "高级迁城计划", ItemType: 17, Param1: 1,
-			PriceGold: 0, PriceDiamond: 30, Stock: 100, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 30, Stock: -1, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 仅陆地城市可用, 指定坐标迁移城市, 目标必须是未被占领的陆地平原(沿海平原不可)"},
 		{ID: 1022, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
-			PriceGold: 0, PriceDiamond: 30, Stock: 99, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 30, Stock: -1, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 沿海城市专用, 选择大洲或指定坐标, 城市迁移到未被占领的沿海平原"},
 	}
 	for _, it := range rows {

@@ -88,9 +88,9 @@
           <span v-if="ch.user_id">
             <a href="javascript:;" @click="ezfy.openPlayer(ch.user_id)"><span
                v-for="(c, ci) in ezfy.nickChars(ch.user_name)" :key="'nc' + ci"
-               :style="ezfy.nickColorAt(ch.color, ci)">{{ c }}</span></a>：
+               :style="ezfy.nickColorAt(ch.color, ci)">{{ c }}</span></a>:
           </span>
-          <span v-else>{{ ch.tag == '系统' ? '系统：' : ch.tag + '：' }}</span>
+          <span v-else>{{ ch.tag == '系统' ? '系统:' : ch.tag + ':' }}</span>
           {{ ch.content }}
         </div>
         <div class="old-line gray" v-if="!ezfy.homeChats.length">(暂无消息)</div>

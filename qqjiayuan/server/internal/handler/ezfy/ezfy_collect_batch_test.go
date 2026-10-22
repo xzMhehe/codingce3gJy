@@ -34,11 +34,17 @@ func TestBatchCollectNoPerUnitDBRoundTrip(t *testing.T) {
 	if !strings.Contains(fn, `Where("id IN ?", okIDs)`) {
 		t.Fatalf("一键采集没有把整批「下达采集」合并成一条 UPDATE：\n%s", fn)
 	}
-	// 资源是否已满只判一次（本接口只处理当前城市）
-	if !strings.Contains(fn, "h.ezfyAtResMax(int64(current.ID))") {
-		t.Fatalf("一键采集没有把「资源是否已满」提到循环外只判一次：\n%s", fn)
+	// 当前城市：资源是否已满只判一次；全部城市：一次 IN 取城后按城建 map，也不逐支查。
+	for _, want := range []string{
+		"h.ezfyAtResMax(int64(current.ID))",
+		"h.batchCities(cityIDs)",
+		"h.ezfyCityAtResMax(city)",
+	} {
+		if !strings.Contains(fn, want) {
+			t.Fatalf("一键采集缺少批量资源上限判定 %q：\n%s", want, fn)
+		}
 	}
-	// 整函数内的 DB 往返次数必须是常数（≤2：查空闲驻军 + 批量下达）
+	// 整函数内的 DB 往返次数必须是常数（≤2：查空闲驻军 + 批量下达；取城在 batchCities 内）
 	if n := strings.Count(fn, "h.DB."); n > 2 {
 		t.Fatalf("一键采集的跨库往返随部队支数增长了（函数内 h.DB. 出现 %d 次，应 ≤2）：\n%s", n, fn)
 	}
@@ -49,12 +55,12 @@ func TestBatchHarvestNoPerUnitDBRoundTrip(t *testing.T) {
 	fn := ezfyFuncBody(t, "ezfy_collect.go", "func (h *EzfyHandler) HarvestAll(")
 
 	for _, want := range []string{
-		"h.newSettleEnv(orders)",           // 野地 / 城市一次预取
+		"h.newSettleEnv(orders)",                            // 野地 / 城市一次预取
 		"h.settleDispatch(uid, order, now, env, lootBatch)", // 批量缓存传进结算
-		"h.envHarvestCarry(env, order)",    // 负重入城攒批
-		"h.envFlush(env)",                  // 战报 / 装备 / 资源入账一次提交
-		`Where("id IN ?", okIDs)`,          // 整批「停止采集」一条 UPDATE
-		`Where("id IN ?", cleared)`,        // 整批「清空负重」一条 UPDATE
+		"h.envHarvestCarry(env, order)",                     // 负重入城攒批
+		"h.envFlush(env)",                                   // 战报 / 装备 / 资源入账一次提交
+		`Where("id IN ?", okIDs)`,                           // 整批「停止采集」一条 UPDATE
+		`Where("id IN ?", cleared)`,                         // 整批「清空负重」一条 UPDATE
 	} {
 		if !strings.Contains(fn, want) {
 			t.Fatalf("一键收获缺少批量收口调用 %q：\n%s", want, fn)
@@ -66,6 +72,48 @@ func TestBatchHarvestNoPerUnitDBRoundTrip(t *testing.T) {
 	// 常数 ≤3：查采集部队 + 批量停止采集 + 批量清空负重
 	if n := strings.Count(fn, "h.DB."); n > 3 {
 		t.Fatalf("一键收获的跨库往返随部队支数增长了（函数内 h.DB. 出现 %d 次，应 ≤3）：\n%s", n, fn)
+	}
+}
+
+// TestBatchRecallNoPerUnitReadRoundTrip 一键召回（全部城市）：结算只读数据必须批量预取。
+//
+// 召回本身每支部队仍需要一条 UPDATE（返航时间/兵力各不相同），但野地、城市、科技、
+// 野地加成必须走同一个 env；否则「全部城市」模式会退化成每支 10+ 条读 SQL。
+func TestBatchRecallNoPerUnitReadRoundTrip(t *testing.T) {
+	fn := ezfyFuncBody(t, "ezfy_collect.go", "func (h *EzfyHandler) RecallAll(")
+	for _, want := range []string{
+		"h.newSettleEnv(settleOrders)",
+		"h.settleDispatchOnRecall(uid, order, now, env)",
+		"h.envFlush(env)",
+	} {
+		if !strings.Contains(fn, want) {
+			t.Fatalf("一键召回缺少批量结算收口 %q：\n%s", want, fn)
+		}
+	}
+	if strings.Contains(fn, "h.DB.First(") {
+		t.Fatalf("一键召回里还有逐支的单条查询（h.DB.First）：\n%s", fn)
+	}
+	// 常数 ≤3：召回范围查询 + 盟友城子查询 + 每支返航 UPDATE（没有逐支读）
+	if n := strings.Count(fn, "h.DB."); n > 3 {
+		t.Fatalf("一键召回的跨库往返随部队支数增长了（函数内 h.DB. 出现 %d 次，应 ≤3）：\n%s", n, fn)
+	}
+}
+
+// TestBatchCitiesNoNPlusOne 全城批量操作取城必须一次 IN 查询并去重。
+func TestBatchCitiesNoNPlusOne(t *testing.T) {
+	fn := ezfyFuncBody(t, "ezfy_settle_env.go", "func (h *EzfyHandler) batchCities(")
+	for _, want := range []string{`Where("id IN ?", uniq)`, "seen[id]", "id > 0"} {
+		if !strings.Contains(fn, want) {
+			t.Fatalf("batchCities 没有做到一次 IN 查询/去重（缺 %q）：\n%s", want, fn)
+		}
+	}
+	if strings.Contains(fn, ".First(") {
+		t.Fatalf("batchCities 不得逐城单查（.First）：\n%s", fn)
+	}
+	// newSettleEnv 也必须复用它，避免两套取城逻辑
+	env := ezfyFuncBody(t, "ezfy_settle_env.go", "func (h *EzfyHandler) newSettleEnv(")
+	if !strings.Contains(env, "h.batchCities(cityIDs)") {
+		t.Fatalf("newSettleEnv 没有复用 batchCities：\n%s", env)
 	}
 }
 
