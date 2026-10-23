@@ -59,7 +59,7 @@
 
       <!-- 顶部导航(每页都有) -->
       <div class="top-nav">
-        <!-- ★★ 2026-10-23 聊天 / 邮箱 / 军情 共用同一个「裸感叹号」造型：
+        <!-- ★★ 2026-10-23 好友 / 邮箱 / 军情 共用同一个「裸感叹号」造型：
              亮黄 #FCE224 → 黄 #FED903 → 橙 #FDA504 竖向渐变 + 砖红 #8E2525 细描边。
              渐变只定义一次（放 0×0 的 svg 里），三个角标都引用它，避免重复 ID。 -->
         <svg class="ezfy-nav-warn-defs" aria-hidden="true" focusable="false"
@@ -72,16 +72,10 @@
             </linearGradient>
           </defs>
         </svg>
-        <!-- ★ 2026-10-23 聊天：有未读**好友私聊**时显示感叹号（后端 /unread 的 chat） -->
-        <a href="javascript:;" @click="go('chat')">聊天<svg
-          v-if="unreadChat > 0" class="ezfy-nav-warn" viewBox="0 0 8 14"
-          preserveAspectRatio="none" role="img">
-          <title>有 {{ unreadChat }} 条未读私聊</title>
-          <rect x="2.4" y="1.75" width="3.2" height="7" rx="1.6"
-                fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
-          <circle cx="4" cy="11.4" r="1.75"
-                  fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
-        </svg></a>
+        <!-- ★ 2026-10-23 聊天频道（世界/军团/综合）没有「未读」概念，不放角标。
+             ★★ 2026-10-23 用户纠正：「聊天不需要感叹号，是**好友**那块需要」——
+             未读私聊的入口在「好友 → 会话列表」，所以感叹号挂在「好友」上。 -->
+        <a href="javascript:;" @click="go('chat')">聊天</a>
         <!-- ★ 2026-10-23 邮箱：有未读邮件时显示感叹号（后端 /unread 的 mail） -->
         <a href="javascript:;" @click="go('mail')">邮箱<svg
           v-if="unreadMail > 0" class="ezfy-nav-warn" viewBox="0 0 8 14"
@@ -107,7 +101,17 @@
                   fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
         </svg></a>
         <a href="javascript:;" @click="go('tasks')">任务</a>
-        <a href="javascript:;" @click="go('friends')">好友</a>
+        <!-- ★ 2026-10-23 好友：有未读**好友私聊**时显示感叹号（后端 /unread 的 chat）。
+             私聊入口在「好友 → 会话列表」，所以角标挂这里（用户：聊天不需要，好友需要）。 -->
+        <a href="javascript:;" @click="go('friends')">好友<svg
+          v-if="unreadChat > 0" class="ezfy-nav-warn" viewBox="0 0 8 14"
+          preserveAspectRatio="none" role="img">
+          <title>有 {{ unreadChat }} 条未读私聊</title>
+          <rect x="2.4" y="1.75" width="3.2" height="7" rx="1.6"
+                fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
+          <circle cx="4" cy="11.4" r="1.75"
+                  fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
+        </svg></a>
         <a href="javascript:;" @click="go('home')">首页</a>
       </div>
 

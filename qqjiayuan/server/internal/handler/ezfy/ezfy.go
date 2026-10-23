@@ -1258,7 +1258,9 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	for i := range wildlands {
 		w := &wildlands[i]
 		base := int64(w.Level) * 100
-		if w.WildType == 2 {
+		// ★ 2026-10-23 海野口径改按**地形**判定（ezfyIsSeaWildRules），不再看存量行的
+		//   wild_type：沿海平原现在也按海野，老行（wild_type=1）不改数据也能一致。
+		if ezfyIsSeaWildRules(ezfyTerrainEx(w.X, w.Y)) {
 			wildOil += base
 			wildRare += base
 			wildGold += base
@@ -1911,7 +1913,8 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
 	for _, w := range wilds {
 		base := int64(w.Level) * 100
-		if w.WildType == 2 {
+		// ★ 2026-10-23 同 View：海野按地形判定（含沿海平原），不看存量 wild_type
+		if ezfyIsSeaWildRules(ezfyTerrainEx(w.X, w.Y)) {
 			wildOil += base
 			wildRare += base
 			wildGold += base

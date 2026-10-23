@@ -431,6 +431,7 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	//
 	//	现在改成与 processArrive / MapView 完全同一套判定（顺序也一致：海洋分支在地图里优先于寇城）：
 	//	  海野(海洋 8 / 岛屿 7 / 渔场 10 / 矿礁 11) → 2 ；寇城 → 3 ；其余 → 1（陆地野地）。
+	//	  ★ 2026-10-23 沿海平原（带野地）也按海野 → 2（寇城仍优先）。
 	//	⚠️ 客户端的 `type` 查询参数已不再参与判定（传了也不影响结果），保留只是为了兼容旧前端。
 	ttype := 1
 	switch {
@@ -438,6 +439,11 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		ttype = 2
 	case h.ezfyIsKouCity(x, y):
 		ttype = 3
+	case ezfyIsSeaWildRules(ezfyTerrainEx(x, y)) && ezfyWildlandLevel(x, y) > 0:
+		// ★ 2026-10-23 沿海平原也按海野玩法（用户规则）→ 详情预览海野守军。
+		//   ★ 寇城优先：沿海平原上可能压着寇城，不能因为「按海野」把寇城挡掉；
+		//   ★ 只有真的带野地（lvl>0）才算，空沿海平原仍走陆地口径（避免改坏无野地的空地）。
+		ttype = 2
 	}
 	// ★ 纯海洋（地形 8 且**该格没有野地**）：只显示「地形：海洋」，无守军/军官/出征按钮。
 	//   用户口径「海洋上不会有野地」→ 纯海洋绝不能走进野地分支
@@ -3085,7 +3091,8 @@ func (h *EzfyHandler) gatherYieldAt(order *model.EzfyOrder, wl *model.EzfyWildla
 	// 地形只算一次：资源名（粮/钢/油/稀）与「是否海野」共用同一地形判定，天然同源。
 	terrain := ezfyTerrainEx(wl.X, wl.Y)
 	resName := ezfyGatherResName(terrain)
-	isSea := ezfyIsSeaWildTerrain(terrain)
+	// ★ 2026-10-23 沿海平原也按海野（用户规则）→ 用 Rules 口径；倍率取配置（默认 3）
+	isSea := ezfyIsSeaWildRules(terrain)
 	troops := ezfyGatherTroopCount(order.Troops)
 	logistics := 0
 	if officer := h.envOfficer(env, uint(order.CityId), order.Officer); officer != nil {
@@ -3661,7 +3668,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		cfgType := 1
 		if order.TargetType == 2 {
 			cfgType = 3
-		} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
+		} else if ezfyIsSeaWildRules(ezfyTerrainEx(order.TargetX, order.TargetY)) {
 			// ★ 2026-10-04 与地图同口径（Ex 含覆盖表/沿海平原），避免覆盖成岛屿/沿海平原的
 			//   海洋格被误当「海野」配置
 			// ★ 2026-10-05 岛屿也属于海野 → 岛屿守军走海野配置
@@ -4871,7 +4878,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			wildType := 1
 			// ★ 2026-10-04 与地图同口径（Ex 含覆盖表/沿海平原）
 			// ★ 2026-10-05 岛屿也属于海野 → 占领后记成海野（采集走海野系数）
-			if order.TargetType == 2 || ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
+			if order.TargetType == 2 || ezfyIsSeaWildRules(ezfyTerrainEx(order.TargetX, order.TargetY)) {
 				wildType = 2
 			}
 			// ★★ 2026-10-16 修复「征服他人附属野地后原记录残留」（一个坐标只允许一条野地记录）：
@@ -5188,7 +5195,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			wt := 1
 			if order.TargetType == 2 {
 				wt = 3
-			} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
+			} else if ezfyIsSeaWildRules(ezfyTerrainEx(order.TargetX, order.TargetY)) {
 				// ★ 2026-10-05 岛屿也属于海野 → 岛屿守将俘虏按海野配置
 				wt = 2
 			}
@@ -5571,7 +5578,7 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 	wcType := 1
 	if order.TargetType == 2 {
 		wcType = 3
-	} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
+	} else if ezfyIsSeaWildRules(ezfyTerrainEx(order.TargetX, order.TargetY)) {
 		wcType = 2
 	}
 	wcfg := ezfyCfg.wildland(wcType, wildLevel)
@@ -6406,7 +6413,7 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		if order.TargetType == 2 {
 			cfgType = 3
 			level = ezfyKouLevel(order.TargetX, order.TargetY)
-		} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
+		} else if ezfyIsSeaWildRules(ezfyTerrainEx(order.TargetX, order.TargetY)) {
 			// ★ 2026-10-04 与地图同口径（Ex 含覆盖表/沿海平原）
 			// ★ 2026-10-05 岛屿也属于海野 → 侦查守军/守将按海野配置
 			cfgType = 2

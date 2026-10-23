@@ -1,10 +1,14 @@
 package ezfy
 
-// ★ 2026-10-23 用户规则「聊天、邮箱有未读的也要有军情那样的感叹号」：
-//   - 顶部导航「聊天」角标 = 未读私聊（private_messages.receiver_id=我 AND is_read=0）
+// ★ 2026-10-23 用户规则「有未读的也要有军情那样的感叹号，不然玩家都不知道来没来」：
+//   - 顶部导航「好友」角标 = 未读私聊（private_messages.receiver_id=我 AND is_read=0）
 //   - 顶部导航「邮箱」角标 = 未读邮件（ezfy_mail.receiver_id=我 AND is_read=0 AND recv_del=0）
 //
-// 本测试锁死「接口 → 路由 → 前端角标」这条链路，防止后续重构把提示改没。
+// ★★ 2026-10-23 用户二次纠正：「聊天不需要感叹号，是**好友**那块需要」——
+//   聊天频道（世界/军团/系统）没有未读概念，私聊入口在「好友 → 会话列表」，
+//   所以角标必须挂「好友」，**不能**挂「聊天」。
+//
+// 本测试锁死「接口 → 路由 → 前端角标」这条链路，防止后续重构把提示改没/挂错位置。
 
 import (
 	"strings"
@@ -36,12 +40,15 @@ func TestNavUnreadBadgesWiring(t *testing.T) {
 		"this.loadUnread()",
 	} {
 		if !strings.Contains(ui, want) {
-			t.Fatalf("顶部导航聊天/邮箱角标缺失（缺 %s）", want)
+			t.Fatalf("顶部导航未读角标缺失（缺 %s）", want)
 		}
 	}
-
-	chat := readFrontFile(t, "../../../../web/src/views/ezfy/modules/EzfyChat.vue")
-	if !strings.Contains(chat, "去好友页查看") {
-		t.Fatal("聊天页缺少「未读私聊 → 好友页」引导入口")
+	// 未读私聊角标必须挂在「好友」上
+	if !strings.Contains(ui, `go('friends')">好友<svg`) {
+		t.Fatal("「好友」导航没有未读私聊感叹号（用户：好友那块需要）")
+	}
+	// 「聊天」不能有角标（用户明确「聊天不需要感叹号」）
+	if strings.Contains(ui, `go('chat')">聊天<svg`) {
+		t.Fatal("「聊天」导航不该挂感叹号（聊天频道没有未读概念，角标挂「好友」）")
 	}
 }

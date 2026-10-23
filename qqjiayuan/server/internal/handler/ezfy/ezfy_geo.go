@@ -85,6 +85,26 @@ func ezfyIsSeaWildTerrain(t int) bool {
 		t == ezfyTerrainFishing || t == ezfyTerrainOreReef
 }
 
+// ezfyIsSeaWildRules 「按海野**玩法**处理」的地形 —— 比 ezfyIsSeaWildTerrain 多一个沿海平原(9)。
+//
+// ★★ 2026-10-23 用户规则「沿海平原完全按海野」：
+//
+//	沿海平原原本只参与「建海城 / 海军可出征」，采集/守军/占领仍按陆地口径，
+//	玩家反馈「渔场、岛屿、沿海平原都是海野，采集却和普通野地一样」→ 用户拍板
+//	**沿海平原完全按海野**（采集 ×海野倍率、守军走海野配置、占领记 wild_type=2）。
+//
+// 分工（两个函数不要混用）：
+//   - ezfyIsSeaWildTerrain = **展示/地图格**口径（海底森林/岛屿/渔场/矿礁 才画成海格、
+//     才叫海野名；沿海平原的展示名仍是「沿海平原」，地图格仍是陆地格）；
+//   - ezfyIsSeaWildRules   = **玩法**口径（采集倍率 / 守军配置 / 占领类型 / 俘虏守将 /
+//     掉落配置 / 侦查守军）。新增玩法判定一律用这个。
+//
+// ⚠️ 海野采集倍率是**配置项**（ezfy_cfg_limit.gather_sea_bonus_mult，默认 3），
+// 走 ezfyGatherSeaBonusMult()，别在任何地方写死 3。
+func ezfyIsSeaWildRules(t int) bool {
+	return ezfyIsSeaWildTerrain(t) || t == ezfyTerrainCoastalPlain
+}
+
 // ezfyWildTerrainDisplayName 野地/海野的**展示**名。
 //
 // ★★ 2026-10-05 用户纠正（三个概念必须分清，之前混了）：
