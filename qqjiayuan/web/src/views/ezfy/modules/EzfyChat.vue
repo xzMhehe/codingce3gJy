@@ -3,6 +3,12 @@
     <template v-if="ezfy.cur === 'chat'">
         <div class="panel">
           <div class="panel-title">聊天频道</div>
+          <!-- ★ 2026-10-23 私聊不在聊天频道里（好友之间在「好友 → 会话列表」），
+               顶部「聊天」角标提示有未读私聊时，这里给出明确入口，避免玩家点进来找不到。 -->
+          <div class="old-line" v-if="ezfy.unreadChat > 0">
+            你有 <b class="red">{{ ezfy.unreadChat }}</b> 条未读私聊，
+            <a href="javascript:;" @click="ezfy.go('friends')">[去好友页查看]</a>
+          </div>
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.chatChannel === 1 }" @click="ezfy.switchChannel(1)">世界</a>|
             <!-- ★ 军团频道常显：没加入军团时进去显示「未加入 · 0 人」 -->

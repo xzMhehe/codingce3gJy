@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -99,6 +100,32 @@ func (h *EzfyHandler) ezfyMailCreate(sender, receiver uint, senderName, subject,
 		SenderId: sender, ReceiverId: receiver, SenderName: trimStr(senderName, 30),
 		Subject: trimStr(strings.TrimSpace(subject), 20), Content: content,
 	})
+}
+
+// NavUnread GET /games/ezfy/unread —— 顶部导航「聊天 / 邮箱」的感叹号角标
+//
+// ★ 2026-10-23 用户规则「聊天、邮箱有未读的也要有军情那样的感叹号」：
+//   - chat = 未读私聊（private_messages.receiver_id = 我 AND is_read = 0）；
+//   - mail = 未读邮件（ezfy_mail.receiver_id = 我 AND is_read = 0 AND recv_del = 0）。
+//
+// 两个 COUNT 互相独立，并行查（跨 WAN 时少一个 RTT）；前端 30s 轮询一次。
+func (h *EzfyHandler) NavUnread(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var chat, mail int64
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		h.DB.Model(&model.PrivateMessage{}).
+			Where("receiver_id = ? AND is_read = 0", uid).Count(&chat)
+	}()
+	go func() {
+		defer wg.Done()
+		h.DB.Model(&model.EzfyMail{}).
+			Where("receiver_id = ? AND is_read = 0 AND recv_del = 0", uid).Count(&mail)
+	}()
+	wg.Wait()
+	resp.OK(c, gin.H{"chat": chat, "mail": mail})
 }
 
 // MailList GET /games/ezfy/mail?tab=inbox|system|sent&page&size

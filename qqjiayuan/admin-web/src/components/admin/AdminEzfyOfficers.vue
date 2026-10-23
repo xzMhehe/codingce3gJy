@@ -136,8 +136,8 @@
             </el-table-column>
             <el-table-column label="类型" width="110" align="center">
               <template slot-scope="{row}">
-                <el-tag size="mini" :type="row.kind === 1 ? 'warning' : 'info'">
-                  {{ row.kind === 1 ? '先发制人' : '说明型' }}
+                <el-tag size="mini" :type="row.kind === 1 ? 'warning' : (row.kind === 6 ? 'danger' : 'info')">
+                  {{ schemeKindName(row.kind) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -780,6 +780,11 @@
           <el-radio-group v-model.number="scf.kind">
             <el-radio :label="0">说明型（只消耗信号弹 + 记录战报）</el-radio>
             <el-radio :label="1">先发制人（使双方进入可战争状态）</el-radio>
+            <el-radio :label="2">神兵天降（部队去程剩余时间减 80%）</el-radio>
+            <el-radio :label="3">战略转移（部队回程减 360 分钟）</el-radio>
+            <el-radio :label="4">恫疑虚喝（被侦查时展示 1 亿假兵）</el-radio>
+            <el-radio :label="5">隐真示假（被侦查时展示 1000 内假兵）</el-radio>
+            <el-radio :label="6">秘密策反（按坐标降低敌城城守忠诚）</el-radio>
           </el-radio-group>
         </el-form-item>
         <template v-if="scf.kind === 1">
@@ -798,7 +803,8 @@
         </template>
       </el-form>
       <!-- [说明·不显示在界面] 「信号弹」是道具配置里的 <b>ID 24</b>（ItemType 20），价格与上架在「数据管理 → 道具配置」里改。
-        先发制人按「发动方军官学识 = 可战争分钟数」计算，再按上限截断。 -->
+        先发制人按「发动方军官学识 = 可战争分钟数」计算，再按上限截断。
+        秘密策反按「用计军官有效学识 ÷ 10」降低目标城守忠诚（最高 99，最低保留 1 点，可重复发动）。 -->
       <div slot="footer">
         <el-button @click="scDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSchemeSave">保 存</el-button>
@@ -1082,6 +1088,17 @@ export default {
       }).catch(() => {})
     },
     // ---------- 2d 计谋（消耗信号弹） ----------
+    schemeKindName (kind) {
+      return ({
+        0: '说明型',
+        1: '先发制人',
+        2: '神兵天降',
+        3: '战略转移',
+        4: '恫疑虚喝',
+        5: '隐真示假',
+        6: '秘密策反'
+      })[kind] || ('类型' + kind)
+    },
     loadSchemes () {
       this.loadingSc = true
       api.get('/admin/ezfy-schemes', { params: { word: this.scWord } }).then(r => {

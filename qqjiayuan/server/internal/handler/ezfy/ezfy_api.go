@@ -3501,6 +3501,10 @@ func ezfyReportCategory(title string) int {
 		strings.HasPrefix(title, "被侦查报告"), // 雷达站≥1 才收得到
 		strings.HasPrefix(title, "城市归还"),
 		strings.HasPrefix(title, "将领叛离"), // 被攻打后忠诚归零叛离, 属于军情警讯
+		// ★ 2026-10-23 被别人发动计谋（先发制人/秘密策反）也是被动挨打类 → 军情警讯。
+		//   ★ 与 ezfyReportCategoryCond(1) 的 SQL 条件**必须同步**（列表先按 SQL 筛、
+		//   再在这里按标题复核，两边不一致会出现「徽标有数、列表为空」）。
+		strings.HasPrefix(title, "计谋:"),
 		strings.Contains(title, "野地丢失"):
 		return 1
 	case strings.HasPrefix(title, "侦查报告"),
@@ -3676,13 +3680,12 @@ func ezfyCityReportCond(cityId int64) string {
 //	超过前端 15s 超时 → 徽标和列表一起空）。全城视图下补查已无存在必要。
 //	现在只有**一条**单表聚合（user_id + is_read 索引、无 EXISTS、无 city_id 条件），很快。
 func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
+	// ★ 2026-10-23 徽标口径不再手抄一份标题条件：直接复用 ezfyReportCategoryCond，
+	//   与列表（Reports）/军情感叹号（ezfyReportAlertCond）**同源** —— 以前三处各写一份，
+	//   加一类战报（如「计谋:」）时漏改一处就会出现「徽标有数、列表为空」。
 	sumSQL := `SELECT
-			COALESCE(SUM(CASE WHEN title LIKE '军情警报%' OR title LIKE '被侦查报告%'
-				OR title LIKE '城市归还%'
-				OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN title LIKE '侦查报告%' OR title LIKE '侦查失败%' OR title LIKE '掠夺报告%'
-				OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%'
-				OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%' THEN 1 ELSE 0 END), 0)
+			COALESCE(SUM(CASE WHEN ` + ezfyReportCategoryCond(1) + ` THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN ` + ezfyReportCategoryCond(2) + ` THEN 1 ELSE 0 END), 0)
 			FROM ezfy_report WHERE user_id = ? AND is_read = 0`
 	row := h.DB.Raw(sumSQL, uid).Row()
 	var c1, c2 int
@@ -4426,7 +4429,10 @@ func (h *EzfyHandler) ReportClear(c *gin.Context) {
 func ezfyReportCategoryCond(category int) string {
 	switch category {
 	case 1:
-		return "(title LIKE '军情警报%' OR title LIKE '被侦查报告%' OR title LIKE '城市归还%' OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%')"
+		// ★ 2026-10-23 加入「计谋: …」——被别人发动计谋（先发制人/秘密策反）也是被动挨打类，
+		//   必须进军情警讯 tab 并点亮顶部「军情」感叹号，否则玩家根本不知道自己中了计。
+		//   ★ 自己发动的记「计谋发动: …」（无冒号紧跟），不会命中这个前缀。
+		return "(title LIKE '军情警报%' OR title LIKE '被侦查报告%' OR title LIKE '城市归还%' OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' OR title LIKE '计谋:%')"
 	case 2:
 		return "(title LIKE '侦查报告%' OR title LIKE '侦查失败%' OR title LIKE '掠夺报告%' OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%' OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%')"
 	}

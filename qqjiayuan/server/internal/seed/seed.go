@@ -3485,6 +3485,22 @@ func EnsureEzfySchemeKinds(db *gorm.DB) {
 	if !db.Migrator().HasTable("ezfy_cfg_scheme") {
 		return
 	}
+	// ★ 2026-10-23 秘密策反（ID=15）：存量库已有 1~14 行，seedEzfySchemes 会整段跳过，
+	//   这里按 ID 幂等补建。只补缺，不覆盖管理端改过的名称/描述/消耗数量。
+	var secretCnt int64
+	db.Model(&model.EzfyCfgScheme{}).Where("id = ?", ezfySchemeSecretSeed.ID).Count(&secretCnt)
+	if secretCnt == 0 {
+		row := ezfySchemeSecretSeed
+		row.Enabled = 1
+		row.WarMinutes = 60
+		row.WarMaxMinutes = 360
+		db.Create(&row)
+	} else {
+		// 兼容极端情况：行已存在但 kind 仍是 0（纯说明），按名称确认后补成秘密策反。
+		db.Model(&model.EzfyCfgScheme{}).
+			Where("id = ? AND name = ? AND kind = 0", ezfySchemeSecretSeed.ID, ezfySchemeSecretSeed.Name).
+			Update("kind", ezfySchemeSecretSeed.Kind)
+	}
 	db.Model(&model.EzfyCfgScheme{}).Where("id = 1 AND kind = 0").
 		Updates(map[string]interface{}{
 			"kind": 4,

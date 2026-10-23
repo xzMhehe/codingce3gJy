@@ -686,12 +686,18 @@
             {{ s.des }}<br/>
             需要{{ ezfy.schemeData.bullet_name }}：{{ s.bullet }}
             <span class="gray">（持有 {{ ezfy.schemeData.bullet_have }}）</span>
-            <!-- 先发制人：要选目标城市坐标 -->
-            <template v-if="s.kind === 1">
+            <!-- 先发制人 / 秘密策反：要选目标城市坐标 -->
+            <template v-if="s.kind === 1 || s.kind === 6">
               <span class="gray"> 目标坐标:</span>
               <input v-model="ezfy.schemeX" type="text" placeholder="x" style="width:56px"/>
               <input v-model="ezfy.schemeY" type="text" placeholder="y" style="width:56px"/>
             </template>
+            <!-- 秘密策反：用计军官固定为当前查看的这名军官，实时显示预计降低量 -->
+            <span v-if="s.kind === 6" class="gray">
+              <br/>用计军官：{{ ezfy.officerDetail.officer.name }}
+              （学识 {{ ezfy.officerDetail.officer.learning_total }}，
+              预计降低 {{ ezfy.schemeSecretDrop(ezfy.officerDetail.officer.learning_total) }} 点忠诚）
+            </span>
             <!-- ★ 2026-09-30 行军计谋（神兵天降/战略转移）：作用于部队，
                  引导玩家去「军情 → 军队动态」对出征中/返回中的部队使用 -->
             <span v-if="s.kind === 2 || s.kind === 3" class="green">

@@ -247,9 +247,9 @@ type ezfyEquipSetSeed struct {
 	//     这 17 套统一走钻石价，1~7 用下方 ezfySetDiamondPrice 阶梯，8~17 用 s.Diamond 字面量。
 	Diamond int64 // 商城钻石价（每件）
 	// Gold 仅供历史/资料参考，**不再用于定价**（套装件一律钻石）。
-	Gold int64 // 【不用于定价】历史黄金价，仅备查
-	Effect  string
-	Des     string
+	Gold   int64 // 【不用于定价】历史黄金价，仅备查
+	Effect string
+	Des    string
 }
 
 var ezfyEquipSetSeeds = []ezfyEquipSetSeed{
@@ -770,8 +770,9 @@ func ezfyLooseDiamondPrice(level int, dmg, def, hp, move, crit, critDmg int) int
 // ezfySetDiamondPrice 套装件 1~17 的商城**钻石单价**（每件）。
 //
 // ★★ 2026-10-14 用户「之前下的装备现在上架吧」+「都是钻石价」：
-//   这批套装件重新上架，且**统一钻石结算**（1~7 套种子里原本只有黄金价，按同档类比补出钻价）。
-//   8~17 套沿用种子字面量 s.Diamond。
+//
+//	这批套装件重新上架，且**统一钻石结算**（1~7 套种子里原本只有黄金价，按同档类比补出钻价）。
+//	8~17 套沿用种子字面量 s.Diamond。
 //
 // ★★ 2026-10-15 用户「套装玩家反馈太贵了 按品质 100-200 合理梯度」→ 全档再降价：
 //
@@ -810,7 +811,8 @@ func ezfySetDiamondPrice(setID int, fallback int64) int64 {
 // ★ 2026-10-07 为什么要有这个函数：线上这 13 件散件实际卖 1000 / 100 钻（9 件 1000、4 件 100），
 // 而公式算出来 13 件**全是 100**。所以价格以种子字面量（Diamond 字段）为准。
 // ★★ 2026-10-14 用户「散件 50-100 合理梯度」→ 显式价已降档到 50~100；
-//   没写显式价的新增散件回落到 ezfyLooseDiamondPrice（同为 50~100 档）。
+//
+//	没写显式价的新增散件回落到 ezfyLooseDiamondPrice（同为 50~100 档）。
 func ezfyLooseEquipPrice(explicit int64, level int, dmg, def, hp, move, crit, critDmg int) int64 {
 	if explicit > 0 {
 		return explicit
@@ -836,7 +838,8 @@ func ezfyLooseTrio(level int) int {
 //
 // ★ 老库里的价格是历史遗留：纯散件以前是黄金价 / 10 钻价。
 // ★★ 2026-10-14 用户「散件 钻石 按 50-100 合理梯度调整价格」→ 存量价整体降档：
-//    只要「当前价 ≠ 种子目标价」就对齐（原来 1000/100 钻的行会被改到 50~100）。
+//
+//	只要「当前价 ≠ 种子目标价」就对齐（原来 1000/100 钻的行会被改到 50~100）。
 //
 // ★ 2026-10-07 改了两点：
 //
@@ -1033,6 +1036,7 @@ func migrateEzfyChestSetWeight(db *gorm.DB) {
 //	宝箱1 新兵装备宝箱(黄金)  ：散件 + 套装 1~2（Tier1）
 //	宝箱2 军官装备宝箱(钻500) ：套装 3~7、11~12（Tier2~3）+ 六大系列 21~26
 //	宝箱3 顶级套装宝箱(钻3000)：套装 8~10、13~17（Tier4）+ 六大系列 21~26
+//
 // ezfyChestPoolRow 奖池快照行（字段含义见 ezfyChestPoolSeedRows 的注释）
 type ezfyChestPoolRow struct {
 	ChestID  int
@@ -1166,7 +1170,7 @@ func buildEzfyChestItems() []model.EzfyCfgChestItem {
 			md = 1
 		}
 		out = append(out, model.EzfyCfgChestItem{
-			ID:     r.ChestID*1000 + seq[r.ChestID],
+			ID:      r.ChestID*1000 + seq[r.ChestID],
 			ChestId: r.ChestID, Kind: r.Kind, RefId: r.RefID,
 			Count: r.Count, Weight: r.Weight, Quality: r.Quality, MinDraws: md,
 		})
@@ -1401,8 +1405,18 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 //	3 = 战略转移（队伍回程减 360 分钟）
 //	4 = 恫疑虚喝（自己所有城市生效1小时，被侦查时展示随机兵种1亿假兵）
 //	5 = 隐真示假（自己所有城市生效1小时，被侦查时展示随机兵种1000内假兵力）
+//	6 = 秘密策反（按目标城市坐标，降低敌方城守忠诚）
 //
 // 计谋常量
+//
+// ★ 2026-10-23 秘密策反单独抽成变量：存量库 ezfy_cfg_scheme 已有 1~14，
+// seedEzfySchemes 只在表为空时插入；EnsureEzfySchemeKinds 会用这个变量补建 ID=15。
+var ezfySchemeSecretSeed = model.EzfyCfgScheme{
+	ID: 15, Name: "秘密策反",
+	Des:    "按目标城市坐标使用：降低目标敌对城守的忠诚（目标城未任命城守时无法发动），降低量 = 用计军官有效学识 ÷ 10（最高99），城守忠诚最低保留1点",
+	Bullet: 10, Kind: 6, SortNo: 15,
+}
+
 var ezfySchemeSeeds = []model.EzfyCfgScheme{
 	{ID: 1, Name: "恫疑虚喝",
 		Des:    "发动后自己所有城市生效1小时（多次发动叠加时长）：被敌人侦查时展示随机兵种1亿兵效果吓唬敌人（实际兵力不变）",
@@ -1426,6 +1440,8 @@ var ezfySchemeSeeds = []model.EzfyCfgScheme{
 	//   神兵天降（去程剩余时间减 80%）/ 战略转移（回程减 360 分钟），各消耗 7 信号弹，每支部队各限一次。
 	{ID: 13, Name: "神兵天降", Des: "神兵天降", Bullet: 7, Kind: 2, SortNo: 13},
 	{ID: 14, Name: "战略转移", Des: "战略转移", Bullet: 7, Kind: 3, SortNo: 14},
+	// ★ 2026-10-23 秘密策反（默认 10 个信号弹，按坐标降低敌城城守忠诚）
+	ezfySchemeSecretSeed,
 }
 
 // seedEzfySchemes 计谋配置（按 ID 段幂等，同装备套装那套闸门逻辑）

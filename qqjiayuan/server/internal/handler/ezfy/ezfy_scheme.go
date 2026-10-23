@@ -2,6 +2,7 @@ package ezfy
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"time"
@@ -23,7 +24,8 @@ import (
 //   - 计谋配置放 ezfy_cfg_scheme（管理端可维护：名称/说明/消耗数量/上下架），
 //     不再写死在前端；
 //   - 发动一次计谋 = 扣对应数量的信号弹 + 写一条战报；
-//     Kind=1（先发制人）额外让双方立即进入「可战争」状态。
+//     Kind=1（先发制人）额外让双方立即进入「可战争」状态；
+//     Kind=6（秘密策反）按目标城市坐标降低敌方城守忠诚。
 //
 // ★★ 2026-10-10 不再硬编码道具 id（原 `const ezfySchemeItemID = 24`）：
 // 道具已统一迁到 1001+（见 seed/ezfy_cfg_gen.go），改为**按名字解析**，
@@ -93,11 +95,37 @@ func (h *EzfyHandler) ezfySchemeOfficerLearning(city *model.EzfyCity) (string, i
 	return best.Name, bestLea
 }
 
-// SchemeUse POST /games/ezfy/scheme/use  {scheme_id, target_x, target_y, order_id}
+// ============ 秘密策反：降低目标城守忠诚 ============
+//
+// 规则（2026-10-23）：
+//   - 降低量 = 用计军官有效学识 ÷ 10（整数除法），至少 1，最高 99；
+//   - 目标城守忠诚最低保留 1 点，不允许降到 0 或负数；重复发动仍按 1 点兜底。
+func ezfySchemeSecretDrop(learning int) int {
+	drop := learning / 10
+	if drop < 1 {
+		drop = 1
+	}
+	if drop > 99 {
+		drop = 99
+	}
+	return drop
+}
+
+// ezfySchemeSecretLoyalty 秘密策反结算后的忠诚：原忠诚 − 降低量，最低保留 1。
+func ezfySchemeSecretLoyalty(loyalty, drop int) int {
+	after := loyalty - drop
+	if after < 1 {
+		after = 1
+	}
+	return after
+}
+
+// SchemeUse POST /games/ezfy/scheme/use  {scheme_id, target_x, target_y, order_id, officer_id}
 //
 // 消耗信号弹发动计谋。
 //
 //	Kind=1（先发制人）需要给目标城市坐标 target_x/target_y。
+//	Kind=6（秘密策反）需要给目标城市坐标 target_x/target_y 和用计军官 officer_id。
 //	Kind=2（神兵天降）/ Kind=3（战略转移）作用于「自己的某支部队」，需要给 order_id；
 //	   · 神兵天降：去程(行进中)剩余时间减 80%
 //	   · 战略转移：回程减 360 分钟
@@ -108,10 +136,11 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
 	var req struct {
-		SchemeId int   `json:"scheme_id"`
-		TargetX  int   `json:"target_x"`
-		TargetY  int   `json:"target_y"`
-		OrderId  int64 `json:"order_id"`
+		SchemeId  int   `json:"scheme_id"`
+		TargetX   int   `json:"target_x"`
+		TargetY   int   `json:"target_y"`
+		OrderId   int64 `json:"order_id"`
+		OfficerId uint  `json:"officer_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -124,8 +153,8 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 	}
 	// ★ 2026-10-02 未实现的计谋一律卡控，提示暂未实现，不允许发动。
 	//   目前已实现：Kind=1 先发制人 / Kind=2 神兵天降 / Kind=3 战略转移 /
-	//              Kind=4 恫疑虚喝 / Kind=5 隐真示假。
-	if sc.Kind < 1 || sc.Kind > 5 {
+	//              Kind=4 恫疑虚喝 / Kind=5 隐真示假 / Kind=6 秘密策反。
+	if sc.Kind < 1 || sc.Kind > 6 {
 		h.fail(c, "「"+sc.Name+"」暂未实现, 敬请期待")
 		return
 	}
@@ -181,6 +210,75 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 			h.fail(c, "该城市使用了免战保护, 无法对其发动先发制人")
 			return
 		}
+	}
+
+	// ===== Kind=6 秘密策反：按目标城市坐标，降低敌方城守忠诚 =====
+	//
+	// 目标必须是敌对城市（不能是自己/同盟），且该城已任命城守。
+	// 降低量取「当前用计军官」的有效学识 ÷ 10（最高 99），城守忠诚最低保留 1。
+	// 重复发动仍然允许，结算时忠于「最低 1 点」的兜底规则（不会出现 0/负数）。
+	if sc.Kind == 6 {
+		if req.TargetX == 0 && req.TargetY == 0 {
+			h.fail(c, "请选择要发动计谋的目标城市")
+			return
+		}
+		var t model.EzfyCity
+		if err := h.DB.Where("x = ? AND y = ?", req.TargetX, req.TargetY).First(&t).Error; err != nil {
+			h.fail(c, "目标坐标上没有城市")
+			return
+		}
+		if t.UserID == uid {
+			h.fail(c, "不能对自己的城市发动计谋")
+			return
+		}
+		if h.isAllyCity(uid, int64(t.ID)) {
+			h.fail(c, "不能对同盟成员的城市发动秘密策反")
+			return
+		}
+		// 与先发制人/出征拦截同口径：免战保护期内不能发动。
+		if h.hasCityEffect(uint(t.ID), 2) {
+			h.fail(c, "该城市使用了免战保护, 无法对其发动秘密策反")
+			return
+		}
+		// ★ 城守必须在城（status=0 在职、非俘虏、非出征中）——出征在外的城守不在城里，策反无从下手
+		guard := h.positionOfficer(t.ID, ezfyPositionGuard)
+		if guard == nil || guard.IsCaptive == 1 || guard.Status != 0 {
+			h.fail(c, "目标城市没有可策反的城守")
+			return
+		}
+		if req.OfficerId == 0 {
+			h.fail(c, "请选择用计军官")
+			return
+		}
+		var useOfficer model.EzfyOfficer
+		if err := h.DB.Where("id = ? AND city_id = ? AND is_captive = 0 AND status = 0", req.OfficerId, city.ID).
+			First(&useOfficer).Error; err != nil {
+			h.fail(c, "用计军官不在本城, 请重新选择")
+			return
+		}
+		_, _, learning := h.officerEffective(&useOfficer)
+		drop := ezfySchemeSecretDrop(learning)
+		oldLoyalty := guard.Loyalty
+		newLoyalty := ezfySchemeSecretLoyalty(oldLoyalty, drop)
+
+		// ★ 先落库再扣道具：Update 失败就报错返回，别让玩家「扣了信号弹、忠诚却没降」。
+		if err := h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", guard.ID).
+			Update("loyalty", newLoyalty).Error; err != nil {
+			log.Printf("ezfy 秘密策反写忠诚失败 guard=%d: %v", guard.ID, err)
+			h.fail(c, "计谋发动失败, 请稍后再试")
+			return
+		}
+		h.consumeItemN(uid, ezfySchemeItemID(), need, "发动计谋")
+
+		msg := fmt.Sprintf("已发动计谋「秘密策反」，消耗%s×%d：目标「%s(%d,%d)」城守「%s」忠诚 %d → %d（用计军官 %s 学识 %d，降低 %d）",
+			name, need, t.Name, t.X, t.Y, guard.Name, oldLoyalty, newLoyalty, useOfficer.Name, learning, drop)
+		h.addReport(uid, 6, "计谋发动: 秘密策反", msg+"\n"+sc.Des, "", 0, city.ID)
+		// ★ 标题带坐标：军情警讯列表只显示标题，重名城要能区分（见 TestAlertReportTitleHasCoord）
+		h.addReport(t.UserID, 3, fmt.Sprintf("计谋: 秘密策反 %s(%d,%d)", t.Name, t.X, t.Y),
+			fmt.Sprintf("我方城市「%s」被敌军发动计谋「秘密策反」，城守「%s」忠诚 %d → %d（最低保留1点）。",
+				t.Name, guard.Name, oldLoyalty, newLoyalty), "", 0, t.ID)
+		h.done(c, "", msg)
+		return
 	}
 
 	// ===== Kind 2/3 行军计谋：神兵天降(去程减80%) / 战略转移(回程减360分钟) =====
@@ -293,7 +391,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 		}
 		msg = fmt.Sprintf("已发动计谋「先发制人」，消耗%s×%d：与「%s」进入可战争状态 %d 分钟（%s 学识 %d）",
 			name, need, target.Name, minutes, who, lea)
-		h.addReport(target.UserID, 3, "计谋: 先发制人",
+		h.addReport(target.UserID, 3, fmt.Sprintf("计谋: 先发制人 %s(%d,%d)", target.Name, target.X, target.Y),
 			fmt.Sprintf("我方城市「%s」被敌军发动计谋「先发制人」，已进入可战争状态 %d 分钟。",
 				target.Name, minutes), "")
 	}
@@ -317,7 +415,9 @@ func (h *EzfyHandler) ezfySchemeEffectCities(uid uint, effectType int) {
 }
 
 // ezfySchemeFake 侦查目标城市主人是否有生效中的计谋伪装效果，返回：
-//   3 = 恫疑虚喝（展示 1亿 假兵）/ 4 = 隐真示假（展示 1000 内假兵）/ 0 = 无效果。
+//
+//	3 = 恫疑虚喝（展示 1亿 假兵）/ 4 = 隐真示假（展示 1000 内假兵）/ 0 = 无效果。
+//
 // 计谋是「自己所有城市都生效」，这里按**主人维度** JOIN 查询：发动后才新建的城市
 // 没有效果行，但主人其它城有 → 同样命中（与 hasAnyPeaceEffect 同一思路）。
 // 两个效果同时生效时，隐真示假（隐藏实力）优先。
@@ -357,8 +457,9 @@ func ezfySchemeFakeTroop(troopType int) *model.EzfyCfgTroop {
 }
 
 // ezfySchemeFakeCount 计谋伪装假数量：
-//   fakeKind 3（恫疑虚喝）→ 固定 1亿（100000000）吓唬敌人；
-//   fakeKind 4（隐真示假）→ 1000 内随机小数量，隐藏实力。
+//
+//	fakeKind 3（恫疑虚喝）→ 固定 1亿（100000000）吓唬敌人；
+//	fakeKind 4（隐真示假）→ 1000 内随机小数量，隐藏实力。
 func ezfySchemeFakeCount(fakeKind int) int64 {
 	if fakeKind == 3 {
 		return 100000000

@@ -59,20 +59,11 @@
 
       <!-- 顶部导航(每页都有) -->
       <div class="top-nav">
-        <a href="javascript:;" @click="go('chat')">聊天</a>
-        <a href="javascript:;" @click="go('mail')">邮箱</a>
-        <!-- ★★ 2026-10-13 「有没看的预警或没看的被袭战报 → 军情后面加个感叹号图标」
-             （类似首页公告行那个小喇叭）：未看数 = 未读的**军情警讯** + 未读的
-             **被侦查/被掠夺/被征服/城破**战报，由 /view 的 `unread_warns` 下发
-             （后端 `ezfyReportAlertCond`，只算被动挨打类；自己主动出击的战果不计入）。
-             进过军情页把战报标已读后，下次 /view 刷新角标自动消失。
-             ★ 造型：**裸感叹号**（不加圆圈底，用户要求），配色直接取公告小喇叭 notice.gif 的
-             **主体色**：亮黄 #FCE224 → 黄 #FED903 → 橙 #FDA504 竖向渐变，
-             再压一道砖红 #8E2525 细描边（小喇叭里的那个红）—— 纯黄在浅底上会看不清，描边保证可读。 -->
-        <a href="javascript:;" @click="go('reports')">军情<svg
-          v-if="unreadWarns > 0" class="ezfy-nav-warn" viewBox="0 0 8 14"
-          preserveAspectRatio="none" role="img">
-          <title>有 {{ unreadWarns }} 条未看的军情警讯/被袭战报</title>
+        <!-- ★★ 2026-10-23 聊天 / 邮箱 / 军情 共用同一个「裸感叹号」造型：
+             亮黄 #FCE224 → 黄 #FED903 → 橙 #FDA504 竖向渐变 + 砖红 #8E2525 细描边。
+             渐变只定义一次（放 0×0 的 svg 里），三个角标都引用它，避免重复 ID。 -->
+        <svg class="ezfy-nav-warn-defs" aria-hidden="true" focusable="false"
+             style="position:absolute;width:0;height:0;overflow:hidden">
           <defs>
             <linearGradient id="ezfyNavWarnGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stop-color="#fce224"/>
@@ -80,6 +71,36 @@
               <stop offset="100%" stop-color="#fda504"/>
             </linearGradient>
           </defs>
+        </svg>
+        <!-- ★ 2026-10-23 聊天：有未读**好友私聊**时显示感叹号（后端 /unread 的 chat） -->
+        <a href="javascript:;" @click="go('chat')">聊天<svg
+          v-if="unreadChat > 0" class="ezfy-nav-warn" viewBox="0 0 8 14"
+          preserveAspectRatio="none" role="img">
+          <title>有 {{ unreadChat }} 条未读私聊</title>
+          <rect x="2.4" y="1.75" width="3.2" height="7" rx="1.6"
+                fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
+          <circle cx="4" cy="11.4" r="1.75"
+                  fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
+        </svg></a>
+        <!-- ★ 2026-10-23 邮箱：有未读邮件时显示感叹号（后端 /unread 的 mail） -->
+        <a href="javascript:;" @click="go('mail')">邮箱<svg
+          v-if="unreadMail > 0" class="ezfy-nav-warn" viewBox="0 0 8 14"
+          preserveAspectRatio="none" role="img">
+          <title>有 {{ unreadMail }} 封未读邮件</title>
+          <rect x="2.4" y="1.75" width="3.2" height="7" rx="1.6"
+                fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
+          <circle cx="4" cy="11.4" r="1.75"
+                  fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
+        </svg></a>
+        <!-- ★★ 2026-10-13 「有没看的预警或没看的被袭战报 → 军情后面加个感叹号图标」
+             （类似首页公告行那个小喇叭）：未看数 = 未读的**军情警讯** + 未读的
+             **被侦查/被掠夺/被征服/城破**战报，由 /view 的 `unread_warns` 下发
+             （后端 `ezfyReportAlertCond`，只算被动挨打类；自己主动出击的战果不计入）。
+             进过军情页把战报标已读后，下次 /view 刷新角标自动消失。 -->
+        <a href="javascript:;" @click="go('reports')">军情<svg
+          v-if="unreadWarns > 0" class="ezfy-nav-warn" viewBox="0 0 8 14"
+          preserveAspectRatio="none" role="img">
+          <title>有 {{ unreadWarns }} 条未看的军情警讯/被袭战报</title>
           <rect x="2.4" y="1.75" width="3.2" height="7" rx="1.6"
                 fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
           <circle cx="4" cy="11.4" r="1.75"
@@ -633,6 +654,10 @@ export default {
       unreadReports: 0,
       // ★ 2026-10-13 未看的「军情警讯(预警) + 战斗报告」数量 —— 顶部导航「军情」后面的感叹号角标
       unreadWarns: 0,
+      // ★ 2026-10-23 顶部导航「聊天 / 邮箱」感叹号角标：未读私聊 / 未读邮件。
+      //   由轻量接口 GET /games/ezfy/unread 下发（30s 轮询 + 进游戏先拉一次）。
+      unreadChat: 0,
+      unreadMail: 0,
       reports: [],
       // ★ 军情分区分页：默认每页 5 条
       dynPage: 1, dynSize: 5,
@@ -2136,6 +2161,8 @@ export default {
     }
     window.addEventListener('popstate', this._onBack)
     this.load()
+    // ★ 2026-10-23 顶部导航「聊天/邮箱」感叹号：进游戏先拉一次未读数
+    this.loadUnread()
     this.loadResCfg()
     // ★ 2026-10-10 兜底：/view 若异常或超时（首次进入、本地无布局缓存）也要让首页渲染出来，
     //   否则首页会一直空白。正常 /view 会先返回并置 homeLayoutReady=true，这里只是保险。
@@ -2157,6 +2184,8 @@ export default {
     this.timer = setInterval(() => {
       if (this.cur === 'home') { this.load(); this.loadResCfg(); this.loadHomeChats() }
       if (this.cur === 'chat') this.loadChats()
+      // ★ 2026-10-23 未读私聊/邮件角标：不分页面，30s 统一刷新一次
+      this.loadUnread()
       // ★ 2026-10-05 修复「建筑升级等级不动 / 训练不出厂 / 切城后页面串数据」：
       //   /view 瘦身后这些列表不再由 /view 下发，非首页页面必须自己轮询刷新，
       //   否则建筑完工/训练出厂在页面上永远不更新。
@@ -3162,6 +3191,17 @@ export default {
         if (r.code === 0) this.techsData = r.data
       })
     },
+    // ★ 2026-10-23 顶部导航「聊天 / 邮箱」感叹号角标：未读私聊 + 未读邮件。
+    //   后端一次返回两个数（两条 COUNT 并行），前端 30s 轮询；页面内已读操作后再主动刷新。
+    loadUnread () {
+      if (!this.isLogin) return
+      api.get('/games/ezfy/unread').then(r => {
+        if (r.code === 0 && r.data) {
+          this.unreadChat = r.data.chat || 0
+          this.unreadMail = r.data.mail || 0
+        }
+      })
+    },
     loadChats () {
       api.get('/games/ezfy/chat?channel=' + this.chatChannel +
               '&page=' + this.chatPage + '&size=' + this.chatSize).then(r => {
@@ -3314,6 +3354,8 @@ export default {
           this.mailPage = d.page || 1
           this.mailSize = d.size || this.mailSize
           this.mailUnread = d.unread || { inbox: 0, system: 0, total: 0 }
+          // ★ 2026-10-23 顶部导航「邮箱」感叹号：邮件页拿到的未读总数与角标同口径
+          this.unreadMail = this.mailUnread.total || 0
         } else this.notify(r.msg || '加载失败')
       }).catch(() => { this._mailLoading = '' })
     },
@@ -3329,14 +3371,18 @@ export default {
       if (m.is_read !== 0) return
       m.is_read = 1
       this.mailUnread.total = Math.max(0, (this.mailUnread.total || 0) - 1)
+      this.unreadMail = Math.max(0, (this.unreadMail || 0) - 1)
       if (this.mailTab === 'inbox') this.mailUnread.inbox = Math.max(0, (this.mailUnread.inbox || 0) - 1)
       else if (this.mailTab === 'system') this.mailUnread.system = Math.max(0, (this.mailUnread.system || 0) - 1)
       api.post('/games/ezfy/mail/read', { id: m.id })
     },
     doMailReadAll () {
       api.post('/games/ezfy/mail/readall', { tab: this.mailTab }).then(r => {
-        if (r.code === 0) { this.notify(r.data && r.data.msg ? r.data.msg : '已全部标记已读'); this.loadMail(this.mailTab, true) }
-        else this.notify(r.msg || '操作失败')
+        if (r.code === 0) {
+          this.notify(r.data && r.data.msg ? r.data.msg : '已全部标记已读')
+          this.loadMail(this.mailTab, true)
+          this.loadUnread()
+        } else this.notify(r.msg || '操作失败')
       })
     },
     doMailDelete (m) {
@@ -3411,6 +3457,8 @@ export default {
           this.pmChatTotal = r.data.total || 0
           this.pmChatPage = r.data.page || 1
           this.pmChatSize = r.data.size || this.pmChatSize
+          // ★ 2026-10-23 打开会话后后端已把该好友的私聊标为已读 → 刷新顶部「聊天」角标
+          this.loadUnread()
           // ★ 2026-10-13 原来这里还会 this.loadMails() 打家园的 /messages/inbox，
           //   结果拉回来没人渲染（已随「消息全部用二战库」一起删掉）。
           this.loadPmConvs()
@@ -7419,20 +7467,33 @@ export default {
     loadSchemes () {
       this.withAcadeCache('scheme', () => api.get('/games/ezfy/schemes'), d => { this.schemeData = d })
     },
+    // ★ 秘密策反：预计降低忠诚（学识 ÷ 10，最高 99，至少 1）—— 与后端同口径，仅用于前端提示
+    schemeSecretDrop (learning) {
+      const drop = Math.floor((Number(learning) || 0) / 10)
+      return Math.min(99, Math.max(1, drop))
+    },
     async doScheme (s) {
       const b = this.schemeData
       if (b.bullet_have < s.bullet) { this.notify('「' + b.bullet_name + '」不足'); return }
       const body = { scheme_id: s.id }
-      if (s.kind === 1) {
+      const coordKind = s.kind === 1 || s.kind === 6
+      if (coordKind) {
         const x = parseInt(this.schemeX)
         const y = parseInt(this.schemeY)
         if (!x || !y) { this.notify('「' + s.name + '」需要填写目标城市坐标（x / y）'); return }
         body.target_x = x
         body.target_y = y
       }
-      const tip = s.kind === 1
-        ? ('确认对 (' + body.target_x + ',' + body.target_y + ') 发动「' + s.name + '」吗？消耗 ' + b.bullet_name + '×' + s.bullet)
-        : ('确认发动「' + s.name + '」吗？消耗 ' + b.bullet_name + '×' + s.bullet)
+      if (s.kind === 6) {
+        const officer = this.officerDetail && this.officerDetail.officer
+        if (!officer || !officer.id) { this.notify('请先选择用计军官'); return }
+        body.officer_id = officer.id
+      }
+      const tip = s.kind === 6
+        ? ('确认对 (' + body.target_x + ',' + body.target_y + ') 发动「' + s.name + '」吗？消耗 ' + b.bullet_name + '×' + s.bullet + '，将降低目标城守忠诚（最低保留 1 点）')
+        : coordKind
+          ? ('确认对 (' + body.target_x + ',' + body.target_y + ') 发动「' + s.name + '」吗？消耗 ' + b.bullet_name + '×' + s.bullet)
+          : ('确认发动「' + s.name + '」吗？消耗 ' + b.bullet_name + '×' + s.bullet)
       if (!await this.ask(tip)) return
       api.post('/games/ezfy/scheme/use', body).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '发动失败'); return }
@@ -8000,7 +8061,9 @@ body.ezfy-ios .ezfy-page textarea {
 /* ★ 用户反馈「导航整体有点靠右」：每个链接自带 padding + 1px margin，
    于是第一个链接「聊天」的文字比下面正文行(公告/新城市…)右移。
    去掉首链接的左侧留白 → 整条导航左移，与正文左对齐。 */
-.ezfy-page .top-nav a:first-child { margin-left: 0; padding-left: 0; }
+/* ★ 2026-10-23 顶部导航里新增了 0×0 的 SVG（共用感叹号渐变）→ 首链接不再一定是
+   :first-child，改用 :first-of-type 才能继续选中「聊天」，保持左边对齐。 */
+.ezfy-page .top-nav a:first-of-type { margin-left: 0; padding-left: 0; }
 /* ★★ 2026-10-13 顶部导航「军情」的未读角标：有未看的 军情警讯(预警)/战斗报告 时，
    在「军情」右边显示一个感叹号（提示方式类似首页公告行前的小喇叭）。
    ★ 造型：**裸感叹号**（不加圆圈底，用户要求「别用圆圈包着」），用内联 SVG 画；

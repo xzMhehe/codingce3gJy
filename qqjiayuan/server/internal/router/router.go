@@ -772,6 +772,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					ezfyG.POST("/friends/delete", ezfyH.FriendsDelete)
 					// ★ 2026-10-13 游戏内邮箱（收件箱/系统邮件/发件箱/写邮件，非好友也可发）
 					ezfyG.GET("/mail", ezfyH.MailList)
+					// ★ 2026-10-23 顶部导航「聊天/邮箱」感叹号角标（未读私聊 + 未读邮件）
+					ezfyG.GET("/unread", ezfyH.NavUnread)
 					ezfyG.POST("/mail/send", ezfyH.MailSend)
 					ezfyG.POST("/mail/read", ezfyH.MailRead)
 					ezfyG.POST("/mail/readall", ezfyH.MailReadAll)
