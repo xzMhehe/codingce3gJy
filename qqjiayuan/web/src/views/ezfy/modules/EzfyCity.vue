@@ -87,7 +87,7 @@
           民居上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '无' }}<br/>
           <span v-if="ezfy.popAtHouseCap" class="gray">人口已满，召集只加临时空闲</span><br v-if="ezfy.popAtHouseCap"/>
           <span v-if="ezfy.popExtra > 0" class="orange">临时空闲 +{{ ezfy.fmtBig(ezfy.popExtra) }}</span><br v-if="ezfy.popExtra > 0"/>
-          <span v-if="ezfy.popRecover > 0" class="gray">待恢复人口: {{ ezfy.fmtBig(ezfy.popRecover) }}（召集可立即恢复为空闲人口）</span><br v-if="ezfy.popRecover > 0"/>
+          <span v-if="ezfy.popRecover > 0" class="gray">待恢复人口: {{ ezfy.fmtBig(ezfy.popRecover) }}（召集可恢复）</span><br v-if="ezfy.popRecover > 0"/>
           <!-- 花费粮食读管理端配置；召集人口 = 当前民居上限 × 配置百分比（默认 10%），勿再写死固定人数 -->
           花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}{{ ezfy.popAtHouseCap ? '空闲人口' : '人口' }}<br/>
           <div class="old-line">{{ ezfy.resNames.food }}: {{ ezfy.city.food }}</div>

@@ -1103,6 +1103,12 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	if now <= last {
 		return
 	}
+	// ★★ 2026-10-23 并发写保护：本次结算用的是请求开始时读到的 city 快照。
+	//   结算过程中若玩家刚召集/用了移民法案（pop_extra 变大），旧快照的合并写
+	//   会把新值覆盖回 0 —— 表现就是「临时空闲刚显示几千万，造兵时又没了」。
+	//   合并写带 updated_at 条件：期间有别的写入就放弃这次落库，下次请求从库里
+	//   重新结算（last_time 没被推进，不会丢产出/人口）。
+	origUpdatedAt := city.UpdatedAt
 	hours := float64(now-last) / 3600000.0
 
 	tech := d.techsOf(h, city.ID)
@@ -1484,7 +1490,15 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	//	 · 进程崩溃/重启也只回退到「上次落库」那一刻，之后照常补算 ✔
 	//	实测把 /view、/buildings、/officers/skills 等每请求省掉一个 ~250ms 的写往返。
 	if now-last >= ezfyResWriteCoalesceMs {
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+		// ★★ 2026-10-23 并发写保护（见函数开头 origUpdatedAt）。
+		//   updated_at 在读取快照后被任何接口改过 → 这次合并写直接放弃：
+		//   尤其不能拿旧快照的 pop_extra=0 覆盖玩家刚召集出来的临时空闲。
+		//   last_time 不推进，下次请求会从库里重新结算，产出/人口不会丢。
+		q := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID)
+		if !origUpdatedAt.IsZero() {
+			q = q.Where("updated_at = ?", origUpdatedAt)
+		}
+		q.Updates(map[string]interface{}{
 			"feelings": city.Feelings, "grievance": city.Grievance,
 			"pop": city.Pop, "pop_max": city.PopMax,
 			// ★ 2026-10-13 空闲人口慢恢复的三个字段一起写（与上面的内存结算同口径）

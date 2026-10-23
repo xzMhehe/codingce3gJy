@@ -6,7 +6,7 @@
           <div class="old-line green" v-if="ezfy.troopsData.train_discount > 0">
             节日活动·造兵打折：资源消耗 -{{ ezfy.troopsData.train_discount }}%（下方为折后价）
           </div>
-          <div class="old-line">人口:{{ ezfy.troopsData.pop }} 空闲:{{ ezfy.freePop }} | 围墙:{{ ezfy.troopsData.wall_level }}级</div>
+          <div class="old-line">人口:{{ ezfy.troopsData.pop }} 空闲:{{ ezfy.freePop }}<span v-if="ezfy.popExtra > 0" class="gray">（含临时空闲{{ ezfy.fmtBig(ezfy.popExtra) }}）</span> | 围墙:{{ ezfy.troopsData.wall_level }}级</div>
           <!-- ★★ 2026-10-18 「用完就恢复」改造：训练开始（消耗人口）当下人口即转入「待恢复」，
                在后台配置的「空闲人口恢复满时间」内线性恢复满，不再等训练出厂。故这里展示的是待恢复人口。 -->
           <div class="old-line gray" v-if="ezfy.popRecover > 0">

@@ -2825,6 +2825,11 @@ export default {
         // ★ 训练页(troop)的队列行要按背包里的训练加速道具档位渲染 [加速] 按钮
         if (t === 'troop' || t === 'troops') this.loadBag()
       }
+      // ★ 2026-10-23 召集页/城市状态页显示人口、待恢复、临时空闲：进页先拉一次 /view，
+      //   避免用首页或其他页留下的旧快照（临时空闲 5 分钟内会回落，旧值会误导玩家）。
+      else if (t === 'convene' || t === 'citystatus') {
+        this.load()
+      }
       else if (t === 'hq') {
         // ★ 2026-09-28 预设编队 tab 需要：本城坐标(/view)、集结令(gatherMax)、军官(onDutyOfficers)、背包(集结令数量)
         this.load()
@@ -5178,7 +5183,12 @@ export default {
         return
       }
       api.post('/games/ezfy/city/convene', { city_id: cid }).then(r => {
-        if (r.code === 0) atByCity[cid] = Date.now()
+        if (r.code === 0) {
+          atByCity[cid] = Date.now()
+          // ★ 2026-10-23 召集成功后立即同步人口/待恢复/临时空闲，别等首页 30 秒轮询；
+          //   否则页面上会继续显示召集前的空闲人口，玩家以为临时空闲没加上。
+          this.load()
+        }
         this.alert(r, '召集完成')
       })
     },

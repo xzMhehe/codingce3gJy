@@ -203,6 +203,34 @@ func TestCalcResourceHouseCap(t *testing.T) {
 	}
 }
 
+// TestCalcResourceWriteGuardedByUpdatedAt 合并写必须带 updated_at 乐观锁，
+// 防止请求开始时读到的旧快照（pop_extra=0）覆盖刚召集出来的临时空闲人口。
+func TestCalcResourceWriteGuardedByUpdatedAt(t *testing.T) {
+	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) calcResourceD("))
+	for _, want := range []string{
+		"origUpdatedAt := city.UpdatedAt",
+		`q.Where("updated_at = ?", origUpdatedAt)`,
+		`"pop_extra": city.PopExtra`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("calcResourceD 合并写缺少并发保护（缺 %s）：\n%s", want, body)
+		}
+	}
+}
+
+// TestTrainPopAvailableIncludesExtra 训练人口校验必须把临时空闲人口算进可用人口。
+func TestTrainPopAvailableIncludesExtra(t *testing.T) {
+	train := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) trainTroopLocked("))
+	for _, want := range []string{
+		"city.Pop - popUsed - city.PopRecover + city.PopExtra",
+		"临时空闲%d",
+	} {
+		if !strings.Contains(train, want) {
+			t.Fatalf("trainTroopLocked 人口校验未计入临时空闲人口（缺 %s）：\n%s", want, train)
+		}
+	}
+}
+
 func TestConveneCooldownCfg(t *testing.T) {
 	old := ezfyCfg
 	defer func() { ezfyCfg = old }()
