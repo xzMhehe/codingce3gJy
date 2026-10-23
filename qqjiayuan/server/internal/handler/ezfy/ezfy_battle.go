@@ -122,6 +122,33 @@ func ezfyMinDmgCoeffCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.MinDmgCoeff, ezfyMinDmgCoeffDef)
 }
 
+// 伤害算法：0 = 原版（内置/公式套的攻防系数），1 = 家园版（图片公式）。
+//
+// 只有公式套能选家园版；内置配置恒为原版，避免老服行为被意外改变。
+func ezfyDamageFormulaCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil && f.DamageFormula == 1 {
+		return 1
+	}
+	return 0
+}
+
+// 城墙耐久上限 = 围墙等级² × 20000（1级2万 / 2级8万 / … / 10级200万）。
+func ezfyWallDurabilityMax(level int) int64 {
+	if level <= 0 {
+		return 0
+	}
+	return int64(level) * int64(level) * 20000
+}
+
+// 城墙满耐久时的守城防御加成% = 围墙等级 × 5（1级+5% / 10级+50%）。
+// 实际加成按当前耐久比例折算；耐久为 0 时不再提供防御加成。
+func ezfyWallDefBonusMax(level int) int {
+	if level <= 0 {
+		return 0
+	}
+	return level * 5
+}
+
 // 战场指挥指令（玩家每回合可下达）
 const (
 	ezfyCmdAdvance = "advance" // 前进
@@ -146,6 +173,7 @@ type ezfyTroopStats struct {
 	AtkSea      int
 	AtkGround   int
 	AtkAir      int
+	AtkDef      int
 	Defence     int
 	Speed       int
 	AttackRange int
@@ -158,7 +186,7 @@ func ezfyStatsOf(troopId int) *ezfyTroopStats {
 	}
 	return &ezfyTroopStats{
 		ID: cfg.ID, Name: cfg.Name, Type: cfg.Type, Health: cfg.Health,
-		AtkSea: cfg.AtkSea, AtkGround: cfg.AtkGround, AtkAir: cfg.AtkAir,
+		AtkSea: cfg.AtkSea, AtkGround: cfg.AtkGround, AtkAir: cfg.AtkAir, AtkDef: cfg.AtkDef,
 		Defence: cfg.Defence, Speed: cfg.Speed, AttackRange: cfg.AttackRange,
 	}
 }
@@ -174,6 +202,9 @@ type ezfyBattleResult struct {
 	DefenderLosses []ezfyUnitGroup
 	AttackerLeft   []ezfyUnitGroup
 	DefenderLeft   []ezfyUnitGroup
+	// ★ 2026-10-24 城墙剩余耐久（0/0 = 本场没有城墙或老战报）
+	WallHp    int64
+	WallHpMax int64
 }
 
 // ============ 战场状态机（实时指挥用） ============
@@ -476,6 +507,12 @@ type ezfyBattleState struct {
 	//   战斗提前结束、守方剩余兵力返航回城（而不是死战到最后一兵）。
 	DefBreak        int   // 溃败阈值%（0 = 不启用）
 	DefInitialTotal int64 // 守方初始总兵力（DefBreak 的判断基准）
+
+	// ★ 2026-10-24 城墙耐久（只有征服玩家城时启用；掠夺/野地/寇城恒为 false）。
+	WallEnabled     bool
+	WallHp          int64
+	WallHpMax       int64
+	WallDefBonusMax int
 
 	Head    []string // 开局描述（军官/加成/初始距离），只写一次
 	Actions []string // 每回合的行动日志
@@ -935,6 +972,79 @@ var ezfySlogans = []string{
 	"剑锋所指", "热血方刚", "战意高昂", "孤掷一注",
 }
 
+// wallDefBonus 当前城墙提供的守城防御加成%（按剩余耐久比例折算）。
+func (st *ezfyBattleState) wallDefBonus() int {
+	if !st.WallEnabled || st.WallHp <= 0 || st.WallHpMax <= 0 || st.WallDefBonusMax <= 0 {
+		return 0
+	}
+	return int(int64(st.WallDefBonusMax) * st.WallHp / st.WallHpMax)
+}
+
+// wallAtkBonus 攻方打城墙时的攻击加成：通用加成 + 对防御设施（兵种 type=4）的专属加成。
+//
+// ★ 2026-10-24 用户规则：城墙耐久属于防御设施，伤害取「对防」（AtkDef），
+//
+//	所以对防加成也按城防 type 取，不能沿用打守军目标时的兵种加成。
+func (st *ezfyBattleState) wallAtkBonus(unit *ezfyFightUnit, atkBonus int) int {
+	if unit == nil || unit.cfg == nil {
+		return atkBonus
+	}
+	return atkBonus + st.AtkType.attackBonusFor(unit.cfg.Type, &ezfyTroopStats{Type: ezfyTroopTypeCity})
+}
+
+// hitWall 攻方部队攻击一次城墙：按「对防」属性扣耐久并写行动日志。
+// 返回本次实际扣掉的耐久。
+func (st *ezfyBattleState) hitWall(unit *ezfyFightUnit, atkBonus int) int64 {
+	if unit == nil || unit.cfg == nil || !unit.alive() || !st.WallEnabled || st.WallHp <= 0 {
+		return 0
+	}
+	wallDmg := ezfyWallDamage(unit.cfg.AtkDef, unit.count, st.wallAtkBonus(unit, atkBonus))
+	if wallDmg > st.WallHp {
+		wallDmg = st.WallHp
+	}
+	if wallDmg <= 0 {
+		return 0
+	}
+	st.WallHp -= wallDmg
+	name := ezfyCfg.troopName(unit.cfg.ID, 0)
+	if name == "" {
+		name = unit.cfg.Name
+	}
+	st.Actions = append(st.Actions, fmt.Sprintf(
+		"【攻方】%s攻击城墙(对防), 城墙耐久-%d (剩余%d/%d)",
+		name, wallDmg, st.WallHp, st.WallHpMax))
+	if st.WallHp <= 0 {
+		st.Actions = append(st.Actions, "城墙耐久耗尽，守城防御加成失效")
+	}
+	return wallDmg
+}
+
+// siegeWall 守军全灭后的围城阶段：每回合所有存活攻方按「对防」拆城墙。
+// 城墙未破则战斗继续，直到耐久归零（攻方胜）或回合耗尽（平局）。
+func (st *ezfyBattleState) siegeWall(atkBonus int, alreadyHit map[*ezfyFightUnit]bool) {
+	if !st.WallEnabled || st.WallHp <= 0 {
+		return
+	}
+	for _, unit := range st.Attackers {
+		if !unit.alive() || st.WallHp <= 0 || alreadyHit[unit] {
+			continue
+		}
+		st.hitWall(unit, atkBonus)
+	}
+}
+
+// wallDamage 图片公式⑦：围墙值伤害 = 数量×对防²×(1+攻击加成%) / 200。
+// 只用于「征服」时扣城墙耐久；掠夺不调用。
+func ezfyWallDamage(baseAtk int, count int64, atkBonus int) int64 {
+	if count <= 0 || baseAtk <= 0 {
+		return 0
+	}
+	if atkBonus < -100 {
+		atkBonus = -100
+	}
+	return count * int64(baseAtk) * int64(baseAtk) * int64(100+atkBonus) / 20000
+}
+
 func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	if st.Done {
 		return true
@@ -1023,6 +1133,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 3, "防御力", officerSkillOnly(st.DefDefBreak))
 	all := append(append([]*ezfyFightUnit{}, st.Attackers...), st.Defenders...)
 	sort.SliceStable(all, func(i, j int) bool { return all[i].cfg.Speed > all[j].cfg.Speed })
+	// 本回合已经打过城墙的攻方单位：守军中途全灭后补拆墙时不能重复计算。
+	wallHitThisRound := map[*ezfyFightUnit]bool{}
 
 	for _, unit := range all {
 		if !unit.alive() {
@@ -1209,7 +1321,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				// ★★ 2026-10-09 被攻击方（守方）还要加**兵种专属防御**：
 				//   掩体防御「只对城防单位生效」（用户口径）→ 从通用防御里移出，按被攻击方的兵种 type 取。
 				//   普通部队(陆/海/空)恒为 0，只有城防单位(4) 吃这一截。
-				unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type)
+				// ★ 2026-10-24 城墙：征服战里按剩余耐久比例提供 0~等级×5% 的守城防御。
+				//   掠夺战 WallEnabled=false → 不生效；耐久打光后 wallDefBonus=0。
+				unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type) + st.wallDefBonus()
 				equip = st.AtkEquip
 			} else {
 				// ★ 2026-10-06 守方行动时也要吃科技+军官技能的攻击加成
@@ -1377,6 +1491,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 						if defBonusTxt != "" {
 							line += ", " + defBonusTxt
 						}
+						if st.WallEnabled && st.WallHp > 0 {
+							line += fmt.Sprintf(", 城墙防御+%d%%(耐久%d/%d)", st.wallDefBonus(), st.WallHp, st.WallHpMax)
+						}
 					} else if atkDefBonusTxt != "" {
 						// 守方打攻方 → 展示攻方防御加成（弧形防御/弹幕支援/装备）
 						line += ", " + atkDefBonusTxt
@@ -1390,6 +1507,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 						// 攻方打守方 → 展示守方防御加成
 						if defBonusTxt != "" {
 							line += ", " + defBonusTxt
+						}
+						if st.WallEnabled && st.WallHp > 0 {
+							line += fmt.Sprintf(", 城墙防御+%d%%(耐久%d/%d)", st.wallDefBonus(), st.WallHp, st.WallHpMax)
 						}
 					} else if atkDefBonusTxt != "" {
 						// 守方打攻方 → 展示攻方防御加成（弧形防御/弹幕支援/装备）
@@ -1410,6 +1530,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			if pct := comboOfKind(comboSide, ezfyComboDouble); pct > 0 {
 				st.comboFollowUp(unit, target, enemies, rangeD, atkFlat, unitAtkBonus, unitDefBonus,
 					defBreakPct, side, enemySide, stName, comboSide.Name, pct)
+			}
+			// ★ 2026-10-24 城墙耐久：只有攻方打「征服战」才扣；掠夺战 WallEnabled=false。
+			//   伤害取「对防」(AtkDef)，城墙属于防御设施；耐久打光后城墙防御加成随即归零。
+			if isAtk && st.WallEnabled && st.WallHp > 0 {
+				if st.hitWall(unit, atkBonus) > 0 {
+					wallHitThisRound[unit] = true
+				}
 			}
 		}
 		// ★ 军官技能「绝地反击」：**前N回合**被打且存活 → 立即反击本次攻击者。
@@ -1552,6 +1679,11 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			}
 		}
 		if len(ezfyAliveList(enemies)) == 0 {
+			// ★ 2026-10-24 征服战守军全灭后不能立刻判胜：城墙耐久还在 → 先拆墙，
+			//   拆完才算攻方胜；回合耗尽仍未破墙 = 平局。
+			if isAtk && st.WallEnabled && st.WallHp > 0 {
+				break
+			}
 			st.Done = true
 			st.AttackerWin = isAtk
 			break
@@ -1561,9 +1693,21 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	// ★ 2026-10-23 名将组合技能：回合结束结算（回合治疗 + 生效回合数递减）
 	st.comboEndRound(atkCombo, defCombo)
 
+	// ★ 2026-10-24 守军全灭但城墙未破 → 进入围城阶段：每回合存活攻方继续拆墙。
+	if !st.Done && len(ezfyAliveList(st.Defenders)) == 0 {
+		st.siegeWall(atkBonus, wallHitThisRound)
+	}
+
 	if !st.Done {
 		if len(ezfyAliveList(st.Defenders)) == 0 {
-			st.Done, st.AttackerWin = true, true
+			if st.WallEnabled && st.WallHp > 0 {
+				// 城墙还在：守军已灭也不能判攻方胜，拖到回合上限按平局（守方仍算守住）
+				if st.Round >= ezfyBattleMaxRoundsCfg() {
+					st.Done, st.Draw = true, true
+				}
+			} else {
+				st.Done, st.AttackerWin = true, true
+			}
 		} else if len(ezfyAliveList(st.Attackers)) == 0 {
 			st.Done, st.AttackerWin = true, false
 		} else if st.DefBreak > 0 && st.DefInitialTotal > 0 {
@@ -1598,6 +1742,8 @@ func (st *ezfyBattleState) Result() ezfyBattleResult {
 		DefenderLosses: ezfyDefLossGroups(st.Defenders),
 		AttackerLeft:   ezfyToGroups(st.Attackers, false),
 		DefenderLeft:   ezfyToGroups(st.Defenders, false),
+		WallHp:         st.WallHp,
+		WallHpMax:      st.WallHpMax,
 	}
 }
 
@@ -1720,6 +1866,7 @@ type ezfyBattleUnitSnap struct {
 	AtkSea      int    `json:"atk_sea"`
 	AtkGround   int    `json:"atk_ground"`
 	AtkAir      int    `json:"atk_air"`
+	AtkDef      int    `json:"atk_def"`
 	Defence     int    `json:"defence"`
 	Speed       int    `json:"speed"`
 	AttackRange int    `json:"attack_range"`
@@ -1781,6 +1928,12 @@ type ezfyBattleSnapshot struct {
 	AtkType ezfyTypeBonus `json:"atk_type,omitempty"`
 	DefType ezfyTypeBonus `json:"def_type,omitempty"`
 
+	// ★ 2026-10-24 城墙耐久（老快照没有 → 0/false → 不启用城墙，行为与之前一致）
+	WallEnabled     bool  `json:"wall_enabled,omitempty"`
+	WallHp          int64 `json:"wall_hp,omitempty"`
+	WallHpMax       int64 `json:"wall_hp_max,omitempty"`
+	WallDefBonusMax int   `json:"wall_def_bonus_max,omitempty"`
+
 	Round       int      `json:"round"`
 	Done        bool     `json:"done"`
 	AttackerWin bool     `json:"attacker_win"`
@@ -1796,7 +1949,7 @@ func ezfyUnitSnapOf(list []*ezfyFightUnit) []ezfyBattleUnitSnap {
 			ID: u.id, TroopId: u.cfg.ID, Count: u.count,
 			InitialCount: u.initialCount, Pos: u.pos,
 			Type: u.cfg.Type, Name: u.cfg.Name, Health: u.cfg.Health,
-			AtkSea: u.cfg.AtkSea, AtkGround: u.cfg.AtkGround, AtkAir: u.cfg.AtkAir,
+			AtkSea: u.cfg.AtkSea, AtkGround: u.cfg.AtkGround, AtkAir: u.cfg.AtkAir, AtkDef: u.cfg.AtkDef,
 			Defence: u.cfg.Defence, Speed: u.cfg.Speed, AttackRange: u.cfg.AttackRange,
 		})
 	}
@@ -1839,6 +1992,9 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkCamp: st.AtkCamp, DefCamp: st.DefCamp,
 		AtkType: st.AtkType, DefType: st.DefType,
 
+		WallEnabled: st.WallEnabled, WallHp: st.WallHp,
+		WallHpMax: st.WallHpMax, WallDefBonusMax: st.WallDefBonusMax,
+
 		Round: st.Round, Done: st.Done, AttackerWin: st.AttackerWin, Draw: st.Draw,
 		Head: st.Head, Actions: actions,
 	}
@@ -1878,6 +2034,8 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkCounterRounds: atkRounds, DefCounterRounds: defRounds,
 		AtkCamp: snap.AtkCamp, DefCamp: snap.DefCamp,
 		AtkType: snap.AtkType, DefType: snap.DefType,
+		WallEnabled: snap.WallEnabled, WallHp: snap.WallHp,
+		WallHpMax: snap.WallHpMax, WallDefBonusMax: snap.WallDefBonusMax,
 		Round: snap.Round, Done: snap.Done, AttackerWin: snap.AttackerWin, Draw: snap.Draw,
 		Head: snap.Head, Actions: snap.Actions,
 	}
@@ -1887,7 +2045,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 			// 兵种属性直接取快照（不查配置表），保证中途改配置也不影响本场
 			cfg := &ezfyTroopStats{
 				ID: s.TroopId, Name: s.Name, Type: s.Type, Health: s.Health,
-				AtkSea: s.AtkSea, AtkGround: s.AtkGround, AtkAir: s.AtkAir,
+				AtkSea: s.AtkSea, AtkGround: s.AtkGround, AtkAir: s.AtkAir, AtkDef: s.AtkDef,
 				Defence: s.Defence, Speed: s.Speed, AttackRange: s.AttackRange,
 			}
 			// ★ 2026-10-08 快照只存基础 Health，重建时按本侧装备生命%重新固化 hp（与创建时同一口径）
@@ -2010,9 +2168,39 @@ func ezfyPickAttack(atk, def *ezfyTroopStats) int {
 	}
 }
 
-// ezfyCalcDamage 伤害 = (攻×攻系数+攻加值)/(守防×(100+防加成%)×防系数+防加值)*数量, 再乘攻加成; 最小伤害=数量*最小伤害系数
-// 五个系数都在「二战系统配置 → 战斗与经济 → 回合战斗公式」可调（默认 = 移植前的硬编码值 5/1000/3/10/5）。
+// ezfyCalcDamage 伤害计算。
+//
+// 原版（公式套 damage_formula=0，默认）：
+//
+//	伤害 = (攻×攻系数+攻加值)/(守防×(100+防加成%)×防系数+防加值)×数量, 再乘攻加成；
+//	最小伤害 = 数量×最小伤害系数。
+//	五个系数在「二战系统配置 → 战斗与经济 → 回合战斗公式」可调。
+//
+// 家园版（公式套 damage_formula=1，图片公式）：
+//
+//	伤害 = 数量×基础伤害²×(1+攻击加成%) / [基础防御×(1+防御加成%)]
+//	最小伤害 = 数量（每个兵至少 1 点，避免高防时完全打不动）。
 func ezfyCalcDamage(baseAtk, def int, count int64, atkBonus, defBonus int) int64 {
+	if ezfyDamageFormulaCfg() == 1 {
+		if def < 1 {
+			def = 1
+		}
+		if atkBonus < -100 {
+			atkBonus = -100
+		}
+		if defBonus < -99 {
+			defBonus = -99
+		}
+		denom := int64(def) * int64(100+defBonus)
+		if denom < 1 {
+			denom = 1
+		}
+		damage := count * int64(baseAtk) * int64(baseAtk) * int64(100+atkBonus) / denom
+		if damage < count {
+			damage = count
+		}
+		return damage
+	}
 	bonusDef := def * (100 + defBonus) / 100
 	damage := int64(baseAtk*ezfyAtkCoeffCfg()+ezfyAtkBaseCfg()) / int64(bonusDef*ezfyDefCoeffCfg()+ezfyDefBaseCfg()) * count
 	damage = damage * int64(100+atkBonus) / 100

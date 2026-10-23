@@ -1,0 +1,35 @@
+{
+ "taken_at": "2026-10-23 22:39:45",
+ "equip_id": 1543,
+ "equip": {
+  "id": 1543,
+  "user_id": 35806386,
+  "city_id": 0,
+  "cfg_id": 35,
+  "name": "蓝宝石戒指",
+  "type": "珠宝",
+  "tier": 1,
+  "military": 5,
+  "logistics": 5,
+  "learning": 5,
+  "level": 1,
+  "officer_id": 3249,
+  "created_at": "2026-09-29 03:53:07.994000",
+  "slot": "珠宝",
+  "set_id": 0,
+  "series": "",
+  "enhance": 0,
+  "dmg": 0,
+  "def": 0,
+  "hp": 0,
+  "move": 0,
+  "crit": 0,
+  "crit_dmg": 0,
+  "original_user_id": 0
+ },
+ "officer": {
+  "id": 3249,
+  "name": "Frederick·Wilson",
+  "equipment": "[{\"crit\":0,\"crit_dmg\":0,\"def\":0,\"dmg\":0,\"enhance\":0,\"hp\":0,\"id\":1543,\"learning\":5,\"logistics\":5,\"military\":5,\"move\":0,\"name\":\"蓝宝石戒指\",\"series\":\"\",\"set_id\":0,\"slot\":\"珠宝\",\"tier\":1,\"type\":\"珠宝\"}]"
+ }
+}

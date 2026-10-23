@@ -4340,6 +4340,27 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			st.DefCombo = ezfyComboOfGeneralCfg(defGeneral, defGeneral.Level)
 		}
 		st.appendComboHead()
+		// ★ 2026-10-24 城墙耐久：只有「征服玩家城(3)」启用；「掠夺(2)」完全忽略城墙
+		//   （不打耐久、也不吃城墙防御/射程加成）。上限 = 围墙等级²×20000。
+		if target != nil && order.OrderType == 3 {
+			if lv := h.buildingLevel(target.ID, 7); lv > 0 {
+				maxHp := ezfyWallDurabilityMax(lv)
+				hp := target.WallHp
+				if hp < 0 || hp > maxHp {
+					hp = maxHp
+					target.WallHp = hp
+					h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("wall_hp", hp)
+				}
+				st.WallEnabled = true
+				st.WallHp = hp
+				st.WallHpMax = maxHp
+				st.WallDefBonusMax = ezfyWallDefBonusMax(lv)
+				// 参考：1级围墙远程射程+5%/级；只在征服战生效。
+				st.DefRangeBonus += ezfyWallDefBonusMax(lv)
+				st.Head = append(st.Head, fmt.Sprintf("【城墙】耐久 %d/%d，守城防御+%d%%，远程射程+%d%%",
+					hp, maxHp, ezfyWallDefBonusMax(lv), lv*5))
+			}
+		}
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
 		//   · 打野地 / AI 寇城 → 默认「是」：抵达即自动打完，无需指挥（守方不是真人）；
 		//   · 打玩家城市 → 强制「否」：抵达后开战场进指挥室，等玩家部署守军。
@@ -4445,6 +4466,18 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	win = br.AttackerWin
 	draw := br.Draw
+	// ★ 2026-10-24 城墙耐久写回：只有征服战会带上 WallHpMax（掠夺/野地/老战报 = 0，跳过）。
+	if target != nil && order.OrderType == 3 && br.WallHpMax > 0 {
+		hp := br.WallHp
+		if hp < 0 {
+			hp = 0
+		}
+		if hp > br.WallHpMax {
+			hp = br.WallHpMax
+		}
+		target.WallHp = hp
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("wall_hp", hp)
+	}
 
 	// ★★ 风云榜（★ 2026-10-14）：按自然周统计**玩家 vs 玩家**战绩（灭敌/战损/场次/胜场）。
 	//   只记打玩家城（target_type=3）的一场完整对局 —— 这里是攻守双方战果齐备、
@@ -5078,6 +5111,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					X: target.X, Y: target.Y, Status: 1}
 				h.DB.Create(&occ)
 				newOccupy = true
+				// ★ 2026-10-24 换主后城墙按新主的围墙等级重新补满（-1 = 下次读取时初始化）。
+				h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("wall_hp", -1)
 				report += "\n占领成功! 城市已归入你的附属, 可在[附属野地]中摧毁/归还"
 				// ★ 2026-10-02 盟军驻军：城市被占领 → 该城盟军驻军全部失效（残余一并清除），
 				//   并给各驻军方发战报（report_type=4 PvP → 军团战报可见）

@@ -312,8 +312,8 @@ func TestDefBonusInjected(t *testing.T) {
 		`return fmt.Sprintf("%s+%d%%(%s)", label, total, strings.Join(parts, " "))`,
 		// 守方打攻方 → 攻方防御减伤（已含装备 Def）；★ 2026-10-09 再加被还击方的兵种专属防御
 		"unitDefBonus = st.AtkDefBonus + st.AtkType.defOf(target.cfg.Type)\n",
-		// 攻方打守方 → 守方防御减伤（已含装备 Def）；★ 2026-10-09 同上
-		"unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type)\n",
+		// 攻方打守方 → 守方防御减伤（已含装备 Def）；★ 2026-10-09 同上；★ 2026-10-24 再加城墙耐久加成
+		"unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type) + st.wallDefBonus()\n",
 		`json:"atk_def_bonus"`,
 	} {
 		if !strings.Contains(src, want) {

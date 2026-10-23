@@ -777,13 +777,18 @@ func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
 // EzfyCfgBattleFormula 战斗公式套（二战系统配置 → 战斗公式维护）
 //
 // ★ 2026-10-23 用户需求「战斗公式搞灵活一点，按套来，然后为当前服选择用哪套」：
-//   一套公式 = 回合战斗引擎的全部可调参数。管理端可维护多套（如「原版」「快节奏」「测试」），
-//   当前服在 ezfy_cfg_limit.battle_formula_id 里选一套生效；选 0 = 使用内置公式。
-//   套里的字段 0 都无意义（= 未配置/配置错，读取端回落移植前的硬编码默认值）。
+//
+//	一套公式 = 回合战斗引擎的全部可调参数。管理端可维护多套（如「原版」「快节奏」「测试」），
+//	当前服在 ezfy_cfg_limit.battle_formula_id 里选一套生效；选 0 = 使用内置公式。
+//	套里的字段 0 都无意义（= 未配置/配置错，读取端回落移植前的硬编码默认值）。
 type EzfyCfgBattleFormula struct {
 	ID     int    `gorm:"primaryKey;comment:主键ID" json:"id"`
 	Name   string `gorm:"type:varchar(50);uniqueIndex:uk_ezfy_battle_formula_name;comment:公式套名称" json:"name"`
 	Remark string `gorm:"type:varchar(500);comment:说明" json:"remark"`
+	// ★ 2026-10-24 伤害算法：0 = 原版（攻×攻系数+加值）/（防×(1+防%)×防系数+加值）；
+	//   1 = 家园版（图片公式：数量×基础伤害²×(1+攻%) / [基础防御×(1+防%)]）。
+	//   家园版不使用 CritBaseBonusPct/AtkCoeff/AtkBase/DefCoeff/DefBase/MinDmgCoeff 六项。
+	DamageFormula int `gorm:"default:0;comment:伤害算法(0=原版 1=家园版)" json:"damage_formula"`
 	// 战斗机制
 	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`
 	BattleStartDist  int `gorm:"default:6000;comment:战场初始距离" json:"battle_start_dist"`
@@ -1259,6 +1264,10 @@ type EzfyCity struct {
 	//   冷却记在**城市**上 —— 本城迁城时间 + 配置的冷却时长的截止时间戳(ms)，0 = 无冷却。
 	//   别的城不受影响；时长由管理端「二战系统配置 → 迁城冷却(小时)」维护（0 = 关闭）。
 	MoveCoolUntil int64 `gorm:"default:0;comment:迁城冷却截止时间戳(ms,0=无冷却)" json:"move_cool_until"`
+	// ★ 2026-10-24 城墙耐久：-1 = 未初始化（首次读取时按围墙等级补满），0 = 已摧毁，
+	//   >0 = 当前耐久。上限 = 围墙等级² × 20000（见 ezfyWallDurabilityMax）。
+	//   只有「征服(3)」会打城墙耐久；「掠夺(2)」完全忽略城墙。
+	WallHp int64 `gorm:"default:-1;comment:城墙当前耐久(-1=未初始化)" json:"wall_hp"`
 
 	// 仓库保护配比(4 项资源的保护额度占比, 合计 ≤ 100; 默认各 25)
 	// 每项保护额度 = 仓库等级对应保护总量 × 该项占比 / 100

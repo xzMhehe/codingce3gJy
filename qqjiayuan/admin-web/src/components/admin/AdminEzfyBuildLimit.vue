@@ -219,15 +219,12 @@
             <el-divider content-position="left">回合战斗公式</el-divider>
             <!-- ★ 2026-10-23 战斗公式按套维护：选了公式套时，下方 11 项内置数值不生效 -->
             <el-form-item>
-              <template slot="label">战斗公式来源<el-tooltip placement="top" :content="tips.battle_formula_id"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <template slot="label">战斗公式来源<el-tooltip placement="top" :content="formulaSourceTip"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-select v-model="activeFormulaId" :loading="formulaSaving" style="width:280px" @change="applyFormula">
                 <el-option label="内置配置（下方数值）" :value="0" />
                 <el-option v-for="f in formulas" :key="f.id" :label="f.name" :value="f.id" />
               </el-select>
-              <span class="unit-hint">选「公式套」后，下方 11 项数值不生效</span>
             </el-form-item>
-            <el-alert v-if="activeFormulaId" type="warning" :closable="false" show-icon
-              :title="'本服当前使用公式套「' + activeFormulaName + '」，下方内置数值仅供参考。到「战斗公式」页可编辑该套。'" />
             <el-form-item>
               <template slot="label">战斗最大回合数<el-tooltip placement="top" :content="tips.battle_max_rounds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.battle_max_rounds" :min="1" :max="200" controls-position="right" style="width:180px" />
@@ -464,9 +461,8 @@
 
           <!-- ⑦ 战斗公式（★ 2026-10-23 按套维护 + 当前服选择） -->
           <el-tab-pane label="战斗公式" name="formula">
-            <el-alert type="info" :closable="false" show-icon
-              title="战斗公式按套维护：本服选择其中一套生效。「内置配置」= 使用「战斗与经济」页里的公式数值。改套后立即生效。" />
-            <el-form-item label="本服生效公式" style="margin-top:16px">
+            <el-form-item style="margin-top:16px">
+              <template slot="label">本服生效公式<el-tooltip placement="top" :content="formulaTabTip"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-select v-model="activeFormulaId" :loading="formulaSaving" style="width:300px" @change="applyFormula">
                 <el-option label="内置配置（战斗与经济页里的数值）" :value="0" />
                 <el-option v-for="f in formulas" :key="f.id" :label="f.name" :value="f.id" />
@@ -475,7 +471,7 @@
             </el-form-item>
             <div class="formula-toolbar">
               <el-button type="primary" size="small" icon="el-icon-plus" @click="openFormulaDialog()">新建公式套</el-button>
-              <span class="save-hint">共 {{ formulas.length }} 套 · 当前生效：{{ activeFormulaName }}</span>
+              <el-tooltip placement="top" :content="formulaToolbarTip"><i class="el-icon-info cfg-tip" /></el-tooltip>
             </div>
             <el-table :data="formulas" size="small" border style="margin-top:10px; width:100%">
               <el-table-column prop="id" label="ID" width="60" align="center" />
@@ -486,8 +482,15 @@
                 </template>
               </el-table-column>
               <el-table-column prop="remark" label="说明" min-width="180" show-overflow-tooltip />
+              <el-table-column label="伤害算法" width="100" align="center">
+                <template slot-scope="scope">
+                  <el-tag size="mini" :type="Number(scope.row.damage_formula) === 1 ? 'warning' : ''">
+                    {{ Number(scope.row.damage_formula) === 1 ? '家园版' : '原版' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
               <el-table-column v-for="f in formulaFields" :key="f.key" :label="f.short" width="110" align="center">
-                <template slot-scope="scope">{{ scope.row[f.key] }}</template>
+                <template slot-scope="scope">{{ formulaCell(scope.row, f) }}</template>
               </el-table-column>
               <el-table-column label="操作" width="210" align="center" fixed="right">
                 <template slot-scope="scope">
@@ -498,12 +501,6 @@
                 </template>
               </el-table-column>
             </el-table>
-            <div v-if="!formulas.length" class="formula-empty">
-              还没有公式套。点「新建公式套」创建一套；不创建也可以继续用「内置配置」。
-            </div>
-            <div class="tab-save-bar">
-              <span class="save-hint">公式套的「使用 / 保存」都会立即生效，本页不需要再点保存</span>
-            </div>
           </el-tab-pane>
         </el-tabs>
       </el-form>
@@ -517,7 +514,14 @@
           <el-form-item label="说明">
             <el-input v-model="formulaForm.remark" maxlength="500" show-word-limit placeholder="选填，方便区分各套公式" style="width:520px" />
           </el-form-item>
-          <el-form-item v-for="f in formulaFields" :key="f.key">
+          <el-form-item>
+            <template slot="label">伤害算法<el-tooltip placement="top" :content="tips.damage_formula"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+            <el-radio-group v-model.number="formulaForm.damage_formula">
+              <el-radio :label="0">原版（攻防系数）</el-radio>
+              <el-radio :label="1">家园版（图片公式）</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-for="f in visibleFormulaFields" :key="f.key">
             <template slot="label">{{ f.label }}<el-tooltip placement="top" :content="tips[f.tip]"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
             <el-input-number v-model.number="formulaForm[f.key]" :min="f.min" :max="f.max" :step="f.step" controls-position="right" style="width:180px" />
           </el-form-item>
@@ -619,7 +623,7 @@ export default {
       formulaDialog: false,
       formulaEditId: 0,
       formulaForm: {
-        name: '', remark: '',
+        name: '', remark: '', damage_formula: 0,
         battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
         atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5,
@@ -691,6 +695,11 @@ export default {
         // ★ 2026-10-23 战斗公式来源（按套维护）
         battle_formula_id: '选择本服生效的战斗公式：内置配置 = 使用本页下方 11 项数值；选某个公式套 = 整套覆盖下方数值，立即生效。' +
           '公式套在「战斗公式」页新建/编辑/复制，可维护多套随时切换',
+        damage_formula: '内置配置固定使用原版公式，公式套可随时在原版/家园版之间切换，切换后立即生效。' +
+          '原版 = (攻击×攻击系数+加值)÷(防御×(1+防御%)×防御系数+加值)×数量，再乘攻击加成；' +
+          '家园版 = 数量×基础伤害²×(1+攻击%)÷[基础防御×(1+防御%)]（图片公式）。' +
+          '家园版不使用暴击基础伤害加成/攻击系数/攻击加值/防御系数/防御加值/最小伤害系数这 6 项，选中家园版时表单会自动隐藏。' +
+          '城墙耐久只有征服战会扣，掠夺战忽略城墙。',
         // ★ 2026-10-13 回合战斗公式（可调，默认 = 移植前的硬编码值）
         battle_max_rounds: '单场战斗最多打多少回合：打满仍未分胜负则按平局处理（守方视为守住，攻方无胜果），默认 40，可调 1~200',
         battle_start_dist: '战场初始距离：攻方从 0 出发、守方站在该距离处（两者相距该值），默认 6000，可调 1000~50000。' +
@@ -819,6 +828,23 @@ export default {
       if (!this.activeFormulaId) return '内置配置'
       const f = this.formulas.find(x => Number(x.id) === Number(this.activeFormulaId))
       return f ? f.name : '内置配置（所选公式套已不存在）'
+    },
+    formulaSourceTip () {
+      return '内置配置 = 使用下方 11 项数值；选择公式套后下方 11 项不生效，以所选套为准。' +
+        '当前生效：' + this.activeFormulaName + '。公式套可在「战斗公式」页新建/编辑。'
+    },
+    formulaTabTip () {
+      return '战斗公式按套维护，本服选择其中一套生效；「内置配置」= 使用「战斗与经济」页里的 11 项数值。' +
+        '使用/保存后立即生效。'
+    },
+    formulaToolbarTip () {
+      return '共 ' + this.formulas.length + ' 套，当前生效：' + this.activeFormulaName + '。' +
+        '公式套的「使用 / 保存」都会立即生效，本页不需要再点保存。'
+    },
+    visibleFormulaFields () {
+      if (Number(this.formulaForm.damage_formula) !== 1) return this.formulaFields
+      const skip = ['crit_base_bonus_pct', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base', 'min_dmg_coeff']
+      return this.formulaFields.filter(f => skip.indexOf(f.key) < 0)
     }
   },
   mounted () { this.load(); this.loadFormulas() },
@@ -966,11 +992,18 @@ export default {
     // ===== ★ 2026-10-23 战斗公式套 =====
     emptyFormula () {
       return {
-        name: '', remark: '',
+        name: '', remark: '', damage_formula: 0,
         battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
         atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5
       }
+    },
+    formulaCell (row, f) {
+      if (Number(row.damage_formula) === 1 &&
+        ['crit_base_bonus_pct', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base', 'min_dmg_coeff'].indexOf(f.key) >= 0) {
+        return '—'
+      }
+      return row[f.key]
     },
     loadFormulas () {
       api.get('/admin/ezfy-battle-formulas').then(r => {
@@ -1001,6 +1034,7 @@ export default {
         this.formulaFields.forEach(x => {
           if (row[x.key] !== undefined && row[x.key] !== null) f[x.key] = Number(row[x.key])
         })
+        f.damage_formula = Number(row.damage_formula) === 1 ? 1 : 0
         f.name = copy ? (row.name + ' 副本').slice(0, 50) : row.name
         f.remark = row.remark || ''
       }
