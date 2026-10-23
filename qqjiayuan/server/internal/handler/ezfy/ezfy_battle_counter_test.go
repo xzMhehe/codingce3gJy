@@ -26,7 +26,7 @@ func TestCounterKillUsesEffectiveHp(t *testing.T) {
 			AtkSea: 60, AtkGround: 90, AtkAir: 70, Defence: 40, Speed: 1200, AttackRange: 99999},
 	}
 	const baseHp = 135
-	const atkLifeBonus = 73 // 攻方装备生命+73% → 攻方有效生命 = 135*1.73 = 233
+	const atkLifeBonus = 73                      // 攻方装备生命+73% → 攻方有效生命 = 135*1.73 = 233
 	atkHp := baseHp * (100 + atkLifeBonus) / 100 // 233
 	defHp := baseHp                              // 守方无生命加成
 
@@ -92,5 +92,37 @@ func TestCounterKillUsesEffectiveHp(t *testing.T) {
 	}
 	if !hasCounter {
 		t.Fatal("本场没有触发「绝地反击」，用例未覆盖反击路径")
+	}
+}
+
+func TestCounterRespectsCounterRange(t *testing.T) {
+	saved := ezfyCfg.troops
+	defer func() { ezfyCfg.troops = saved }()
+	ezfyCfg.troops = map[int]model.EzfyCfgTroop{
+		1: {ID: 1, Name: "远程炮", Type: 2, Health: 100000,
+			AtkSea: 1, AtkGround: 1, AtkAir: 1, Defence: 100000, Speed: 0, AttackRange: 99999},
+		2: {ID: 2, Name: "近战兵", Type: 2, Health: 100000,
+			AtkSea: 1, AtkGround: 1, AtkAir: 1, Defence: 100000, Speed: 0, AttackRange: 20},
+	}
+
+	st := ezfyNewBattleState([]ezfyUnitGroup{{TroopId: 1, Count: 1000}},
+		[]ezfyUnitGroup{{TroopId: 2, Count: 1000}},
+		0, 0, 0, 0, 0,
+		0, 0,
+		ezfyBattleBonus{}, ezfyBattleBonus{}, ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
+		"", "",
+		0, 0,
+		0, 0,
+		nil, nil, nil, nil, nil,
+		0, nil,
+		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
+		0, 5, 1, 2,
+		ezfyTypeBonus{}, ezfyTypeBonus{})
+	st.Step(nil, nil)
+
+	for _, ln := range st.Actions {
+		if strings.Contains(ln, "绝地反击") {
+			t.Fatalf("守方射程 20、双方相距 6000，不应反击：%s", ln)
+		}
 	}
 }

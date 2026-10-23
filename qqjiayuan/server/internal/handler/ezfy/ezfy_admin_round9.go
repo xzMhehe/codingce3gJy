@@ -1476,6 +1476,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		h.DB.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) + " WHERE " + c.col + " IS NULL")
 	}
+	// ★ 2026-10-23 当前生效战斗公式套 ID（0 合法）：⚠️ 只补列 + 只回填 NULL，
+	//   否则 Save 全字段更新会报 Unknown column 'battle_formula_id'。
+	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "battle_formula_id") {
+		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN battle_formula_id int DEFAULT 0")
+	}
+	h.DB.Exec("UPDATE ezfy_cfg_limit SET battle_formula_id = 0 WHERE battle_formula_id IS NULL")
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())

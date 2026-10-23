@@ -273,6 +273,12 @@ func Run(db *gorm.DB, staticDir string) {
 		addLimitCol("def_coeff", 3)
 		addLimitCol("def_base", 10)
 		addLimitCol("min_dmg_coeff", 5)
+		// ★ 2026-10-23 战斗公式套选择：⚠️ 0 合法（= 使用内置公式）→ 只补列 + 只回填 NULL，
+		//   不能用 addLimitCol（它会把管理员选的 0 又改回默认值）。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "battle_formula_id") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN battle_formula_id int DEFAULT 0")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET battle_formula_id = 0 WHERE battle_formula_id IS NULL")
 	}
 
 	// 二战风云：系统配置的「玩法开关」+ 野地兵力倍数（管理端可配）
@@ -3026,6 +3032,19 @@ func EnsureEzfyUserChestPityTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyCfgBattleFormulaTable 幂等补建 ezfy_cfg_battle_formula 战斗公式套表（skip 分支也必须能建出来）。
+//
+// ★ 2026-10-23 战斗公式按套维护：新表只靠 AutoMigrate 建，而 skip 分支会跳过它 →
+// 共享库上「战斗公式维护」直接报表不存在。与 EnsureEzfyUserChestTable 同款，HasTable 幂等。
+func EnsureEzfyCfgBattleFormulaTable(db *gorm.DB) {
+	if db.Migrator().HasTable(&model.EzfyCfgBattleFormula{}) {
+		return
+	}
+	if err := db.AutoMigrate(&model.EzfyCfgBattleFormula{}); err != nil {
+		log.Printf("[seed] 补建 ezfy_cfg_battle_formula 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyChestLogTable 幂等补建/升级 ezfy_chest_logs 开箱流水表（skip 分支也必须能建出来）。
 //
 // ★ 2026-10-16 开箱记录表同 hazard：与 EnsureEzfyUserChestTable 同款，HasTable 幂等。
@@ -3379,6 +3398,11 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN bot_atk_windows varchar(120) DEFAULT ''")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET bot_atk_windows = '' WHERE bot_atk_windows IS NULL")
+	// ★ 2026-10-23 当前生效战斗公式套 ID（0 = 内置公式）：⚠️ 0 合法 → 只补列 + 只回填 NULL。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "battle_formula_id") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN battle_formula_id int DEFAULT 0")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET battle_formula_id = 0 WHERE battle_formula_id IS NULL")
 	// 野地类型后加列（管理端「野地类型」保存依赖）
 	if db.Migrator().HasTable("ezfy_cfg_wildland") {
 		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {

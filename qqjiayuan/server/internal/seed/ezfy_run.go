@@ -45,7 +45,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyCfgGeneral{}, &model.EzfyCfgGeneralSkill{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
 	&model.EzfyCfgEquipSet{}, &model.EzfyCfgChest{}, &model.EzfyCfgChestItem{},
 	&model.EzfyCfgScheme{}, &model.EzfyCfgResource{}, &model.EzfyCfgRank{},
-	&model.EzfyCfgLimit{}, &model.EzfyWordFilter{},
+	&model.EzfyCfgLimit{}, &model.EzfyCfgBattleFormula{}, &model.EzfyWordFilter{},
 	// —— 玩家档案 / 城池 ——
 	&model.EzfyProfile{}, &model.EzfyCity{}, &model.EzfyCityBuilding{},
 	&model.EzfyCityTroop{}, &model.EzfyCityTech{}, &model.EzfyUserTech{}, &model.EzfyTrainQueue{},

@@ -4,15 +4,15 @@
       <div slot="header" class="card-head">
         <span>二战系统配置</span>
         <div>
-          <span class="head-hint">各 tab 独立保存，改完点该 tab 底部「保存本类」</span>
+          <span class="head-hint">各 tab 独立保存；「战斗公式」页改完即时生效</span>
           <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
         </div>
       </div>
       <!-- ★ 2026-09-25 「二战系统配置也做成 tab，相同类别的在同一个 tab」：
            原来是一张长表单 + el-divider 分段，滚起来很长、找一项要翻半天。
-           现在按**类别**分成 6 个 tab；★ 2026-10-18 改为**分 tab 独立保存**：
+            现在按**类别**分成多个 tab；★ 2026-10-18 改为**分 tab 独立保存**：
            每个 tab 底部有自己的「保存本类」按钮，只提交该分类字段（整体保存太慢）。 -->
-      <el-form label-width="180px" size="small" style="max-width:660px">
+      <el-form label-width="180px" size="small" :style="{ maxWidth: activeTab === 'formula' ? '1600px' : '660px' }">
         <el-tabs v-model="activeTab">
           <!-- ① 建筑与上限 -->
           <el-tab-pane label="建筑与上限" name="build">
@@ -217,6 +217,17 @@
           <el-tab-pane label="战斗与经济" name="battle">
             <!-- ★ 2026-10-13 回合战斗公式（可调，默认 = 移植前的硬编码值：40 / 6000 / 10000 / 50 / 50） -->
             <el-divider content-position="left">回合战斗公式</el-divider>
+            <!-- ★ 2026-10-23 战斗公式按套维护：选了公式套时，下方 11 项内置数值不生效 -->
+            <el-form-item>
+              <template slot="label">战斗公式来源<el-tooltip placement="top" :content="tips.battle_formula_id"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-select v-model="activeFormulaId" :loading="formulaSaving" style="width:280px" @change="applyFormula">
+                <el-option label="内置配置（下方数值）" :value="0" />
+                <el-option v-for="f in formulas" :key="f.id" :label="f.name" :value="f.id" />
+              </el-select>
+              <span class="unit-hint">选「公式套」后，下方 11 项数值不生效</span>
+            </el-form-item>
+            <el-alert v-if="activeFormulaId" type="warning" :closable="false" show-icon
+              :title="'本服当前使用公式套「' + activeFormulaName + '」，下方内置数值仅供参考。到「战斗公式」页可编辑该套。'" />
             <el-form-item>
               <template slot="label">战斗最大回合数<el-tooltip placement="top" :content="tips.battle_max_rounds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.battle_max_rounds" :min="1" :max="200" controls-position="right" style="width:180px" />
@@ -450,8 +461,72 @@
               <el-button type="primary" size="small" icon="el-icon-check" :loading="saving" @click="saveTab('star')">保存本类</el-button>
             </div>
           </el-tab-pane>
+
+          <!-- ⑦ 战斗公式（★ 2026-10-23 按套维护 + 当前服选择） -->
+          <el-tab-pane label="战斗公式" name="formula">
+            <el-alert type="info" :closable="false" show-icon
+              title="战斗公式按套维护：本服选择其中一套生效。「内置配置」= 使用「战斗与经济」页里的公式数值。改套后立即生效。" />
+            <el-form-item label="本服生效公式" style="margin-top:16px">
+              <el-select v-model="activeFormulaId" :loading="formulaSaving" style="width:300px" @change="applyFormula">
+                <el-option label="内置配置（战斗与经济页里的数值）" :value="0" />
+                <el-option v-for="f in formulas" :key="f.id" :label="f.name" :value="f.id" />
+              </el-select>
+              <el-button size="small" icon="el-icon-refresh" style="margin-left:8px" @click="loadFormulas">刷新</el-button>
+            </el-form-item>
+            <div class="formula-toolbar">
+              <el-button type="primary" size="small" icon="el-icon-plus" @click="openFormulaDialog()">新建公式套</el-button>
+              <span class="save-hint">共 {{ formulas.length }} 套 · 当前生效：{{ activeFormulaName }}</span>
+            </div>
+            <el-table :data="formulas" size="small" border style="margin-top:10px; width:100%">
+              <el-table-column prop="id" label="ID" width="60" align="center" />
+              <el-table-column label="名称" min-width="150">
+                <template slot-scope="scope">
+                  <span>{{ scope.row.name }}</span>
+                  <el-tag v-if="scope.row.id === activeFormulaId" size="mini" type="success" style="margin-left:6px">生效中</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="remark" label="说明" min-width="180" show-overflow-tooltip />
+              <el-table-column v-for="f in formulaFields" :key="f.key" :label="f.short" width="110" align="center">
+                <template slot-scope="scope">{{ scope.row[f.key] }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="210" align="center" fixed="right">
+                <template slot-scope="scope">
+                  <el-button type="text" size="mini" :disabled="scope.row.id === activeFormulaId" @click="applyFormula(scope.row.id)">使用</el-button>
+                  <el-button type="text" size="mini" @click="openFormulaDialog(scope.row, true)">复制</el-button>
+                  <el-button type="text" size="mini" @click="openFormulaDialog(scope.row)">编辑</el-button>
+                  <el-button type="text" size="mini" style="color:#f56c6c" :disabled="scope.row.id === activeFormulaId" @click="deleteFormula(scope.row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-if="!formulas.length" class="formula-empty">
+              还没有公式套。点「新建公式套」创建一套；不创建也可以继续用「内置配置」。
+            </div>
+            <div class="tab-save-bar">
+              <span class="save-hint">公式套的「使用 / 保存」都会立即生效，本页不需要再点保存</span>
+            </div>
+          </el-tab-pane>
         </el-tabs>
       </el-form>
+
+      <!-- ★ 2026-10-23 战斗公式套：新建/复制/编辑弹窗 -->
+      <el-dialog :title="formulaEditId ? '编辑战斗公式套' : '新建战斗公式套'" :visible.sync="formulaDialog" width="760px" append-to-body>
+        <el-form label-width="170px" size="small">
+          <el-form-item label="公式套名称" required>
+            <el-input v-model="formulaForm.name" maxlength="50" show-word-limit placeholder="如：原版 / 快节奏 / 测试服" style="width:320px" />
+          </el-form-item>
+          <el-form-item label="说明">
+            <el-input v-model="formulaForm.remark" maxlength="500" show-word-limit placeholder="选填，方便区分各套公式" style="width:520px" />
+          </el-form-item>
+          <el-form-item v-for="f in formulaFields" :key="f.key">
+            <template slot="label">{{ f.label }}<el-tooltip placement="top" :content="tips[f.tip]"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+            <el-input-number v-model.number="formulaForm[f.key]" :min="f.min" :max="f.max" :step="f.step" controls-position="right" style="width:180px" />
+          </el-form-item>
+        </el-form>
+        <span slot="footer">
+          <el-button @click="formulaDialog = false">取消</el-button>
+          <el-button type="primary" :loading="formulaSaving" @click="saveFormula">保存</el-button>
+        </span>
+      </el-dialog>
     </el-card>
   </div>
 </template>
@@ -537,6 +612,32 @@ export default {
         // ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%，100 = 必出）
         recruit_five_star_rate: 1,
       },
+      // ★ 2026-10-23 战斗公式套：列表 / 当前生效 ID / 弹窗状态
+      formulas: [],
+      activeFormulaId: 0,
+      formulaSaving: false,
+      formulaDialog: false,
+      formulaEditId: 0,
+      formulaForm: {
+        name: '', remark: '',
+        battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
+        crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
+        atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5,
+      },
+      // 公式字段定义：表格列 + 弹窗输入共用（tips 复用下面同名的说明文案）
+      formulaFields: [
+        { key: 'battle_max_rounds', label: '战斗最大回合数', short: '最大回合', min: 1, max: 200, step: 1, tip: 'battle_max_rounds' },
+        { key: 'battle_start_dist', label: '战场初始距离', short: '初始距离', min: 1000, max: 50000, step: 100, tip: 'battle_start_dist' },
+        { key: 'battle_retreat_max', label: '战斗最大后退距离', short: '最大后退', min: 1000, max: 100000, step: 100, tip: 'battle_retreat_max' },
+        { key: 'crit_base_bonus_pct', label: '暴击基础伤害加成(%)', short: '暴击加成%', min: 1, max: 500, step: 1, tip: 'crit_base_bonus_pct' },
+        { key: 'garrison_break_pct', label: '驻军溃败撤退阈值(%)', short: '驻军溃败%', min: 1, max: 100, step: 1, tip: 'garrison_break_pct' },
+        { key: 'battle_round_ms', label: '每回合时长(毫秒)', short: '回合时长', min: 25000, max: 120000, step: 1000, tip: 'battle_round_ms' },
+        { key: 'atk_coeff', label: '伤害攻击系数', short: '攻击系数', min: 1, max: 100, step: 1, tip: 'atk_coeff' },
+        { key: 'atk_base', label: '伤害攻击加值', short: '攻击加值', min: 1, max: 100000, step: 100, tip: 'atk_base' },
+        { key: 'def_coeff', label: '伤害防御系数', short: '防御系数', min: 1, max: 100, step: 1, tip: 'def_coeff' },
+        { key: 'def_base', label: '伤害防御加值', short: '防御加值', min: 1, max: 100000, step: 10, tip: 'def_base' },
+        { key: 'min_dmg_coeff', label: '最小伤害系数', short: '最小伤害', min: 1, max: 1000, step: 1, tip: 'min_dmg_coeff' },
+      ],
       // ★ 2026-10-18 分 tab 保存：每个 tab 所属字段清单，保存时只提交当前分类（后端按字段判空部分更新）
       fieldGroups: {
         build: ['military_max', 'resource_max', 'house_max', 'factory_max', 'build_queue_max', 'notice_home_count',
@@ -587,6 +688,9 @@ export default {
         march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
         conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 5',
         loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 3',
+        // ★ 2026-10-23 战斗公式来源（按套维护）
+        battle_formula_id: '选择本服生效的战斗公式：内置配置 = 使用本页下方 11 项数值；选某个公式套 = 整套覆盖下方数值，立即生效。' +
+          '公式套在「战斗公式」页新建/编辑/复制，可维护多套随时切换',
         // ★ 2026-10-13 回合战斗公式（可调，默认 = 移植前的硬编码值）
         battle_max_rounds: '单场战斗最多打多少回合：打满仍未分胜负则按平局处理（守方视为守住，攻方无胜果），默认 40，可调 1~200',
         battle_start_dist: '战场初始距离：攻方从 0 出发、守方站在该距离处（两者相距该值），默认 6000，可调 1000~50000。' +
@@ -710,7 +814,14 @@ export default {
       }
     }
   },
-  mounted () { this.load() },
+  computed: {
+    activeFormulaName () {
+      if (!this.activeFormulaId) return '内置配置'
+      const f = this.formulas.find(x => Number(x.id) === Number(this.activeFormulaId))
+      return f ? f.name : '内置配置（所选公式套已不存在）'
+    }
+  },
+  mounted () { this.load(); this.loadFormulas() },
   methods: {
     load () {
       api.get('/admin/ezfy-build-limit').then(r => {
@@ -850,6 +961,80 @@ export default {
         if (r.code === 0) this.$message.success(r.msg || (r.data && r.data.msg) || '已保存')
         else this.$message.error(r.msg)
       })
+    },
+
+    // ===== ★ 2026-10-23 战斗公式套 =====
+    emptyFormula () {
+      return {
+        name: '', remark: '',
+        battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
+        crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
+        atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5
+      }
+    },
+    loadFormulas () {
+      api.get('/admin/ezfy-battle-formulas').then(r => {
+        if (r.code === 0) {
+          this.formulas = r.data.list || []
+          this.activeFormulaId = Number(r.data.active_id) || 0
+        } else this.$message.error(r.msg)
+      })
+    },
+    // 选择公式套（0 = 内置配置）：立即保存到本服并生效
+    applyFormula (id) {
+      const n = Number(id) || 0
+      this.formulaSaving = true
+      api.post('/admin/ezfy-battle-formulas/' + n + '/apply').then(r => {
+        this.formulaSaving = false
+        if (r.code === 0) {
+          this.activeFormulaId = n
+          this.$message.success(r.msg || (r.data && r.data.msg) || '已切换')
+        } else {
+          this.$message.error(r.msg)
+          this.loadFormulas()
+        }
+      }).catch(() => { this.formulaSaving = false; this.loadFormulas() })
+    },
+    openFormulaDialog (row, copy) {
+      const f = this.emptyFormula()
+      if (row) {
+        this.formulaFields.forEach(x => {
+          if (row[x.key] !== undefined && row[x.key] !== null) f[x.key] = Number(row[x.key])
+        })
+        f.name = copy ? (row.name + ' 副本').slice(0, 50) : row.name
+        f.remark = row.remark || ''
+      }
+      this.formulaEditId = (row && !copy) ? row.id : 0
+      this.formulaForm = f
+      this.formulaDialog = true
+    },
+    saveFormula () {
+      const name = String(this.formulaForm.name || '').trim()
+      if (!name) { this.$message.warning('请填写公式套名称'); return }
+      const payload = Object.assign({}, this.formulaForm, { name })
+      const req = this.formulaEditId
+        ? api.put('/admin/ezfy-battle-formulas/' + this.formulaEditId, payload)
+        : api.post('/admin/ezfy-battle-formulas', payload)
+      this.formulaSaving = true
+      req.then(r => {
+        this.formulaSaving = false
+        if (r.code === 0) {
+          this.formulaDialog = false
+          this.$message.success(r.msg || (r.data && r.data.msg) || '已保存')
+          this.loadFormulas()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.formulaSaving = false })
+    },
+    deleteFormula (row) {
+      this.$confirm('删除公式套「' + row.name + '」？删除后不可恢复。', '提示', { type: 'warning' })
+        .then(() => api.delete('/admin/ezfy-battle-formulas/' + row.id))
+        .then(r => {
+          if (r && r.code === 0) {
+            this.$message.success(r.msg || '已删除')
+            this.loadFormulas()
+          } else if (r) this.$message.error(r.msg)
+        })
+        .catch(() => {})
     }
   }
 }
@@ -871,4 +1056,11 @@ export default {
   border-top: 1px dashed #dcdfe6;
 }
 .save-hint { font-size: 12px; color: #909399; }
+/* ★ 2026-10-23 战斗公式套：工具栏 + 空态 */
+.formula-toolbar { display: flex; align-items: center; margin-top: 4px; }
+.formula-toolbar .save-hint { margin-left: 12px; }
+.formula-empty {
+  margin-top: 12px; padding: 18px; text-align: center; font-size: 13px; color: #909399;
+  background: #fafafa; border: 1px dashed #dcdfe6; border-radius: 4px;
+}
 </style>

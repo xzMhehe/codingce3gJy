@@ -112,6 +112,8 @@ func runHomeMode(cfg *config.Config) {
 		// ★ 2026-10-05 多机共享库跳过全量 seed 时，新配置列仍要幂等补上
 		//   （gold_prod_mult 等），否则管理端保存报 Unknown column / 黄金产量归零。
 		timedStep("EnsureEzfyLimitColumns", func() { seed.EnsureEzfyLimitColumns(homeDB) })
+		// ★ 2026-10-23 战斗公式套表：skip 分支不补 → 「战斗公式维护」直接报表不存在。
+		timedStep("EnsureEzfyCfgBattleFormulaTable", func() { seed.EnsureEzfyCfgBattleFormulaTable(homeDB) })
 		// ★★ 2026-10-07 线上事故：ezfy_ransom 赎城请求表只注册在 seed.Run 的 AutoMigrate 里，
 		//   skip 分支不补 → 查询/发起赎城直接报 Error 1146 表不存在。
 		timedStep("EnsureEzfyRansomTable", func() { seed.EnsureEzfyRansomTable(homeDB) })

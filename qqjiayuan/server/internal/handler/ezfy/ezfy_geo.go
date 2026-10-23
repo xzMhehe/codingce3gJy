@@ -665,16 +665,16 @@ func ezfyRankCityMax(prestige int) int {
 //	   按 27~35 把玩家真实加速道具当误发宝物删掉换成珠宝，每次部署清空一次）。
 //	   静态断言：TestNoCrossTableIDGuess（ezfy_item_loss_test.go）。
 type ezfyConfigCache struct {
-	mu             sync.RWMutex
-	loaded         bool
-	buildings      map[int]model.EzfyCfgBuilding
-	buildingLvls   map[int]map[int]model.EzfyCfgBuildingLevel
-	troops         map[int]model.EzfyCfgTroop
-	techs          map[int]model.EzfyCfgTech
-	techLvls       map[int]map[int]model.EzfyCfgTechLevel
-	wildlands      map[int]map[int]model.EzfyCfgWildland
-	items          map[int]model.EzfyCfgItem
-	generals       map[int]model.EzfyCfgGeneral
+	mu           sync.RWMutex
+	loaded       bool
+	buildings    map[int]model.EzfyCfgBuilding
+	buildingLvls map[int]map[int]model.EzfyCfgBuildingLevel
+	troops       map[int]model.EzfyCfgTroop
+	techs        map[int]model.EzfyCfgTech
+	techLvls     map[int]map[int]model.EzfyCfgTechLevel
+	wildlands    map[int]map[int]model.EzfyCfgWildland
+	items        map[int]model.EzfyCfgItem
+	generals     map[int]model.EzfyCfgGeneral
 	// ★ 2026-10-23 名将组合技能池（系统专属，普通军官学不到）
 	generalSkills  map[int]model.EzfyCfgGeneralSkill
 	skills         map[int]model.EzfyCfgSkill
@@ -696,6 +696,9 @@ type ezfyConfigCache struct {
 	ranks []model.EzfyCfgRank
 	// 建筑数量上限（军事区/资源区分开，管理端可维护）
 	limit model.EzfyCfgLimit
+	// ★ 2026-10-23 战斗公式套（key = id）：当前生效套由 limit.BattleFormulaID 指向；
+	//   套维护后走 cfgsReload/周期刷新收敛，读取端零 SQL（见 ezfyBattleFormulaActive）。
+	formulas map[int]model.EzfyCfgBattleFormula
 	// 二战聊天敏感词（独立维护页）
 	words []model.EzfyWordFilter
 	// 资源显示名配置（管理端可改名，前端读它替代写死「粮食/钢铁/…」）
@@ -1992,6 +1995,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	skillByName := map[string]int{}
 	equipments := map[int]model.EzfyCfgEquipment{}
 	equipSetMap := map[int]model.EzfyCfgEquipSet{}
+	formulas := map[int]model.EzfyCfgBattleFormula{}
 	buildingByName := map[string]int{}
 	techByName := map[string]int{}
 
@@ -2074,6 +2078,12 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	for _, s := range esets {
 		equipSetMap[s.ID] = s
 	}
+	// ★ 2026-10-23 战斗公式套（表可能尚未在老库建出 → Find 失败时返回空 map，回落内置公式）
+	var bfs []model.EzfyCfgBattleFormula
+	db.Find(&bfs)
+	for _, f := range bfs {
+		formulas[f.ID] = f
+	}
 
 	// ★★ 2026-10-07 修复「活动野地战斗 0 回合」：
 	//   原来这里是先把下面 14 个 map **清空**、再查库**逐条填充** —— 而读函数
@@ -2097,6 +2107,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	c.skillByName = skillByName
 	c.equipments = equipments
 	c.equipSetMap = equipSetMap
+	c.formulas = formulas
 	c.buildingByName = buildingByName
 	c.techByName = techByName
 

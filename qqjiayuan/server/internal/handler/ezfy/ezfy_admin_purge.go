@@ -153,6 +153,7 @@ var ezfyPurgeGlobalTables = []string{
 	"ezfy_cfg_equip_set", "ezfy_cfg_chest", "ezfy_cfg_chest_item", "ezfy_cfg_scheme",
 	"ezfy_cfg_general_skill", // ★ 2026-10-23 名将组合技能池（全局配置，与玩家无关）
 	"ezfy_cfg_resource", "ezfy_cfg_rank", "ezfy_cfg_limit", "ezfy_word_filter",
+	"ezfy_cfg_battle_formula", // ★ 2026-10-23 战斗公式套（全服配置，与玩家无关）
 	// 全局玩法 / 地图
 	"ezfy_act_wild",     // 活动野地（全服共享的配置）
 	"ezfy_act_level",    // 活动目标等级配置（全服共享的配置）

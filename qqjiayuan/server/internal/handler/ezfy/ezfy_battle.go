@@ -6,6 +6,8 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
+
+	"qqjiayuan/server/internal/model"
 )
 
 // 二战风云 多回合战斗引擎（忠实移植 BattleEngine.java）
@@ -18,13 +20,32 @@ import (
 
 // 回合战斗公式（二战系统配置可调，默认值 = 移植前的硬编码值，见 ezfy_geo.go 的 Def 常量）
 //
+// ★ 2026-10-23 「按套来」：当前服在 ezfy_cfg_limit.battle_formula_id 选一套 EzfyCfgBattleFormula，
+// 选了就整套覆盖；未选（0）/套已被删 → 回落 limit 里的内置公式字段（与旧行为完全一致）。
+func ezfyBattleFormulaActive() *model.EzfyCfgBattleFormula {
+	id := ezfyCfg.limit.BattleFormulaID
+	if id <= 0 {
+		return nil
+	}
+	if f, ok := ezfyCfg.formulas[id]; ok {
+		return &f
+	}
+	return nil
+}
+
 // 最大回合数 —— 复刻《战斗机制（家园玩家必看）》§1「战斗最多40回合；达到上限仍未分胜负则按平局处理」
 func ezfyBattleMaxRoundsCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.BattleMaxRounds, ezfyBattleMaxRoundsDef)
+	}
 	return ezfyLimitOr(ezfyCfg.limit.BattleMaxRounds, ezfyBattleMaxRoundsDef)
 }
 
 // 战场初始距离（攻方 0，守方 6000，相距 6000）
 func ezfyBattleStartDistCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.BattleStartDist, ezfyBattleStartDistDef)
+	}
 	return ezfyLimitOr(ezfyCfg.limit.BattleStartDist, ezfyBattleStartDistDef)
 }
 
@@ -32,6 +53,9 @@ func ezfyBattleStartDistCfg() int {
 // 战场坐标空间约「10000 / 6000 / 10000」：
 // 攻方起点 0 只能退到 -10000；守方起点 6000 只能退到 16000。超过夹回。
 func ezfyBattleRetreatMaxCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.BattleRetreatMax, ezfyBattleRetreatMaxDef)
+	}
 	return ezfyLimitOr(ezfyCfg.limit.BattleRetreatMax, ezfyBattleRetreatMaxDef)
 }
 
@@ -41,6 +65,9 @@ func ezfyBattleRetreatMaxCfg() int {
 // 例「黑色幽灵[徽章]」crit=125 / crit_dmg=0，按老公式 伤害×(100+0)/100 = 伤害不变，
 // 于是「出了【暴击】但一点没多打」，玩家看到的就成了「暴击跟没暴一样」。
 func ezfyCritBaseBonusPctCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.CritBaseBonusPct, ezfyCritBaseBonusPctDef)
+	}
 	return ezfyLimitOr(ezfyCfg.limit.CritBaseBonusPct, ezfyCritBaseBonusPctDef)
 }
 
@@ -48,20 +75,52 @@ func ezfyCritBaseBonusPctCfg() int {
 // 战斗提前结束，剩余部队自动返航回出发城市（不再死战到全灭）。
 // —— 让「驻军战败 → 剩余部队回到自己城市」有兵可回（引擎里「战败」原本=全灭）。
 func ezfyGarrisonBreakPctCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.GarrisonBreakPct, ezfyGarrisonBreakPctDef)
+	}
 	return ezfyLimitOr(ezfyCfg.limit.GarrisonBreakPct, ezfyGarrisonBreakPctDef)
 }
 
 // 每回合时长（毫秒，指挥室实时战斗推进节奏，默认 30 秒）
 func ezfyBattleRoundMsCfg() int64 {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return int64(ezfyLimitOr(f.BattleRoundMs, ezfyBattleRoundMsDef))
+	}
 	return int64(ezfyLimitOr(ezfyCfg.limit.BattleRoundMs, ezfyBattleRoundMsDef))
 }
 
 // 伤害公式系数（见 ezfyCalcDamage；默认 = 移植前的硬编码值 5 / 1000 / 3 / 10 / 5）
-func ezfyAtkCoeffCfg() int    { return ezfyLimitOr(ezfyCfg.limit.AtkCoeff, ezfyAtkCoeffDef) }
-func ezfyAtkBaseCfg() int     { return ezfyLimitOr(ezfyCfg.limit.AtkBase, ezfyAtkBaseDef) }
-func ezfyDefCoeffCfg() int    { return ezfyLimitOr(ezfyCfg.limit.DefCoeff, ezfyDefCoeffDef) }
-func ezfyDefBaseCfg() int     { return ezfyLimitOr(ezfyCfg.limit.DefBase, ezfyDefBaseDef) }
-func ezfyMinDmgCoeffCfg() int { return ezfyLimitOr(ezfyCfg.limit.MinDmgCoeff, ezfyMinDmgCoeffDef) }
+// 选了战斗公式套时整套覆盖，未选则读 limit 内置值。
+func ezfyAtkCoeffCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.AtkCoeff, ezfyAtkCoeffDef)
+	}
+	return ezfyLimitOr(ezfyCfg.limit.AtkCoeff, ezfyAtkCoeffDef)
+}
+func ezfyAtkBaseCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.AtkBase, ezfyAtkBaseDef)
+	}
+	return ezfyLimitOr(ezfyCfg.limit.AtkBase, ezfyAtkBaseDef)
+}
+func ezfyDefCoeffCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.DefCoeff, ezfyDefCoeffDef)
+	}
+	return ezfyLimitOr(ezfyCfg.limit.DefCoeff, ezfyDefCoeffDef)
+}
+func ezfyDefBaseCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.DefBase, ezfyDefBaseDef)
+	}
+	return ezfyLimitOr(ezfyCfg.limit.DefBase, ezfyDefBaseDef)
+}
+func ezfyMinDmgCoeffCfg() int {
+	if f := ezfyBattleFormulaActive(); f != nil {
+		return ezfyLimitOr(f.MinDmgCoeff, ezfyMinDmgCoeffDef)
+	}
+	return ezfyLimitOr(ezfyCfg.limit.MinDmgCoeff, ezfyMinDmgCoeffDef)
+}
 
 // 战场指挥指令（玩家每回合可下达）
 const (
@@ -1355,7 +1414,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		}
 		// ★ 军官技能「绝地反击」：**前N回合**被打且存活 → 立即反击本次攻击者。
 		//   2026-10-06 技能随军官等级自动升级：1级=前1回合 / 2级=前2回合 / 3级=前3回合。
-		if dist <= rangeD && target.alive() {
+		targetRangeD := target.cfg.AttackRange
+		if isAtk {
+			targetRangeD = target.cfg.AttackRange * (100 + defRangeBonusAll) / 100
+		} else {
+			targetRangeD = target.cfg.AttackRange * (100 + atkRangeBonusAll) / 100
+		}
+		if dist <= rangeD && dist <= targetRangeD && target.alive() {
 			counterRounds := st.AtkCounterRounds // target 是攻方时用攻方回合数
 			if isAtk {
 				counterRounds = st.DefCounterRounds // 攻方在打 → 被打方是守方，用守方回合数

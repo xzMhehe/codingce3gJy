@@ -490,6 +490,11 @@ type EzfyCfgLimit struct {
 	DefBase       int `gorm:"default:10;comment:伤害公式防御加值" json:"def_base"`              // 伤害分母 +加值（默认 10）
 	MinDmgCoeff   int `gorm:"default:5;comment:最小伤害系数(数量×系数)" json:"min_dmg_coeff"`     // 最小伤害 = 数量×系数（默认 5）
 
+	// ★ 2026-10-23 用户需求「战斗公式按套来，二战系统配置加个战斗公式维护，为当前服选择用哪套」：
+	//   当前服务器生效的「战斗公式套」ID（见 EzfyCfgBattleFormula），0 = 使用本行下面的内置公式字段。
+	//   读取端见 ezfyBattleFormulaActive()：选了套就整套覆盖，未选/套已删除则回落本行内置值。
+	BattleFormulaID int `gorm:"default:0;comment:当前生效战斗公式套ID(0=内置)" json:"battle_formula_id"`
+
 	// ============ 系统配置（管理端「系统配置」页可维护）============
 	//
 	//   ★ 野地兵力倍数：野地/海野/寇城的守军兵力 = 配置值 × 该倍数，默认 10。
@@ -768,6 +773,33 @@ type EzfyCfgLimit struct {
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
+
+// EzfyCfgBattleFormula 战斗公式套（二战系统配置 → 战斗公式维护）
+//
+// ★ 2026-10-23 用户需求「战斗公式搞灵活一点，按套来，然后为当前服选择用哪套」：
+//   一套公式 = 回合战斗引擎的全部可调参数。管理端可维护多套（如「原版」「快节奏」「测试」），
+//   当前服在 ezfy_cfg_limit.battle_formula_id 里选一套生效；选 0 = 使用内置公式。
+//   套里的字段 0 都无意义（= 未配置/配置错，读取端回落移植前的硬编码默认值）。
+type EzfyCfgBattleFormula struct {
+	ID     int    `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Name   string `gorm:"type:varchar(50);uniqueIndex:uk_ezfy_battle_formula_name;comment:公式套名称" json:"name"`
+	Remark string `gorm:"type:varchar(500);comment:说明" json:"remark"`
+	// 战斗机制
+	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`
+	BattleStartDist  int `gorm:"default:6000;comment:战场初始距离" json:"battle_start_dist"`
+	BattleRetreatMax int `gorm:"default:10000;comment:战斗最大后退距离" json:"battle_retreat_max"`
+	CritBaseBonusPct int `gorm:"default:50;comment:暴击基础伤害加成%" json:"crit_base_bonus_pct"`
+	GarrisonBreakPct int `gorm:"default:50;comment:盟军驻军溃败撤退阈值%" json:"garrison_break_pct"`
+	BattleRoundMs    int `gorm:"default:30000;comment:战斗每回合时长(毫秒)" json:"battle_round_ms"`
+	// 伤害公式系数：伤害 = (攻×攻系数+攻加值)/(防×(100+防加成%)×防系数+防加值)×数量, 再乘攻加成
+	AtkCoeff    int `gorm:"default:5;comment:伤害公式攻击系数" json:"atk_coeff"`
+	AtkBase     int `gorm:"default:1000;comment:伤害公式攻击加值" json:"atk_base"`
+	DefCoeff    int `gorm:"default:3;comment:伤害公式防御系数" json:"def_coeff"`
+	DefBase     int `gorm:"default:10;comment:伤害公式防御加值" json:"def_base"`
+	MinDmgCoeff int `gorm:"default:5;comment:最小伤害系数(数量×系数)" json:"min_dmg_coeff"`
+}
+
+func (EzfyCfgBattleFormula) TableName() string { return "ezfy_cfg_battle_formula" }
 
 // EzfyWordFilter 二战风云聊天敏感词（独立于社区「黑名单榜」的 word_filters）
 //
