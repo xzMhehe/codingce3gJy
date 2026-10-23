@@ -169,7 +169,7 @@
             <el-input v-model="cWord" placeholder="技能名 / ID" clearable style="width:200px"
                       @keyup.enter.native="loadCombos" />
             <el-button type="primary" icon="el-icon-search" @click="loadCombos">查询</el-button>
-            <span class="td-sub">系统专属战法：普通军官学不到，只能给名将搭配；等级 = 名将星级（1~5）</span>
+            <span class="td-sub">系统专属战法：普通军官学不到，只能给名将搭配；等级按<b>军官等级</b>分档（默认每 35 级 +1，名将 350 级 = Lv.10）</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openComboCreate">新增组合技能</el-button>
           </div>
@@ -192,7 +192,7 @@
             </el-table-column>
             <el-table-column label="升级步长" width="110" align="center">
               <template slot-scope="{row}">
-                <span class="td-mono">每 {{ row.level_per_step || 70 }} 级</span>
+                <span class="td-mono">每 {{ row.level_per_step || 35 }} 级</span>
               </template>
             </el-table-column>
             <el-table-column label="发动率" width="80" align="center">
@@ -910,50 +910,17 @@
     </el-dialog>
 
     <!-- ============ 新增/编辑 名将组合技能（2026-10-23） ============ -->
+    <!-- ★ 2026-10-23 布局重做：原来 720px 弹窗里塞 4 个「label-width:130px + el-col:6」，
+         label 就吃掉 130px，input-number 被压成一条线根本没法看。
+         改成：窄 label 的常规项照旧；6 个数值参数自绘栅格（label 在输入框上方，3 列 2 行），
+         底部给「等级预览」把 Lv.1 → Lv.5 → Lv.满级 的数值直接算出来。 -->
     <el-dialog :title="cf.id ? ('编辑组合技能 · ' + cf.name) : '新增组合技能'"
-               :visible.sync="cDlg" width="720px" :close-on-click-modal="false">
-      <el-form label-width="130px" size="small">
-        <el-form-item label="技能名称" required>
-          <el-input v-model="cf.name" maxlength="50" style="width:320px" />
-          <span class="td-sub" style="margin-left:8px">可随时改名（玩家端立即跟着变）</span>
-        </el-form-item>
-        <el-form-item label="效果类型">
-          <el-select v-model.number="cf.kind" style="width:420px">
-            <el-option v-for="k in comboKinds" :key="'ck' + k.v"
-                       :label="k.v + ' · ' + k.n + '（' + k.hint + '）'" :value="k.v" />
-          </el-select>
-        </el-form-item>
-        <el-row :gutter="10">
-          <el-col :span="6">
-            <el-form-item label="1级效果值">
-              <el-input-number v-model.number="cf.base_value" :min="1" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="每级增幅">
-              <el-input-number v-model.number="cf.grow_per_level" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="等级上限">
-              <el-input-number v-model.number="cf.max_level" :min="1" :max="10" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="每多少级+1">
-              <el-input-number v-model.number="cf.level_per_step" :min="1" :max="350" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="10">
-          <el-col :span="8">
-            <el-form-item label="发动概率%">
-              <el-input-number v-model.number="cf.proc_pct" :min="0" :max="100" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="持续回合">
-              <el-input-number v-model.number="cf.rounds" :min="1" :max="10" controls-position="right" style="width:100%" />
+               :visible.sync="cDlg" width="760px" custom-class="combo-dlg" :close-on-click-modal="false">
+      <el-form label-width="88px" size="small">
+        <el-row :gutter="12">
+          <el-col :span="16">
+            <el-form-item label="技能名称" required>
+              <el-input v-model="cf.name" maxlength="50" placeholder="例如：铁血军魂" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -962,6 +929,43 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="效果类型">
+          <el-select v-model.number="cf.kind" style="width:100%" placeholder="选择效果类型">
+            <el-option v-for="k in comboKinds" :key="'ck' + k.v"
+                       :label="k.v + ' · ' + k.n + '（' + k.hint + '）'" :value="k.v" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <!-- 数值参数：label 在上、输入框占满整格（3 列 × 2 行） -->
+      <div class="cp-grid">
+        <div class="cp-cell">
+          <div class="cp-lb">1 级效果值</div>
+          <el-input-number v-model.number="cf.base_value" :min="1" controls-position="right" style="width:100%" />
+        </div>
+        <div class="cp-cell">
+          <div class="cp-lb">每级增幅</div>
+          <el-input-number v-model.number="cf.grow_per_level" :min="0" controls-position="right" style="width:100%" />
+        </div>
+        <div class="cp-cell">
+          <div class="cp-lb">等级上限</div>
+          <el-input-number v-model.number="cf.max_level" :min="1" :max="10" controls-position="right" style="width:100%" />
+        </div>
+        <div class="cp-cell">
+          <div class="cp-lb">每多少级 +1</div>
+          <el-input-number v-model.number="cf.level_per_step" :min="1" :max="350" controls-position="right" style="width:100%" />
+        </div>
+        <div class="cp-cell">
+          <div class="cp-lb">发动概率 %</div>
+          <el-input-number v-model.number="cf.proc_pct" :min="0" :max="100" controls-position="right" style="width:100%" />
+        </div>
+        <div class="cp-cell">
+          <div class="cp-lb">持续回合</div>
+          <el-input-number v-model.number="cf.rounds" :min="1" :max="10" controls-position="right" style="width:100%" />
+        </div>
+      </div>
+
+      <el-form label-width="88px" size="small" style="margin-top:14px">
         <el-form-item label="说明">
           <el-input v-model="cf.des" type="textarea" :rows="2" maxlength="255"
                     placeholder="可用 %d 代表当前等级的效果值，例如：攻击力+%d%%（每回合按概率发动）" />
@@ -970,13 +974,25 @@
           <el-switch v-model="cf.enabled" :active-value="1" :inactive-value="0" />
           <span class="td-sub" style="margin-left:8px">下架后已配该技能的名将不再发动（配置保留）</span>
         </el-form-item>
-        <div class="td-sub" style="padding-left:130px">
-          满级效果：<b>{{ comboMaxHint }}</b>（1级 + (上限-1)×每级）
-          <br/>
-          等级按军官等级分档：默认每 {{ cf.level_per_step || 35 }} 级 +1，
-          名将满级 350 级 → 正好 {{ cf.max_level || 10 }} 级吃满（星级不参与，名将都是 5 星）
-        </div>
       </el-form>
+
+      <!-- 等级预览：把「按军官等级分档」的结果直接算给管理员看 -->
+      <div class="cp-preview">
+        <div class="cp-pv-head">
+          <span class="cp-pv-title">等级预览</span>
+          <span class="td-sub">满级值 = 1 级 + (上限 − 1) × 每级</span>
+        </div>
+        <div class="cp-pv-body">
+          <span class="cp-pv-item" v-for="p in comboPreview" :key="'cp' + p.lv">
+            <b>Lv.{{ p.lv }}</b><em>{{ p.txt }}</em>
+          </span>
+        </div>
+        <div class="cp-pv-foot">
+          等级按<b>军官等级</b>分档：每 {{ cf.level_per_step || 35 }} 级 +1，
+          名将满级 350 级 → 正好 Lv.{{ cf.max_level || 10 }} 吃满
+          <span class="td-sub">（星级不参与：名将全是 5 星）</span>
+        </div>
+      </div>
       <div slot="footer">
         <el-button @click="cDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doComboSave">保 存</el-button>
@@ -1147,15 +1163,17 @@ export default {
     }
   },
   computed: {
-    // 组合技能满级效果提示（1级 + (上限-1)×每级）
-    comboMaxHint () {
+    // 组合技能「等级预览」：把 Lv.1 / Lv.5 / Lv.满级 的效果值算出来（★ 2026-10-23 布局重做）
+    comboPreview () {
       const f = this.cf || {}
       const base = Number(f.base_value) || 0
       const grow = Number(f.grow_per_level) || 0
-      const max = Number(f.max_level) || 10
-      const v = base + Math.max(0, max - 1) * grow
-      const kind = (this.comboKinds.find(k => k.v === f.kind) || {}).n || ''
-      return kind + ' ' + v
+      const max = Math.max(1, Number(f.max_level) || 10)
+      const lvs = [1, 5, max].filter((v, i, a) => v >= 1 && v <= max && a.indexOf(v) === i)
+      return lvs.sort((a, b) => a - b).map(lv => ({
+        lv,
+        txt: this.comboValueText(base + (lv - 1) * grow)
+      }))
     },
     // ★ 军官池改由后端分页（普通军官有 1000 条，前端一次拿全太卡）
     gPaged () { return this.generals },
@@ -1352,9 +1370,19 @@ export default {
         else this.$message.error(r.msg)
       })
     },
+    // 组合技效果值的可读文案（与后端 ezfyComboValueTxt 同口径，等级预览用）
+    comboValueText (v) {
+      const k = Number(this.cf.kind) || 1
+      if (k === 9) return '+' + v + ' 回合'
+      if (k === 8) return '伤害 ' + v + '%'
+      if (k === 7) return '恢复 ' + v + '%'
+      if (k === 6) return '无视 ' + v + '% 防御'
+      if (k === 5) return '-' + v + '%'
+      return '+' + v + '%'
+    },
     openComboCreate () {
       this.cf = {
-        name: '', des: '', kind: 1, base_value: 7, grow_per_level: 1, max_level: 10,
+        name: '', des: '', kind: 1, base_value: 18, grow_per_level: 18, max_level: 10,
         level_per_step: 35, proc_pct: 35, rounds: 1, enabled: 1, sort_no: 0
       }
       this.cDlg = true
@@ -1772,4 +1800,25 @@ export default {
 /* ★ 2026-10-13 军官信息弹窗 */
 .od-wrap { min-height: 140px; }
 .od-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0 8px; font-size: 13px; font-weight: 600; color: #1f2d3d; }
+/* ★ 2026-10-23 组合技能弹窗：数值参数栅格（label 在上，输入框占满，避免被 label 压扁） */
+.cp-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px; padding: 14px 16px;
+  background: #f7f9fc; border: 1px solid #e8eef6; border-radius: 6px;
+}
+.cp-cell { min-width: 0; }
+.cp-lb { display: block; font-size: 12px; color: #5b6b82; margin-bottom: 5px; font-weight: 600; }
+/* 等级预览条 */
+.cp-preview { margin-top: 14px; padding: 10px 14px; background: #f2f8ff; border: 1px solid #d6e6fb; border-radius: 6px; }
+.cp-pv-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.cp-pv-title { font-size: 13px; font-weight: 600; color: #1f2d3d; }
+.cp-pv-body { display: flex; flex-wrap: wrap; gap: 8px; }
+.cp-pv-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; background: #fff; border: 1px solid #cfe2fa; border-radius: 14px;
+  font-size: 12px; color: #5b6b82;
+}
+.cp-pv-item b { color: #409eff; font-weight: 700; }
+.cp-pv-item em { font-style: normal; color: #1f2d3d; font-weight: 600; }
+.cp-pv-foot { margin-top: 8px; font-size: 12px; color: #5b6b82; line-height: 1.7; }
 </style>

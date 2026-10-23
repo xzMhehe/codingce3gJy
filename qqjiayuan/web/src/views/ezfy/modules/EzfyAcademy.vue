@@ -531,7 +531,7 @@
           <span v-if="ezfy.officerDetail.officer.is_general" class="orange">【名将】</span>
           <span v-if="ezfy.officerDetail.officer.is_general && ezfy.officerDetail.officer.general_name &&
                        ezfy.officerDetail.officer.general_name !== ezfy.officerDetail.officer.name" class="gray">
-            （原名 {{ ezfy.officerDetail.officer.general_name }}）
+            （{{ ezfy.officerDetail.officer.general_name }}）
           </span>
           <!-- ★ 2026-10-23 在外采集/出征的军官不能改名（命令表按名字关联军官，改名会导致归队异常） -->
           <a v-if="ezfy.officerDetail.officer.status !== 1" href="javascript:;" @click="ezfy.doOfficerRename">[改名]</a>

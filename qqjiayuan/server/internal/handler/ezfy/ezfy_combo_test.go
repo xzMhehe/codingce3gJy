@@ -144,13 +144,24 @@ func TestComboProcAndBonuses(t *testing.T) {
 		return st
 	}
 	// ① 100% 发动 → 第 1 回合就生效并播报
-	st := build(&ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 5, Value: 16, ProcPct: 100, Rounds: 1})
+	st := build(&ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 100, Rounds: 1})
 	st.Step(nil, nil)
 	if st.AtkComboLeft != 0 { // 本回合生效，回合末递减回 0
 		t.Fatalf("1 回合技能应在回合末递减回 0, 实际 %d", st.AtkComboLeft)
 	}
 	if !strings.Contains(strings.Join(st.Actions, "\n"), "【铁血军魂】") {
 		t.Fatalf("100%% 发动率却没播报：%v", st.Actions)
+	}
+	// ★ 2026-10-23 用户反馈：发动播报必须排在「第N回合:」之后、部队行动之前，
+	//   否则玩家以为技能没发动（原来被算到上一回合末尾）。
+	if len(st.Actions) < 2 || st.Actions[0] != "第1回合:" {
+		t.Fatalf("回合标题必须是本回合第一行：%v", st.Actions)
+	}
+	if !strings.Contains(st.Actions[1], "发动组合技【铁血军魂】") {
+		t.Fatalf("组合技播报应紧跟回合标题：%v", st.Actions[:2])
+	}
+	if !strings.Contains(st.Actions[1], "全体攻击力+180%") {
+		t.Fatalf("播报要写清效果（不能只写 +180%%）：%s", st.Actions[1])
 	}
 
 	// ② 0% 发动 → 永不播报
@@ -163,10 +174,15 @@ func TestComboProcAndBonuses(t *testing.T) {
 	}
 
 	// ②b 准备回合要写「组合技」说明（玩家开打前就知道带了什么）
-	st4 := build(&ezfyComboSkill{ID: 6, Name: "摧锋破甲", Kind: ezfyComboBreak, Level: 5, Value: 20, ProcPct: 35, Rounds: 1})
+	//    ★ 2026-10-23 改成「并进军官行」；没有军官行时退回单独一行、插在准备回合: 之后
+	st4 := build(&ezfyComboSkill{ID: 6, Name: "摧锋破甲", Kind: ezfyComboBreak, Level: 10, Value: 80, ProcPct: 35, Rounds: 1})
 	st4.appendComboHead()
-	if !strings.Contains(strings.Join(st4.Head, "\n"), "【攻方组合技】摧锋破甲 Lv.5") {
+	head4 := strings.Join(st4.Head, "\n")
+	if !strings.Contains(head4, "摧锋破甲(Lv.10 破防80%，发动35%)") {
 		t.Fatalf("准备回合缺组合技说明：%v", st4.Head)
+	}
+	if strings.HasPrefix(head4, "【攻方组合技】") { // 必须落在「准备回合:」之后
+		t.Fatalf("组合技行不该排在准备回合: 之前：%v", st4.Head)
 	}
 
 	// ③ 持续 2 回合：第 1 回合发动后，第 2 回合仍生效
@@ -202,5 +218,33 @@ func TestComboHealAndBreak(t *testing.T) {
 	broken := ezfyCalcDamage(100, 50*(100-20)/100, 100, 0, 0)
 	if broken <= full {
 		t.Fatalf("破防 20%% 后伤害应更高：原 %d, 破防 %d", full, broken)
+	}
+}
+
+// TestComboHeadMergedIntoOfficer 准备回合：组合技**并进军官行**（格式对齐军官技能），
+// 不再单独占一行、也不该掉到「战场初始相距」之后（2026-10-23 用户反馈）。
+func TestComboHeadMergedIntoOfficer(t *testing.T) {
+	st := &ezfyBattleState{
+		Head: []string{
+			"准备回合:",
+			"【攻方军官】斯大林 Lv.350 攻击加成+477% 尖兵突击(Lv.6 攻击力+180%)",
+			"【守方军官】杰里米·贝克 Lv.1 攻击加成+18%",
+			"战场初始相距6000, 攻守双方相向推进",
+		},
+		AtkCombo: &ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 40, Rounds: 1},
+		DefCombo: &ezfyComboSkill{ID: 2, Name: "不动如山", Kind: ezfyComboDef, Level: 3, Value: 54, ProcPct: 35, Rounds: 1},
+	}
+	st.appendComboHead()
+	if len(st.Head) != 4 {
+		t.Fatalf("应并进已有行、不新增行：%v", st.Head)
+	}
+	if !strings.HasSuffix(st.Head[1], "铁血军魂(Lv.10 攻击力+180%，发动40%)") {
+		t.Fatalf("攻方军官行没带上组合技：%s", st.Head[1])
+	}
+	if !strings.HasSuffix(st.Head[2], "不动如山(Lv.3 防御力+54%，发动35%)") {
+		t.Fatalf("守方军官行没带上组合技：%s", st.Head[2])
+	}
+	if !strings.HasPrefix(st.Head[3], "战场初始相距") {
+		t.Fatalf("最后一行应仍是战场初始相距：%v", st.Head)
 	}
 }

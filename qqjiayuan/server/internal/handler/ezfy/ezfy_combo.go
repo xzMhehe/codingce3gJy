@@ -193,6 +193,72 @@ func ezfyComboValueTxt(c *ezfyComboSkill) string {
 	}
 }
 
+// ezfyComboShortTxt 短效果文案（准备回合「军官行」内联用，格式对齐军官技能）
+//
+//	例：尖兵突击(Lv.6 攻击力+180%) 铁血军魂(Lv.10 攻击力+180%，发动40%)
+func ezfyComboShortTxt(c *ezfyComboSkill) string {
+	if c == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s(Lv.%d %s，发动%d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
+}
+
+// ezfyComboShortEffect 只有效果本身，不带技能名（军官行 / 播报共用）
+func ezfyComboShortEffect(c *ezfyComboSkill) string {
+	if c == nil {
+		return ""
+	}
+	switch c.Kind {
+	case ezfyComboAtk:
+		return fmt.Sprintf("攻击力+%d%%", c.Value)
+	case ezfyComboDef:
+		return fmt.Sprintf("防御力+%d%%", c.Value)
+	case ezfyComboRange:
+		return fmt.Sprintf("射程+%d%%", c.Value)
+	case ezfyComboSpeed:
+		return fmt.Sprintf("移动速度+%d%%", c.Value)
+	case ezfyComboReduce:
+		return fmt.Sprintf("受到伤害-%d%%", c.Value)
+	case ezfyComboBreak:
+		return fmt.Sprintf("破防%d%%", c.Value)
+	case ezfyComboHeal:
+		return fmt.Sprintf("回合治疗%d%%", c.Value)
+	case ezfyComboDouble:
+		return fmt.Sprintf("连击伤害%d%%", c.Value)
+	case ezfyComboCounter:
+		return fmt.Sprintf("反击回合+%d", c.Value)
+	}
+	return fmt.Sprintf("+%d%%", c.Value)
+}
+
+// ezfyComboProcTxt 发动播报用的效果描述（自带主语，玩家不看类型名也懂）
+func ezfyComboProcTxt(c *ezfyComboSkill) string {
+	if c == nil {
+		return ""
+	}
+	switch c.Kind {
+	case ezfyComboAtk:
+		return fmt.Sprintf("全体攻击力+%d%%", c.Value)
+	case ezfyComboDef:
+		return fmt.Sprintf("全体防御力+%d%%", c.Value)
+	case ezfyComboRange:
+		return fmt.Sprintf("全体射程+%d%%", c.Value)
+	case ezfyComboSpeed:
+		return fmt.Sprintf("全体移动速度+%d%%", c.Value)
+	case ezfyComboReduce:
+		return fmt.Sprintf("受到伤害-%d%%", c.Value)
+	case ezfyComboBreak:
+		return fmt.Sprintf("攻击无视目标%d%%防御", c.Value)
+	case ezfyComboHeal:
+		return fmt.Sprintf("回合结束恢复已损兵力%d%%", c.Value)
+	case ezfyComboDouble:
+		return fmt.Sprintf("追加一次攻击（伤害%d%%）", c.Value)
+	case ezfyComboCounter:
+		return fmt.Sprintf("反击回合+%d", c.Value)
+	}
+	return ezfyComboValueTxt(c)
+}
+
 // comboRoll 每回合开始掷骰：到期的效果自然失效，没生效的按概率尝试发动。
 //
 // 返回本回合是否生效（供加成计算使用）。发动时写一行战报播报，
@@ -225,7 +291,7 @@ func (st *ezfyBattleState) comboRoll() {
 		}
 		idx := (st.Round*3 + len(st.Actions)) % len(ezfySlogans)
 		st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】！%s，%s",
-			side, offName, c.Name, ezfySlogans[idx], ezfyComboValueTxt(c)))
+			side, offName, c.Name, ezfySlogans[idx], ezfyComboProcTxt(c)))
 	}
 	roll(st.AtkCombo, &st.AtkComboLeft, "【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), &st.AtkComboUsed)
 	roll(st.DefCombo, &st.DefComboLeft, "【守方】", ezfyOfficerShortName(st.DefOfficerDesc), &st.DefComboUsed)
@@ -403,12 +469,50 @@ func (h *EzfyHandler) officerComboView(o *model.EzfyOfficer) interface{} {
 	return ezfyComboBrief(h.comboSkillOfOfficer(o))
 }
 
-// appendComboHead 战报「准备回合」补一行组合技说明，让玩家开打前就知道带了什么。
+// appendComboHead 战报「准备回合」展示组合技。
+//
+// ★ 2026-10-23 用户反馈：原来单独一行「【攻方组合技】…」被追加在最后（排在
+// 「战场初始相距6000」之后），既像补充说明、又和军官技能割裂。改成**并进军官行**，
+// 格式对齐军官技能：
+//
+//	【攻方军官】斯大林 Lv.350 攻击加成+477% 防御加成+253% 尖兵突击(Lv.6 攻击力+180%) …
+//	              └→ 追加：铁血军魂(Lv.10 攻击力+180%，发动40%)
+//
+// 没有军官行（AI 守将 / 老战场）时退回单独一行，插在「准备回合:」之后。
 func (st *ezfyBattleState) appendComboHead() {
-	if st.AtkCombo != nil {
-		st.Head = append(st.Head, "【攻方组合技】"+ezfyComboTxt(st.AtkCombo))
+	merge := func(side, txt string) bool {
+		if txt == "" {
+			return true
+		}
+		prefix := "【" + side + "军官】"
+		for i, l := range st.Head {
+			if strings.HasPrefix(l, prefix) {
+				st.Head[i] = l + " " + txt
+				return true
+			}
+		}
+		return false
 	}
-	if st.DefCombo != nil {
-		st.Head = append(st.Head, "【守方组合技】"+ezfyComboTxt(st.DefCombo))
+	atkTxt, defTxt := ezfyComboShortTxt(st.AtkCombo), ezfyComboShortTxt(st.DefCombo)
+	okA, okD := merge("攻方", atkTxt), merge("守方", defTxt)
+	// 没有军官行 → 退回单独一行，按「攻方 → 守方」顺序插到「准备回合:」后面
+	extra := []string{}
+	if !okA && atkTxt != "" {
+		extra = append(extra, "【攻方组合技】"+atkTxt)
 	}
+	if !okD && defTxt != "" {
+		extra = append(extra, "【守方组合技】"+defTxt)
+	}
+	if len(extra) == 0 {
+		return
+	}
+	idx := 1
+	if len(st.Head) == 0 {
+		idx = 0
+	}
+	out := make([]string, 0, len(st.Head)+len(extra))
+	out = append(out, st.Head[:idx]...)
+	out = append(out, extra...)
+	out = append(out, st.Head[idx:]...)
+	st.Head = out
 }

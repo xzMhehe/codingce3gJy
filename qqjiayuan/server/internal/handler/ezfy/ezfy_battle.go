@@ -806,7 +806,7 @@ func ezfyDefSrcTxt(items []ezfyBonusItem) string {
 // 只要任一来源非零就展示（PVP 里一方军官没攻击技能/没设城守时，科技加成也照常列出，
 // 不会像以前一样整括号消失）；全零返回空串，不改动原样式的合并加成显示。
 func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name string,
-	skills, techs []ezfyBonusItem) string {
+	skills, techs []ezfyBonusItem, extras ...string) string {
 
 	attr := officerBonus - skillBonus
 	// 科技合计：有明细用明细之和；老快照回退原口径（科技 = 总加成 - 军官加成）
@@ -817,7 +817,7 @@ func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name
 	if len(techs) == 0 {
 		techTotal = techBase - officerBonus
 	}
-	if attr == 0 && skillBonus == 0 && techTotal == 0 && equipBonus == 0 {
+	if attr == 0 && skillBonus == 0 && techTotal == 0 && equipBonus == 0 && len(extras) == 0 {
 		return ""
 	}
 	parts := []string{}
@@ -845,6 +845,12 @@ func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name
 	if equipBonus != 0 {
 		// ★ 2026-10-09 「装备」→「装备套装」（散件+套装合计，去掉歧义）
 		parts = append(parts, fmt.Sprintf("装备套装+%d%%", equipBonus))
+	}
+	// ★ 2026-10-23 组合技等「额外来源」：接在最后，保证「总计 = 括号内各项之和」
+	for _, e := range extras {
+		if e != "" {
+			parts = append(parts, e)
+		}
 	}
 	if len(parts) == 0 {
 		return ""
@@ -876,6 +882,11 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	}
 	st.Round++
 
+	// ★★ 2026-10-23 回合标题**先落**：组合技掷骰/发动播报属于「本回合开始」的事件，
+	//   必须排在第N回合: 之后、部队行动之前。原来标题在 comboRoll 之后才 append，
+	//   导致播报行被算到上一回合末尾，玩家看不到「这回合到底发动没有」。
+	st.Actions = append(st.Actions, fmt.Sprintf("第%d回合:", st.Round))
+
 	// ★★ 2026-10-23 名将组合技能：每回合开始掷骰（到期失效 / 按概率发动），
 	//   本回合生效的技能在下面按类型参与加成、破防、减伤、连击、治疗。
 	st.comboRoll()
@@ -902,10 +913,18 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	defRangeBonusAll := st.DefRangeBonus + comboOfKind(defCombo, ezfyComboRange)
 	// ★ 2026-10-06 「攻击加成」来源拆解（军官属性/军官技能/科技/装备），写进每行行动日志，
 	//   玩家一眼能看到加成是谁给的 —— 攻方=军官技能+科技+装备，守方=城守技能+科技。
+	// ★ 2026-10-23 组合技生效时也要进「来源拆解」，否则总计(含组合技)和括号内各项对不上
+	atkComboPart, defComboPart := "", ""
+	if p := comboOfKind(atkCombo, ezfyComboAtk); p > 0 {
+		atkComboPart = fmt.Sprintf("组合技·%s+%d%%", atkCombo.Name, p)
+	}
+	if p := comboOfKind(defCombo, ezfyComboDef); p > 0 {
+		defComboPart = fmt.Sprintf("组合技·%s+%d%%", defCombo.Name, p)
+	}
 	atkBonusBreak := ezfyBonusBreakdown(st.AtkOfficerBonus, st.AtkOfficerSkill, st.AtkBonus, st.AtkEquip.Dmg,
-		ezfyOfficerShortName(st.AtkOfficerDesc), st.AtkSkillBreak, st.AtkTechBreak)
+		ezfyOfficerShortName(st.AtkOfficerDesc), st.AtkSkillBreak, st.AtkTechBreak, atkComboPart)
 	defBonusBreak := ezfyBonusBreakdown(st.DefOfficerBonus, st.DefOfficerSkill, st.DefAtkBonus, 0,
-		ezfyOfficerShortName(st.DefOfficerDesc), st.DefSkillBreak, st.DefTechBreak)
+		ezfyOfficerShortName(st.DefOfficerDesc), st.DefSkillBreak, st.DefTechBreak, defComboPart)
 	// ★ 2026-10-06 守方「防御加成」来源拆解：城防爪到谁被打就展示在谁的行动行
 	//   （城墙+科技+城守属性+城守技能+装备 → 伤害变少的来源）。攻方没有防御加成 → 只在守方被攻击的行上展示；
 	//   老快照无明细 → 不展示防御段。
@@ -913,8 +932,6 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	// ★ 2026-10-07 攻方「防御加成」来源拆解：攻方被打（守方行动、守方绝地反击还击）时展示，
 	//   来源 = 攻方军官属性+防御技能(弧形防御/弹幕支援)+装备 Def。攻方无明细 → 不展示防御段（回退老行为）。
 	atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)
-
-	st.Actions = append(st.Actions, fmt.Sprintf("第%d回合:", st.Round))
 
 	// ★ 2026-10-08 技能发动播报：每个生效回合都提示。
 	//   攻/守方的攻击类技能（AtkSkillBreak/DefSkillBreak）逐个写一行带感口号，再带出防御类军官技能
