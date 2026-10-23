@@ -172,10 +172,10 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 		"area_count": mil + res, "area_cap": lim.MilitaryMax + lim.ResourceMax,
 		"military_count": mil, "military_cap": lim.MilitaryMax,
 		"resource_count": res, "resource_cap": lim.ResourceMax,
-		"build_queue_count":      queueCount,
-		"build_queue_base":       qstate.Base,
-		"build_queue_max":        qstate.Max,
-		"build_queue_bonus":      qstate.Bonus,
+		"build_queue_count":       queueCount,
+		"build_queue_base":        qstate.Base,
+		"build_queue_max":         qstate.Max,
+		"build_queue_bonus":       qstate.Bonus,
 		"build_queue_bonus_until": qstate.UntilTime,
 	}
 	ezfyPageCacheSet(uid, "buildings", data)
@@ -439,6 +439,8 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	// ★ 2026-10-13 空闲人口慢恢复：把「待恢复人口」按时间减一下（只影响本响应展示，
 	//   落库由 /view 的懒结算承担，最多滞后一轮 30s 轮询，约 80 人口，可忽略）。
 	h.ezfySettlePopRecover(&city)
+	// ★ 2026-10-23 额外空闲人口（人口满后召集产生）也按时间回落，口径与 /view 一致。
+	h.ezfySettlePopExtra(&city)
 	// ★ 2026-10-13 占用人口必须在 collectTrainQueue **之后**算：出厂队列在上面被清零
 	//   （其占用已转成「待恢复人口」），放前面会把同一条队列重复计一次。
 	popUsed = h.cityPopUsedD(&city, buildings, qs)
@@ -540,8 +542,9 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 		"pop": city.Pop, "pop_used": popUsed, "cfgs": cfgViews,
 		// ★ 2026-10-14 伤兵营钻石一键恢复全部伤兵的单价（系统配置可配，默认 100）
 		"heal_all_diamond": ezfyHealAllDiamondCost(),
-		// ★ 2026-10-13 待恢复人口（空闲人口 = 人口 − 占用 − 待恢复，见 ezfyPopFree）
+		// ★ 2026-10-13 待恢复人口（空闲人口 = 人口 − 占用 − 待恢复 + 额外空闲，见 ezfyPopFree）
 		"pop_recover":        city.PopRecover,
+		"pop_extra":          city.PopExtra,
 		"wall_level":         wallLevel,
 		"train_discount":     discount,
 		"defence_space":      defSpace,

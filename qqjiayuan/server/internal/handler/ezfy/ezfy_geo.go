@@ -1335,14 +1335,40 @@ func ezfyTrainMayorEquipOn() bool {
 	return ezfyCfg.limit.TrainMayorEquipOn != 0
 }
 
+// ezfyHousePopCapOf 人口上限 = 当前所有民居（BuildingId=2）等级容量之和。
+//
+// ★ 2026-10-23 用户规则：总人口永远不能超过民居上限。召集/移民法案必须用
+// **当下**的民居等级算上限，不能依赖 ezfy_city.pop_max 的旧值 ——
+// 该字段是懒结算落库的（写合并最多滞后 60 秒），民居拆除/升级后会短暂失真。
+func ezfyHousePopCapOf(buildings []model.EzfyCityBuilding) int64 {
+	var cap int64
+	for _, b := range buildings {
+		if b.BuildingId != 2 {
+			continue
+		}
+		if lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level); lv != nil {
+			cap += lv.Capacity
+		}
+	}
+	return cap
+}
+
+// housePopCap 查一次当前城建筑列表，按民居等级实时算人口上限。
+func (h *EzfyHandler) housePopCap(cityID uint) int64 {
+	return ezfyHousePopCapOf(h.buildingList(cityID))
+}
+
 // ezfyPopGatherPlan 计算一次「召集人口」的收益口径（Convene 与移民法案 ItemType 31 共用）。
 //
 //	★ 2026-10-22 用户规则：人口上限只由民居容量决定。
+//	★ 2026-10-23 用户补充：人口已达上限后，冷却结束仍可继续召集；
+//	  召集增加的是**空闲人口**，总人口不再增加，允许空闲人口暂时超过总人口。
 //	  ① 人口未满 popMax：最多加 `want` 人口，但不超过 `popMax - pop`；
 //	     新增人口同时进入总人口与空闲人口（idleOnly=false）。
-//	  ② 人口已满/超过 popMax：不再增加总人口，只把「待恢复人口」扣减成空闲人口，
-//	     最多扣 `want`，且不超过当前待恢复人口（idleOnly=true）。
-//	     这样空闲人口最多恢复到「人口上限 − 建筑/训练占用」，不会凭空超过上限。
+//	  ② 人口已满/超过 popMax：总人口不动，本次固定获得 `want` 空闲人口（idleOnly=true）。
+//	     其中先扣「待恢复人口」转成空闲，剩余部分计入 EzfyCity.PopExtra（额外空闲池），
+//	     由 ezfySettlePopExtra 在 ezfyPopExtraDecayMs 内线性回落。
+//	     因此 `recover = 0` 时也**不能**返回 0 —— 否则又会出现「人口一满就永远不能召集」。
 //	  ③ popMax <= 0（没有民居）：无法召集，返回 0。
 func ezfyPopGatherPlan(pop, popMax, want, recover int64) (gain int64, idleOnly bool) {
 	if popMax <= 0 || want <= 0 {
@@ -1355,14 +1381,9 @@ func ezfyPopGatherPlan(pop, popMax, want, recover int64) (gain int64, idleOnly b
 		}
 		return gain, false
 	}
-	if recover < 0 {
-		recover = 0
-	}
-	gain = recover
-	if want < gain {
-		gain = want
-	}
-	return gain, true
+	// recover 只影响「从待恢复人口里扣多少」，不再决定本次召集是否成立。
+	_ = recover
+	return want, true
 }
 
 // ============ 召集人口：消耗粮食 / 获得人口 ============
@@ -1375,6 +1396,9 @@ func ezfyPopGatherPlan(pop, popMax, want, recover int64) (gain int64, idleOnly b
 const (
 	ezfyConveneFoodCostDef = 100000 // 召集一次消耗粮食，默认 10 万
 	ezfyConvenePopPctDef   = 10     // 召集一次获得人口 = 当前民居上限的 N%，默认 10%
+	// ★ 2026-10-23 召集间隔后台可配（默认保持原行为：普通 3 秒 / 人口满 5 分钟）。
+	ezfyConveneCooldownSecondsDef    = 3
+	ezfyConveneCapCooldownSecondsDef = 300
 )
 
 // ezfyConveneFoodCostCfg 召集一次消耗的粮食（默认 10 万）
@@ -1409,6 +1433,24 @@ func ezfyConvenePopGainWithPct(popMax, pct int64) int64 {
 // ezfyConvenePopGainOf 按当前民居上限和后台配置的百分比计算单次召集人口。
 func ezfyConvenePopGainOf(popMax int64) int64 {
 	return ezfyConvenePopGainWithPct(popMax, ezfyConvenePopPctCfg())
+}
+
+// ezfyConveneCooldownSeconds 普通状态下的召集间隔（秒，默认 3；0/未配置回落默认）。
+func ezfyConveneCooldownSeconds() int64 {
+	return int64(clampInt(ezfyLimitOr(ezfyCfg.limit.ConveneCooldownSeconds, ezfyConveneCooldownSecondsDef), 1, 1000000000))
+}
+
+// ezfyConveneCapCooldownSeconds 人口达到/超过民居上限后的召集间隔（秒，默认 300；0/未配置回落默认）。
+func ezfyConveneCapCooldownSeconds() int64 {
+	return int64(clampInt(ezfyLimitOr(ezfyCfg.limit.ConveneCapCooldownSeconds, ezfyConveneCapCooldownSecondsDef), 1, 1000000000))
+}
+
+// ezfyConveneCooldownMs 当前召集冷却毫秒数；atCap=true 时使用「人口满」配置。
+func ezfyConveneCooldownMs(atCap bool) int64 {
+	if atCap {
+		return ezfyConveneCapCooldownSeconds() * 1000
+	}
+	return ezfyConveneCooldownSeconds() * 1000
 }
 
 // ============ 空闲人口「慢恢复」（2026-10-13）============
@@ -2086,11 +2128,11 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时给默认 10 万 / 10%）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
-		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
-		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
-		WildTroopMult:      ezfyWildMultDef,
-		WildResMult:        ezfyWildResMultDef,
-		GatherResMult:      ezfyGatherResMultDef,
+		// ★ 2026-10-23 召集间隔（缺行时默认普通 3 秒 / 人口满 300 秒）
+		ConveneCooldownSeconds: ezfyConveneCooldownSecondsDef, ConveneCapCooldownSeconds: ezfyConveneCapCooldownSecondsDef,
+		WildTroopMult: ezfyWildMultDef,
+		WildResMult:   ezfyWildResMultDef,
+		GatherResMult: ezfyGatherResMultDef,
 		// ★ 2026-10-21 采集新公式的缺行默认值
 		GatherTruckTroopID:   ezfyGatherTruckTroopIDDef,
 		GatherWildBonusPct:   ezfyGatherWildBonusPctDef,

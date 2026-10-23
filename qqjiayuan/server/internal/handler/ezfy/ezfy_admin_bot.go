@@ -532,8 +532,9 @@ func (h *EzfyAdmin) AdminEzfyBotBuildings(c *gin.Context) {
 		"city_name":   city.Name,
 		"pop":         city.Pop,              // 总人口
 		"pop_max":     city.PopMax,           // 人口上限
-		"pop_recover": city.PopRecover,       // 待恢复人口（空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复）
-		"free_pop":    ezBotPopFree(h, city), // 空闲人口（可直接编辑，保存时反推总人口）
+		"pop_recover": city.PopRecover,       // 待恢复人口
+		"pop_extra":   city.PopExtra,         // 额外空闲人口（人口满后召集产生，会回落）
+		"free_pop":    ezBotPopFree(h, city), // 空闲人口（可直接编辑，保存时反推总人口/额外空闲）
 		"buildings":   []gin.H{},
 		"troops":      []gin.H{},
 		"techs":       []gin.H{},
@@ -782,16 +783,18 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 
 	// ⑤½ 空闲人口（★ 2026-10-17 用户要求「空闲人口也能编辑」）
 	//
-	// 空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复（ezfyPopFree），是**计算值**没有存储列，
-	// 所以编辑它 = 按增量反推总人口：
-	//
-	//	newPop = pop + (目标空闲 − 当前空闲)
-	//
-	// 下限夹到「占用+待恢复」（人口不能低到让占用变成负空闲），上限夹到 pop_max（受截断会提示）。
+	// 空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复 + 额外空闲（ezfyPopFree）。
+	// 其中「额外空闲」是人口达到民居上限后召集产生、会回落的部分；编辑时：
+	//   ① 先尽量用总人口满足目标空闲（最多到 pop_max）；
+	//   ② 总人口到上限后仍不够的部分写入 pop_extra，并重新起算 5 分钟回落窗口。
 	// ★ 必须放在 ⑤ 之后执行：同时传 pop 和 free_pop 时以 free_pop 为准（它基于最终 pop 反推）。
 	if city.ID > 0 && in.FreePop != nil {
 		if *in.FreePop < 0 {
 			resp.ParamError(c, "空闲人口不能为负")
+			return
+		}
+		if *in.FreePop > ezfyResSafeMax {
+			resp.ParamError(c, "空闲人口超过安全上限")
 			return
 		}
 		ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
@@ -800,21 +803,36 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		h.DB.First(&c2, city.ID)
 		bPop := ez.buildingPop(&c2)
 		tPop := ez.troopPop(c2.ID)
-		curFree := ezfyPopFree(c2.Pop, bPop, tPop, c2.PopRecover)
-		newPop := c2.Pop + (*in.FreePop - curFree)
-		minPop := bPop + tPop + c2.PopRecover
-		if newPop < minPop {
-			newPop = minPop
+		normalPop := bPop + tPop + c2.PopRecover
+		if normalPop > ezfyResSafeMax {
+			normalPop = ezfyResSafeMax
 		}
-		truncated := false
+		newPop := *in.FreePop + normalPop
+		if newPop < 0 || newPop > ezfyResSafeMax {
+			newPop = ezfyResSafeMax
+		}
 		if c2.PopMax > 0 && newPop > c2.PopMax {
 			newPop = c2.PopMax
-			truncated = true
 		}
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", c2.ID).Update("pop", newPop)
+		extra := *in.FreePop - (newPop - normalPop)
+		if extra < 0 {
+			extra = 0
+		}
+		now := time.Now().UnixMilli()
+		upd := map[string]interface{}{"pop": newPop}
+		if extra > 0 {
+			upd["pop_extra"] = extra
+			upd["pop_extra_at"] = now
+			upd["pop_extra_end_at"] = now + ezfyPopExtraDecayMs
+		} else {
+			upd["pop_extra"] = 0
+			upd["pop_extra_at"] = now
+			upd["pop_extra_end_at"] = 0
+		}
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", c2.ID).Updates(upd)
 		msg := fmt.Sprintf("空闲人口→%d", *in.FreePop)
-		if truncated {
-			msg += "(受人口上限截断)"
+		if extra > 0 {
+			msg += fmt.Sprintf("(总人口受上限限制, %d 计入临时空闲)", extra)
 		}
 		changes = append(changes, msg)
 	}
@@ -1587,7 +1605,7 @@ func (h *EzfyAdmin) AdminEzfyBotTargetDel(c *gin.Context) {
 // ezBotPopFree 管理端算人机城的空闲人口（口径与玩家端 ezfyPopFree 完全一致）。
 func ezBotPopFree(h *EzfyAdmin, city model.EzfyCity) int64 {
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
-	return ezfyPopFree(city.Pop, ez.buildingPop(&city), ez.troopPop(city.ID), city.PopRecover)
+	return ezfyPopFree(city.Pop, ez.buildingPop(&city), ez.troopPop(city.ID), city.PopRecover, city.PopExtra)
 }
 
 // AdminEzfyBotAttackNearest POST /admin/ezfy-bot/:uid/attack-nearest —— 出征最近的敌对真人城市

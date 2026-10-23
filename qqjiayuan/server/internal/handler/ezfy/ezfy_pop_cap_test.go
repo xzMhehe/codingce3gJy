@@ -7,14 +7,16 @@ import (
 	"qqjiayuan/server/internal/model"
 )
 
-// ============ 人口上限口径守卫（2026-10-22 最终版）============
+// ============ 人口上限口径守卫（2026-10-23 最终版）============
 //
 // 用户最终口径：
 //  1. 人口上限只由民居容量（pop_max）决定；
 //  2. 人口未满 → 召集加总人口（空闲同步增加），最多加到 pop_max；
-//  3. 人口已满 → 召集/移民法案只扣待恢复人口，恢复空闲人口；
+//  3. 人口已满 → 召集/移民法案仍可继续：总人口不增加，本次召集量转为空闲人口；
+//     先扣待恢复人口，剩余进入 pop_extra（允许空闲人口暂时超过总人口）；
 //  4. 人口达到/超过民居上限时，召集冷却为 5 分钟（普通情况仍是 3 秒）；
-//  5. 空闲人口超过「人口上限 − 占用」的部分自动回落（老数据走缓慢回落）。
+//  5. 总人口永远不能超过民居上限：超限数据在下一次结算时**立即夹平**；
+//     额外空闲人口（pop_extra）超过正常空闲的部分，在 5 分钟内线性回落。
 
 func TestEzfyPopGatherPlan(t *testing.T) {
 	cases := []struct {
@@ -30,11 +32,11 @@ func TestEzfyPopGatherPlan(t *testing.T) {
 		{"人口未满 → 加人口", 100, 1000, 100, 0, 100, false},
 		{"人口贴近上限 → 截断到上限", 950, 1000, 100, 0, 50, false},
 		{"人口差 1 人 → 只加 1 人", 999, 1000, 100, 0, 1, false},
-		{"人口已满 + 有待恢复 → 只恢复空闲", 1000, 1000, 100, 60, 60, true},
-		{"人口已满 + 待恢复不足 → 恢复完", 1000, 1000, 100, 30, 30, true},
-		{"人口已满 + 无待恢复 → 拒绝", 1000, 1000, 100, 0, 0, true},
-		{"人口超限（老数据）+ 待恢复 → 恢复空闲", 1200, 1000, 100, 30, 30, true},
-		{"待恢复为负 → 按 0 处理", 1000, 1000, 100, -5, 0, true},
+		{"人口已满 + 有待恢复 → 固定获得召集量", 1000, 1000, 100, 60, 100, true},
+		{"人口已满 + 待恢复不足 → 固定获得召集量", 1000, 1000, 100, 30, 100, true},
+		{"人口已满 + 无待恢复 → 仍可召集", 1000, 1000, 100, 0, 100, true},
+		{"人口超限（老数据）+ 待恢复 → 固定获得召集量", 1200, 1000, 100, 30, 100, true},
+		{"待恢复为负 → 不影响召集", 1000, 1000, 100, -5, 100, true},
 		{"want <= 0 → 不召集", 100, 1000, 0, 0, 0, false},
 	}
 	for _, c := range cases {
@@ -46,60 +48,67 @@ func TestEzfyPopGatherPlan(t *testing.T) {
 	}
 }
 
-// TestEzfySettlePopOverCap 超限人口必须「慢慢回落」，且时间余量不能丢。
-//
-// ★ 2026-10-21 用户要求「100% 也要 5 分钟内回落」→ 速度基准从「每小时」改成「每 5 分钟」。
-func TestEzfySettlePopOverCap(t *testing.T) {
-	const now = int64(1_700_000_000_000)
-	const cap = int64(45000)
-	const fiveMin = int64(300_000)
-	const hour = 12 * fiveMin
+// TestEzfyPopFreeIncludesExtra 空闲人口 = 人口 − 建筑占用 − 待恢复 + 额外空闲（允许超过总人口）。
+func TestEzfyPopFreeIncludesExtra(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		pop         int64
+		buildingPop int64
+		troopPop    int64
+		recover     int64
+		extra       int64
+		want        int64
+	}{
+		{"普通口径", 1000, 100, 0, 200, 0, 700},
+		{"额外空闲让空闲超过总人口", 1000, 100, 0, 0, 500, 1400},
+		{"扣到负数夹 0", 100, 200, 0, 0, 0, 0},
+		{"负额外空闲按原口径", 1000, 100, 0, 100, -50, 750},
+	} {
+		if got := ezfyPopFree(c.pop, c.buildingPop, c.troopPop, c.recover, c.extra); got != c.want {
+			t.Errorf("%s: ezfyPopFree = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
 
-	// 未超限 → 时间戳清零
-	if pop, at := ezfySettlePopOverCap(45000, cap, now, now, 10); pop != 45000 || at != 0 {
-		t.Fatalf("未超限应原样返回且 at=0，got pop=%d at=%d", pop, at)
+// TestSettlePopExtraDecay 额外空闲人口按截止时间线性回落：首次起算、半程减半、到点归零。
+func TestSettlePopExtraDecay(t *testing.T) {
+	const durationMs = int64(5 * 60 * 1000)
+	const start = int64(1700000000000)
+	city := &model.EzfyCity{}
+	ezfyAddPopExtraAt(city, 1000, start, durationMs)
+	if city.PopExtra != 1000 || city.PopExtraAt != start || city.PopExtraEndAt != start+durationMs {
+		t.Fatalf("增加额外空闲人口后状态不对: %+v", city)
 	}
-	// 首次进入超限（at=0）：只记时间，本次不回落
-	if pop, at := ezfySettlePopOverCap(100000, cap, 0, now, 10); pop != 100000 || at != now {
-		t.Fatalf("首次超限只应记时间，got pop=%d at=%d", pop, at)
+	// 首次结算（已经带了 at/end，不应重置）——半程后应剩 500
+	ezfySettlePopExtraAt(city, start+durationMs/2, durationMs)
+	if city.PopExtra != 500 {
+		t.Fatalf("半程应剩 500，got %d", city.PopExtra)
 	}
-	// 5 分钟：超出 55000 × 10%/5 分钟 = 5500，人口 100000 → 94500
-	pop, at := ezfySettlePopOverCap(100000, cap, now, now+fiveMin, 10)
-	if pop != 94500 || at != now+fiveMin {
-		t.Fatalf("10%%/5 分钟应回落 5500 人，got pop=%d at=%d", pop, at)
+	// 到点必须归零
+	ezfySettlePopExtraAt(city, start+durationMs, durationMs)
+	if city.PopExtra != 0 || city.PopExtraEndAt != 0 {
+		t.Fatalf("到点应清零，got %+v", city)
 	}
-	// 速度可配置：50%/5 分钟 → 超出 55000 × 50% = 27500，人口 100000 → 72500
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+fiveMin, 50); pop != 72500 || at != now+fiveMin {
-		t.Fatalf("50%%/5 分钟应回落 27500 人，got pop=%d at=%d", pop, at)
-	}
-	// 100%/5 分钟：正好 5 分钟回落到民居上限，时间戳清零
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+fiveMin, 100); pop != cap || at != 0 {
-		t.Fatalf("100%%/5 分钟应 5 分钟内回落到 %d 且 at=0，got pop=%d at=%d", cap, pop, at)
-	}
-	// 100%/5 分钟：2 分钟按比例回落 40%（55000 × 40% = 22000）
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+2*60_000, 100); pop != 78000 || at != now+2*60_000 {
-		t.Fatalf("100%%/5 分钟 2 分钟应回落 22000 人，got pop=%d at=%d", pop, at)
-	}
-	// 非法速度 → 回落默认 100%/5 分钟
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+fiveMin, 0); pop != cap || at != 0 {
-		t.Fatalf("非法速度应回落默认 100%%，got pop=%d at=%d", pop, at)
-	}
-	// 1 小时：足够回落到民居上限，时间戳清零
-	if pop, at := ezfySettlePopOverCap(100000, cap, now, now+hour, 10); pop != cap || at != 0 {
-		t.Fatalf("1 小时应回落到 %d 且 at=0，got pop=%d at=%d", cap, pop, at)
-	}
-	// 超出量很小、时间很短：不足 1 人时保留时间余量（at 不推进）
-	if pop, at := ezfySettlePopOverCap(45010, cap, now, now+60_000, 10); pop != 45010 || at != now {
-		t.Fatalf("不足 1 人时应保留时间余量，got pop=%d at=%d", pop, at)
-	}
-	// 超出量很小、时间够长：刚好回落 1 人
-	pop, at = ezfySettlePopOverCap(45010, cap, now, now+fiveMin, 10)
-	if pop != 45009 || at != now+fiveMin {
-		t.Fatalf("超出 10 人 5 分钟应回落 1 人，got pop=%d at=%d", pop, at)
-	}
-	// 时间戳异常（未来）→ 重置为 now，不回落
-	if pop, at := ezfySettlePopOverCap(100000, cap, now+hour, now, 10); pop != 100000 || at != now {
-		t.Fatalf("时间戳在未来应重置，got pop=%d at=%d", pop, at)
+}
+
+// TestEzfyClampPopToHouseCap 超限人口必须立即夹到民居上限，不允许任何缓慢回落。
+func TestEzfyClampPopToHouseCap(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		pop    int64
+		popMax int64
+		want   int64
+	}{
+		{"未超限 → 原样", 45000, 45000, 45000},
+		{"低于上限 → 原样", 10000, 45000, 10000},
+		{"超过上限 → 立即夹平", 100000, 45000, 45000},
+		{"超过 1 人 → 立即夹平", 45001, 45000, 45000},
+		{"没有民居/上限未知 → 不动人口", 100000, 0, 100000},
+		{"上限为负 → 不动人口", 100000, -1, 100000},
+	} {
+		if got := ezfyClampPopToHouseCap(c.pop, c.popMax); got != c.want {
+			t.Errorf("%s: ezfyClampPopToHouseCap(%d, %d) = %d, want %d", c.name, c.pop, c.popMax, got, c.want)
+		}
 	}
 }
 
@@ -150,54 +159,94 @@ func TestSettlePopRecoverByConfiguredSeconds(t *testing.T) {
 	}
 }
 
-// TestPopOverCapDecayConfig 回落速度必须来自二战系统配置，而不是写死常量。
-func TestPopOverCapDecayConfig(t *testing.T) {
-	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func ezfyPopOverCapDecayPct() int {"))
-	for _, want := range []string{
-		"ezfyCfg.limit.PopOverCapDecayPct",
-		"ezfyPopOverCapDecayPctDef",
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("超限人口回落速度未读取系统配置（缺 %s）：\n%s", want, body)
-		}
+// TestEzfyHousePopCapOf 人口上限必须按「当前建筑列表里的民居等级」实时求和。
+func TestEzfyHousePopCapOf(t *testing.T) {
+	saved := ezfyCfg.buildingLvls
+	defer func() { ezfyCfg.buildingLvls = saved }()
+	ezfyCfg.buildingLvls = map[int]map[int]model.EzfyCfgBuildingLevel{
+		2: {
+			8:  {Capacity: 3600},
+			10: {Capacity: 5500},
+		},
+		3: {10: {Capacity: 9999}},
+	}
+	buildings := []model.EzfyCityBuilding{
+		{BuildingId: 2, Level: 8},
+		{BuildingId: 2, Level: 10},
+		{BuildingId: 3, Level: 10}, // 非民居，不计入
+		{BuildingId: 2, Level: 99}, // 配置缺失，不计入
+	}
+	if got := ezfyHousePopCapOf(buildings); got != 9100 {
+		t.Fatalf("ezfyHousePopCapOf = %d，期望 3600+5500=9100", got)
 	}
 }
 
-// TestCalcResourceHouseCap 懒结算必须以民居 pop_max 封顶；老数据超限走缓慢回落。
+// TestCalcResourceHouseCap 懒结算必须按实时民居 pop_max 封顶；超限立即夹平。
 func TestCalcResourceHouseCap(t *testing.T) {
 	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) calcResourceD("))
 	for _, want := range []string{
 		"if city.PopMax > 0 && city.Pop < city.PopMax {",
-		"if city.Pop > city.PopMax {",
-		"ezfySettlePopOverCap(city.Pop, city.PopMax, city.PopOverCapAt, now, ezfyPopOverCapDecayPct())",
-		`"pop_over_cap_at": city.PopOverCapAt`,
+		"city.Pop = ezfyClampPopToHouseCap(city.Pop, city.PopMax)",
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("calcResourceD 缺少「民居上限 + 超限回落」逻辑（缺 %s）：\n%s", want, body)
+			t.Fatalf("calcResourceD 缺少「民居上限 + 立即夹平」逻辑（缺 %s）：\n%s", want, body)
 		}
 	}
-	// 防回退：旧的开关/硬上限函数必须删除
-	for _, banned := range []string{"ezfyHousePopLimitOn", "ezfyConvenePopMaxCfg", "ezfyHouseSoftCap", "ezfyEffPopCap"} {
+	// 防回退：旧的开关/硬上限/缓慢回落逻辑必须删除
+	for _, banned := range []string{
+		"ezfyHousePopLimitOn", "ezfyConvenePopMaxCfg", "ezfyHouseSoftCap", "ezfyEffPopCap",
+		"ezfySettlePopOverCap", "ezfyPopOverCapDecayPct", "pop_over_cap_at",
+	} {
 		if strings.Contains(body, banned) {
 			t.Fatalf("calcResourceD 仍引用已删除的 %s：\n%s", banned, body)
 		}
 	}
 }
 
-// TestConveneByHouseCap 召集以民居上限为准：未满加人口，已满只恢复空闲人口。
+func TestConveneCooldownCfg(t *testing.T) {
+	old := ezfyCfg
+	defer func() { ezfyCfg = old }()
+	ezfyCfg.limit = model.EzfyCfgLimit{}
+	if got := ezfyConveneCooldownMs(false); got != 3000 {
+		t.Fatalf("普通召集间隔默认值 = %d ms，期望 3000", got)
+	}
+	if got := ezfyConveneCooldownMs(true); got != 300000 {
+		t.Fatalf("人口满召集间隔默认值 = %d ms，期望 300000", got)
+	}
+	ezfyCfg.limit.ConveneCooldownSeconds = 5
+	ezfyCfg.limit.ConveneCapCooldownSeconds = 7
+	if got := ezfyConveneCooldownMs(false); got != 5000 {
+		t.Fatalf("普通召集间隔配置 5 秒未生效，got %d ms", got)
+	}
+	if got := ezfyConveneCooldownMs(true); got != 7000 {
+		t.Fatalf("人口满召集间隔配置 7 秒未生效，got %d ms", got)
+	}
+	for ms, want := range map[int64]string{300000: "5 分钟", 5000: "5 秒", 90000: "1 分 30 秒"} {
+		if got := ezfyConveneCooldownTip(ms); got != want {
+			t.Fatalf("冷却提示 %d ms = %q，期望 %q", ms, got, want)
+		}
+	}
+}
+
+// TestConveneByHouseCap 召集以实时民居上限为准：未满加人口；已满总人口不动，加空闲人口。
 func TestConveneByHouseCap(t *testing.T) {
 	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) Convene("))
 	for _, want := range []string{
+		"city.PopMax = h.housePopCap(city.ID)",
+		"city.Pop = ezfyClampPopToHouseCap(city.Pop, city.PopMax)",
 		"ezfyPopGatherPlan(city.Pop, city.PopMax, popGain, city.PopRecover)",
-		"if city.Pop >= city.PopMax {",
-		"city.PopRecover -= gain",
+		"recoverUse := gain",
+		"city.PopRecover -= recoverUse",
+		"ezfyAddPopExtra(city, extraGain)",
 		"city.Pop += gain",
 		"foodCost = foodCost * gain / baseGain",
-		"ezfyConveneOverCapCooldownMs",
-		"5 分钟后再试",
+		"ezfyConveneCooldownMs(city.Pop >= city.PopMax)",
+		"ezfyConveneCooldownTip(cdMs)",
+		`"pop_max":            city.PopMax`,
+		`"pop_extra":`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("Convene 缺少「民居上限两阶段召集」逻辑（缺 %s）：\n%s", want, body)
+			t.Fatalf("Convene 缺少「实时民居上限 + 两阶段召集」逻辑（缺 %s）：\n%s", want, body)
 		}
 	}
 	for _, banned := range []string{"ezfyConvenePopMaxCfg", "ezfyHouseSoftCap", "ezfyHousePopLimitOn"} {
@@ -207,10 +256,13 @@ func TestConveneByHouseCap(t *testing.T) {
 	}
 }
 
-// TestPopGatesUseHouseCap 召集 / 移民法案共用同一套「民居上限两阶段」口径。
+// TestPopGatesUseHouseCap 召集 / 移民法案共用同一套「实时民居上限两阶段」口径。
 func TestPopGatesUseHouseCap(t *testing.T) {
 	src := ezfyStripCommentLines(rawFile(t, "ezfy.go"))
-	for _, banned := range []string{"ezfyConvenePopMaxCfg", "ezfyHouseSoftCap", "ezfyHousePopLimitOn", "ezfyConveneFlexOn"} {
+	for _, banned := range []string{
+		"ezfyConvenePopMaxCfg", "ezfyHouseSoftCap", "ezfyHousePopLimitOn", "ezfyConveneFlexOn",
+		"ezfySettlePopOverCap", "ezfyPopOverCapDecayPct", "PopOverCapAt",
+	} {
 		if strings.Contains(src, banned) {
 			t.Fatalf("ezfy.go 仍引用已删除的 %s", banned)
 		}
@@ -218,6 +270,10 @@ func TestPopGatesUseHouseCap(t *testing.T) {
 	// Convene + 移民法案 ItemType31 两处共用
 	if n := strings.Count(src, "ezfyPopGatherPlan("); n < 2 {
 		t.Fatalf("ezfyPopGatherPlan() 只有 %d 处，至少应有 2 处（人口召集 / 移民法案 ItemType31）", n)
+	}
+	// 两处都必须用当前建筑列表实时算上限，不能信任可能滞后的 ezfy_city.pop_max。
+	if n := strings.Count(src, "city.PopMax = h.housePopCap(city.ID)"); n < 2 {
+		t.Fatalf("实时民居上限只有 %d 处，至少应有 2 处（人口召集 / 移民法案 ItemType31）", n)
 	}
 }
 
@@ -229,15 +285,25 @@ func TestFrontendPopCapSameFormula(t *testing.T) {
 	if !strings.Contains(vue, "return (this.city && this.city.pop_max) || 0") {
 		t.Fatal("前端 popCap 未只取民居上限")
 	}
-	// 到民居上限且待恢复人口为 0 → 禁用召集
-	if !strings.Contains(vue, "return pop >= pm && (this.popRecover || 0) <= 0") {
-		t.Fatal("前端 conveneBlocked 未按「人口已满且无待恢复人口」禁用")
+	// 人口满后召集仍可用：按钮只受「民居容量为 0」禁用（冷却由 doConvene/后端卡控）
+	if !strings.Contains(vue, "return pm <= 0") {
+		t.Fatal("前端 conveneBlocked 仍按人口已满禁用召集")
 	}
-	// 达到/超过民居上限 → 5 分钟冷却
-	if !strings.Contains(vue, "5 * 60 * 1000") {
-		t.Fatal("前端 conveneCooldownMs 未实现 5 分钟冷却")
+	// 空闲人口必须计入额外空闲池
+	if !strings.Contains(vue, "(this.popExtra || 0)") {
+		t.Fatal("前端 freePop 未计入额外空闲人口 popExtra")
 	}
-	for _, banned := range []string{"convenePopMax", "housePopLimitOn", "conveneFlexibleOn", "houseSoftCapActive"} {
+	// 达到/超过民居上限 → 读取配置的召集间隔（默认 300 秒），不能写死 5 分钟
+	if !strings.Contains(vue, "this.conveneCapCooldownSec") || !strings.Contains(vue, "this.conveneCooldownSec") {
+		t.Fatal("前端 conveneCooldownMs 未读取召集间隔配置")
+	}
+	if strings.Contains(vue, "5 * 60 * 1000") {
+		t.Fatal("前端 conveneCooldownMs 仍写死 5 分钟")
+	}
+	for _, banned := range []string{
+		"convenePopMax", "housePopLimitOn", "conveneFlexibleOn", "houseSoftCapActive",
+		"popOverHouseCap",
+	} {
 		if strings.Contains(vue, banned) {
 			t.Fatalf("前端仍引用已删除的 %s", banned)
 		}
@@ -248,12 +314,15 @@ func TestFrontendPopCapSameFormula(t *testing.T) {
 	if !strings.Contains(cityVue, "空闲 {{ ezfy.freePop }}") {
 		t.Fatal("召集页未显示空闲人口")
 	}
-	// 人口已满时提示召集只恢复空闲人口
-	if !strings.Contains(cityVue, "人口已达民居上限，召集只恢复空闲人口") {
-		t.Fatal("召集页未提示「人口已满时召集只恢复空闲人口」")
+	// 人口已满时提示要短：只说明召集转为临时空闲，不再展开「总人口不变 / 超出部分回落」
+	if !strings.Contains(cityVue, "人口已满，召集只加临时空闲") {
+		t.Fatal("召集页未提示「人口已满，召集只加临时空闲」")
 	}
-	// 超过民居上限时要有「回落」提示
-	if !strings.Contains(cityVue, "popOverHouseCap") {
-		t.Fatal("前端未展示「超出民居上限会缓慢回落」提示")
+	if strings.Contains(cityVue, "超出部分会回落") {
+		t.Fatal("召集页仍在展示啰嗦的「超出部分会回落」说明")
+	}
+	// 超限总人口已改为立即夹平，前端不能再展示旧的「超限人口缓慢回落」提示
+	if strings.Contains(cityVue, "popOverHouseCap") || strings.Contains(cityVue, "缓慢回落") {
+		t.Fatal("前端仍展示已删除的「超限人口缓慢回落」提示")
 	}
 }

@@ -17,7 +17,7 @@ import (
 //   - 「未读军情: N」原来统计**全部未读战报**（含部队返航/城市迁移/将领升级这类非军情播报）
 //     → 改用与军情页两个 tab 徽标同口径的 `ezfyReportCounts`（军情警讯 + 战斗报告）。
 //   - 「人口: 78250/18000」分母原来恒取民居容纳 → 2026-10-22 起人口上限只由民居
-//     pop_max 决定，超过上限的老数据会缓慢回落。
+//     pop_max 决定；2026-10-23 起超过上限的老数据在下一次结算时立即夹平。
 
 // TestCreateOrderBlocksAttackWhileInPeace —— 出击侧：免战城不得侦查/掠夺/征服玩家城市
 func TestCreateOrderBlocksAttackWhileInPeace(t *testing.T) {

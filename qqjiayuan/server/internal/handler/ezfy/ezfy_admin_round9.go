@@ -35,10 +35,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
+		// ★ 2026-10-23 召集间隔（缺行时默认普通 3 秒 / 人口满 300 秒）
+		ConveneCooldownSeconds: ezfyConveneCooldownSecondsDef, ConveneCapCooldownSeconds: ezfyConveneCapCooldownSecondsDef,
 		// ★ 2026-10-22 空闲人口恢复满时间（缺行时默认 1200 秒）
-		PopRecoverSeconds: ezfyPopRecoverSecondsDef,
-		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
-		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
+		PopRecoverSeconds:  ezfyPopRecoverSecondsDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -126,6 +126,13 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	}
 	if lim.ConvenePopPct < 1 || lim.ConvenePopPct > 1000000000 {
 		lim.ConvenePopPct = ezfyConvenePopPctDef
+	}
+	// ★ 2026-10-23 召集间隔兜底（0/未配置/越界 → 默认 3 秒 / 300 秒）
+	if lim.ConveneCooldownSeconds < 1 || lim.ConveneCooldownSeconds > 1000000000 {
+		lim.ConveneCooldownSeconds = ezfyConveneCooldownSecondsDef
+	}
+	if lim.ConveneCapCooldownSeconds < 1 || lim.ConveneCapCooldownSeconds > 1000000000 {
+		lim.ConveneCapCooldownSeconds = ezfyConveneCapCooldownSecondsDef
 	}
 	// ★ 2026-10-22 空闲人口恢复满时间兜底（0/未配置/越界 → 默认 1200 秒）
 	if lim.PopRecoverSeconds < 1 || lim.PopRecoverSeconds > 1000000000 {
@@ -245,10 +252,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 2026-09-24：采集周期小时数（0 无意义 → 回落默认 1 小时）
 	if lim.DispatchPeriodH <= 0 {
 		lim.DispatchPeriodH = 1
-	}
-	// ★ 2026-10-20 超限人口回落速度（0 / 越界无意义 → 回落默认 100%/5 分钟）
-	if lim.PopOverCapDecayPct < 1 || lim.PopOverCapDecayPct > 100 {
-		lim.PopOverCapDecayPct = ezfyPopOverCapDecayPctDef
 	}
 	// ★ 2026-10-13 回合战斗公式：0 无意义（= 未配置/配置错）→ 回落移植前的硬编码默认值
 	if lim.BattleMaxRounds <= 0 {
@@ -402,10 +405,11 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		//   ★ 2026-10-22 人口上限只由民居决定，原「民居容量限制/允许长期超过/召集人口上限」已删除。
 		ConveneFoodCost *int `json:"convene_food_cost"`
 		ConvenePopPct   *int `json:"convene_pop_pct"`
+		// ★ 2026-10-23 召集间隔（秒）：普通 3 秒 / 人口满 300 秒；0/未配置回落默认
+		ConveneCooldownSeconds    *int `json:"convene_cooldown_seconds"`
+		ConveneCapCooldownSeconds *int `json:"convene_cap_cooldown_seconds"`
 		// ★ 2026-10-22 空闲人口恢复满时间（默认 1200 秒；0/未配置 → 读取端回落默认）
 		PopRecoverSeconds *int `json:"pop_recover_seconds"`
-		// ★ 2026-10-20 超出民居上限人口的每小时回落百分比（按当前超出量，1~100，默认 10）
-		PopOverCapDecayPct *int `json:"pop_over_cap_decay_pct"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
 		OfficerStarUpOn     *int `json:"officer_star_up_on"`
 		OfficerStarChance   *int `json:"officer_star_chance"`
@@ -476,10 +480,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopPct: ezfyConvenePopPctDef,
+		// ★ 2026-10-23 召集间隔（缺行时默认普通 3 秒 / 人口满 300 秒）
+		ConveneCooldownSeconds: ezfyConveneCooldownSecondsDef, ConveneCapCooldownSeconds: ezfyConveneCapCooldownSecondsDef,
 		// ★ 2026-10-22 空闲人口恢复满时间（缺行时默认 1200 秒）
-		PopRecoverSeconds: ezfyPopRecoverSecondsDef,
-		// ★ 2026-10-20 超限人口每 5 分钟回落百分比（缺行时默认 100%/5 分钟）
-		PopOverCapDecayPct: ezfyPopOverCapDecayPctDef,
+		PopRecoverSeconds:  ezfyPopRecoverSecondsDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -682,6 +686,21 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.ConvenePopPct = *in.ConvenePopPct
 	}
+	// ★ 2026-10-23 召集间隔（秒）：1 秒即可用于测试；0 无意义 → 读取端回落默认。
+	if in.ConveneCooldownSeconds != nil {
+		if *in.ConveneCooldownSeconds < 1 || *in.ConveneCooldownSeconds > 1000000000 {
+			resp.ParamError(c, "普通召集间隔需要在 1~1000000000 秒之间")
+			return
+		}
+		lim.ConveneCooldownSeconds = *in.ConveneCooldownSeconds
+	}
+	if in.ConveneCapCooldownSeconds != nil {
+		if *in.ConveneCapCooldownSeconds < 1 || *in.ConveneCapCooldownSeconds > 1000000000 {
+			resp.ParamError(c, "人口满时召集间隔需要在 1~1000000000 秒之间")
+			return
+		}
+		lim.ConveneCapCooldownSeconds = *in.ConveneCapCooldownSeconds
+	}
 	// ★ 2026-10-22 人口上限只由民居容量决定（原「召集人口上限」配置已删除）。
 	// ★ 2026-10-22 空闲人口恢复满时间（征兵占用人口从征兵当下起，按此秒数线性恢复满）：
 	//   默认 1200 秒（20 分钟），0 无意义 → 读取端回落默认。
@@ -691,19 +710,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.PopRecoverSeconds = *in.PopRecoverSeconds
-	}
-	// ★ 2026-10-20 超限人口每 5 分钟回落百分比（按当前超出量）：
-	//   1~100 有意义（100 = 5 分钟内回落全部超出人口），0 会让人口永远不回落。
-	if in.PopOverCapDecayPct != nil {
-		if *in.PopOverCapDecayPct < 1 || *in.PopOverCapDecayPct > 100 {
-			resp.ParamError(c, "超限人口回落速度需要在 1~100 之间（每 5 分钟回落 %）")
-			return
-		}
-		lim.PopOverCapDecayPct = *in.PopOverCapDecayPct
-	}
-	// ★ 超限人口回落速度兜底：老行 0 / 越界 → 默认 100%/5 分钟
-	if lim.PopOverCapDecayPct < 1 || lim.PopOverCapDecayPct > 100 {
-		lim.PopOverCapDecayPct = ezfyPopOverCapDecayPctDef
 	}
 	if lim.MilitaryMax <= 0 {
 		lim.MilitaryMax = 36
@@ -740,6 +746,13 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	if lim.ConvenePopPct < 1 || lim.ConvenePopPct > 1000000000 {
 		lim.ConvenePopPct = ezfyConvenePopPctDef
+	}
+	// ★ 2026-10-23 召集间隔兜底（0/未配置/越界 → 默认 3 秒 / 300 秒）
+	if lim.ConveneCooldownSeconds < 1 || lim.ConveneCooldownSeconds > 1000000000 {
+		lim.ConveneCooldownSeconds = ezfyConveneCooldownSecondsDef
+	}
+	if lim.ConveneCapCooldownSeconds < 1 || lim.ConveneCapCooldownSeconds > 1000000000 {
+		lim.ConveneCapCooldownSeconds = ezfyConveneCapCooldownSecondsDef
 	}
 	// ★ 2026-10-22 空闲人口恢复满时间兜底（0/未配置/越界 → 默认 1200 秒）
 	if lim.PopRecoverSeconds < 1 || lim.PopRecoverSeconds > 1000000000 {
@@ -1427,12 +1440,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT " + strconv.Itoa(ezfyWildItemCooldownDef))
 	}
 	h.DB.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = " + strconv.Itoa(ezfyWildItemCooldownDef) + " WHERE wild_item_cooldown_h IS NULL")
-	// ★ 2026-10-20 超限人口回落速度（默认 100%/5 分钟）：老库补列 + NULL/<=0 回填默认。
-	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "pop_over_cap_decay_pct") {
-		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pop_over_cap_decay_pct int DEFAULT " + strconv.Itoa(ezfyPopOverCapDecayPctDef))
-	}
-	h.DB.Exec("UPDATE ezfy_cfg_limit SET pop_over_cap_decay_pct = " + strconv.Itoa(ezfyPopOverCapDecayPctDef) +
-		" WHERE pop_over_cap_decay_pct IS NULL OR pop_over_cap_decay_pct <= 0")
 	// ★ 2026-10-21 造兵市长军事加成 / 装备套装军事计入（默认 1）：⚠️ 0 合法（= 关），
 	//   只补列 + 只回填 NULL，不能把管理员关掉的 0 改回 1。
 	for _, c := range []struct {
@@ -1514,10 +1521,11 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比，同样用 map 显式写
 		"convene_food_cost": lim.ConveneFoodCost,
 		"convene_pop_pct":   lim.ConvenePopPct,
+		// ★ 2026-10-23 召集间隔（秒）：显式写，管理端保存后立即生效
+		"convene_cooldown_seconds":     lim.ConveneCooldownSeconds,
+		"convene_cap_cooldown_seconds": lim.ConveneCapCooldownSeconds,
 		// ★ 2026-10-22 空闲人口恢复满时间（秒）：同样显式写，避免零值被 GORM default 吞掉
 		"pop_recover_seconds": lim.PopRecoverSeconds,
-		// ★ 2026-10-20 超限人口每 5 分钟回落百分比
-		"pop_over_cap_decay_pct": lim.PopOverCapDecayPct,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
 		"wild_treasure_cooldown_h": lim.WildTreasureCooldownH,
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）

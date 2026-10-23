@@ -85,41 +85,53 @@ func TestNewCityRules(t *testing.T) {
 	}
 }
 
-// TestConveneCooldown 人口召集卡控：普通 3 秒；人口达到/超过民居上限时 5 分钟。
+// TestConveneCooldown 人口召集卡控：普通 / 人口满两档间隔都从二战系统配置读取。
 func TestConveneCooldown(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy.go"), "\r\n", "\n")
 	if strings.Contains(src, "nowCd-last < 5000") {
 		t.Fatal("召集卡控还是旧的 5 秒")
 	}
-	if !strings.Contains(src, "ezfyConveneCooldownMs        = 3000") {
-		t.Fatal("普通召集卡控不是 3 秒")
+	if strings.Contains(src, "ezfyConveneOverCapCooldownMs") {
+		t.Fatal("召集卡控仍在使用写死的满人口间隔常量")
 	}
-	if !strings.Contains(src, "ezfyConveneOverCapCooldownMs = 5 * 60 * 1000") {
-		t.Fatal("超过民居上限后的召集卡控不是 5 分钟")
-	}
-	if !strings.Contains(src, "nowCd-last < cdMs") {
-		t.Fatal("召集卡控没有按 cdMs（3 秒 / 5 分钟）判断")
-	}
-	for _, want := range []string{"请 3 秒后再试", "请 5 分钟后再试"} {
+	for _, want := range []string{
+		"ezfyConveneCooldownMs(city.Pop >= city.PopMax)",
+		"nowCd-last < cdMs",
+		"ezfyConveneCooldownTip(cdMs)",
+		"ezfyConveneMemo[city.ID] = nowCd",
+	} {
 		if !strings.Contains(src, want) {
-			t.Fatalf("召集卡控提示文案缺「%s」", want)
+			t.Fatalf("召集卡控缺「%s」", want)
 		}
-	}
-	// ★ 2026-10-21 用户报「召集按钮卡所有城市」：冷却必须按城市记，不能按玩家 uid。
-	if !strings.Contains(src, "ezfyConveneMemo[city.ID] = nowCd") {
-		t.Fatal("召集卡控未按 city.ID 记录冷却（会卡住同账号其它城市）")
 	}
 	if strings.Contains(src, "ezfyConveneMemo[uid]") {
 		t.Fatal("召集卡控仍按玩家 uid 记录冷却（应改为 city.ID）")
 	}
+	geo := ezfyStripCommentLines(rawFile(t, "ezfy_geo.go"))
+	for _, want := range []string{
+		"ezfyConveneCooldownSecondsDef    = 3",
+		"ezfyConveneCapCooldownSecondsDef = 300",
+		"ezfyCfg.limit.ConveneCooldownSeconds",
+		"ezfyCfg.limit.ConveneCapCooldownSeconds",
+	} {
+		if !strings.Contains(geo, want) {
+			t.Fatalf("召集间隔配置缺「%s」", want)
+		}
+	}
 	vue := ezfyStripCommentLines(readFrontFile(t, "../../../../web/src/views/ezfy/Ezfy.vue"))
-	for _, want := range []string{"atByCity[cid]", "city_id: cid"} {
+	for _, want := range []string{"atByCity[cid]", "city_id: cid", "conveneCapCooldownSec", "conveneCooldownSec"} {
 		if !strings.Contains(vue, want) {
-			t.Fatalf("前端 doConvene 未按城市独立冷却/未带上 city_id（缺 %s）", want)
+			t.Fatalf("前端 doConvene 未按城市独立冷却或未读取召集间隔配置（缺 %s）", want)
 		}
 	}
 	if strings.Contains(vue, "this.lastConveneAt") {
 		t.Fatal("前端 doConvene 仍在用全账号共享的 lastConveneAt（应改为按城市）")
+	}
+	adminVue := ezfyStripCommentLines(readFrontFile(t, "../../../../admin-web/src/components/admin/AdminEzfyBuildLimit.vue"))
+	for _, want := range []string{"convene_cooldown_seconds", "convene_cap_cooldown_seconds", "普通召集间隔", "人口满时召集间隔"} {
+		if !strings.Contains(adminVue, want) {
+			t.Fatalf("管理端未提供召集间隔配置（缺 %s）", want)
+		}
 	}
 }
 
@@ -183,7 +195,8 @@ func TestMallBuyMaxDefault999(t *testing.T) {
 	}
 }
 
-// TestConveneAtHouseCap 人口召集以民居上限为准：未满截断到上限，已满只恢复空闲人口。
+// TestConveneAtHouseCap 人口召集以民居上限为准：未满截断到上限；
+// 已满仍可召集，总人口不增加，先扣待恢复人口、剩余进额外空闲池。
 func TestConveneAtHouseCap(t *testing.T) {
 	body := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) Convene("))
 
@@ -191,8 +204,10 @@ func TestConveneAtHouseCap(t *testing.T) {
 		"ezfyPopGatherPlan(city.Pop, city.PopMax, popGain, city.PopRecover)",
 		"foodCost = foodCost * gain / baseGain",
 		"city.Pop += gain",
-		"city.PopRecover -= gain",
-		"人口和空闲人口均已满",
+		"recoverUse := gain",
+		"city.PopRecover -= recoverUse",
+		"ezfyAddPopExtra(city, extraGain)",
+		"pop_extra",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("Convene 未按民居上限两阶段召集（缺 %s）", want)

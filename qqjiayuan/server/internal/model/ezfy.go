@@ -608,22 +608,23 @@ type EzfyCfgLimit struct {
 	MarchCapOn int `gorm:"comment:出征上限开启" json:"march_cap_on"`
 
 	// ★ 2026-10-22 人口上限只由民居容量（EzfyCity.PopMax）决定：
-	//   自然增长到 pop_max 封顶；人口未满时召集同时增加总人口和空闲人口，
-	//   人口已满时召集/移民法案只恢复空闲人口。原「民居容量限制」、
-	//   「允许长期超过民居上限」、「召集人口上限」三个配置已删除。
+	//   自然增长到 pop_max 封顶；人口未满时召集同时增加总人口和空闲人口。
+	//   原「民居容量限制」、「允许长期超过民居上限」、「召集人口上限」三个配置已删除。
+	// ★ 2026-10-23 总人口永远不允许超过民居上限：超限数据在下一次懒结算时直接夹平。
+	//   人口已满时召集/移民法案仍可继续：总人口不增加，召集量转为额外空闲人口
+	//   （EzfyCity.PopExtra，允许空闲暂时超过总人口，5 分钟内回落）。
+	//   原「超限人口回落速度」配置也已删除。
 	//
-	// ★ 2026-10-20 用户反馈「超民居上限的人口回落有点慢」→ 回落速度做成二战系统配置。
-	// ★ 2026-10-21 「调到 100% 还要 1 小时，要求 5 分钟内回落」→ 单位改为「%/5 分钟」：
-	//   每 5 分钟按「当前超出量 × 该百分比」回落（默认 100%/5 分钟 = 5 分钟回落完）。
-	//   仅用于老数据/并发产生的 `pop > pop_max` 超限回落，正常玩法不会超限。
-	//   0 / 未配置无意义 → 读取端回落默认 100。
-	PopOverCapDecayPct int `gorm:"default:100;comment:超限人口每5分钟回落百分比（按超出量，默认100）" json:"pop_over_cap_decay_pct"`
-
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」。
 	// ★ 2026-10-22 用户规则：召集获得人口不再固定，改为「当前民居上限 × N%」，默认 10%。
 	//   召集消耗粮食仍为固定值。两者 0 无意义 → 回落默认（seed 走 addLimitCol）。
 	ConveneFoodCost int `gorm:"comment:召集消耗粮食" json:"convene_food_cost"`
 	ConvenePopPct   int `gorm:"comment:召集人口占当前民居上限的百分比（默认10，可超过100）" json:"convene_pop_pct"`
+	// ★ 2026-10-23 用户规则「召集间隔放到二战系统配置，方便灵活调整和测试」：
+	//   普通状态 / 人口达到民居上限后，两次召集的最短间隔（秒）。
+	//   0/未配置无意义 → 回落默认 3 秒 / 300 秒（seed 走 addLimitCol 只回填 NULL/<=0）。
+	ConveneCooldownSeconds    int `gorm:"default:3;comment:普通召集冷却秒数（默认3）" json:"convene_cooldown_seconds"`
+	ConveneCapCooldownSeconds int `gorm:"default:300;comment:人口满时召集冷却秒数（默认300）" json:"convene_cap_cooldown_seconds"`
 
 	// ★ 2026-10-13 用户规则「用完的人口不会立即恢复，是一点一点恢复到当前人口数量的」：
 	// ★ 2026-10-22 用户规则：不再配置「每小时恢复量」，改为「多少秒内空闲人口恢复满」，默认 1200 秒。
@@ -1188,31 +1189,34 @@ type EzfyCity struct {
 	//	「待恢复人口」，不等出厂；之后按 `ezfy_cfg_limit.pop_recover_seconds`
 	//	（默认 1200 秒内恢复满）线性减回 0。
 	//
-	//	空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（下限 0）。
+	//	空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口 + 额外空闲人口（下限 0）。
 	//	★ 人口未满民居上限时，召集同时增加总人口与空闲人口；人口已满时，
-	//	召集/移民法案（ItemType 31）直接扣减这笔待恢复人口，等于立刻恢复空闲人口。
+	//	召集/移民法案（ItemType 31）先扣减这笔待恢复人口，剩余计入 PopExtra
+	//	（额外空闲人口，允许空闲暂时超过总人口，并在 5 分钟内回落）。
 	PopRecover int64 `gorm:"comment:待恢复人口(训练已消耗、还没回到空闲)" json:"pop_recover"`
 	// ★ 2026-10-13 待恢复人口上次结算时间戳(ms)，0 = 还没结算过（首次结算只记时间、不恢复）。
 	PopRecoverAt int64 `gorm:"comment:待恢复人口上次结算时间戳(ms)" json:"pop_recover_at"`
 	// ★ 2026-10-22 本轮待恢复人口的恢复截止时间戳(ms)，0 = 当前没有恢复任务。
 	//   有新训练消耗人口时重新起算（默认 1200 秒后恢复满）。
 	PopRecoverEndAt int64 `gorm:"comment:待恢复人口恢复截止时间戳(ms)" json:"pop_recover_end_at"`
-	// ★ 2026-10-20 超出民居上限的人口回落上次结算时间戳(ms)，0 = 当前未超限/刚进入超限。
-	//   民居容量是唯一人口上限：正常玩法人口不会超过 pop_max；
-	//   老数据/并发产生的超出部分按 ezfyPopOverCapDecayPct（默认 100%/5 分钟）
-	//   缓慢回落到 pop_max，不是立刻夹平。详见 calcResourceD。
-	PopOverCapAt int64 `gorm:"comment:超限人口回落上次结算时间戳(ms,0=未超限)" json:"pop_over_cap_at"`
-	Gold         int64 `gorm:"comment:黄金" json:"gold"`
-	Food         int64 `gorm:"comment:粮食" json:"food"`
-	Steel        int64 `gorm:"comment:钢铁" json:"steel"`
-	Oil          int64 `gorm:"comment:石油" json:"oil"`
-	Rare         int64 `gorm:"comment:稀矿" json:"rare"`
-	GoldCap      int64 `gorm:"comment:黄金上限" json:"gold_cap"`
-	FoodCap      int64 `gorm:"comment:粮食上限" json:"food_cap"`
-	SteelCap     int64 `gorm:"comment:钢铁上限" json:"steel_cap"`
-	OilCap       int64 `gorm:"comment:石油上限" json:"oil_cap"`
-	RareCap      int64 `gorm:"comment:稀矿上限" json:"rare_cap"`
-	LastTime     int64 `gorm:"comment:上次资源结算时间戳(ms)" json:"last_time"` // 上次资源结算时间戳(ms)
+	// ★★ 2026-10-23 用户规则：人口达到民居上限后，召集仍可继续，但**不再增加总人口**，
+	//   而是把这些人口记成「额外空闲人口」；因此空闲人口可以暂时超过总人口。
+	//   超过正常空闲（人口 − 建筑占用 − 待恢复）的部分会在 ezfyPopExtraDecayMs 内线性回落。
+	//   不占人口位置、不计入总人口，只参与空闲人口/征兵可用人口的计算。
+	PopExtra      int64 `gorm:"comment:额外空闲人口(可超过总人口, 到时回落)" json:"pop_extra"`
+	PopExtraAt    int64 `gorm:"comment:额外空闲人口上次结算时间戳(ms)" json:"pop_extra_at"`
+	PopExtraEndAt int64 `gorm:"comment:额外空闲人口回落截止时间戳(ms)" json:"pop_extra_end_at"`
+	Gold          int64 `gorm:"comment:黄金" json:"gold"`
+	Food          int64 `gorm:"comment:粮食" json:"food"`
+	Steel         int64 `gorm:"comment:钢铁" json:"steel"`
+	Oil           int64 `gorm:"comment:石油" json:"oil"`
+	Rare          int64 `gorm:"comment:稀矿" json:"rare"`
+	GoldCap       int64 `gorm:"comment:黄金上限" json:"gold_cap"`
+	FoodCap       int64 `gorm:"comment:粮食上限" json:"food_cap"`
+	SteelCap      int64 `gorm:"comment:钢铁上限" json:"steel_cap"`
+	OilCap        int64 `gorm:"comment:石油上限" json:"oil_cap"`
+	RareCap       int64 `gorm:"comment:稀矿上限" json:"rare_cap"`
+	LastTime      int64 `gorm:"comment:上次资源结算时间戳(ms)" json:"last_time"` // 上次资源结算时间戳(ms)
 	// ★ 2026-10-12 用户规则「迁城道具加个冷却，针对**迁过城的城市**冷却 24 小时」：
 	//   冷却记在**城市**上 —— 本城迁城时间 + 配置的冷却时长的截止时间戳(ms)，0 = 无冷却。
 	//   别的城不受影响；时长由管理端「二战系统配置 → 迁城冷却(小时)」维护（0 = 关闭）。

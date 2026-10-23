@@ -244,15 +244,14 @@ func Run(db *gorm.DB, staticDir string) {
 		// ★ 2026-10-22 召集人口改为「当前民居上限的 N%」，默认 10%（不再使用固定的 convene_pop_gain）
 		//   ★ 2026-10-22 人口上限只由民居容量决定，原 convene_pop_max 配置已删除。
 		addLimitCol("convene_pop_pct", 10)
+		// ★ 2026-10-23 召集间隔后台可配：普通默认 3 秒 / 人口满默认 300 秒。
+		//   0 无意义（读取端回落默认）→ 用 addLimitCol 补列 + 回填。
+		addLimitCol("convene_cooldown_seconds", 3)
+		addLimitCol("convene_cap_cooldown_seconds", 300)
 		// ★ 2026-10-22 空闲人口恢复满时间（默认 1200 秒 = 20 分钟）：
 		//   训练完不再瞬间归还人口，转成待恢复人口，在配置时间内线性恢复满（见 ezfySettlePopRecover）。
 		//   0 无意义（读取端回落默认 1200）→ 用 addLimitCol 补列 + 回填。
 		addLimitCol("pop_recover_seconds", 1200)
-		// ★ 2026-10-20 超限人口回落速度（默认 100%/5 分钟，按当前超出量计算）。
-		// ★ 2026-10-21 用户要求「100% 也要 5 分钟内回落」→ 单位改为每 5 分钟：
-		//   100 = 5 分钟内回落到民居上限。
-		//   0 无意义（= 人口永远不回落）→ 用 addLimitCol 补列 + 回填。
-		addLimitCol("pop_over_cap_decay_pct", 100)
 		// ★ 2026-10-22 驻军批量操作范围（1=当前城市 默认 / 2=全部城市）：
 		//   0 是「老库未配置」→ 回填 1，保持现行为；管理端保存只接受 1/2。
 		addLimitCol("garrison_batch_scope", 1)
@@ -3329,6 +3328,16 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pop_recover_seconds int DEFAULT 1200")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET pop_recover_seconds = 1200 WHERE pop_recover_seconds IS NULL OR pop_recover_seconds <= 0")
+	// ★ 2026-10-23 召集间隔（普通默认 3 秒 / 人口满默认 300 秒）：
+	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "convene_cooldown_seconds") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN convene_cooldown_seconds int DEFAULT 3")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET convene_cooldown_seconds = 3 WHERE convene_cooldown_seconds IS NULL OR convene_cooldown_seconds <= 0")
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "convene_cap_cooldown_seconds") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN convene_cap_cooldown_seconds int DEFAULT 300")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET convene_cap_cooldown_seconds = 300 WHERE convene_cap_cooldown_seconds IS NULL OR convene_cap_cooldown_seconds <= 0")
 	// ★ 2026-10-22 驻军批量操作范围（1=当前城市 默认 / 2=全部城市）：
 	//   老库补列 + NULL/非法值回填 1，保持「一键采集/收获/召回只作用于当前城市」的现行为。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "garrison_batch_scope") {

@@ -378,12 +378,7 @@
             </el-form-item>
             <!-- ★ 2026-10-22 人口上限只由民居容量（pop_max）决定：原「民居容量限制」
                  「允许长期超过民居上限」「召集人口上限」三项配置已删除。
-                 回落速度仅用于老数据/并发产生的 pop > pop_max 缓慢回落。 -->
-            <el-form-item>
-              <template slot="label">超限人口回落速度<el-tooltip placement="top" :content="tips.pop_over_cap_decay_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model.number="form.pop_over_cap_decay_pct" :min="1" :max="100" :step="5" controls-position="right" style="width:180px" />
-              <span class="unit-hint">%/5 分钟 · 仅老数据超限回落</span>
-            </el-form-item>
+                 ★ 2026-10-23 超限人口改为下一次懒结算直接夹平，原「超限人口回落速度」配置也已删除。 -->
             <!-- ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」 -->
             <el-form-item>
               <template slot="label">召集消耗粮食<el-tooltip placement="top" :content="tips.convene_food_cost"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -393,6 +388,17 @@
               <template slot="label">召集人口比例<el-tooltip placement="top" :content="tips.convene_pop_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.convene_pop_pct" :min="1" :max="1000000000" :step="1" controls-position="right" style="width: 200px" />
               <span class="unit-hint">% · 当前民居上限</span>
+            </el-form-item>
+            <!-- ★ 2026-10-23 召集间隔可配：方便调整节奏；测试时可临时改小 -->
+            <el-form-item>
+              <template slot="label">普通召集间隔<el-tooltip placement="top" :content="tips.convene_cooldown_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.convene_cooldown_seconds" :min="1" :max="1000000000" :step="1" controls-position="right" style="width: 200px" />
+              <span class="unit-hint">秒 · 默认 3 秒</span>
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">人口满时召集间隔<el-tooltip placement="top" :content="tips.convene_cap_cooldown_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.convene_cap_cooldown_seconds" :min="1" :max="1000000000" :step="10" controls-position="right" style="width: 200px" />
+              <span class="unit-hint">秒 · 默认 300 秒（5 分钟）</span>
             </el-form-item>
             <!-- ★ 2026-10-22 「空闲人口恢复满时间」：训练消耗人口后按配置秒数线性恢复满 -->
             <el-form-item>
@@ -511,10 +517,10 @@ export default {
         // ★ 2026-09-26：召集消耗粮食 / 召集人口比例（默认 10 万粮食 / 10%；原来写死固定人口）
         //   ★ 2026-10-22 人口上限只由民居容量决定，原三项人口上限配置已删除。
         convene_food_cost: 100000, convene_pop_pct: 10,
+        // ★ 2026-10-23 召集间隔（秒）：普通默认 3 秒 / 人口满默认 300 秒
+        convene_cooldown_seconds: 3, convene_cap_cooldown_seconds: 300,
         // ★ 2026-10-22：空闲人口恢复满时间（默认 1200 秒；训练消耗人口后按此时间线性恢复）
         pop_recover_seconds: 1200,
-        // ★ 2026-10-20：超出民居上限的人口每 5 分钟回落百分比（按当前超出量，默认 100%/5 分钟 = 5 分钟内回落完）
-        pop_over_cap_decay_pct: 100,
         // ★ 2026-10-14 风云榜统计开关（1 = 开：战斗结算写周榜；0 = 关：完全不统计）
         pvp_rank_on: 1,
         officer_star_up_on: 1,
@@ -541,7 +547,8 @@ export default {
           'res_max_rare', 'res_max_gold'],
         switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'train_mayor_military_on',
           'train_mayor_equip_on', 'food_upkeep_on', 'march_oil_on',
-          'pop_over_cap_decay_pct', 'convene_food_cost', 'convene_pop_pct', 'pop_recover_seconds',
+          'convene_food_cost', 'convene_pop_pct', 'convene_cooldown_seconds',
+          'convene_cap_cooldown_seconds', 'pop_recover_seconds',
           'pvp_rank_on', 'garrison_batch_scope'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
           'recruit_five_star_rate'],
@@ -670,14 +677,16 @@ export default {
           '仅在「造兵市长军事加成」开启时有效。默认开。',
         food_upkeep_on: '开 = 城内军队每小时扣除粮食；关 = 不扣',
         march_oil_on: '开 = 出征消耗石油；关 = 不消耗',
-        pop_over_cap_decay_pct: '超出民居上限的人口每 5 分钟回落速度（按当前超出量计算，1~100，默认 100%/5 分钟）。' +
-          '100 → 5 分钟内回到民居上限；50 → 约 10 分钟；10 → 约 50 分钟。' +
-          '民居容量（pop_max）是唯一人口上限，正常玩法不会超限；本项仅用于老数据/并发产生的超限人口缓慢回落。',
         convene_food_cost: '玩家点一次「召集」消耗的粮食数，默认 10 万（=100000）',
         convene_pop_pct: '玩家点一次「召集」获得的人口 = 当前民居上限 × 该百分比，默认 10%。' +
-          '人口未满时加到民居上限为止；人口已满时改为恢复等量空闲人口。' +
+          '人口未满时加到民居上限为止；人口已满时总人口不变，本次召集量转为临时空闲人口。' +
           '例如民居上限 5 万 → 召集一次 +5000 人口；向下取整，至少 1 人。' +
           '允许超过 100%：填 250 = 召集一次获得民居上限的 2.5 倍人口。',
+        convene_cooldown_seconds: '普通状态下两次召集的最短间隔，默认 3 秒。' +
+          '改小可加快测试；保存后立即生效，前端按钮冷却和后端校验同时跟随。',
+        convene_cap_cooldown_seconds: '人口达到/超过民居上限后，两次召集的最短间隔，默认 300 秒（5 分钟）。' +
+          '人口已满时召集仍可用，总人口不变，只增加临时空闲人口。' +
+          '测试时可临时改成 5 秒，保存后立即生效。',
         pop_recover_seconds: '训练消耗人口后，这部分空闲人口不会瞬间归还，而是在该时间内线性恢复满（默认 1200 秒 = 20 分钟）。' +
           '有新训练消耗人口时会重新起算；玩家可用「移民法案」道具（2 钻石）瞬间恢复 1 万空闲人口',
         pvp_rank_on: '开 = 玩家对战结算按自然周写入风云榜（现行为）；关 = 完全不统计（榜单为空，历史周榜保留，重新开启即继续累计）。' +
@@ -801,11 +810,11 @@ export default {
             march_cap_on: sw(r.data.march_cap_on),
             convene_food_cost: pos(r.data.convene_food_cost, 100000),
             convene_pop_pct: Math.min(1000000000, Math.max(1, Number(r.data.convene_pop_pct) || 10)),
+            // ★ 2026-10-23 召集间隔（0/未配置 → 回落默认 3 秒 / 300 秒）
+            convene_cooldown_seconds: Math.min(1000000000, Math.max(1, Number(r.data.convene_cooldown_seconds) || 3)),
+            convene_cap_cooldown_seconds: Math.min(1000000000, Math.max(1, Number(r.data.convene_cap_cooldown_seconds) || 300)),
             // ★ 2026-10-22 空闲人口恢复满时间（0/未配置 → 回落默认 1200 秒）
             pop_recover_seconds: Math.min(1000000000, Math.max(1, Number(r.data.pop_recover_seconds) || 1200)),
-            // ★ 2026-10-20 超限人口回落速度（1~100，越界/未配置回落默认 100%/5 分钟）
-            pop_over_cap_decay_pct: (Number(r.data.pop_over_cap_decay_pct) >= 1 && Number(r.data.pop_over_cap_decay_pct) <= 100)
-              ? Number(r.data.pop_over_cap_decay_pct) : 100,
             // ★ 2026-10-14 风云榜统计开关：**0 合法 = 关闭统计**，不能用 pos()（会把 0 改回 1）
             pvp_rank_on: (r.data.pvp_rank_on === undefined || r.data.pvp_rank_on === null)
               ? 1 : Number(r.data.pvp_rank_on),

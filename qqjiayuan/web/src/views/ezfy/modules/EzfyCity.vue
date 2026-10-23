@@ -61,8 +61,8 @@
                于是这里永远显示「陆地城市」，和城市列表的「海城」对不上 —— 用户反馈的 bug） -->
           <span :class="ezfy.cityIsSea ? 'green' : 'gray'">[{{ ezfy.cityKindLabel }}]</span><br/>
           市政厅: {{ ezfy.city.city_level }}级<br/>
-          <!-- ★ 2026-10-22 人口上限只由民居容量决定；老数据超限时提示回落中。 -->
-          人口: {{ ezfy.city.pop }}（空闲{{ ezfy.freePop }}） / 民居上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '无' }}<span v-if="ezfy.popOverHouseCap">（超出部分回落中）</span><br/>
+          <!-- ★ 2026-10-22 人口上限只由民居容量决定；★ 2026-10-23 超限人口在下一次懒结算直接夹平。 -->
+          人口: {{ ezfy.city.pop }}（空闲{{ ezfy.freePop }}） / 民居上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '无' }}<br/>
           民心/民怨: {{ ezfy.city.feelings }}/{{ ezfy.city.grievance }} 税率: {{ ezfy.city.tax_rate }}%<br/>
           建筑: {{ ezfy.buildings.length }}座 (军事+资源区 {{ ezfy.areaCount }}/{{ ezfy.areaCap }})<br/>
           军队: {{ ezfy.totalTroops }} (城外{{ ezfy.marching }}支队伍行进, {{ ezfy.occupying }}支驻守)<br/>
@@ -81,20 +81,21 @@
         <div class="panel">
           <div class="panel-title">召集人口</div>
           <!-- ★ 2026-10-22 人口上限只由民居容量决定：
-               人口未满 → 召集加人口；人口已满 → 召集只恢复空闲人口（扣待恢复人口）。 -->
+               人口未满 → 召集加人口；人口已满 → 召集只加临时空闲（总人口不变）。
+               ★ 2026-10-23 临时空闲可以暂时超过总人口，之后自然回落。 -->
           当前人口: {{ ezfy.city.pop }}（空闲 {{ ezfy.freePop }}）<br/>
           民居上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '无' }}<br/>
-          <span v-if="ezfy.popOverHouseCap" class="gray">超出民居上限的人口会缓慢回落</span><br v-if="ezfy.popOverHouseCap"/>
-          <span v-else-if="ezfy.popAtHouseCap" class="gray">人口已达民居上限，召集只恢复空闲人口</span><br v-else-if="ezfy.popAtHouseCap"/>
+          <span v-if="ezfy.popAtHouseCap" class="gray">人口已满，召集只加临时空闲</span><br v-if="ezfy.popAtHouseCap"/>
+          <span v-if="ezfy.popExtra > 0" class="orange">临时空闲 +{{ ezfy.fmtBig(ezfy.popExtra) }}</span><br v-if="ezfy.popExtra > 0"/>
           <span v-if="ezfy.popRecover > 0" class="gray">待恢复人口: {{ ezfy.fmtBig(ezfy.popRecover) }}（召集可立即恢复为空闲人口）</span><br v-if="ezfy.popRecover > 0"/>
           <!-- 花费粮食读管理端配置；召集人口 = 当前民居上限 × 配置百分比（默认 10%），勿再写死固定人数 -->
-          花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
+          花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}{{ ezfy.popAtHouseCap ? '空闲人口' : '人口' }}<br/>
           <div class="old-line">{{ ezfy.resNames.food }}: {{ ezfy.city.food }}</div>
           <!-- ★ 2026-10-09 「去掉按钮样式」：改成与全站一致的 [链接] 写法
-               （原来用 <button>，样式和别处不统一）；卡控由后端 + doConvene 3 秒双保险。 -->
+               （原来用 <button>，样式和别处不统一）；卡控由后端 + doConvene 双保险。 -->
           <a v-if="!ezfy.conveneBlocked" href="javascript:;" @click="ezfy.doConvene">[召集]</a>
           <span v-else class="gray">[召集]</span>
-          <span v-if="ezfy.conveneBlocked" class="gray"> {{ ezfy.popCap <= 0 ? '暂无可用的民居容量' : '人口和空闲人口均已满' }}</span>
+          <span v-if="ezfy.conveneBlocked" class="gray"> 暂无可用的民居容量</span>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>

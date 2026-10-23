@@ -602,12 +602,19 @@ export default {
       //   ★ 2026-10-22 人口上限只由民居容量 pop_max 决定，不再有额外开关/上限配置。
       conveneFoodCost: 100000,
       convenePopPct: 10,
+      // ★ 2026-10-23 召集间隔（秒，/view 下发）：普通默认 3 秒；人口满默认 300 秒。
+      //   二战系统配置可调，前端按钮冷却与提示文案都跟随配置。
+      conveneCooldownSec: 3,
+      conveneCapCooldownSec: 300,
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       // ★ 占用人口（只有训练队列里没出厂的新兵占）：/view 与 /troops 都会下发，谁后到用谁
       popUsed: 0,
       // ★ 待恢复人口（训练完的人口不瞬间归还，按「空闲人口恢复满时间」线性恢复）：
-      //   空闲人口 = 人口 − 占用 − 待恢复（见 freePop）。/view 与 /troops 都会下发。
+      //   空闲人口 = 人口 − 占用 − 待恢复 + 额外空闲（见 freePop）。/view 与 /troops 都会下发。
       popRecover: 0,
+      // ★ 2026-10-23 额外空闲人口：人口达到民居上限后召集产生，
+      //   允许空闲人口暂时超过总人口；超过部分 5 分钟内回落。
+      popExtra: 0,
       // 与 popUsed 同一次响应里的「人口」，保证「空闲 = 人口 - 占用」恒成立
       // （分开取 city.pop / troopsData.pop 会出现 1000-996=5 这种对不上的显示）
       cityPop: 0,
@@ -1151,9 +1158,10 @@ export default {
       // ★ 2026-10-13 再扣掉「待恢复人口 pop_recover」：训练完的士兵占用的人口不再瞬间归还，
       //   而是按「空闲人口恢复满时间」一点点恢复（见后端 ezfySettlePopRecover / ezfyPopFree）。
       //   不扣的话，训练完的一瞬间空闲人口会虚增 —— 用户反馈的「训练完立即恢复」bug。
+      // ★ 2026-10-23 再加上「额外空闲人口 pop_extra」：人口满后召集产生，允许空闲暂时超过总人口。
       const used = (this.popUsed || 0) + (this.popRecover || 0)
       const pop = this.cityPop || this.city.pop || 0
-      const v = pop - used
+      const v = pop - used + (this.popExtra || 0)
       return v > 0 ? v : 0
     },
     // ★ 2026-10-22 人口上限只由民居容量（pop_max）决定（0 = 没有民居/未知）。
@@ -1168,21 +1176,20 @@ export default {
       const gain = Math.floor(pm * pct / 100)
       return gain > 0 ? gain : 1
     },
-    // 当前人口是否已达到/超过民居上限（人口已满时召集只恢复空闲人口，5 分钟冷却）。
+    // 当前人口是否已达到/超过民居上限。
+    // 人口已满时召集仍可用：总人口不增加，本次召集量全部转为空闲人口
+    // （间隔由二战系统配置控制，默认 300 秒）。
     popAtHouseCap () {
       const pm = (this.city && this.city.pop_max) || 0
       const pop = (this.city && this.city.pop) || this.cityPop || 0
       return pm > 0 && pop >= pm
     },
-    // 当前人口是否已超过民居上限（老数据/并发才会出现，用于展示「超出部分回落中」）。
-    popOverHouseCap () {
-      const pm = (this.city && this.city.pop_max) || 0
-      const pop = (this.city && this.city.pop) || this.cityPop || 0
-      return pm > 0 && pop > pm
-    },
-    // 召集冷却：普通 3 秒；人口达到/超过民居上限时 5 分钟（与后端 Convene 同口径）。
+    // 召集冷却：普通 / 人口达到或超过民居上限分别读二战系统配置（默认 3 秒 / 300 秒，
+    // 与后端 ezfyConveneCooldownMs 同口径）。管理端改完 /view 立即带回新值。
     conveneCooldownMs () {
-      return this.popAtHouseCap ? 5 * 60 * 1000 : 3000
+      const raw = this.popAtHouseCap ? this.conveneCapCooldownSec : this.conveneCooldownSec
+      const sec = Math.max(1, Math.min(1000000000, Number(raw) || (this.popAtHouseCap ? 300 : 3)))
+      return sec * 1000
     },
     // ★ 2026-10-15 免战保护令文案（城市状态页）：「[免战保护中] 剩余 2小时30分」。
     //   剩余时间每秒随 gatherNow 重算（全站统一做法：后端下发绝对到点时间戳，前端本地倒计时）；
@@ -1205,13 +1212,11 @@ export default {
     },
     // ★ 2026-10-22 人口上限只由民居容量决定：
     //   人口未满 → 召集加人口（最多加到民居上限）；
-    //   人口已满 → 只有存在待恢复人口时才能召集（扣待恢复人口恢复空闲）；
-    //   民居容量为 0 或两者都满 → 禁用按钮。
+    // ★ 2026-10-23 人口已满 → 仍可召集，总人口不增加，空闲人口增加后回落；
+    //   因此按钮只受「民居容量为 0」禁用，冷却由 doConvene + 后端卡控。
     conveneBlocked () {
-      const pop = (this.city && this.city.pop) || this.cityPop || 0
       const pm = (this.city && this.city.pop_max) || 0
-      if (pm <= 0) return true
-      return pop >= pm && (this.popRecover || 0) <= 0
+      return pm <= 0
     },
     // 当前建筑分区: 'm' 军事区 / 's' 资源区
     // 复刻原版 BuildingController: 军事区 = type 2/3/4, 资源区 = type 1
@@ -3021,6 +3026,9 @@ export default {
       //   人口上限只由民居 pop_max 决定，不再有额外开关/硬上限。
       this.conveneFoodCost = Number(d.convene_food_cost) || 100000
       this.convenePopPct = Math.min(1000000000, Math.max(1, Number(d.convene_pop_pct) || 10))
+      // ★ 2026-10-23 召集间隔（秒）：普通 / 人口满分别读配置，默认 3 / 300。
+      this.conveneCooldownSec = Math.min(1000000000, Math.max(1, Number(d.convene_cooldown_seconds) || 3))
+      this.conveneCapCooldownSec = Math.min(1000000000, Math.max(1, Number(d.convene_cap_cooldown_seconds) || 300))
       // ★ 2026-10-17 训练一键加速开关（1 开 / 0 关，默认开）：训练页据此展示/隐藏两个一键加速按钮
       this.speedTrainOn = d.speed_train_on === undefined || d.speed_train_on === null
         ? true : !!Number(d.speed_train_on)
@@ -3041,6 +3049,8 @@ export default {
       this.popUsed = d.pop_used || 0
       // ★ 待恢复人口（训练完的人口慢慢恢复的那部分，见 freePop）
       this.popRecover = d.pop_recover || 0
+      // ★ 额外空闲人口（人口满后召集产生，允许空闲暂时超过总人口，5 分钟内回落）
+      this.popExtra = d.pop_extra || 0
       this.cityPop = d.city.pop || 0
       this.taxInput = d.city.tax_rate
       this.applyResNames(d.res_names)
@@ -3086,6 +3096,8 @@ export default {
           this.popUsed = r.data.pop_used || 0
           // ★ 待恢复人口（训练完的人口慢慢恢复的那部分，见 freePop）
           this.popRecover = r.data.pop_recover || 0
+          // ★ 额外空闲人口（人口满后召集产生，允许空闲暂时超过总人口）
+          this.popExtra = r.data.pop_extra || 0
           this.cityPop = r.data.pop || 0
           // ★ 2026-10-14 伤兵营钻石一键恢复全部伤兵单价（系统配置下发，默认100）
           this.healAllDiamond = r.data.heal_all_diamond || 100
@@ -5143,16 +5155,26 @@ export default {
       if (e.tab) this.acadeTab = e.tab
       this.go(e.cur)
     },
+    // 召集冷却毫秒数 → 提示文案（3 秒 / 5 分钟 / 1 分 30 秒），与后端提示同口径。
+    conveneCooldownText (ms) {
+      const sec = Math.max(1, Math.ceil(Number(ms || 0) / 1000))
+      if (sec >= 60) {
+        if (sec % 60 === 0) return (sec / 60) + ' 分钟'
+        return Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒'
+      }
+      return sec + ' 秒'
+    },
     // ---- 城市操作 ----
     doConvene () {
       // ★ 2026-10-09 ：卡控 5 秒 → **3 秒**（与后端 /city/convene 双保险，防连点刷人口）
-      // ★ 2026-10-22 ：人口达到/超过民居上限时改为 **5 分钟**（已满时召集只恢复空闲人口）
+      // ★ 2026-10-22 ：人口达到/超过民居上限时改为 **5 分钟**（已满时总人口不涨，只加空闲）
+      // ★ 2026-10-23 ：两个间隔都可从二战系统配置调整；这里只做前端双保险，后端仍会校验。
       // ★ 2026-10-21 ：冷却**按城市**分别记（与后端同口径）——A 城冷却中不影响 B 城。
       const cid = this.city ? this.city.id : 0
       const atByCity = this._conveneAtByCity || (this._conveneAtByCity = {})
       const cd = this.conveneCooldownMs
       if (Date.now() - (atByCity[cid] || 0) < cd) {
-        this.notify(cd >= 60000 ? '操作过于频繁, 请 5 分钟后再试' : '操作过于频繁, 请 3 秒后再试')
+        this.notify('操作过于频繁, 请 ' + this.conveneCooldownText(cd) + '后再试')
         return
       }
       api.post('/games/ezfy/city/convene', { city_id: cid }).then(r => {
