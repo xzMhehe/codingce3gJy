@@ -67,6 +67,8 @@ var ezfyGeneralFields = map[string]string{
 	"star": "int", "source": "string", "get_condition": "string",
 	"skill": "string", "des": "string", "recruit": "int",
 	"kind": "int", "weight": "int",
+	// ★ 2026-10-23 名将组合技能池 ID（0=无；只有 kind=2 名将可配）
+	"combo_skill_id": "int",
 }
 
 // 技能配置可改字段（ezfy_cfg_skill）

@@ -4329,6 +4329,17 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.ensureProfile(uid).Camp, defCamp,
 			// ★ 2026-10-08 兵种专属加成（喷气引擎=空军速度、军官兵种技能）
 			atkType, defType)
+		// ★★ 2026-10-23 名将组合技能（系统专属战法）：攻方带队名将 / 守方城守（或野地守将）。
+		//   普通军官没有 GeneralId → comboSkillOfOfficer 返回 nil，等于没这功能，不影响老战斗。
+		st.AtkCombo = h.comboSkillOfOfficer(leadOfficer)
+		if target != nil {
+			st.DefCombo = h.comboSkillOfOfficer(cityGuard)
+		} else if wildDefCommander != nil {
+			st.DefCombo = h.comboSkillOfOfficer(wildDefCommander)
+		} else if defGeneral != nil {
+			st.DefCombo = ezfyComboOfGeneralCfg(defGeneral, defGeneral.Level)
+		}
+		st.appendComboHead()
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
 		//   · 打野地 / AI 寇城 → 默认「是」：抵达即自动打完，无需指挥（守方不是真人）；
 		//   · 打玩家城市 → 强制「否」：抵达后开战场进指挥室，等玩家部署守军。

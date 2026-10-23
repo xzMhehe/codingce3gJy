@@ -176,6 +176,8 @@ func runHomeMode(cfg *config.Config) {
 		// ★ 2026-10-06 计谋「恫疑虚喝/隐真示假」kind 幂等补配：存量库已有计谋行且 kind=0，
 		//   会卡「暂未实现」；全量 seed（seedEzfySchemes 表非空即跳过）与 skip 分支都要跑。
 		timedStep("EnsureEzfySchemeKinds", func() { seed.EnsureEzfySchemeKinds(homeDB) })
+		// ★ 2026-10-23 名将组合技能池（新表 + 10 条种子 + 名将默认搭配）：skip 分支不补就没有这张表。
+		timedStep("EnsureEzfyGeneralSkills", func() { seed.EnsureEzfyGeneralSkills(homeDB) })
 		// ★ 2026-10-10 首页布局回填：home_layout NULL→0（默认新布局）；玩家 10000 保留老布局。
 		timedStep("EnsureEzfyHomeLayout", func() { seed.EnsureEzfyHomeLayout(homeDB) })
 		// ★★ 2026-10-12 线上事故：skip 模式（多机共享库）不跑 seed.Run → seedRBAC 被跳过

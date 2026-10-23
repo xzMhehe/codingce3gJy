@@ -42,7 +42,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyCfgBuilding{}, &model.EzfyCfgBuildingLevel{}, &model.EzfyCfgTroop{},
 	&model.EzfyCfgTech{}, &model.EzfyCfgTechLevel{}, &model.EzfyCfgWildland{},
 	&model.EzfyCfgItem{}, &model.EzfyCfgTaskType{}, &model.EzfyCfgTask{},
-	&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
+	&model.EzfyCfgGeneral{}, &model.EzfyCfgGeneralSkill{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
 	&model.EzfyCfgEquipSet{}, &model.EzfyCfgChest{}, &model.EzfyCfgChestItem{},
 	&model.EzfyCfgScheme{}, &model.EzfyCfgResource{}, &model.EzfyCfgRank{},
 	&model.EzfyCfgLimit{}, &model.EzfyWordFilter{},
@@ -127,6 +127,8 @@ func RunEzfy(db *gorm.DB, homeDB *gorm.DB) {
 	// 配置种子（内部含 EnsureEzfyIndexes / 宝箱奖池补缺 / 装备快照修复 / 计谋 kind 等）
 	seedEzfy(db)
 	EnsureEzfySchemeKinds(db)
+	// ★ 2026-10-23 名将组合技能池：新表 + 10 条种子 + 名将默认搭配（幂等，只补缺）
+	EnsureEzfyGeneralSkills(db)
 	EnsureEzfyHomeLayout(db)
 	log.Printf("二战库初始化完成（独立库模式）")
 }

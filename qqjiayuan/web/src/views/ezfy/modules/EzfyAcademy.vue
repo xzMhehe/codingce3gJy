@@ -498,11 +498,15 @@
       <div class="panel" v-else-if="ezfy.acadeTab === 'generals'">
         <div class="old-line">名将图鉴(共{{ ezfy.generalData.generals.length }}名)</div>
         <table class="ezfy-plain-table">
-          <!-- ★ 2026-10-05 去掉等级/星级列 -->
-          <tr><th>名称</th><th>军/后/学</th><th>状态</th></tr>
+          <!-- ★ 2026-10-05 去掉等级/星级列；★ 2026-10-23 加「组合技」列（系统专属战法） -->
+          <tr><th>名称</th><th>军/后/学</th><th>组合技</th><th>状态</th></tr>
           <tr v-for="g in ezfy.generalPaged" :key="'gg' + g.id">
             <td>{{ g.name }}</td>
             <td>{{ g.military }}/{{ g.logistics }}/{{ g.learning }}</td>
+            <td>
+              <span v-if="g.combo" class="green">{{ g.combo.name }}</span>
+              <span v-else class="gray">—</span>
+            </td>
             <td>
               <span v-if="g.owned" class="green">已拥有</span>
               <span v-else class="gray">未拥有</span>
@@ -560,6 +564,13 @@
           <div class="old-line" v-if="ezfy.officerDetail.officer.general_des">
             二战功勋：{{ ezfy.officerDetail.officer.general_des }}
           </div>
+          <!-- ★ 2026-10-23 名将组合技能（系统专属战法，管理端可改名/调数值） -->
+          <div class="old-line" v-if="ezfy.officerDetail.officer.combo_skill">
+            组合技：<b class="green">{{ ezfy.officerDetail.officer.combo_skill.name }}</b>
+            <span class="gray">Lv.{{ ezfy.officerDetail.officer.combo_skill.level }}
+              · 发动率 {{ ezfy.officerDetail.officer.combo_skill.proc_pct }}%
+              · {{ ezfy.officerDetail.officer.combo_skill.value_text }}</span>
+          </div>
           <div class="old-line gray" v-else>(该名将暂无功勋介绍)</div>
         </div>
 
@@ -583,6 +594,21 @@
           攻击加成：{{ ezfy.officerDetail.officer.attack }}
           &nbsp;防御加成：{{ ezfy.officerDetail.officer.defence }}
         </div>
+
+        <!-- ★ 2026-10-23 名将组合技能：系统专属战法（普通军官没有，后端下发 null 就不渲染）
+             等级 = 名将星级；每回合按「发动率」掷骰，命中才生效，不是全程常驻。 -->
+        <template v-if="ezfy.officerDetail.officer.combo_skill">
+          <hr/>
+          <div class="old-line">
+            组合技：<b class="green">{{ ezfy.officerDetail.officer.combo_skill.name }}</b>
+            <span class="gray">Lv.{{ ezfy.officerDetail.officer.combo_skill.level }}
+              · {{ ezfy.officerDetail.officer.combo_skill.kind_name }}
+              · 发动率 {{ ezfy.officerDetail.officer.combo_skill.proc_pct }}%</span>
+            <br/>
+            <span class="green">{{ ezfy.officerDetail.officer.combo_skill.value_text }}</span>
+            <span class="gray" v-if="ezfy.officerDetail.officer.combo_skill.des">（{{ ezfy.officerDetail.officer.combo_skill.des }}）</span>
+          </div>
+        </template>
 
         <!-- 套装与战斗加成（套装穿齐才生效；战斗加成只列**单件**的，套装加成单独一行，不重复） -->
         <template v-if="(ezfy.officerDetail.officer.set_progress && ezfy.officerDetail.officer.set_progress.length) ||

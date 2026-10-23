@@ -554,6 +554,12 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.ensureProfile(uid).Camp, defCamp,
 			// ★ 2026-10-08 兵种专属加成（攻方喷气引擎=空军速度+军官兵种技能；活动守军无科技 → 空表）
 			atkType, ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}})
+		// ★ 2026-10-23 名将组合技能：攻方带队名将 / 活动守将（池子配置，按星级定级）
+		st.AtkCombo = h.comboSkillOfOfficer(leadOfficer)
+		if defGeneral != nil {
+			st.DefCombo = ezfyComboOfGeneralCfg(defGeneral, defGeneral.Level)
+		}
+		st.appendComboHead()
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
 		//   活动目标（活动野地 / 活动寇城 / 特殊城市）**按「野地 / NPC」口径处理** ——
 		//   守军是配置数据、没有真人，所以默认「是」：抵达即自动打完，无需指挥。

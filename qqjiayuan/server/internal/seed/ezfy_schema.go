@@ -15,7 +15,7 @@ var ezfySchemaModels = []interface{}{
 	&model.EzfyActWild{}, &model.EzfyActLevel{}, &model.EzfyActivity{}, &model.EzfyBattle{},
 	&model.EzfyCfgBuilding{}, &model.EzfyCfgBuildingLevel{}, &model.EzfyCfgChest{},
 	&model.EzfyCfgChestItem{}, &model.EzfyCfgEquipSet{}, &model.EzfyCfgEquipment{},
-	&model.EzfyCfgGeneral{}, &model.EzfyCfgItem{}, &model.EzfyCfgLimit{},
+	&model.EzfyCfgGeneral{}, &model.EzfyCfgGeneralSkill{}, &model.EzfyCfgItem{}, &model.EzfyCfgLimit{},
 	&model.EzfyCfgRank{}, &model.EzfyCfgResource{}, &model.EzfyCfgScheme{},
 	&model.EzfyCfgSkill{}, &model.EzfyCfgTask{}, &model.EzfyCfgTaskType{},
 	&model.EzfyCfgTech{}, &model.EzfyCfgTechLevel{}, &model.EzfyCfgTroop{},

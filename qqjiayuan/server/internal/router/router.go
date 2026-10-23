@@ -1508,6 +1508,14 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeCreate)
 						admin.PUT("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeUpdate)
 						admin.DELETE("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeDelete)
+					// ★ 2026-10-23 名将组合技能池（系统专属战法，普通军官学不到）
+					admin.GET("/ezfy-general-skills", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralSkills)
+					admin.POST("/ezfy-general-skills", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralSkillCreate)
+					admin.PUT("/ezfy-general-skills/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralSkillUpdate)
+					admin.DELETE("/ezfy-general-skills/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralSkillDelete)
+					// ★ 2026-10-23 组合技能「配给名将」+ 名将选择器（管理端批量搭配）
+					admin.GET("/ezfy-general-skills/pickers", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralSkillPickers)
+					admin.POST("/ezfy-general-skills/:id/assign", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralSkillAssign)
 						// 玩家军官装备列表（ezfy_equipment）
 						admin.GET("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentsOwned)
 						// ★ 2026-10-13 「装备详情」弹框的实例明细按需查（列表接口不再随行下发，避免 size 大时拉回上万行）

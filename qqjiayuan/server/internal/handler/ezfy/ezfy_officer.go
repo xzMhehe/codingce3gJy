@@ -3012,6 +3012,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"exp_need": o.Level * 200,
 			// ★ 2026-09-29 上限分档：名将 350 / 普通军官 150，前端按此显示「满级」
 			"max_level": h.officerMaxLevelOf(o),
+			// ★ 2026-10-23 名将组合技能（普通军官恒为 nil，前端据此不显示这一行）
+			"combo_skill": h.officerComboView(o),
 		},
 		"skills": skillViews, "all_skills": allSkills,
 		// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
@@ -4471,6 +4473,8 @@ func (h *EzfyHandler) OfficerGenerals(c *gin.Context) {
 			"id": g.ID, "name": g.Name, "level": g.Level, "star": g.Star,
 			"military": g.Military, "logistics": g.Logistics, "learning": g.Learning,
 			"source": "管理端发放", "skill": g.Skill, "des": g.Des, "owned": owned[g.ID],
+			// ★ 2026-10-23 名将组合技能（池子搭配；没配 → nil，前端不渲染这一列）
+			"combo": ezfyComboBriefAtMax(&g),
 		})
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i]["level"].(int) > list[j]["level"].(int) })

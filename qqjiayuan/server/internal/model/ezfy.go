@@ -2011,9 +2011,57 @@ type EzfyCfgGeneral struct {
 	Kind int `gorm:"default:2;comment:种类" json:"kind"`
 	// ★ 普通军官在军校刷新时的抽取权重（越大越容易刷到），名将不用
 	Weight int `gorm:"default:100;comment:权重" json:"weight"`
+	// ★★ 2026-10-23 名将组合技能（只能给 kind=2 名将配，普通军官池一律 0）：
+	//   指向 ezfy_cfg_general_skill 的池子 ID，0 = 没有组合技。
+	//   效果按**名将星级**升级（星级 1~5 → 组合技 1~5 级），见 ezfy_combo.go。
+	ComboSkillId int `gorm:"default:0;comment:名将组合技能池ID(0=无)" json:"combo_skill_id"`
 }
 
 func (EzfyCfgGeneral) TableName() string { return "ezfy_cfg_general" }
+
+// EzfyCfgGeneralSkill 名将组合技能**池**（★ 2026-10-23）。
+//
+// 「组合技能」是**系统专属**的一类战法：普通军官（kind=1）学不到，
+// 只能由管理端把池子里的技能搭配给名将（ezfy_cfg_general.combo_skill_id）。
+//
+// 设计口径（参考率土之滨战法，但只取「每回合按概率发动」这一层，不引入拆解/连携）：
+//   - 通用：一套效果对所有兵种生效，不区分陆/海/空（兵种专属还是走通用技能那套）；
+//   - 按等级成长：组合技等级由**军官等级**分档（默认每 35 级 +1，350 级满级 = 10 级），
+//     效果值 = BaseValue + (等级-1)×GrowPerLevel；
+//   - 概率发动：每回合开始按 ProcPct 掷一次，命中后持续 Rounds 回合（1=只本回合）；
+//   - 数值克制：单技能满级不超过 30%，避免「一个组合技顶一套装备」。
+type EzfyCfgGeneralSkill struct {
+	ID   int    `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Name string `gorm:"type:varchar(50);comment:技能名(管理端可改)" json:"name"`
+	Des  string `gorm:"type:varchar(255);comment:说明(管理端可改)" json:"des"`
+	// Kind 效果类型（1~9，见 ezfyComboKindName）：
+	//   1 攻击加成%  2 防御加成%  3 射程加成%  4 速度加成%
+	//   5 受到伤害减免%  6 破防%（无视目标 X% 防御）  7 回合治疗%（恢复已损兵力 X%）
+	//   8 连击（发动后攻击追加一次）  9 反击回合 +N
+	Kind int `gorm:"default:1;comment:效果类型1~9" json:"kind"`
+	// BaseValue 1 级效果值（百分点 / 回合数 / 百分比，含义随 Kind）
+	BaseValue int `gorm:"default:10;comment:1级效果值" json:"base_value"`
+	// GrowPerLevel 每高 1 级增加多少（组合技等级 +1，与星级无关）
+	GrowPerLevel int `gorm:"default:1;comment:每级增幅" json:"grow_per_level"`
+	// MaxLevel 组合技等级上限（默认 10）
+	MaxLevel int `gorm:"default:10;comment:组合技等级上限" json:"max_level"`
+	// LevelPerStep 每多少**军官等级**升 1 级组合技（默认 35：35/70/…/350 → 1~10 级）
+	//
+	// ★★ 2026-10-23 用户纠正：名将满级 350 级、且**所有名将都是 5 星**，
+	//   用星级当等级没有成长空间 → 改成按**军官等级**分档；
+	//   同日二次调整：上限 5 → 10（步长 70 → 35），成长更细、满级数值不变。
+	LevelPerStep int `gorm:"default:35;comment:每多少军官等级+1级" json:"level_per_step"`
+	// ProcPct 每回合发动概率%（0~100）
+	ProcPct int `gorm:"default:35;comment:发动概率%" json:"proc_pct"`
+	// Rounds 发动后持续回合（1=只本回合；>1 = 含本回合在内的连续 N 回合）
+	Rounds int `gorm:"default:1;comment:持续回合" json:"rounds"`
+	// Quality 品质 1普通 2精良 3稀有 4传说（只影响展示色）
+	Quality int `gorm:"default:2;comment:品质1~4" json:"quality"`
+	Enabled int `gorm:"default:1;comment:1=启用 0=下架" json:"enabled"`
+	SortNo  int `gorm:"default:0;comment:排序" json:"sort_no"`
+}
+
+func (EzfyCfgGeneralSkill) TableName() string { return "ezfy_cfg_general_skill" }
 
 // EzfyCfgSkill 技能配置（15 个，每名军官最多学 3 个）
 type EzfyCfgSkill struct {

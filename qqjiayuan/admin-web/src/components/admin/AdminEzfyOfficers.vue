@@ -163,6 +163,71 @@
           <div class="pager-info" style="margin-top:8px">共 <b>{{ schemes.length }}</b> 条计谋</div>
         </el-tab-pane>
 
+        <!-- ============ 2b. 名将组合技能池（2026-10-23） ============ -->
+        <el-tab-pane label="组合技能" name="combos">
+          <div class="toolbar">
+            <el-input v-model="cWord" placeholder="技能名 / ID" clearable style="width:200px"
+                      @keyup.enter.native="loadCombos" />
+            <el-button type="primary" icon="el-icon-search" @click="loadCombos">查询</el-button>
+            <span class="td-sub">系统专属战法：普通军官学不到，只能给名将搭配；等级 = 名将星级（1~5）</span>
+            <div class="grow" />
+            <el-button type="success" icon="el-icon-plus" @click="openComboCreate">新增组合技能</el-button>
+          </div>
+          <el-table :data="combos" v-loading="loadingCombo" stripe border>
+            <el-table-column prop="id" label="ID" width="55" align="center" />
+            <el-table-column prop="name" label="技能名" min-width="130" show-overflow-tooltip>
+              <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
+            </el-table-column>
+            <el-table-column label="效果类型" width="100" align="center">
+              <template slot-scope="{row}">
+                <el-tag size="mini" :type="row.kind === 6 ? 'danger' : (row.kind === 8 || row.kind === 9 ? 'warning' : 'info')">
+                  {{ row.kind_name }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="Lv.1 / 每级 / 满级" width="150" align="center">
+              <template slot-scope="{row}">
+                <span class="td-mono">{{ row.base_value }} / +{{ row.grow }} / {{ row.value_at_max }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="升级步长" width="110" align="center">
+              <template slot-scope="{row}">
+                <span class="td-mono">每 {{ row.level_per_step || 70 }} 级</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="发动率" width="80" align="center">
+              <template slot-scope="{row}"><span class="td-mono">{{ row.proc_pct }}%</span></template>
+            </el-table-column>
+            <el-table-column label="持续" width="70" align="center">
+              <template slot-scope="{row}"><span class="td-mono">{{ row.rounds }} 回合</span></template>
+            </el-table-column>
+            <el-table-column prop="des" label="说明" min-width="220" show-overflow-tooltip />
+            <!-- ★ 2026-10-23 一眼看到「这个技能配给了哪些名将」 -->
+            <el-table-column label="使用名将" min-width="170" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="row.generals && row.generals.length" class="td-sub">
+                  {{ row.generals.map(g => g.name).join('、') }}（{{ row.general_count }}）
+                </span>
+                <span v-else class="td-sub">未配</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="上架" width="70" align="center">
+              <template slot-scope="{row}">
+                <el-tag size="mini" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '下架' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="sort_no" label="排序" width="60" align="center" />
+            <el-table-column label="操作" width="180" align="center" fixed="right">
+              <template slot-scope="{row}">
+                <el-button size="mini" type="success" plain icon="el-icon-user" title="配给名将" @click="openComboAssign(row)" />
+                <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openComboEdit(row)" />
+                <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delCombo(row)" />
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="pager-info" style="margin-top:8px">共 <b>{{ combos.length }}</b> 个组合技能</div>
+        </el-tab-pane>
+
         <!-- ============ 3. 玩家军官列表（ezfy_officer） ============ -->
         <el-tab-pane label="玩家军官列表" name="officers">
           <div class="toolbar">
@@ -683,6 +748,17 @@
         <el-form-item label="获取条件">
           <el-input v-model="gf.get_condition" maxlength="255" placeholder="例如：任务 / 505" />
         </el-form-item>
+        <!-- ★ 2026-10-23 名将组合技能：系统专属战法池，只有名将（kind=2）能配；
+             效果随星级升级（1~5 星 = 1~5 级），每回合按发动率掷骰，不是常驻。 -->
+        <el-form-item label="名将组合技能" v-if="gf.kind === 2">
+          <el-select v-model.number="gf.combo_skill_id" clearable filterable style="width:460px"
+                     placeholder="不配（没有组合技）">
+            <el-option v-for="c in combos" :key="'gc' + c.id"
+                       :label="c.id + ' · ' + c.name + '（' + c.kind_name + '，满级' + c.value_at_max + '，发动' + c.proc_pct + '%）'"
+                       :value="c.id" />
+          </el-select>
+          <div class="td-sub">普通军官学不到；在「组合技能」页签里维护池子（可改名/调数值/调概率/上下架）</div>
+        </el-form-item>
         <el-form-item label="组合技/技能">
           <el-input v-model="gf.des" maxlength="500" placeholder="例如：全技能+2，攻击+20%" />
         </el-form-item>
@@ -811,6 +887,102 @@
       </div>
     </el-dialog>
 
+    <!-- ============ 组合技能 · 配给名将（2026-10-23） ============ -->
+    <el-dialog title="配给名将" :visible.sync="asDlg" width="640px" :close-on-click-modal="false">
+      <el-form label-width="110px" size="small">
+        <el-form-item label="组合技能">
+          <b class="td-main">{{ asf.skill_name }}</b>
+        </el-form-item>
+        <el-form-item label="选择名将">
+          <el-select v-model="asf.ids" multiple filterable style="width:420px" placeholder="可多选名将（只有名将能学）">
+            <el-option v-for="g in asGenerals" :key="'ag' + g.id"
+                       :label="g.id + ' · ' + g.name + (g.combo_skill_id ? '（现：' + comboNameOf(g.combo_skill_id) + '）' : '（未配）')"
+                       :value="g.id" />
+          </el-select>
+          <div class="td-sub">保存后这些名将改为该组合技（会覆盖原来的）；普通军官学不到</div>
+        </el-form-item>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="asDlg = false">取 消</el-button>
+        <el-button type="warning" :loading="saving" @click="doComboAssign(true)">解除全部</el-button>
+        <el-button type="primary" :loading="saving" @click="doComboAssign(false)">保 存</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- ============ 新增/编辑 名将组合技能（2026-10-23） ============ -->
+    <el-dialog :title="cf.id ? ('编辑组合技能 · ' + cf.name) : '新增组合技能'"
+               :visible.sync="cDlg" width="720px" :close-on-click-modal="false">
+      <el-form label-width="130px" size="small">
+        <el-form-item label="技能名称" required>
+          <el-input v-model="cf.name" maxlength="50" style="width:320px" />
+          <span class="td-sub" style="margin-left:8px">可随时改名（玩家端立即跟着变）</span>
+        </el-form-item>
+        <el-form-item label="效果类型">
+          <el-select v-model.number="cf.kind" style="width:420px">
+            <el-option v-for="k in comboKinds" :key="'ck' + k.v"
+                       :label="k.v + ' · ' + k.n + '（' + k.hint + '）'" :value="k.v" />
+          </el-select>
+        </el-form-item>
+        <el-row :gutter="10">
+          <el-col :span="6">
+            <el-form-item label="1级效果值">
+              <el-input-number v-model.number="cf.base_value" :min="1" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="每级增幅">
+              <el-input-number v-model.number="cf.grow_per_level" :min="0" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="等级上限">
+              <el-input-number v-model.number="cf.max_level" :min="1" :max="10" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="每多少级+1">
+              <el-input-number v-model.number="cf.level_per_step" :min="1" :max="350" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="10">
+          <el-col :span="8">
+            <el-form-item label="发动概率%">
+              <el-input-number v-model.number="cf.proc_pct" :min="0" :max="100" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="持续回合">
+              <el-input-number v-model.number="cf.rounds" :min="1" :max="10" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="排序">
+              <el-input-number v-model.number="cf.sort_no" :min="0" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="说明">
+          <el-input v-model="cf.des" type="textarea" :rows="2" maxlength="255"
+                    placeholder="可用 %d 代表当前等级的效果值，例如：攻击力+%d%%（每回合按概率发动）" />
+        </el-form-item>
+        <el-form-item label="启用">
+          <el-switch v-model="cf.enabled" :active-value="1" :inactive-value="0" />
+          <span class="td-sub" style="margin-left:8px">下架后已配该技能的名将不再发动（配置保留）</span>
+        </el-form-item>
+        <div class="td-sub" style="padding-left:130px">
+          满级效果：<b>{{ comboMaxHint }}</b>（1级 + (上限-1)×每级）
+          <br/>
+          等级按军官等级分档：默认每 {{ cf.level_per_step || 35 }} 级 +1，
+          名将满级 350 级 → 正好 {{ cf.max_level || 10 }} 级吃满（星级不参与，名将都是 5 星）
+        </div>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="cDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="saving" @click="doComboSave">保 存</el-button>
+      </div>
+    </el-dialog>
+
     <!-- ============ 给玩家发装备 ============ -->
     <el-dialog title="给玩家发装备" :visible.sync="egDlg" width="540px" :close-on-click-modal="false">
       <el-form label-width="110px" size="small">
@@ -897,7 +1069,9 @@
 <script>
 import api from '../../api'
 
-const G_KEYS = ['name', 'level', 'military', 'logistics', 'learning', 'star', 'source', 'get_condition', 'skill', 'des', 'recruit', 'kind', 'weight']
+const G_KEYS = ['name', 'level', 'military', 'logistics', 'learning', 'star', 'source', 'get_condition', 'skill', 'des', 'recruit', 'kind', 'weight', 'combo_skill_id']
+// ★ 2026-10-23 名将组合技能池可改字段
+const C_KEYS = ['name', 'des', 'kind', 'base_value', 'grow_per_level', 'max_level', 'level_per_step', 'proc_pct', 'rounds', 'enabled', 'sort_no']
 const S_KEYS = ['name', 'effect', 'type', 'des']
 // ★ 计谋（消耗信号弹）
 const SC_KEYS = ['name', 'des', 'bullet', 'kind', 'war_minutes', 'war_max_minutes', 'enabled', 'sort_no']
@@ -921,6 +1095,21 @@ export default {
       gDlg: false, gf: {}, gfOrig: {},
       // 2d 计谋
       schemes: [], loadingSc: false, scWord: '', scDlg: false, scf: {},
+      // ★ 2026-10-23 名将组合技能池
+      combos: [], loadingCombo: false, cWord: '', cDlg: false, cf: {},
+      // ★ 2026-10-23 「配给名将」弹窗
+      asDlg: false, asf: {}, asGenerals: [], asSkills: [],
+      comboKinds: [
+        { v: 1, n: '攻击加成', hint: '全体兵种攻击+%' },
+        { v: 2, n: '防御加成', hint: '全体兵种防御+%' },
+        { v: 3, n: '射程加成', hint: '射程+%' },
+        { v: 4, n: '速度加成', hint: '移动速度+%' },
+        { v: 5, n: '受伤减免', hint: '受到的伤害-%' },
+        { v: 6, n: '破防', hint: '无视目标 X% 防御' },
+        { v: 7, n: '回合治疗', hint: '恢复已损兵力 X%' },
+        { v: 8, n: '连击', hint: '追加一次攻击（伤害 X%）' },
+        { v: 9, n: '反击回合', hint: '反击回合 +N（一次性）' }
+      ],
       // 3 玩家军官
       // ★ 2026-10-13 加 general（「类型」检索：-1 全部 / 1 名将 / 0 普通）
       list: [], total: 0, page: 1, size: 5, loading: false, word: '', captive: -1, general: -1,
@@ -958,6 +1147,16 @@ export default {
     }
   },
   computed: {
+    // 组合技能满级效果提示（1级 + (上限-1)×每级）
+    comboMaxHint () {
+      const f = this.cf || {}
+      const base = Number(f.base_value) || 0
+      const grow = Number(f.grow_per_level) || 0
+      const max = Number(f.max_level) || 10
+      const v = base + Math.max(0, max - 1) * grow
+      const kind = (this.comboKinds.find(k => k.v === f.kind) || {}).n || ''
+      return kind + ' ' + v
+    },
     // ★ 军官池改由后端分页（普通军官有 1000 条，前端一次拿全太卡）
     gPaged () { return this.generals },
     // 配置表类列表（后端一次给全）在前端分页
@@ -1014,6 +1213,7 @@ export default {
       if (this.tab === 'overview') this.loadOverview()
       if (this.tab === 'generals') this.loadGenerals()
       if (this.tab === 'schemes') this.loadSchemes()
+      if (this.tab === 'combos') this.loadCombos()
       if (this.tab === 'officers') this.load()
       if (this.tab === 'skills') this.loadSkills()
       if (this.tab === 'ownedSkills') this.loadOwnedSkills()
@@ -1031,6 +1231,7 @@ export default {
     // ---------- 2 军官池（普通军官 + 名将） ----------
     loadGenerals () {
       this.loadingG = true
+      if (!this.combos.length) this.loadCombos()
       const params = { word: this.gWord, page: this.gPage, size: this.gSize }
       if (this.gKind) params.kind = this.gKind
       api.get('/admin/ezfy-generals', { params }).then(r => {
@@ -1047,7 +1248,9 @@ export default {
         name: '', level: 130, military: 100, logistics: 100, learning: 100,
         star: 5, source: '', get_condition: '', skill: '', des: '', recruit: 1,
         // ★ 默认按普通军官建（军校招募池），要建名将就切一下
-        kind: this.gKind === 2 ? 2 : 1, weight: 100
+        kind: this.gKind === 2 ? 2 : 1, weight: 100,
+        // ★ 2026-10-23 名将组合技能（0 = 不配）
+        combo_skill_id: 0
       }
       this.gDlg = true
     },
@@ -1139,6 +1342,81 @@ export default {
           if (r.code === 0) { this.$message.success(r.msg || '已删除'); this.loadSchemes() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    // ---------- 2b 名将组合技能池 ----------
+    loadCombos () {
+      this.loadingCombo = true
+      api.get('/admin/ezfy-general-skills', { params: { word: this.cWord } }).then(r => {
+        this.loadingCombo = false
+        if (r.code === 0) this.combos = r.data.list
+        else this.$message.error(r.msg)
+      })
+    },
+    openComboCreate () {
+      this.cf = {
+        name: '', des: '', kind: 1, base_value: 7, grow_per_level: 1, max_level: 10,
+        level_per_step: 35, proc_pct: 35, rounds: 1, enabled: 1, sort_no: 0
+      }
+      this.cDlg = true
+    },
+    openComboEdit (row) {
+      const f = { id: row.id }
+      C_KEYS.forEach(k => { f[k] = row[k] })
+      this.cf = f
+      this.cDlg = true
+    },
+    doComboSave () {
+      if (!String(this.cf.name || '').trim()) { this.$message.warning('技能名称不能为空'); return }
+      const body = {}
+      C_KEYS.forEach(k => { body[k] = this.cf[k] })
+      const isNew = !this.cf.id
+      this.saving = true
+      const req = isNew ? api.post('/admin/ezfy-general-skills', body)
+        : api.put('/admin/ezfy-general-skills/' + this.cf.id, body)
+      req.then(r => {
+        this.saving = false
+        if (r.code === 0) {
+          this.cDlg = false
+          this.$message.success(r.msg || '已保存')
+          this.loadCombos()
+        } else this.$message.error(r.msg)
+      })
+    },
+    delCombo (row) {
+      this.$confirm('删除组合技能「' + row.name + '」？（还有名将在用时会被拒绝）', '危险操作', { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-general-skills/' + row.id).then(r => {
+          if (r.code === 0) { this.$message.success(r.msg || '已删除'); this.loadCombos() }
+          else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ★ 2026-10-23 组合技能 → 配给名将（批量）
+    openComboAssign (row) {
+      this.asf = { skill_id: row.id, skill_name: row.name, ids: (row.generals || []).map(g => g.id) }
+      this.asDlg = true
+      api.get('/admin/ezfy-general-skills/pickers').then(r => {
+        if (r.code === 0) {
+          this.asGenerals = r.data.generals || []
+          this.asSkills = r.data.skills || []
+        } else this.$message.error(r.msg)
+      })
+    },
+    comboNameOf (id) {
+      const s = (this.asSkills || []).find(x => x.id === id)
+      return s ? s.name : ('#' + id)
+    },
+    doComboAssign (unbind) {
+      const body = unbind ? { unbind: true } : { general_ids: this.asf.ids || [] }
+      if (!unbind && !body.general_ids.length) { this.$message.warning('请选择要学习该组合技能的名将'); return }
+      this.saving = true
+      api.post('/admin/ezfy-general-skills/' + this.asf.skill_id + '/assign', body).then(r => {
+        this.saving = false
+        if (r.code === 0) {
+          this.asDlg = false
+          this.$message.success(r.data.msg || '已保存')
+          this.loadCombos()
+        } else this.$message.error(r.msg)
+      })
     },
     // ---------- 3 玩家军官 ----------
     load () {

@@ -43,6 +43,9 @@ func seedEzfy(db *gorm.DB) {
 	batchKeep(ezfyEzfyCfgGeneral, "ezfy_cfg_general")
 	batchKeep(ezfyEzfyCfgSkill, "ezfy_cfg_skill")
 	batchKeep(ezfyEzfyCfgEquipment, "ezfy_cfg_equipment")
+	// ★ 2026-10-23 名将组合技能池（系统专属，普通军官学不到）：表为空时灌 10 条，
+	//   并给名将灌一次默认搭配。管理端改过的名称/数值不会被覆盖（表非空即跳过）。
+	EnsureEzfyGeneralSkills(db)
 
 	// 阵营兵种名: inithebing.sql 里是用 UPDATE 补的(不在 INSERT 列里),
 	// 早期生成脚本只解析了 INSERT 导致全丢, 这里对「还没填过」的行补一次。

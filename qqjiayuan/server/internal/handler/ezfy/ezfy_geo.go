@@ -675,6 +675,8 @@ type ezfyConfigCache struct {
 	wildlands      map[int]map[int]model.EzfyCfgWildland
 	items          map[int]model.EzfyCfgItem
 	generals       map[int]model.EzfyCfgGeneral
+	// ★ 2026-10-23 名将组合技能池（系统专属，普通军官学不到）
+	generalSkills  map[int]model.EzfyCfgGeneralSkill
 	skills         map[int]model.EzfyCfgSkill
 	skillByName    map[string]int
 	equipments     map[int]model.EzfyCfgEquipment
@@ -1985,6 +1987,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	wildlands := map[int]map[int]model.EzfyCfgWildland{}
 	items := map[int]model.EzfyCfgItem{}
 	generals := map[int]model.EzfyCfgGeneral{}
+	generalSkills := map[int]model.EzfyCfgGeneralSkill{}
 	skills := map[int]model.EzfyCfgSkill{}
 	skillByName := map[string]int{}
 	equipments := map[int]model.EzfyCfgEquipment{}
@@ -2049,6 +2052,12 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	for _, g := range gens {
 		generals[g.ID] = g
 	}
+	// ★ 2026-10-23 名将组合技能池（表不存在时 Find 报错可忽略，返回空 map 即可）
+	var gsks []model.EzfyCfgGeneralSkill
+	db.Find(&gsks)
+	for _, g := range gsks {
+		generalSkills[g.ID] = g
+	}
 	var sks []model.EzfyCfgSkill
 	db.Find(&sks)
 	for _, s := range sks {
@@ -2083,6 +2092,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	c.wildlands = wildlands
 	c.items = items
 	c.generals = generals
+	c.generalSkills = generalSkills
 	c.skills = skills
 	c.skillByName = skillByName
 	c.equipments = equipments
@@ -2307,6 +2317,14 @@ func (c *ezfyConfigCache) generalByName(name string) *model.EzfyCfgGeneral {
 		}
 	}
 	return best
+}
+
+// generalSkill 取名将组合技能池的一条配置（nil = 不存在 / 已下架判断由调用方做）。
+func (c *ezfyConfigCache) generalSkill(id int) *model.EzfyCfgGeneralSkill {
+	if s, ok := c.generalSkills[id]; ok {
+		return &s
+	}
+	return nil
 }
 
 func (c *ezfyConfigCache) skill(id int) *model.EzfyCfgSkill {
