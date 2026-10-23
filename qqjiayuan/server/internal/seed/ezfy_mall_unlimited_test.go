@@ -35,3 +35,22 @@ func TestEzfyMallStockSeedsUnlimited(t *testing.T) {
 		}
 	}
 }
+
+// TestEzfyMigrationActDescription 移民法案（ItemType 31）人口满时加的是临时空闲人口，
+// 商城说明不能再写成「空闲人口达上限后无法使用」。
+func TestEzfyMigrationActDescription(t *testing.T) {
+	for i := range ezfyEzfyCfgItem {
+		it := ezfyEzfyCfgItem[i]
+		if it.ID != 1042 {
+			continue
+		}
+		if !strings.Contains(it.Description, "临时空闲") {
+			t.Fatalf("移民法案说明未写明临时空闲人口：%s", it.Description)
+		}
+		if strings.Contains(it.Description, "无法使用") {
+			t.Fatalf("移民法案说明仍是旧的「无法使用」口径：%s", it.Description)
+		}
+		return
+	}
+	t.Fatal("种子中未找到移民法案（ID=1042）")
+}
