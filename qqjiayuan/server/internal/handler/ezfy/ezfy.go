@@ -1350,7 +1350,7 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	//   落库随下面的「写合并」一起走（pop_recover / pop_recover_at / pop_recover_end_at）。
 	h.ezfySettlePopRecover(city)
 	// ★ 2026-10-23 人口达到民居上限后召集产生的额外空闲人口：超过正常空闲的部分
-	//   在 ezfyPopExtraDecayMs 内线性回落（用户规则：空闲可以超过总人口，超过既定空闲就回落）。
+	//   在 pop_extra_decay_seconds 内线性回落（用户规则：空闲可以超过总人口，超过既定空闲就回落）。
 	//   与待恢复人口同一处结算，所有接口必经，口径唯一。
 	h.ezfySettlePopExtra(city)
 	// ★ 「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
@@ -2984,20 +2984,17 @@ func ezfySettlePopRecoverAt(city *model.EzfyCity, now, durationMs int64) {
 	city.PopRecoverAt = now
 }
 
-// ezfyPopExtraDecayMs 额外空闲人口的回落窗口。
+// ezfySettlePopExtra 额外空闲人口回落结算（纯内存，不查库）。
 //
 // ★ 2026-10-23 用户规则：空闲人口可以超过总人口；若超过「既定空闲人口」
 // （即 人口 − 建筑占用 − 待恢复）的部分就会回落。
-// 这里用 5 分钟线性回落，刚好与「人口达到民居上限后的召集冷却」同长：
-// 每次召集给一批临时空闲人口，5 分钟内可拿去征兵/建设，之后自然落回正常空闲。
-const ezfyPopExtraDecayMs = 5 * 60 * 1000
-
-// ezfySettlePopExtra 额外空闲人口回落结算（纯内存，不查库）。
+// 回落窗口由二战系统配置 pop_extra_decay_seconds 决定（默认 300 秒 = 5 分钟）：
+// 每次召集给一批临时空闲人口，在窗口内可拿去征兵/建设，之后自然落回正常空闲。
 func (h *EzfyHandler) ezfySettlePopExtra(city *model.EzfyCity) {
 	if city == nil {
 		return
 	}
-	ezfySettlePopExtraAt(city, time.Now().UnixMilli(), ezfyPopExtraDecayMs)
+	ezfySettlePopExtraAt(city, time.Now().UnixMilli(), ezfyPopExtraDecayMs())
 }
 
 // ezfySettlePopExtraAt 按指定时间/窗口结算额外空闲人口，方便单测。
@@ -3051,11 +3048,11 @@ func ezfySettlePopExtraAt(city *model.EzfyCity, now, durationMs int64) {
 	city.PopExtraAt = now
 }
 
-// ezfyAddPopExtra 给城市增加「额外空闲人口」，并重新起算 5 分钟回落窗口。
+// ezfyAddPopExtra 给城市增加「额外空闲人口」，并按配置重新起算回落窗口。
 //
 // 只在人口达到/超过民居上限时调用：总人口不变，空闲人口临时增加。
 func ezfyAddPopExtra(city *model.EzfyCity, gain int64) {
-	ezfyAddPopExtraAt(city, gain, time.Now().UnixMilli(), ezfyPopExtraDecayMs)
+	ezfyAddPopExtraAt(city, gain, time.Now().UnixMilli(), ezfyPopExtraDecayMs())
 }
 
 // ezfyAddPopExtraAt 与 ezfyAddPopExtra 同口径，时间/窗口可注入，方便单测。
@@ -3096,7 +3093,7 @@ func ezfyClampPopToHouseCap(pop, popMax int64) int64 {
 //
 //	人口未满 pop_max 时，新增人口同时进入总人口与空闲人口；
 //	人口已满时，召集/移民法案先扣待恢复人口，再增加 `pop_extra`，
-//	所以空闲人口可以暂时超过总人口；`pop_extra` 在 ezfyPopExtraDecayMs 内回落。
+//	所以空闲人口可以暂时超过总人口；`pop_extra` 在 pop_extra_decay_seconds 内回落。
 func ezfyPopFree(pop, buildingPop, troopPop, recover, extra int64) int64 {
 	free := pop - buildingPop - troopPop - recover + extra
 	if free < 0 {
@@ -3901,7 +3898,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 	//   阶段一（人口未满 pop_max）：直接增加总人口，最多加 param，且不超过 pop_max-pop；
 	// ★ 2026-10-23 与 Convene 同口径：
 	//   阶段二（人口已满）：总人口不增加，本次 param 全部转为空闲人口；
-	//     先扣待恢复人口，剩余计入 PopExtra（允许空闲暂时超过总人口，5 分钟内回落）。
+	//     先扣待恢复人口，剩余计入 PopExtra（允许空闲暂时超过总人口，按配置时间回落）。
 	//     待恢复人口为 0 时也不再拒绝，且照常消耗道具。
 	case 31:
 		// 先把旧账按时间结清，保证用的是「此刻」的待恢复人口 / 额外空闲人口
@@ -4663,7 +4660,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		//   空闲人口 = 人口 − 占用 − 待恢复 + 额外空闲（见 ezfyPopFree），前端 freePop 必须扣掉它。
 		"pop_recover": city.PopRecover,
 		// ★ 2026-10-23 额外空闲人口：人口达到民居上限后召集产生，允许空闲暂时超过总人口，
-		//   超过正常空闲的部分会在 5 分钟内回落（前端展示/征兵可用人口都要加上）。
+		//   超过正常空闲的部分会按配置时间回落（前端展示/征兵可用人口都要加上）。
 		"pop_extra": city.PopExtra,
 		// ★ 2026-10-13 顶部导航「军情」感叹号角标：未看的 军情警讯(1)+战斗报告(2) 数量
 		"unread_warns": unreadWarns,
@@ -5277,7 +5274,7 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 // ★ 2026-10-23 用户补充规则：
 //   - 人口已满：冷却结束后仍可继续召集；总人口不再增加，本次召集量全部转为空闲人口；
 //     先扣待恢复人口，剩余部分进入 EzfyCity.PopExtra（允许空闲人口暂时超过总人口），
-//     再由 ezfySettlePopExtra 在 5 分钟内回落。
+//     再由 ezfySettlePopExtra 按配置时间回落。
 //   - 待恢复人口为 0 时也**不能拒绝召集**，否则人口一满就永远点不动。
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)

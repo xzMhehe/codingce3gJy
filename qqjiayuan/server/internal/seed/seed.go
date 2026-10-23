@@ -252,6 +252,10 @@ func Run(db *gorm.DB, staticDir string) {
 		//   训练完不再瞬间归还人口，转成待恢复人口，在配置时间内线性恢复满（见 ezfySettlePopRecover）。
 		//   0 无意义（读取端回落默认 1200）→ 用 addLimitCol 补列 + 回填。
 		addLimitCol("pop_recover_seconds", 1200)
+		// ★ 2026-10-23 临时空闲人口回落窗口可配（默认 300 秒 = 5 分钟）：
+		//   人口满后召集/移民法案产生的 pop_extra 在配置时间内线性回落到 0。
+		//   0 无意义（读取端回落默认 300）→ 用 addLimitCol 补列 + 回填。
+		addLimitCol("pop_extra_decay_seconds", 300)
 		// ★ 2026-10-22 驻军批量操作范围（1=当前城市 默认 / 2=全部城市）：
 		//   0 是「老库未配置」→ 回填 1，保持现行为；管理端保存只接受 1/2。
 		addLimitCol("garrison_batch_scope", 1)
@@ -3328,6 +3332,12 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pop_recover_seconds int DEFAULT 1200")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET pop_recover_seconds = 1200 WHERE pop_recover_seconds IS NULL OR pop_recover_seconds <= 0")
+	// ★ 2026-10-23 临时空闲人口回落窗口（默认 300 秒 = 5 分钟）：
+	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "pop_extra_decay_seconds") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pop_extra_decay_seconds int DEFAULT 300")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET pop_extra_decay_seconds = 300 WHERE pop_extra_decay_seconds IS NULL OR pop_extra_decay_seconds <= 0")
 	// ★ 2026-10-23 召集间隔（普通默认 3 秒 / 人口满默认 300 秒）：
 	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "convene_cooldown_seconds") {

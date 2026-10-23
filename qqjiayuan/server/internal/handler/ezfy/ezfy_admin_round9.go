@@ -38,8 +38,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-10-23 召集间隔（缺行时默认普通 3 秒 / 人口满 300 秒）
 		ConveneCooldownSeconds: ezfyConveneCooldownSecondsDef, ConveneCapCooldownSeconds: ezfyConveneCapCooldownSecondsDef,
 		// ★ 2026-10-22 空闲人口恢复满时间（缺行时默认 1200 秒）
-		PopRecoverSeconds:  ezfyPopRecoverSecondsDef,
-		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
+		PopRecoverSeconds: ezfyPopRecoverSecondsDef,
+		// ★ 2026-10-23 临时空闲人口回落窗口（缺行时默认 300 秒 = 5 分钟）
+		PopExtraDecaySeconds: ezfyPopExtraDecaySecondsDef,
+		ConquerFeelingsMax:   ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
 		PlacateGold: ezfyPlacateGoldDef, PlacateGrievance: ezfyPlacateGrievanceDef,
@@ -137,6 +139,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 2026-10-22 空闲人口恢复满时间兜底（0/未配置/越界 → 默认 1200 秒）
 	if lim.PopRecoverSeconds < 1 || lim.PopRecoverSeconds > 1000000000 {
 		lim.PopRecoverSeconds = ezfyPopRecoverSecondsDef
+	}
+	// ★ 2026-10-23 临时空闲人口回落窗口兜底（0/未配置/越界 → 默认 300 秒）
+	if lim.PopExtraDecaySeconds < 1 || lim.PopExtraDecaySeconds > 1000000000 {
+		lim.PopExtraDecaySeconds = ezfyPopExtraDecaySecondsDef
 	}
 	// ★ 集结令上限兜底：老行没这列时可能是 0，回落到默认 99（0 无意义 = 禁用道具）
 	if lim.GatherMaxPerOrder <= 0 {
@@ -410,6 +416,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConveneCapCooldownSeconds *int `json:"convene_cap_cooldown_seconds"`
 		// ★ 2026-10-22 空闲人口恢复满时间（默认 1200 秒；0/未配置 → 读取端回落默认）
 		PopRecoverSeconds *int `json:"pop_recover_seconds"`
+		// ★ 2026-10-23 临时空闲人口回落窗口（默认 300 秒 = 5 分钟；0/未配置 → 读取端回落默认）
+		PopExtraDecaySeconds *int `json:"pop_extra_decay_seconds"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
 		OfficerStarUpOn     *int `json:"officer_star_up_on"`
 		OfficerStarChance   *int `json:"officer_star_chance"`
@@ -483,8 +491,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-10-23 召集间隔（缺行时默认普通 3 秒 / 人口满 300 秒）
 		ConveneCooldownSeconds: ezfyConveneCooldownSecondsDef, ConveneCapCooldownSeconds: ezfyConveneCapCooldownSecondsDef,
 		// ★ 2026-10-22 空闲人口恢复满时间（缺行时默认 1200 秒）
-		PopRecoverSeconds:  ezfyPopRecoverSecondsDef,
-		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
+		PopRecoverSeconds: ezfyPopRecoverSecondsDef,
+		// ★ 2026-10-23 临时空闲人口回落窗口（缺行时默认 300 秒 = 5 分钟）
+		PopExtraDecaySeconds: ezfyPopExtraDecaySecondsDef,
+		ConquerFeelingsMax:   ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
 		PlacateGold: ezfyPlacateGoldDef, PlacateGrievance: ezfyPlacateGrievanceDef,
@@ -711,6 +721,14 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.PopRecoverSeconds = *in.PopRecoverSeconds
 	}
+	// ★ 2026-10-23 临时空闲人口回落窗口（秒）：默认 300 秒（5 分钟），0 无意义 → 读取端回落默认。
+	if in.PopExtraDecaySeconds != nil {
+		if *in.PopExtraDecaySeconds < 1 || *in.PopExtraDecaySeconds > 1000000000 {
+			resp.ParamError(c, "临时空闲回落时间需要在 1~1000000000 秒之间")
+			return
+		}
+		lim.PopExtraDecaySeconds = *in.PopExtraDecaySeconds
+	}
 	if lim.MilitaryMax <= 0 {
 		lim.MilitaryMax = 36
 	}
@@ -757,6 +775,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	// ★ 2026-10-22 空闲人口恢复满时间兜底（0/未配置/越界 → 默认 1200 秒）
 	if lim.PopRecoverSeconds < 1 || lim.PopRecoverSeconds > 1000000000 {
 		lim.PopRecoverSeconds = ezfyPopRecoverSecondsDef
+	}
+	// ★ 2026-10-23 临时空闲人口回落窗口兜底（0/未配置/越界 → 默认 300 秒）
+	if lim.PopExtraDecaySeconds < 1 || lim.PopExtraDecaySeconds > 1000000000 {
+		lim.PopExtraDecaySeconds = ezfyPopExtraDecaySecondsDef
 	}
 	// ★ 战斗/经济数值（「民心扣除后台可配置，默认 2」+「军官工资合理消耗」）
 	//   这几个值 0 无意义，所以只接受 >= 1。
@@ -1526,6 +1548,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"convene_cap_cooldown_seconds": lim.ConveneCapCooldownSeconds,
 		// ★ 2026-10-22 空闲人口恢复满时间（秒）：同样显式写，避免零值被 GORM default 吞掉
 		"pop_recover_seconds": lim.PopRecoverSeconds,
+		// ★ 2026-10-23 临时空闲人口回落窗口（秒）：显式写，保存后立即生效
+		"pop_extra_decay_seconds": lim.PopExtraDecaySeconds,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
 		"wild_treasure_cooldown_h": lim.WildTreasureCooldownH,
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）

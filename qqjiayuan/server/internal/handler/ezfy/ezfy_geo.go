@@ -1367,7 +1367,7 @@ func (h *EzfyHandler) housePopCap(cityID uint) int64 {
 //	     新增人口同时进入总人口与空闲人口（idleOnly=false）。
 //	  ② 人口已满/超过 popMax：总人口不动，本次固定获得 `want` 空闲人口（idleOnly=true）。
 //	     其中先扣「待恢复人口」转成空闲，剩余部分计入 EzfyCity.PopExtra（额外空闲池），
-//	     由 ezfySettlePopExtra 在 ezfyPopExtraDecayMs 内线性回落。
+//	     由 ezfySettlePopExtra 在 pop_extra_decay_seconds 内线性回落。
 //	     因此 `recover = 0` 时也**不能**返回 0 —— 否则又会出现「人口一满就永远不能召集」。
 //	  ③ popMax <= 0（没有民居）：无法召集，返回 0。
 func ezfyPopGatherPlan(pop, popMax, want, recover int64) (gain int64, idleOnly bool) {
@@ -1465,6 +1465,24 @@ const ezfyPopRecoverSecondsDef = 1200 // 空闲人口恢复满所需秒数，默
 // ezfyPopRecoverSeconds 空闲人口恢复满所需秒数（默认 1200；0/未配置 → 回落默认）。
 func ezfyPopRecoverSeconds() int64 {
 	return int64(clampInt(ezfyLimitOr(ezfyCfg.limit.PopRecoverSeconds, ezfyPopRecoverSecondsDef), 1, 1000000000))
+}
+
+// ============ 临时空闲人口回落（2026-10-23）============
+//
+// ★ 用户规则「临时空闲按 5 分钟线性回落，这个也要能在二战系统配置里面配置」：
+//
+//	人口达到民居上限后，召集/移民法案产生的额外空闲人口（EzfyCity.PopExtra）
+//	按这里的秒数线性回落，默认保持原行为 300 秒（5 分钟）。
+const ezfyPopExtraDecaySecondsDef = 300
+
+// ezfyPopExtraDecaySeconds 临时空闲人口回落窗口（秒，默认 300；0/未配置 → 回落默认）。
+func ezfyPopExtraDecaySeconds() int64 {
+	return int64(clampInt(ezfyLimitOr(ezfyCfg.limit.PopExtraDecaySeconds, ezfyPopExtraDecaySecondsDef), 1, 1000000000))
+}
+
+// ezfyPopExtraDecayMs 临时空闲人口回落窗口（毫秒），供结算/新增时间戳共用。
+func ezfyPopExtraDecayMs() int64 {
+	return ezfyPopExtraDecaySeconds() * 1000
 }
 
 // ============ 军官升星配置（2026-09-22 ，2026-09-23 按简化）============

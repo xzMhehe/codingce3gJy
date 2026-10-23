@@ -14,9 +14,10 @@ import (
 //  2. 人口未满 → 召集加总人口（空闲同步增加），最多加到 pop_max；
 //  3. 人口已满 → 召集/移民法案仍可继续：总人口不增加，本次召集量转为空闲人口；
 //     先扣待恢复人口，剩余进入 pop_extra（允许空闲人口暂时超过总人口）；
-//  4. 人口达到/超过民居上限时，召集冷却为 5 分钟（普通情况仍是 3 秒）；
+//  4. 人口达到/超过民居上限时，召集冷却默认 300 秒（普通情况仍是 3 秒），两档均可配置；
 //  5. 总人口永远不能超过民居上限：超限数据在下一次结算时**立即夹平**；
-//     额外空闲人口（pop_extra）超过正常空闲的部分，在 5 分钟内线性回落。
+//     额外空闲人口（pop_extra）超过正常空闲的部分，按 pop_extra_decay_seconds
+//     （默认 300 秒 = 5 分钟）线性回落。
 
 func TestEzfyPopGatherPlan(t *testing.T) {
 	cases := []struct {
@@ -227,6 +228,58 @@ func TestTrainPopAvailableIncludesExtra(t *testing.T) {
 	} {
 		if !strings.Contains(train, want) {
 			t.Fatalf("trainTroopLocked 人口校验未计入临时空闲人口（缺 %s）：\n%s", want, train)
+		}
+	}
+}
+
+// TestPopExtraDecayCfg 临时空闲人口回落窗口必须从二战系统配置读取，默认 300 秒。
+func TestPopExtraDecayCfg(t *testing.T) {
+	old := ezfyCfg
+	defer func() { ezfyCfg = old }()
+	ezfyCfg.limit = model.EzfyCfgLimit{}
+	if got := ezfyPopExtraDecayMs(); got != 300000 {
+		t.Fatalf("临时空闲回落默认值 = %d ms，期望 300000（5 分钟）", got)
+	}
+	ezfyCfg.limit.PopExtraDecaySeconds = 42
+	if got := ezfyPopExtraDecayMs(); got != 42000 {
+		t.Fatalf("临时空闲回落配置 42 秒未生效，got %d ms", got)
+	}
+	ezfyCfg.limit.PopExtraDecaySeconds = 0
+	if got := ezfyPopExtraDecayMs(); got != 300000 {
+		t.Fatalf("临时空闲回落配置 0 应回落默认 300 秒，got %d ms", got)
+	}
+	// 实际新增临时空闲也要用配置窗口，而不是写死的 5 分钟。
+	ezfyCfg.limit.PopExtraDecaySeconds = 600
+	city := &model.EzfyCity{}
+	ezfyAddPopExtra(city, 100)
+	if city.PopExtra != 100 || city.PopExtraEndAt-city.PopExtraAt != 600000 {
+		t.Fatalf("临时空闲新增未使用配置的 600 秒窗口: %+v", city)
+	}
+
+	// 后台保存/读取、seed 补列、管理端 UI 必须都接上这个配置。
+	adminGo := ezfyStripCommentLines(rawFile(t, "ezfy_admin_round9.go"))
+	for _, want := range []string{
+		"PopExtraDecaySeconds",
+		`"pop_extra_decay_seconds": lim.PopExtraDecaySeconds`,
+		"临时空闲回落时间需要在",
+	} {
+		if !strings.Contains(adminGo, want) {
+			t.Fatalf("管理端后端未接入临时空闲回落配置（缺 %s）", want)
+		}
+	}
+	seedGo := ezfyStripCommentLines(rawFile(t, "../../seed/seed.go"))
+	for _, want := range []string{
+		`addLimitCol("pop_extra_decay_seconds", 300)`,
+		`ADD COLUMN pop_extra_decay_seconds int DEFAULT 300`,
+	} {
+		if !strings.Contains(seedGo, want) {
+			t.Fatalf("seed 未补临时空闲回落配置列（缺 %s）", want)
+		}
+	}
+	adminVue := ezfyStripCommentLines(readFrontFile(t, "../../../../admin-web/src/components/admin/AdminEzfyBuildLimit.vue"))
+	for _, want := range []string{"pop_extra_decay_seconds", "临时空闲回落时间", "默认 300 秒（5 分钟）"} {
+		if !strings.Contains(adminVue, want) {
+			t.Fatalf("管理端 UI 未提供临时空闲回落配置（缺 %s）", want)
 		}
 	}
 }

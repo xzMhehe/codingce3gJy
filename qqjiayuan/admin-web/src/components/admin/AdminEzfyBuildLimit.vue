@@ -406,6 +406,12 @@
               <el-input-number v-model.number="form.pop_recover_seconds" :min="1" :max="1000000000" :step="10" controls-position="right" style="width: 200px" />
               <span class="unit-hint">秒 · 默认 1200 秒（20 分钟）</span>
             </el-form-item>
+            <!-- ★ 2026-10-23 临时空闲人口回落窗口：人口满后召集/移民法案产生的临时空闲，按此时间线性回落 -->
+            <el-form-item>
+              <template slot="label">临时空闲回落时间<el-tooltip placement="top" :content="tips.pop_extra_decay_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.pop_extra_decay_seconds" :min="1" :max="1000000000" :step="10" controls-position="right" style="width: 200px" />
+              <span class="unit-hint">秒 · 默认 300 秒（5 分钟）</span>
+            </el-form-item>
             <!-- ★ 2026-10-14 风云榜统计开关（与「排行榜 → 风云榜」页的开关同一项，两处都能改） -->
             <el-form-item>
               <template slot="label">风云榜统计<el-tooltip placement="top" :content="tips.pvp_rank_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -521,6 +527,8 @@ export default {
         convene_cooldown_seconds: 3, convene_cap_cooldown_seconds: 300,
         // ★ 2026-10-22：空闲人口恢复满时间（默认 1200 秒；训练消耗人口后按此时间线性恢复）
         pop_recover_seconds: 1200,
+        // ★ 2026-10-23：临时空闲人口回落时间（默认 300 秒 = 5 分钟）
+        pop_extra_decay_seconds: 300,
         // ★ 2026-10-14 风云榜统计开关（1 = 开：战斗结算写周榜；0 = 关：完全不统计）
         pvp_rank_on: 1,
         officer_star_up_on: 1,
@@ -548,7 +556,7 @@ export default {
         switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'train_mayor_military_on',
           'train_mayor_equip_on', 'food_upkeep_on', 'march_oil_on',
           'convene_food_cost', 'convene_pop_pct', 'convene_cooldown_seconds',
-          'convene_cap_cooldown_seconds', 'pop_recover_seconds',
+          'convene_cap_cooldown_seconds', 'pop_recover_seconds', 'pop_extra_decay_seconds',
           'pvp_rank_on', 'garrison_batch_scope'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
           'recruit_five_star_rate'],
@@ -689,6 +697,8 @@ export default {
           '测试时可临时改成 5 秒，保存后立即生效。',
         pop_recover_seconds: '训练消耗人口后，这部分空闲人口不会瞬间归还，而是在该时间内线性恢复满（默认 1200 秒 = 20 分钟）。' +
           '有新训练消耗人口时会重新起算；玩家可用「移民法案」道具（2 钻石）瞬间恢复 1 万空闲人口',
+        pop_extra_decay_seconds: '人口达到民居上限后，召集/移民法案产生的临时空闲人口会在这个时间内线性回落到 0（默认 300 秒 = 5 分钟）。' +
+          '每次新召集会重新起算；改大后临时空闲可保留更久，方便测试或活动期放宽。',
         pvp_rank_on: '开 = 玩家对战结算按自然周写入风云榜（现行为）；关 = 完全不统计（榜单为空，历史周榜保留，重新开启即继续累计）。' +
           '与「排行榜 → 风云榜」页顶部的开关是同一项配置',
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
@@ -815,6 +825,8 @@ export default {
             convene_cap_cooldown_seconds: Math.min(1000000000, Math.max(1, Number(r.data.convene_cap_cooldown_seconds) || 300)),
             // ★ 2026-10-22 空闲人口恢复满时间（0/未配置 → 回落默认 1200 秒）
             pop_recover_seconds: Math.min(1000000000, Math.max(1, Number(r.data.pop_recover_seconds) || 1200)),
+            // ★ 2026-10-23 临时空闲人口回落时间（0/未配置 → 回落默认 300 秒）
+            pop_extra_decay_seconds: Math.min(1000000000, Math.max(1, Number(r.data.pop_extra_decay_seconds) || 300)),
             // ★ 2026-10-14 风云榜统计开关：**0 合法 = 关闭统计**，不能用 pos()（会把 0 改回 1）
             pvp_rank_on: (r.data.pvp_rank_on === undefined || r.data.pvp_rank_on === null)
               ? 1 : Number(r.data.pvp_rank_on),

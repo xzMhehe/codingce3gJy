@@ -786,7 +786,7 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 	// 空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复 + 额外空闲（ezfyPopFree）。
 	// 其中「额外空闲」是人口达到民居上限后召集产生、会回落的部分；编辑时：
 	//   ① 先尽量用总人口满足目标空闲（最多到 pop_max）；
-	//   ② 总人口到上限后仍不够的部分写入 pop_extra，并重新起算 5 分钟回落窗口。
+	//   ② 总人口到上限后仍不够的部分写入 pop_extra，并按配置重新起算回落窗口。
 	// ★ 必须放在 ⑤ 之后执行：同时传 pop 和 free_pop 时以 free_pop 为准（它基于最终 pop 反推）。
 	if city.ID > 0 && in.FreePop != nil {
 		if *in.FreePop < 0 {
@@ -823,7 +823,7 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		if extra > 0 {
 			upd["pop_extra"] = extra
 			upd["pop_extra_at"] = now
-			upd["pop_extra_end_at"] = now + ezfyPopExtraDecayMs
+			upd["pop_extra_end_at"] = now + ezfyPopExtraDecayMs()
 		} else {
 			upd["pop_extra"] = 0
 			upd["pop_extra_at"] = now

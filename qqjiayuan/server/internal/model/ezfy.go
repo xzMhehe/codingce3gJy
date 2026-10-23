@@ -612,7 +612,7 @@ type EzfyCfgLimit struct {
 	//   原「民居容量限制」、「允许长期超过民居上限」、「召集人口上限」三个配置已删除。
 	// ★ 2026-10-23 总人口永远不允许超过民居上限：超限数据在下一次懒结算时直接夹平。
 	//   人口已满时召集/移民法案仍可继续：总人口不增加，召集量转为额外空闲人口
-	//   （EzfyCity.PopExtra，允许空闲暂时超过总人口，5 分钟内回落）。
+	//   （EzfyCity.PopExtra，允许空闲暂时超过总人口，按 pop_extra_decay_seconds 回落，默认 300 秒）。
 	//   原「超限人口回落速度」配置也已删除。
 	//
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」。
@@ -631,6 +631,11 @@ type EzfyCfgLimit struct {
 	//   作用点见 EzfyCity.PopRecover / PopRecoverEndAt。
 	//   0 / 未配置无意义 → 回落默认 1200（seed 走 addLimitCol / EnsureEzfyLimitColumns）。
 	PopRecoverSeconds int `gorm:"comment:空闲人口恢复满所需秒数（默认1200）" json:"pop_recover_seconds"`
+
+	// ★ 2026-10-23 用户规则「临时空闲按 5 分钟线性回落，这个也要能在二战系统配置里面配置」：
+	//   人口达到民居上限后，召集/移民法案产生的额外空闲人口（EzfyCity.PopExtra）
+	//   在配置的秒数内线性回落。默认 300 秒（5 分钟）；0 / 未配置无意义 → 回落默认。
+	PopExtraDecaySeconds int `gorm:"default:300;comment:临时空闲人口回落秒数（默认300）" json:"pop_extra_decay_seconds"`
 
 	// ============ 军官升星（2026-09-22 ，2026-09-23 按简化）============
 	//
@@ -1192,7 +1197,7 @@ type EzfyCity struct {
 	//	空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口 + 额外空闲人口（下限 0）。
 	//	★ 人口未满民居上限时，召集同时增加总人口与空闲人口；人口已满时，
 	//	召集/移民法案（ItemType 31）先扣减这笔待恢复人口，剩余计入 PopExtra
-	//	（额外空闲人口，允许空闲暂时超过总人口，并在 5 分钟内回落）。
+	//	（额外空闲人口，允许空闲暂时超过总人口，并按 pop_extra_decay_seconds 回落，默认 300 秒）。
 	PopRecover int64 `gorm:"comment:待恢复人口(训练已消耗、还没回到空闲)" json:"pop_recover"`
 	// ★ 2026-10-13 待恢复人口上次结算时间戳(ms)，0 = 还没结算过（首次结算只记时间、不恢复）。
 	PopRecoverAt int64 `gorm:"comment:待恢复人口上次结算时间戳(ms)" json:"pop_recover_at"`
@@ -1201,7 +1206,8 @@ type EzfyCity struct {
 	PopRecoverEndAt int64 `gorm:"comment:待恢复人口恢复截止时间戳(ms)" json:"pop_recover_end_at"`
 	// ★★ 2026-10-23 用户规则：人口达到民居上限后，召集仍可继续，但**不再增加总人口**，
 	//   而是把这些人口记成「额外空闲人口」；因此空闲人口可以暂时超过总人口。
-	//   超过正常空闲（人口 − 建筑占用 − 待恢复）的部分会在 ezfyPopExtraDecayMs 内线性回落。
+	//   超过正常空闲（人口 − 建筑占用 − 待恢复）的部分会在配置的
+	//   pop_extra_decay_seconds（默认 300 秒）内线性回落。
 	//   不占人口位置、不计入总人口，只参与空闲人口/征兵可用人口的计算。
 	PopExtra      int64 `gorm:"comment:额外空闲人口(可超过总人口, 到时回落)" json:"pop_extra"`
 	PopExtraAt    int64 `gorm:"comment:额外空闲人口上次结算时间戳(ms)" json:"pop_extra_at"`
