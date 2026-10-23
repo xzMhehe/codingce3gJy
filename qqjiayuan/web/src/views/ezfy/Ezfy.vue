@@ -7754,6 +7754,8 @@ export default {
     async doOfficerRename () {
       const o = this.officerDetail.officer
       if (o.is_captive === 1) { this.notify('俘虏不能改名, 请先在军校收编'); return }
+      // ★ 2026-10-23 在外采集/出征中禁止改名（订单按军官名关联，改名会导致归队/重复出征异常）
+      if (o.status === 1) { this.notify('军官在外采集/出征中, 归队后才能改名'); return }
       if (o.rename_card <= 0) { this.notify('没有「军官改名卡」，可在商城购买'); return }
       const name = await this.ask('给 ' + o.name + ' 改个新名字？', {
         input: true, placeholder: '2~12 个字符', value: o.name

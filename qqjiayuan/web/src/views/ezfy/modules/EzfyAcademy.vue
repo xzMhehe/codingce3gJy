@@ -529,7 +529,9 @@
                        ezfy.officerDetail.officer.general_name !== ezfy.officerDetail.officer.name" class="gray">
             （原名 {{ ezfy.officerDetail.officer.general_name }}）
           </span>
-          <a href="javascript:;" @click="ezfy.doOfficerRename">[改名]</a>
+          <!-- ★ 2026-10-23 在外采集/出征的军官不能改名（命令表按名字关联军官，改名会导致归队异常） -->
+          <a v-if="ezfy.officerDetail.officer.status !== 1" href="javascript:;" @click="ezfy.doOfficerRename">[改名]</a>
+          <span v-else class="gray">（归队改名）</span>
         </div>
 
         <div class="acade-tab">

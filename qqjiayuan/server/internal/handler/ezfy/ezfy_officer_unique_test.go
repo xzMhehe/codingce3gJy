@@ -72,6 +72,30 @@ func TestOfficerRenameRejectsDuplicateName(t *testing.T) {
 	}
 }
 
+// ②b 改名入口必须拒绝「在外采集/出征中」的军官
+//
+// ★ 2026-10-23 用户规则：在外边采集的军官不允许修改军官名字。
+// 命令表 ezfy_order.officer 存的是军官名，改名后按旧名找不回军官 → 归队解不掉出征态，
+//
+//	officerList 自愈还会把 status 改回 0，导致同一军官被重复派出。
+func TestOfficerRenameRejectsBusyOfficer(t *testing.T) {
+	src := readOfficerSrc(t)
+	idx := strings.Index(src, "func (h *EzfyHandler) OfficerRename(")
+	if idx < 0 {
+		t.Fatal("找不到 OfficerRename")
+	}
+	body := src[idx:]
+	if end := strings.Index(body, "\nfunc "); end > 0 {
+		body = body[:end]
+	}
+	if !strings.Contains(body, "o.Status == 1 || h.officerBusyOrder(city.ID, o.Name)") {
+		t.Fatal("OfficerRename 必须拒绝在外采集/出征中的军官（status=1 或仍有未结束命令）")
+	}
+	if !strings.Contains(body, "归队后才能改名") {
+		t.Fatal("OfficerRename 拒绝文案必须提示「归队后才能改名」")
+	}
+}
+
 // ③ 军校招募 hireOfficerDraft 必须查同城同名
 func TestHireOfficerDraftRejectsDuplicateName(t *testing.T) {
 	src := readOfficerSrc(t)

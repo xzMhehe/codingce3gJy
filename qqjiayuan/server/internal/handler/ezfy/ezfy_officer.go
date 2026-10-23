@@ -3536,6 +3536,14 @@ func (h *EzfyHandler) OfficerRename(c *gin.Context) {
 		resp.ParamError(c, "俘虏不能改名, 请先在军校收编")
 		return
 	}
+	// ★★ 2026-10-23 用户规则「在外边采集的军官不允许修改军官名字」：
+	//   行军命令 ezfy_order.officer 存的是**军官名**（不是 id），军官在外采集/出征时改名会让
+	//   命令按旧名字找不回军官 —— 归航时 officerGoOut 解不掉出征态、officerList 还会把
+	//   status 自愈成 0，玩家就能把同一名军官重复派出去。统一要求归队后再改名。
+	if o.Status == 1 || h.officerBusyOrder(city.ID, o.Name) {
+		resp.ParamError(c, "军官在外采集/出征中, 归队后才能改名")
+		return
+	}
 	var req struct {
 		Name string `json:"name"`
 	}
