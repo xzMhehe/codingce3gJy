@@ -95,10 +95,12 @@ func Init(cfg *config.MysqlConfig) *gorm.DB {
 	//   · MaxIdleConns 20 减少连接抖动（原来 10 偏小，热接口并发高时会频繁新建连接）；
 	//   · ConnMaxLifetime 30m / ConnMaxIdleTime 10m 主动回收，避免 MySQL
 	//     wait_timeout 掐掉空闲连接导致「connection was killed」类报错。
-	sqlDB.SetMaxIdleConns(20)
+	// ★ 2026-10-23 小内存机器：空闲连接从 20 降到 10、空闲 5 分钟就回收，
+	//   峰值仍保留 50，避免高并发时排队；只是不再长期白占 MySQL/本进程内存。
+	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(50)
 	sqlDB.SetConnMaxLifetime(30 * time.Minute)
-	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
 	// 建连后立刻探活：把「DSN 能 Open 但实际连不上」的故障提前暴露，而不是等到首个请求卡住
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatalf("MySQL 探活失败: %v", err)

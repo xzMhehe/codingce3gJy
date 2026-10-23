@@ -1,9 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +28,46 @@ func timedStep(name string, fn func()) {
 	t0 := time.Now()
 	fn()
 	log.Printf("[启动链] %s 耗时 %v", name, time.Since(t0).Round(time.Millisecond))
+}
+
+// serve ★ 2026-10-23 资源优化：不用 r.Run（http.ListenAndServe 零超时）。
+//
+//	小机器 + 公网环境下，空闲 keep-alive/半开连接会一直占着 fd（线上 lsof 已看到
+//	大量 CLOSE_WAIT）。这里显式设置读头/读/空闲超时，超时即回收连接：
+//	  · ReadHeaderTimeout 防慢速请求长期占用 goroutine/fd；
+//	  · IdleTimeout 让浏览器关页后的空闲连接尽快释放；
+//	  · WriteTimeout 放宽到 300s：低带宽手机下载大图/大 JS 不被误切（保体验）。
+//	同时支持 SIGTERM 优雅退出，配合 systemd restart 不丢在途请求。
+func serve(r *gin.Engine, addr string) {
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      300 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    128 << 10,
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("启动失败: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		<-ch
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		close(done)
+	}()
+
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatalf("启动失败: %v", err)
+	}
+	<-done
 }
 
 func main() {
@@ -226,9 +273,7 @@ func runHomeMode(cfg *config.Config) {
 	fmt.Println("  默认管理员：账号 10000 / 密码 admin123")
 	fmt.Println("  ★ 二战征途已独立部署：二战服务由二战服提供（/games/ezfy* 302 跳转）")
 	fmt.Println("==========================================")
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("启动失败: %v", err)
-	}
+	serve(r, addr)
 }
 
 // runWWIIMode 二战独立服（-mode=wwii，如 8081/8082）：
@@ -264,7 +309,5 @@ func runWWIIMode(cfg *config.Config) {
 	fmt.Println("  二战征途 独立服已启动  " + cfg.ZoneTitle() + "  http://127.0.0.1" + addr)
 	fmt.Println("  默认管理员：账号 10000 / 密码 admin123")
 	fmt.Println("==========================================")
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("启动失败: %v", err)
-	}
+	serve(r, addr)
 }

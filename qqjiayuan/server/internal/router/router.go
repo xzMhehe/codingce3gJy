@@ -38,7 +38,10 @@ import (
 //	· wwii：只注册二战路由（登录/SSO/zone/用户路由/管理端路由带内部 secret 校验）
 //	  + 托管二战前端（ezfy.html / assets / static）；三个 BgTick goroutine 只在 wwii 启动。
 func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(middleware.AccessLog())
+	r.MaxMultipartMemory = 8 << 20
 	r.Use(middleware.CORS())
 	// 全站 IP 封禁（命中封禁名单的请求 302 到服务不可用页）
 	banM := middleware.NewIPBan(db)
