@@ -51,19 +51,35 @@ func main() {
 //	· 二战管理端路径 /api/admin/ezfy* 由通用反向代理转发到二战服（admin-web 零改动，
 //	  RBAC 仍在家园侧 perm() 校验）；NoRoute 遇 /games/ezfy* 302 到二战默认区服 host；
 //	· **不连 ezfyDB**：authH/adminH 的 EzfyDB 传 nil（syncEzfyPassword 已有 nil guard），
-//	  二战库由二战服自己初始化，home 只在 homeDB 上幂等维护残留二战表（可回滚）。
+//	  二战库由二战服自己初始化。
+//	· ★★ 2026-10-23 **家园库不再建/维护任何 ezfy_* 表**（独立二战库模式下）：
+//	  历史上那批残留表就是这条 EnsureEzfy* 链造出来的，清理用 `cmd/ezfypurgehome`。
 func runHomeMode(cfg *config.Config) {
 	// ★★ 2026-10-17 二战独立部署：home 模式不再自动识别/连接二战独立库，
 	//   也**不初始化** ezfyDB —— 二战数据/二战服务全部由二战独立服承担。
 	homeDB := database.Init(&cfg.Mysql)
-	seed.EzfyUsesOwnDB = false
-	log.Printf("★ 运行模式：家园（home），只连家园库 %s（二战独立部署：home 不连二战库）", cfg.Mysql.DBName)
+	// ★★ 2026-10-23 家园库**不再建/维护二战表**。
+	//
+	//	原来这里写死 `false`，于是家园服每次启动都会跑整条 EnsureEzfy* 链
+	//	（补列/补表/灌种子），家园库里那套 90+ 张 `ezfy_*` 残留表不但清不掉，
+	//	还会被继续建出来（玩家反馈「家园库为什么还在建二战的表」）。
+	//	现在只要配置了**独立二战库**（ezfy_mysql.dbname 且与家园库不同），
+	//	EzfyUsesOwnDB=true → seed.Run 不建二战表、skip 分支的 EnsureEzfy* 链整段跳过。
+	//	★ 单库部署（没配 ezfy_mysql，或配成同一个库）仍按老行为在家园库建表。
+	seed.EzfyUsesOwnDB = cfg.EzfyMysql.DBName != "" && cfg.EzfyMysql.DBName != cfg.Mysql.DBName
+	if seed.EzfyUsesOwnDB {
+		log.Printf("★ 运行模式：家园（home），只连家园库 %s；二战库 %s 由二战服独占（家园库不再建 ezfy_* 表）",
+			cfg.Mysql.DBName, cfg.EzfyMysql.DBName)
+	} else {
+		log.Printf("★ 运行模式：家园（home），只连家园库 %s（单库模式：二战表也在本库）", cfg.Mysql.DBName)
+	}
 
 	// ★★ 2026-10-10 道具 cfg_id 全体迁到 1001+（与装备配置 1~35 彻底不重叠，根除「同 ID 混淆」）。
 	//   必须跑在 seed **之前**：种子里的道具已按新号 1001+ 灌，若老号行还在，
 	//   库里会同时存在老号行和新号行（商城列表出现重复道具）。
 	//   ★ 失败必须中止启动：带着老号继续跑，种子会再灌一套新号配置 → 商城道具重复。
-	//   home 模式不连二战库，只在 homeDB 上维护残留二战表（幂等，供回滚期使用）。
+	//   home 模式不连二战库：独立二战库时整段跳过（EzfyUsesOwnDB=true），
+	//   只有单库部署才需要在 homeDB 上做这次改号。
 	//   ★★ 2026-10-17 二战独立部署：家园库可能已无二战表（二战数据早已独立到 qq_ezzt，
 	//     没有「残留表」可维护）→ 缺表直接跳过（无事可迁），不再报 1146 拒启。
 	if !seed.EzfyUsesOwnDB {
@@ -80,8 +96,9 @@ func runHomeMode(cfg *config.Config) {
 
 	// 连接的是「已被别的实例灌好数据的共享库」时(seed.skip: true)，跳过全量初始化，
 	// 否则每台节点启动都会对已填充的表重跑配置 INSERT(重复主键/跨 WAN 挂起)。
-	// home 模式 EzfyUsesOwnDB 恒为 false，EnsureEzfy* 链照常执行
-	// （homeDB 上残留的二战表继续幂等维护，可回滚）。
+	// ★★ 2026-10-23 独立二战库模式下 EzfyUsesOwnDB=true → 整段 EnsureEzfy* 链跳过
+	//   （家园库不该有 ezfy_* 表；那套表由二战服在二战库上维护）。
+	//   单库模式（EzfyUsesOwnDB=false）仍照旧在家园库上幂等维护。
 	if !cfg.Seed.Skip {
 		seed.Run(homeDB, cfg.Server.WebDir+"/static")
 	} else if !seed.EzfyUsesOwnDB {
