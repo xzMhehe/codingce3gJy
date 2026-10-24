@@ -5291,16 +5291,10 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 		resp.ParamError(c, "税率范围0-100")
 		return
 	}
-	// ★ 2026-10-24 卡控：**民心 + 民怨 + 税率 ≤ 100**。
-	//   税率 >= 100 − 民心 − 民怨 时直接拒绝（民怨占着上限，得先安抚降民怨）。
-	//   例：民心50 民怨40 → 100−50−40=10，税率 >=10 一律拒绝，最多只能设 9。
-	feels := city.Feelings
-	if feels < 0 {
-		feels = 0
-	}
-	if feels > 100 {
-		feels = 100
-	}
+	// ★ 2026-10-24 卡控（用户纠正）：**设高税率民心会掉**，所以只看民怨不卡当前民心。
+	//   民心 + 民怨 + 税率 = 100，民怨占着上限；税率最高只能设到 100 − 民怨
+	//   （等于上限允许，此时民心会掉到 0）。例：民怨30 → 最多设 70（民心掉到0）；
+	//   无民怨 → 最多设 100（民心掉到0）。设低后民心按恢复速率慢慢涨回平衡点。
 	grv := city.Grievance
 	if grv < 0 {
 		grv = 0
@@ -5308,8 +5302,10 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 	if grv > 100 {
 		grv = 100
 	}
-	if req.TaxRate >= 100-feels-grv {
-		resp.ParamError(c, "请先安抚民心降低民怨")
+	maxTax := 100 - grv
+	if req.TaxRate > maxTax {
+		resp.ParamError(c, fmt.Sprintf("税率不能超过 %d%%（当前民怨 %d，100−民怨=%d）",
+			maxTax, grv, maxTax))
 		return
 	}
 	// ★ 2026-10-24 只改税率，民心交给 calcResourceD 按恢复速率逐步回归（不再瞬间联动）
