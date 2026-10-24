@@ -508,24 +508,11 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
 		defGeneral = ezfyCfg.general(aw.OfficerId)
 	}
-	// ★ 2026-10-24 活动野地「守军等级 / 守军加点」：0 = 用军官池默认；>0 覆盖守将等级与三维
-	//   （浅拷贝，不污染 ezfyCfg 缓存里其他请求共用的对象）。等级影响守将技能 / 组合技等级，
-	//   三维影响守方攻/防加成（ezfyAttrToBonus(Learning) 等）。
-	if aw != nil && aw.Enabled == 1 && defGeneral != nil &&
-		(aw.DefLevel > 0 || aw.DefMilitary > 0 || aw.DefLogistics > 0 || aw.DefLearning > 0) {
+	// ★ 2026-10-24 活动野地「守军等级」：0 = 用军官池默认；>0 覆盖守将等级（浅拷贝，
+	//   不污染 ezfyCfg 缓存里其他请求共用的对象）。等级影响守将技能 / 组合技等级。
+	if aw != nil && aw.Enabled == 1 && defGeneral != nil && aw.DefLevel > 0 {
 		g := *defGeneral
-		if aw.DefLevel > 0 {
-			g.Level = aw.DefLevel
-		}
-		if aw.DefMilitary > 0 {
-			g.Military = aw.DefMilitary
-		}
-		if aw.DefLogistics > 0 {
-			g.Logistics = aw.DefLogistics
-		}
-		if aw.DefLearning > 0 {
-			g.Learning = aw.DefLearning
-		}
+		g.Level = aw.DefLevel
 		defGeneral = &g
 	}
 	defBonus, defSpeedBonus := ezfyActWildDefBonus(defGeneral)
@@ -562,20 +549,13 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
 		}
 	}
-	// ★ 2026-10-24 守军行为：前进(默认1) / 停止(0) / 后退(-1) → 注入守方每兵种默认移动方向。
-	//   前进是引擎默认行为，只有配了 停止/后退 才需要覆盖 defMoves。
+	// ★ 2026-10-24 守军行为（**按兵种**配置）：JSON map {"兵种ID":1前进/0停止/-1后退}，
+	//   直接转成引擎的 defMoves map[int]int；空/{} = 全部兵种默认前进（引擎缺省行为）。
 	defMoves := map[int]int{}
-	if aw != nil && aw.Enabled == 1 && aw.DefMoveDir != 1 {
-		dir := aw.DefMoveDir
-		if dir < -1 {
-			dir = -1
-		}
-		if dir > 1 {
-			dir = 1
-		}
-		for _, g := range defender {
-			if g.TroopId > 0 {
-				defMoves[g.TroopId] = dir
+	if aw != nil && aw.Enabled == 1 {
+		if raw := strings.TrimSpace(aw.DefMoveDir); raw != "" && raw != "{}" {
+			if json.Unmarshal([]byte(raw), &defMoves) != nil {
+				defMoves = map[int]int{} // 脏数据兜底：当没配
 			}
 		}
 	}

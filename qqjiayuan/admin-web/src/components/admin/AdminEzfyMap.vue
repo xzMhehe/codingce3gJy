@@ -202,9 +202,13 @@
             <el-table-column label="坐标" width="110" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
             </el-table-column>
-            <el-table-column label="启用" width="90" align="center">
+            <el-table-column label="启用" width="110" align="center">
               <template slot-scope="{row}">
-                <el-switch :value="row.enabled === 1" @change="toggleAw(row)" />
+                <!-- ★ 2026-10-24 切换 UI 优化：tag 代替原开关，点击可切换 -->
+                <el-tag v-if="row.enabled === 1" type="success" size="small" style="cursor:pointer"
+                        title="点击切换为普通野地" @click="toggleAw(row)">活动野地</el-tag>
+                <el-tag v-else type="info" size="small" style="cursor:pointer"
+                        title="点击切换为活动野地" @click="toggleAw(row)">普通野地</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="level" label="等级" width="70" align="center">
@@ -782,60 +786,50 @@
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="启用">
-              <el-switch v-model="aw.enabled" :active-value="1" :inactive-value="0"
-                         active-text="活动野地" inactive-text="普通野地" />
+              <el-switch v-model="aw.enabled" :active-value="1" :inactive-value="0" />
+              <!-- ★ 2026-10-24 切换 UI 优化：tag 显示当前状态，去掉原开关旁的文字 -->
+              <el-tag v-if="aw.enabled === 1" type="success" size="small" style="margin-left:8px">活动野地</el-tag>
+              <el-tag v-else type="info" size="small" style="margin-left:8px">普通野地</el-tag>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="活动等级">
               <el-input-number v-model.number="aw.level" :min="0" :max="3" controls-position="right" style="width:100%" />
-              <span class="td-sub">0 = 默认</span>
+              <el-tooltip placement="top" content="活动强度档位 1~3；0 = 默认">
+                <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+              </el-tooltip>
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="守军配置">
           <!-- ★ 2026-09-29 原来是裸 JSON 文本框（[[兵种id,数量],...]），对非程序员不友好，改成可视化行编辑 -->
           <div v-for="(r, i) in awTroops" :key="'awt' + i" class="wild-troop-row">
-            <el-select v-model.number="r.troop_id" filterable placeholder="选择兵种" style="width:300px">
+            <el-select v-model.number="r.troop_id" filterable placeholder="选择兵种" style="width:280px">
               <el-option v-for="t in troopCfgs" :key="'awtc' + t.id"
                          :label="t.name" :value="t.id" />
             </el-select>
             <span class="td-sub">最小</span>
-            <el-input-number v-model.number="r.min" :min="0" controls-position="right" style="width:120px" />
+            <el-input-number v-model.number="r.min" :min="0" controls-position="right" style="width:110px" />
             <span class="td-sub">~最大</span>
-            <el-input-number v-model.number="r.max" :min="0" controls-position="right" style="width:120px" />
+            <el-input-number v-model.number="r.max" :min="0" controls-position="right" style="width:110px" />
+            <!-- ★ 2026-10-24 守军行为按兵种配置：每行独立 前进/停止/后退 -->
+            <el-select v-model.number="r.dir" size="small" style="width:96px">
+              <el-option label="前进" :value="1" />
+              <el-option label="停止" :value="0" />
+              <el-option label="后退" :value="-1" />
+            </el-select>
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="awTroops.splice(i, 1)" />
           </div>
           <div class="old-line" v-if="!awTroops.length">（未配置守军，用默认活动守军）</div>
           <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAwTroop">添加兵种</el-button>
-          <span class="td-sub" style="margin-left:8px">不填则用默认活动守军</span>
-        </el-form-item>
-        <!-- ★ 2026-10-24 守军行为：前进(默认) / 停止 / 后退 -->
-        <el-form-item label="守军行为">
-          <el-select v-model.number="aw.def_move_dir" style="width:160px">
-            <el-option label="前进（默认）" :value="1" />
-            <el-option label="停止" :value="0" />
-            <el-option label="后退" :value="-1" />
-          </el-select>
-          <el-tooltip placement="top" content="守军进场后的行为：前进 = 主动迎击攻方（默认）；停止 = 原地驻守；后退 = 且战且退">
+          <el-tooltip placement="top" content="守军行为可逐兵种配置：前进 = 主动迎击（默认）；停止 = 原地驻守；后退 = 且战且退">
             <i class="el-icon-info cfg-tip" style="margin-left:6px" />
           </el-tooltip>
         </el-form-item>
-        <!-- ★ 2026-10-24 守军等级 / 守军加点：0 = 用军官池默认；>0 覆盖守将 -->
+        <!-- ★ 2026-10-24 守军等级：0 = 用军官池默认；>0 覆盖守将（嫌活动野地好打就调高） -->
         <el-form-item label="守军等级">
           <el-input-number v-model.number="aw.def_level" :min="0" :max="350" controls-position="right" style="width:160px" />
           <el-tooltip placement="top" content="守将战斗等级（影响守将技能 / 组合技等级，名将满级 350）；0 = 用军官池默认">
-            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
-          </el-tooltip>
-        </el-form-item>
-        <el-form-item label="守军加点">
-          <span class="td-sub">武力</span>
-          <el-input-number v-model.number="aw.def_military" :min="0" controls-position="right" style="width:120px" />
-          <span class="td-sub" style="margin-left:8px">统率</span>
-          <el-input-number v-model.number="aw.def_logistics" :min="0" controls-position="right" style="width:120px" />
-          <span class="td-sub" style="margin-left:8px">谋略</span>
-          <el-input-number v-model.number="aw.def_learning" :min="0" controls-position="right" style="width:120px" />
-          <el-tooltip placement="top" content="守将三维加点，覆盖军官池属性（影响守方攻击 / 防御加成）；0 = 用军官池默认">
             <i class="el-icon-info cfg-tip" style="margin-left:6px" />
           </el-tooltip>
         </el-form-item>
@@ -946,15 +940,21 @@
         </el-form-item>
         <el-form-item label="资源奖励">
           <el-input-number v-model.number="al.res" :min="0" controls-position="right" style="width:100%" />
-          <span class="td-sub">粮 / 钢 / 油 / 稀矿 各加这么多；0 = 用默认</span>
+          <el-tooltip placement="top" content="粮 / 钢 / 油 / 稀矿 各加这么多；0 = 用默认">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="黄金奖励">
           <el-input-number v-model.number="al.gold" :min="0" controls-position="right" style="width:100%" />
-          <span class="td-sub">黄金（元宝）奖励；0 = 用默认</span>
+          <el-tooltip placement="top" content="黄金（元宝）奖励；0 = 用默认">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="声望奖励">
           <el-input-number v-model.number="al.prestige" :min="0" controls-position="right" style="width:100%" />
-          <span class="td-sub">军功声望；0 = 用默认</span>
+          <el-tooltip placement="top" content="军功声望；0 = 用默认">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="必掉宝物">
           <div v-for="(tr, ti) in alTreasures" :key="'altj' + ti" class="wild-troop-row">
@@ -1095,7 +1095,7 @@ export default {
       alTroops: [], // 可视化守军行 [{troop_id,min,max}]
       alTreasures: [], // 可视化必掉宝物行 [{treasure_id,count}]
       alDrops: [], // 可视化掉落道具行 [{cfg_id,count,pct}]
-      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, def_level: 0, def_military: 0, def_logistics: 0, def_learning: 0, captive_level: 0, def_move_dir: 1 },
+      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, def_level: 0, captive_level: 0 },
       awOfficerKind: 1, // 活动野地守将类型：0未选 1普通 2名将（按下拉里军官的 kind 推断）
       awStarFilter: 0, // 活动野地守将星级筛选（0=全部）
       awTroops: [], // 活动野地守军可视化行 [{troop_id,count},...]（保存时序列化成 [[tid,count]]）
@@ -1372,7 +1372,7 @@ export default {
       })
     },
     openAwCreate () {
-      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, def_level: 0, def_military: 0, def_logistics: 0, def_learning: 0, captive_level: 0, def_move_dir: 1 }
+      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, def_level: 0, captive_level: 0 }
       this.awOfficerKind = 1 // ★ 默认守将类型 = 普通
       this.awStarFilter = 5  // ★ 默认星级筛选 = 5 星
       // ★ 默认直接选中一个「普通 5 星」守将（有就放进下拉）
@@ -1412,6 +1412,8 @@ export default {
       //   已配守将的星级不再随行进来。现在用列表下发的 officer_star 回填，让星级筛选带上。
       this.awStarFilter = Number(row.officer_star) || 0
       this.awTroops = this.parseAwTroops(row.troops)
+      // ★ 2026-10-24 守军行为（按兵种 JSON map）回填到每行
+      this.applyAwDir(this.awTroops, row.def_move_dir)
       this.awTreasures = this.parseAwTreasures(row.treasures)
       this.awDlg = true
     },
@@ -1420,6 +1422,26 @@ export default {
       this.aw.officer_id = 0
       this.aw.officer_name = ''
       this.awStarFilter = 0
+    },
+    // ★ 2026-10-24 守军行为（按兵种）回填：JSON map {兵种ID: 1前进/0停止/-1后退}，缺省 = 前进
+    applyAwDir (rows, raw) {
+      let m = {}
+      try { m = JSON.parse(raw || '{}') } catch (e) { m = {} }
+      ;(rows || []).forEach(r => {
+        const d = Number(m[Number(r.troop_id)])
+        r.dir = (d === 0 || d === -1) ? d : 1
+      })
+      return rows
+    },
+    // ★ 2026-10-24 守军行为（按兵种）序列化：{兵种ID: 方向}；前进(1)=默认，省略
+    awMoveDirTxt () {
+      const m = {}
+      ;(this.awTroops || []).forEach(r => {
+        const id = Number(r.troop_id)
+        const dir = Number(r.dir)
+        if (id > 0 && (dir === 0 || dir === -1)) m[id] = dir
+      })
+      return Object.keys(m).length ? JSON.stringify(m) : ''
     },
     // 解析 [[兵种id,数量]]（旧）或 [[兵种id,最小,最大]]（新）JSON → 可视化行
     parseAwTroops (raw) {
@@ -1430,7 +1452,7 @@ export default {
           arr.forEach(r => {
             if (Array.isArray(r) && r.length >= 2 && Number(r[0]) > 0) {
               const lo = Number(r[1]) || 0
-              out.push({ troop_id: Number(r[0]) || 0, min: lo, max: r.length >= 3 ? Math.max(lo, Number(r[2]) || 0) : lo })
+              out.push({ troop_id: Number(r[0]) || 0, min: lo, max: r.length >= 3 ? Math.max(lo, Number(r[2]) || 0) : lo, dir: 1 })
             }
           })
         }
@@ -1439,7 +1461,7 @@ export default {
     },
     addAwTroop () {
       const first = this.troopCfgs[0]
-      if (this.troopCfgs.length) this.awTroops.push({ troop_id: first.id, min: 100, max: 200 })
+      if (this.troopCfgs.length) this.awTroops.push({ troop_id: first.id, min: 100, max: 200, dir: 1 })
     },
     // 解析 [[宝物cfg_id,数量],...] JSON → 可视化行
     parseAwTreasures (raw) {
@@ -1493,13 +1515,10 @@ export default {
         treasures: treasures,
         capture_rate: Number(a.capture_rate) || 0,
         max_capture: Number(a.max_capture) >= 0 ? Number(a.max_capture) : 1,
-        // ★ 2026-10-24 守军等级 / 加点 / 被俘等级 / 守军行为（0 = 用军官池默认；行为默认前进）
+        // ★ 2026-10-24 守军等级 / 被俘等级 / 守军行为（按兵种 JSON map：{兵种ID: 1前进/0停止/-1后退}）
         def_level: Number(a.def_level) || 0,
-        def_military: Number(a.def_military) || 0,
-        def_logistics: Number(a.def_logistics) || 0,
-        def_learning: Number(a.def_learning) || 0,
         captive_level: Number(a.captive_level) || 0,
-        def_move_dir: Number(a.def_move_dir) === 0 ? 0 : (Number(a.def_move_dir) === -1 ? -1 : 1)
+        def_move_dir: this.awMoveDirTxt()
       }
       this.saving = true
       api.post('/admin/ezfy-act-wilds', payload).then(r => {
