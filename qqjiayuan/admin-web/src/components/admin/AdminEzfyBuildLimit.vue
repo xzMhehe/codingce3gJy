@@ -196,6 +196,15 @@
               <template slot="label">打野地掉道具冷却(小时)<el-tooltip placement="top" :content="tips.wild_item_cooldown_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.wild_item_cooldown_h" :min="0" :max="720" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-24 活动目标掉落冷却（秒）：默认 7200 = 2 小时，**0 合法 = 关闭冷却** → :min="0" -->
+            <el-form-item>
+              <template slot="label">活动目标掉宝冷却(秒)<el-tooltip placement="top" :content="tips.act_treasure_cooldown_sec"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.act_treasure_cooldown_sec" :min="0" :max="86400" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">活动目标掉道具冷却(秒)<el-tooltip placement="top" :content="tips.act_item_cooldown_sec"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.act_item_cooldown_sec" :min="0" :max="86400" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-10-12 迁城冷却（小时）：默认 24，**0 合法 = 关闭迁城冷却** → :min="0" -->
             <el-form-item>
               <template slot="label">迁城冷却(小时)<el-tooltip placement="top" :content="tips.move_cool_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -620,6 +629,8 @@ export default {
         wild_treasure_cooldown_h: 2,
         // ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**）
         wild_item_cooldown_h: 1,
+        // ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时；**0 合法 = 关闭冷却**）
+        act_treasure_cooldown_sec: 7200, act_item_cooldown_sec: 7200,
         // ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭迁城冷却**）
         move_cool_h: 24,
         // ★ 2026-09-28 军校刷新周期（1=按天 2=按小时，默认按小时）
@@ -688,7 +699,7 @@ export default {
         troop: ['troop_max', 'wound_expire_days', 'wound_heal_divisor', 'wound_heal_rate', 'heal_all_diamond'],
         wild: ['wild_troop_mult', 'wild_res_mult', 'gather_wild_bonus_pct',
           'gather_formula_divisor', 'gather_sea_bonus_mult', 'res_prod_mult', 'gold_prod_mult', 'mayor_gain_mult', 'dispatch_period_h',
-          'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_h', 'move_cool_h'],
+          'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_h', 'act_treasure_cooldown_sec', 'act_item_cooldown_sec', 'move_cool_h'],
         battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
           'garrison_break_pct', 'battle_round_ms', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base',
           'min_dmg_coeff', 'conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'placate_gold',
@@ -805,6 +816,13 @@ export default {
         // ★ 2026-10-13 打野地掉道具冷却
         wild_item_cooldown_h: '打野地/寇城胜利掉落**商城道具**的玩家级冷却（小时，默认 1）：同一玩家在冷却期内再次打地，本场不掉商城道具（宝物掉落不受影响）。' +
           '用来卡控「有人用脚本刷野地」的情况。★ 填 0 = 关闭冷却（合法值）。掉到道具后才开始计冷却，没掉到不占冷却。',
+        // ★ 2026-10-24 活动目标掉落冷却（秒）
+        act_treasure_cooldown_sec: '活动目标（活动野地/活动寇城/特殊城市）胜利掉落**必掉宝物**的玩家级冷却（秒，默认 7200 = 2 小时）：' +
+          '同一玩家在冷却期内再次打赢活动目标，本场不掉必掉宝物（掉落道具不受影响）。' +
+          '★ 填 0 = 关闭冷却（合法值）。掉到宝物后才开始计冷却，没掉到不占冷却。',
+        act_item_cooldown_sec: '活动目标胜利掉落**商城道具**的玩家级冷却（秒，默认 7200 = 2 小时）：' +
+          '同一玩家在冷却期内再次打赢活动目标，本场不掉掉落道具（必掉宝物不受影响）。' +
+          '★ 填 0 = 关闭冷却（合法值）。掉到道具后才开始计冷却，没掉到不占冷却。',
         // ★ 2026-10-12 迁城冷却
         move_cool_h: '迁城冷却（小时，默认 24）：**按城市算** —— 用迁城计划/高级迁城计划/沿海迁城计划迁过的**这座城**，' +
           '要等冷却结束才能再次迁城；同一个账号的其他城市不受影响。★ 填 0 = 关闭迁城冷却（合法值）。' +
@@ -998,6 +1016,11 @@ export default {
             // ★ 2026-10-13 打野地掉道具冷却：**0 合法 = 关闭冷却**，不能用 pos()（会把 0 改回 1）
             wild_item_cooldown_h: (r.data.wild_item_cooldown_h === undefined || r.data.wild_item_cooldown_h === null)
               ? 1 : Number(r.data.wild_item_cooldown_h),
+            // ★ 2026-10-24 活动目标掉落冷却：**0 合法 = 关闭冷却**，不能用 pos()（会把 0 改回 7200）
+            act_treasure_cooldown_sec: (r.data.act_treasure_cooldown_sec === undefined || r.data.act_treasure_cooldown_sec === null)
+              ? 7200 : Number(r.data.act_treasure_cooldown_sec),
+            act_item_cooldown_sec: (r.data.act_item_cooldown_sec === undefined || r.data.act_item_cooldown_sec === null)
+              ? 7200 : Number(r.data.act_item_cooldown_sec),
             // ★ 2026-10-12 迁城冷却：**0 合法 = 关闭迁城冷却**，同样不能用 pos()（会把 0 改回 24）
             move_cool_h: (r.data.move_cool_h === undefined || r.data.move_cool_h === null)
               ? 24 : Number(r.data.move_cool_h),

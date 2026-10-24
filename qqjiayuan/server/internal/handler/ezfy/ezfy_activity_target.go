@@ -96,6 +96,20 @@ func parseActWildTreasures(raw string) [][2]int {
 	return out
 }
 
+// ezfyActDropReady 活动目标掉落冷却是否已过：距该玩家上次该类掉落 >= cooldownSec 秒（或从未掉过）→ true。
+//
+// ★ 冷却按**玩家**维度算（不分活动目标类型/等级）。上次掉落时间戳(ms)存在 ezfy_profile 的 col 列
+// （宝物=act_treasure_at / 商城道具=act_item_at），0 = 从未掉过。
+// cooldownSec <= 0 由调用方直接放行（= 关闭冷却），这里只处理 > 0 的判定。
+func (h *EzfyHandler) ezfyActDropReady(uid uint, col string, cooldownSec int) bool {
+	var last []int64
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Pluck(col, &last)
+	if len(last) == 0 || last[0] <= 0 {
+		return true // 从未掉过 / 列尚未补出（老库）→ 放行，避免误伤
+	}
+	return time.Now().UnixMilli()-last[0] >= int64(cooldownSec)*1000
+}
+
 // generalSkillList 解析军官池守将(general)的技能名列表（g.Skill 是 JSON 数组）
 func generalSkillList(g *model.EzfyCfgGeneral) []string {
 	out := []string{}
@@ -741,9 +755,19 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		} else if cfg := ezfyActLevelCfg(actType, level); cfg != nil {
 			treasuresRaw = cfg.Treasures
 		}
-		if strings.TrimSpace(treasuresRaw) != "" {
+		// ★ 2026-10-24 活动目标「必掉宝物」冷却（二战系统配置可配，默认 7200 秒 = 2 小时；0 = 关闭）：
+		//   按**玩家**维度：距上次掉到宝物不足冷却秒数 → 本场不掉宝物；掉到才刷新冷却，没掉到不占冷却。
+		actTreasureCd := ezfyActTreasureCooldownSec()
+		treasureDropped := false
+		if strings.TrimSpace(treasuresRaw) == "" {
+			// 没配必掉宝物 → 不掉
+		} else if actTreasureCd > 0 && !h.ezfyActDropReady(uid, "act_treasure_at", actTreasureCd) {
+			// 冷却中 → 本场不掉宝物；冷却只对管理员可见，**不写进玩家战报**
+		} else {
 			// ★ 2026-10-11 宝物库存上限（默认 5000，二战系统配置可配）：装不下的不入包，战报给简约提示。
 			left := h.ezfyTreasureLeft(city.UserID)
+			// ★ 2026-10-24 掉落宝物多条合并成一条战报（用户要求）：如「翡翠项链 ×1、蓝宝石戒指 ×1」
+			treasureNames := []string{}
 			for _, tr := range parseActWildTreasures(treasuresRaw) {
 				if e := ezfyCfg.equipment(tr[0]); e != nil {
 					// 套装件只能开宝箱获得（与野地类型掉落同口径），配置误选时跳过。
@@ -759,7 +783,8 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 					}
 					left -= give
 					if give > 0 {
-						report += fmt.Sprintf("\n掉落宝物: %s ×%d", e.Name, give)
+						treasureNames = append(treasureNames, fmt.Sprintf("%s ×%d", e.Name, give))
+						treasureDropped = true
 						h.ezfySysChat("恭喜玩家 %s 缴获宝物: %s", h.ezfyProfileName(city.UserID), e.Name)
 					}
 					if give < tr[1] {
@@ -767,32 +792,51 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 					}
 				}
 			}
+			if len(treasureNames) > 0 {
+				report += fmt.Sprintf("\n掉落宝物: %s", strings.Join(treasureNames, "、"))
+			}
+			if treasureDropped {
+				// 本次掉到宝物 → 记录掉宝时间，冷却从此刻起算（下次要等冷却过去才会再掉）
+				h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+					Update("act_treasure_at", time.Now().UnixMilli())
+			}
 		}
 		// ★ 2026-10-22 「活动目标配置 → 掉落道具」：逐条按概率掉落商城道具，
 		//   受背包单件上限约束；掉到后写战报并全服播报（与野地道具掉落同口径）。
+		// ★ 2026-10-24 「掉落道具」冷却（二战系统配置可配，默认 7200 秒 = 2 小时；0 = 关闭）：
+		//   与必掉宝物冷却各自独立，按玩家维度；掉到才刷新冷却，没掉到不占冷却。
+		actItemCd := ezfyActItemCooldownSec()
 		if cfg := ezfyActLevelCfg(actType, level); cfg != nil && strings.TrimSpace(cfg.DropItems) != "" {
-			lootNames := []string{}
-			bagMax := ezfyBagItemMax()
-			for _, d := range parseWildlandItemDrops(cfg.DropItems) {
-				if rand.Intn(100) >= d[2] {
-					continue
+			if actItemCd > 0 && !h.ezfyActDropReady(uid, "act_item_at", actItemCd) {
+				// 冷却中 → 本场不掉道具；冷却只对管理员可见，**不写进玩家战报**
+			} else {
+				lootNames := []string{}
+				bagMax := ezfyBagItemMax()
+				for _, d := range parseWildlandItemDrops(cfg.DropItems) {
+					if rand.Intn(100) >= d[2] {
+						continue
+					}
+					it := ezfyCfg.item(d[0])
+					if it == nil {
+						continue
+					}
+					if have := h.itemCount(uid, d[0]); have+d[1] > bagMax {
+						report += fmt.Sprintf("\n背包已满, %s×%d 未能入包", it.Name, d[1])
+						continue
+					}
+					h.addItem(uid, d[0], d[1])
+					lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
 				}
-				it := ezfyCfg.item(d[0])
-				if it == nil {
-					continue
+				if len(lootNames) > 0 {
+					// ★ 2026-10-24 掉落道具多条合并成一条战报（用户要求，与掉落宝物同口径）
+					report += fmt.Sprintf("\n掉落道具: %s", strings.Join(lootNames, "、"))
+					// 本次掉到商城道具 → 记录掉道具时间，冷却从此刻起算
+					h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+						Update("act_item_at", time.Now().UnixMilli())
+					h.ezfySysChat("恭喜玩家 %s 在 %s(%d,%d) 缴获: %s",
+						h.ezfyProfileName(uid), label, order.TargetX, order.TargetY,
+						strings.Join(lootNames, "、"))
 				}
-				if have := h.itemCount(uid, d[0]); have+d[1] > bagMax {
-					report += fmt.Sprintf("\n背包已满, %s×%d 未能入包", it.Name, d[1])
-					continue
-				}
-				h.addItem(uid, d[0], d[1])
-				report += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
-				lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
-			}
-			if len(lootNames) > 0 {
-				h.ezfySysChat("恭喜玩家 %s 在 %s(%d,%d) 缴获: %s",
-					h.ezfyProfileName(uid), label, order.TargetX, order.TargetY,
-					strings.Join(lootNames, "、"))
 			}
 		}
 		h.addPrestige(uid, prestigeGain)

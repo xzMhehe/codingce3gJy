@@ -366,6 +366,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WildTreasureCooldownH *int `json:"wild_treasure_cooldown_h"`
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**，只拦负数/越界）
 		WildItemCooldownH *int `json:"wild_item_cooldown_h"`
+		// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时；**0 合法 = 关闭冷却**，只拦负数/越界）
+		ActTreasureCooldownSec *int `json:"act_treasure_cooldown_sec"`
+		ActItemCooldownSec     *int `json:"act_item_cooldown_sec"`
 		// ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭冷却**，只拦负数/越界）
 		MoveCoolH          *int `json:"move_cool_h"`
 		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
@@ -496,6 +499,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WildTreasureCooldownH: ezfyWildTreasureCooldownDef,
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
 		WildItemCooldownH: ezfyWildItemCooldownDef,
+		// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
+		ActTreasureCooldownSec: ezfyActTreasureCooldownSecDef,
+		ActItemCooldownSec:     ezfyActItemCooldownSecDef,
 		// ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭冷却**，同样不参与 <=0 兜底）
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
@@ -683,6 +689,23 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.WildItemCooldownH = *in.WildItemCooldownH
+	}
+	// ★ 2026-10-24 活动目标掉落冷却秒数：可配置，默认 7200 = 2 小时。**0 合法 = 关闭冷却**（所以只拦负数）；
+	//   上限 86400 防呆（24 小时），避免误填天文数字。
+	//   ⚠️ 不做 <=0 兜底 —— 0 是管理员「关掉冷却」的合法表达，兜底会把它改回 7200。
+	if in.ActTreasureCooldownSec != nil {
+		if *in.ActTreasureCooldownSec < 0 || *in.ActTreasureCooldownSec > 86400 {
+			resp.ParamError(c, "活动目标掉宝冷却需要在 0~86400 秒之间（0 = 关闭冷却）")
+			return
+		}
+		lim.ActTreasureCooldownSec = *in.ActTreasureCooldownSec
+	}
+	if in.ActItemCooldownSec != nil {
+		if *in.ActItemCooldownSec < 0 || *in.ActItemCooldownSec > 86400 {
+			resp.ParamError(c, "活动目标掉道具冷却需要在 0~86400 秒之间（0 = 关闭冷却）")
+			return
+		}
+		lim.ActItemCooldownSec = *in.ActItemCooldownSec
 	}
 	// ★ 2026-10-12 迁城冷却小时数：可配置，默认 24。**0 合法 = 关闭迁城冷却**（所以只拦负数）；
 	//   上限 720 防呆（30 天）。⚠️ 不做 <=0 兜底 —— 0 是管理员「关掉冷却」的合法表达。
@@ -1489,6 +1512,20 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT " + strconv.Itoa(ezfyWildItemCooldownDef))
 	}
 	h.DB.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = " + strconv.Itoa(ezfyWildItemCooldownDef) + " WHERE wild_item_cooldown_h IS NULL")
+	// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200）：⚠️ 0 合法（= 关闭冷却）→ 只补列 + 只回填 NULL，
+	//   不能走上面那个 `WHERE IS NULL OR <= 0` 的循环（会把管理员关掉的冷却又打开）。
+	for _, c := range []struct {
+		col string
+		def int
+	}{
+		{"act_treasure_cooldown_sec", ezfyActTreasureCooldownSecDef},
+		{"act_item_cooldown_sec", ezfyActItemCooldownSecDef},
+	} {
+		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
+		}
+		h.DB.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) + " WHERE " + c.col + " IS NULL")
+	}
 	// ★ 2026-10-21 造兵市长军事加成 / 装备套装军事计入（默认 1）：⚠️ 0 合法（= 关），
 	//   只补列 + 只回填 NULL，不能把管理员关掉的 0 改回 1。
 	for _, c := range []struct {
@@ -1608,6 +1645,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"wild_treasure_cooldown_h": lim.WildTreasureCooldownH,
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）
 		"wild_item_cooldown_h": lim.WildItemCooldownH,
+		// ★ 2026-10-24 活动目标掉落冷却秒数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
+		"act_treasure_cooldown_sec": lim.ActTreasureCooldownSec,
+		"act_item_cooldown_sec":     lim.ActItemCooldownSec,
 		// ★ 2026-10-12 迁城冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）
 		"move_cool_h": lim.MoveCoolH,
 		// ★ 2026-10-14 风云榜统计开关（**0 合法 = 关闭统计**，必须显式写否则 0 会被 GORM 吞掉）

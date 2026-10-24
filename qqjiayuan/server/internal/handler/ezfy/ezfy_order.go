@@ -5651,6 +5651,8 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 	//   本场掉到的「商城道具 + 宝物」名字统一攒进 lootNames，循环结束后**合并成一条**
 	//   系统频道播报（一场战斗只刷一条，避免刷屏；口径与「采集到宝物」一致）。
 	lootNames := []string{}
+	// ★ 2026-10-24 掉落宝物多条合并成一条战报（用户要求，与掉落道具同口径）：如「翡翠项链 ×1、蓝宝石戒指 ×1」
+	treasureNames := []string{}
 	// ★ 2026-10-11 掉落卡控（用户规则）：道具受「背包单件上限」(默认 1000)、
 	//   宝物受「宝物库存上限」(默认 5000) 约束；装不下的**不入包**，战报里给一句简约提示。
 	bagMax := ezfyBagItemMax()
@@ -5678,10 +5680,13 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 				continue
 			}
 			h.addItem(uid, d[0], d[1])
-			out += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
 			lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
 			itemDropped = true
 		}
+	}
+	// ★ 2026-10-24 掉落道具多条合并成一条战报（用户要求）：如「道具A×1、道具B×2」
+	if len(lootNames) > 0 {
+		out += fmt.Sprintf("\n掉落道具: %s", strings.Join(lootNames, "、"))
 	}
 	if itemDropped {
 		// 本次掉到商城道具 → 记录掉道具时间，冷却从此刻起算（下次要等冷却过去才会再掉）
@@ -5715,10 +5720,14 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 				h.addEquipment(city, eq)
 			}
 			treasureLeft -= d.Count
-			out += fmt.Sprintf("\n掉落宝物: %s×%d", eq.Name, d.Count)
+			treasureNames = append(treasureNames, fmt.Sprintf("%s×%d", eq.Name, d.Count))
 			lootNames = append(lootNames, fmt.Sprintf("%s×%d", eq.Name, d.Count))
 			treasureDropped = true
 		}
+	}
+	// ★ 2026-10-24 掉落宝物多条合并成一条战报（用户要求）：如「翡翠项链 ×1、蓝宝石戒指 ×1」
+	if len(treasureNames) > 0 {
+		out += fmt.Sprintf("\n掉落宝物: %s", strings.Join(treasureNames, "、"))
 	}
 	if treasureDropped {
 		// 本次掉到宝物 → 记录掉宝时间，冷却从此刻起算（下次要等冷却过去才会再掉）

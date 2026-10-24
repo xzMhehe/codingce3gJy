@@ -229,6 +229,16 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT 1")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = 1 WHERE wild_item_cooldown_h IS NULL")
+		// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时）。⚠️ 0 合法（= 关闭冷却）→ 同样只补列 + 只回填 NULL。
+		for _, c := range []struct{ col string }{
+			{"act_treasure_cooldown_sec"},
+			{"act_item_cooldown_sec"},
+		} {
+			if !db.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+				db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT 7200")
+			}
+			db.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = 7200 WHERE " + c.col + " IS NULL")
+		}
 		// ★ 2026-10-12 迁城冷却小时数（默认 24）：⚠️ 0 合法（= 关闭迁城冷却）→ 同样只补列 + 只回填 NULL。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "move_cool_h") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")

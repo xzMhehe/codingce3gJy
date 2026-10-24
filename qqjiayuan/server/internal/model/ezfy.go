@@ -457,6 +457,14 @@ type EzfyCfgLimit struct {
 	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyWildItemCooldownH。
 	WildItemCooldownH int `gorm:"default:1;comment:打野地掉道具冷却小时(0=关闭)" json:"wild_item_cooldown_h"`
 
+	// ★ 2026-10-24 活动目标掉落冷却（秒级，默认 7200 = 2 小时）：
+	//   必掉宝物 / 掉落道具 各自独立，按**玩家**维度：打活动目标（活动野地/活动寇城/特殊城市）
+	//   胜利掉到该类后，冷却期内（距上次掉落不足该秒数）本次不再掉该类。
+	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyActTreasureCooldownSec。
+	ActTreasureCooldownSec int `gorm:"default:7200;comment:活动目标掉宝冷却秒(0=关闭)" json:"act_treasure_cooldown_sec"`
+	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyActItemCooldownSec。
+	ActItemCooldownSec int `gorm:"default:7200;comment:活动目标掉道具冷却秒(0=关闭)" json:"act_item_cooldown_sec"`
+
 	// ★ 2026-10-12 用户规则「迁城道具加个冷却时间，针对迁过城的城市冷却 24 小时，二战系统配置可配置迁城冷却」：
 	//   迁城成功后该城要等多少小时才能再迁（默认 24），冷却记在 `ezfy_city.move_cool_until`。
 	//   ★ 0 是**合法值**（= 关闭迁城冷却）→ 读取端不能用 ezfyLimitOr（它把 0 当「未配置」回落默认），
@@ -918,6 +926,17 @@ type EzfyProfile struct {
 	//   距上次不足 ezfy_cfg_limit.wild_item_cooldown_h 小时（默认 1）则本次不掉道具。
 	//   （与宝物冷却 wild_treasure_at 各自独立：两条掉落互不影响。）
 	WildItemAt int64 `gorm:"default:0;comment:打野地掉道具冷却(上次掉道具时间戳ms,0=从未)" json:"wild_item_at"`
+
+	// ★ 2026-10-24 活动目标「必掉宝物」冷却（与野地掉宝同款按**玩家**维度）：
+	//   记录该玩家**上一次打活动目标掉到宝物**的时间戳(ms)，0 = 从未掉过。
+	//   距上次不足 ezfy_cfg_limit.act_treasure_cooldown_sec 秒（默认 7200 = 2 小时）则本次不掉宝物。
+	ActTreasureAt int64 `gorm:"default:0;comment:活动目标掉宝冷却(上次掉宝时间戳ms,0=从未)" json:"act_treasure_at"`
+
+	// ★ 2026-10-24 活动目标「掉落道具」冷却（与野地掉道具同款按**玩家**维度）：
+	//   记录该玩家**上一次打活动目标掉到商城道具**的时间戳(ms)，0 = 从未掉过。
+	//   距上次不足 ezfy_cfg_limit.act_item_cooldown_sec 秒（默认 7200 = 2 小时）则本次不掉道具。
+	//   （与必掉宝物冷却各自独立，两条掉落互不影响。）
+	ActItemAt int64 `gorm:"default:0;comment:活动目标掉道具冷却(上次掉道具时间戳ms,0=从未)" json:"act_item_at"`
 
 	// ★★ 2026-10-17 人机标识（二战侧权威源）：与家园库 users.is_bot 保持一致，
 	//   由 ezfyBotProvision / 管理端「转人机/转真人」唯一写入点维护。

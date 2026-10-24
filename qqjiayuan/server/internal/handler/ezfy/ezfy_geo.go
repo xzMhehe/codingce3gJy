@@ -925,6 +925,11 @@ const (
 	// ★ 2026-10-13 打野地掉落**商城道具**的冷却小时数（默认 1）：有人用脚本刷野地 →
 	//   1 小时内掉过道具就不再掉。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
 	ezfyWildItemCooldownDef = 1
+	// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时）：
+	//   必掉宝物 / 掉落道具 各自独立，按玩家维度：打活动目标胜利掉到该类后，
+	//   冷却期内不再掉该类。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
+	ezfyActTreasureCooldownSecDef = 7200
+	ezfyActItemCooldownSecDef     = 7200
 	// ★ 2026-10-12 迁城冷却小时数（默认 24）：迁城成功后**该城**要等这么久才能再迁。
 	//   0 = 关闭迁城冷却（合法值，不走 ezfyLimitOr）。
 	ezfyMoveCoolDef = 24
@@ -1262,6 +1267,33 @@ func ezfyWildItemCooldownH() int {
 		return ezfyWildItemCooldownDef
 	}
 	return ezfyCfg.limit.WildItemCooldownH
+}
+
+// ezfyActTreasureCooldownSec 活动目标「必掉宝物」冷却秒数（默认 7200 = 2 小时）。
+//
+// ★ 2026-10-24 用户规则：「活动目标的必掉宝物也加个冷却，掉落后冷却期内不再掉」。
+// ★ 0 是**合法值**（= 关闭冷却），所以**不能**用 ezfyLimitOr（它把 0 当「未配置」回落默认）。
+//
+//	配置缓存没加载过时才回落默认 7200，避免把「还没加载」误判成「关闭」。
+func ezfyActTreasureCooldownSec() int {
+	if !ezfyCfg.ready() {
+		return ezfyActTreasureCooldownSecDef
+	}
+	return ezfyCfg.limit.ActTreasureCooldownSec
+}
+
+// ezfyActItemCooldownSec 活动目标「掉落道具」冷却秒数（默认 7200 = 2 小时）。
+//
+// ★ 2026-10-24 用户规则：「活动目标的掉落道具也加个冷却，掉落后冷却期内不再掉」；
+// 与必掉宝物冷却各自独立，两条掉落互不影响。
+// ★ 0 是**合法值**（= 关闭冷却），所以**不能**用 ezfyLimitOr（它把 0 当「未配置」回落默认）。
+//
+//	配置缓存没加载过时才回落默认 7200，避免把「还没加载」误判成「关闭」。
+func ezfyActItemCooldownSec() int {
+	if !ezfyCfg.ready() {
+		return ezfyActItemCooldownSecDef
+	}
+	return ezfyCfg.limit.ActItemCooldownSec
 }
 
 // ezfyMoveCoolH 迁城冷却小时数（默认 24，管理端「二战系统配置 → 迁城冷却」可配）。
