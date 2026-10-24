@@ -567,16 +567,16 @@
             <span class="green">■ 我方</span>&nbsp;<span class="red">■ 敌军</span>
             &nbsp;&nbsp;<a href="javascript:;" @click="ezfy.toggleBattleDetail">[{{ ezfy.battleDetailOn ? '收起' : '展开' }}回合详情]</a>
           </div>
-          <template v-if="ezfy.battleRounds.length">
+          <!-- ★ 2026-10-24 收起回合详情：整块（含「第N回合:」标题）都不显示，
+               只留图例行的 [展开回合详情] 可再点开；「(暂无行动)」仅在真的没有回合时出现。 -->
+          <template v-if="ezfy.battleRounds.length && ezfy.battleDetailOn">
             <div class="old-line ezfy-round-block" v-for="(g, gi) in ezfy.battleRounds" :key="'bg' + gi">
               <div v-if="g.line" class="ezfy-round-title">{{ g.line }}</div>
-              <template v-if="ezfy.battleDetailOn">
-                <div v-for="(li, idx) in g.items" :key="'bl' + gi + '_' + idx"
-                     class="ezfy-round-line" :class="ezfy.battleLineClass(li)">{{ li }}</div>
-              </template>
+              <div v-for="(li, idx) in g.items" :key="'bl' + gi + '_' + idx"
+                   class="ezfy-round-line" :class="ezfy.battleLineClass(li)">{{ li }}</div>
             </div>
           </template>
-          <div class="old-line gray" v-else>(暂无行动)</div>
+          <div class="old-line gray" v-else-if="!ezfy.battleRounds.length">(暂无行动)</div>
           <div class="old-line">
             <a href="javascript:;" @click="ezfy.leaveBattle">[返回军队动态]</a>
           </div>
