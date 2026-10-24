@@ -227,6 +227,27 @@ func (h *EzfyHandler) cityOccupied(cityId int64) bool {
 	return oc > 0
 }
 
+// switchAwayConqueredCity 守方当前城被占走后，把当前城**随机**切到另一座自己的空闲城。
+//
+// ★ 2026-10-24 修复「城市被占领后玩家还能停在被占城」：征服结算时守方的
+//   profile.current_city_id 不会自动跟着变，若正好指着被占城，玩家 /view 就停在被占城。
+//   这里只处理「还有其他空闲城」的情况；全部被占光时不动，
+//   由补给流程（replenishCity）建新城并把当前城指向新城。
+func (h *EzfyHandler) switchAwayConqueredCity(uid uint, cityId int64) {
+	var p model.EzfyProfile
+	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err != nil || p.CurrentCityId != cityId {
+		return // 当前城不是这座被占城 → 无需切换
+	}
+	var free []model.EzfyCity
+	h.DB.Where("user_id = ? AND id <> ? AND id NOT IN (SELECT city_id FROM ezfy_occupy WHERE status = 1)", uid, cityId).
+		Order("id ASC").Find(&free)
+	if len(free) == 0 {
+		return // 已无空闲城：补给流程会建新城并切过去
+	}
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+		Update("current_city_id", int64(free[rand.Intn(len(free))].ID))
+}
+
 // anyCity 取玩家已有的任意一座城（id 最小 = 主城），不会建城。
 func (h *EzfyHandler) anyCity(uid uint) (model.EzfyCity, bool) {
 	var city model.EzfyCity
@@ -4840,16 +4861,40 @@ func ezfyChestCacheDel(uid uint) {}
 
 // ezfyViewCurrentCity 从本请求已取到的玩家城市列表里挑当前城市（与 currentCity 同口径）：
 // 优先 profile.current_city_id（须属于该玩家），其次最小 id 城市，都没有则建主城（首登一次性）。
+// ★ 2026-10-24 被占城（ezfy_occupy status=1）不算可用当前城：直接跳过，
+//   与 currentCity() 的防护对齐，修复「城市被占领后 /view 还停在被占城」。
 func (h *EzfyHandler) ezfyViewCurrentCity(p model.EzfyProfile, cities []model.EzfyCity) model.EzfyCity {
+	occupied := map[int64]bool{}
+	if len(cities) > 0 {
+		ids := make([]int64, 0, len(cities))
+		for _, c := range cities {
+			ids = append(ids, int64(c.ID))
+		}
+		var occIds []int64
+		h.DB.Model(&model.EzfyOccupy{}).Where("status = 1 AND city_id IN ?", ids).Pluck("city_id", &occIds)
+		for _, id := range occIds {
+			occupied[id] = true
+		}
+	}
 	if p.CurrentCityId > 0 {
 		for _, c := range cities {
-			if int64(c.ID) == p.CurrentCityId {
+			if int64(c.ID) == p.CurrentCityId && !occupied[int64(c.ID)] {
 				return c
 			}
 		}
 	}
+	for _, c := range cities {
+		if !occupied[int64(c.ID)] {
+			// 顺手落库：current_city_id 仍指向被占城 → 切到这座空闲城，下次直接命中
+			if p.CurrentCityId != int64(c.ID) {
+				h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", p.UserID).
+					Update("current_city_id", int64(c.ID))
+			}
+			return c
+		}
+	}
 	if len(cities) > 0 {
-		return cities[0]
+		return cities[0] // 全部被占（极端兜底，操作层 cityOf 仍会拦截）
 	}
 	return h.createMainCity(p.UserID)
 }

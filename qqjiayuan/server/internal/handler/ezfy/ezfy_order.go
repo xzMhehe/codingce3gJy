@@ -5006,6 +5006,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 2026-10-06 是否**新建成**占领记录（城池没了 → 全城军官都掉忠诚）；
 		//   声明在征服块外，结束区（掠夺/征服共用的军官忠诚结算）也要读它
 		newOccupy := false
+		// ★ 2026-10-24 本场实际扣掉的民心（= 占前民心），守方「被征服报告」头部展示用
+		conqFeelDrop := 0
 		if order.OrderType == 3 && order.TargetType == 3 && target != nil {
 			surv := int64(0)
 			for _, g := range left {
@@ -5074,6 +5076,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				return
 			}
 			report += "\n民心已失，征服成功!"
+			// ★ 2026-10-24 占前记下实际扣掉的民心（守方「被征服报告」头部「民心 - N」用）
+			conqFeelDrop = target.Feelings
 			target.Feelings = 0
 			target.Grievance = minInt(100, target.Grievance+50)
 			// ★ 城破后按剩余资源的 50% 再掠夺一次，回收比例与之一致（原来显示的是普通掠夺比例）
@@ -5149,6 +5153,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				}
 			}
 			lock.Unlock()
+			// ★ 2026-10-24 守方当前城被占走 → 立刻随机切到另一座自己的空闲城，
+			//   避免守方还停在被占城里操作（bug：被征服后仍停留被占城）。
+			//   无空闲城时不动 —— 下方补给流程（replenishCity）会建新城并切过去。
+			if newOccupy || lastCity {
+				h.switchAwayConqueredCity(target.UserID, int64(target.ID))
+			}
 			// ★★ 2026-10-19 用户规则「人机被即将打飞会给玩家发邮件让他别打了」：
 			//   守方是人机、且该城被占走（新建占领记录）→ 人机给进攻方发邮件求饶。
 			//   只剩最后一座自由城（freeCount <= 1，占掉就飞）→ 用「被打飞求放过」口径；
@@ -5177,11 +5187,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			//   在结算完统一拼写（见函数末尾），标题带守方城名+坐标
 			//   （原误用攻方 city.Name 是 bug）。
 			if !lastCity {
-				defConqBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n民心清零!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold)
+				defConqBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n民心 - %d\n当前民心 0\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
+					targetName, conqFeelDrop, lootFood, lootSteel, lootOil, lootRare, lootGold)
 			} else {
 				// 该城已被先到的队伍占走（本次重复攻打）
-				defConqBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n民心清零, 但该城已被其他部队占领, 无法重复占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
+				defConqBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n民心清零, 但该城已被其他部队占领, 无法重复占领!\n当前民心 0\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
 					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold)
 			}
 		}
