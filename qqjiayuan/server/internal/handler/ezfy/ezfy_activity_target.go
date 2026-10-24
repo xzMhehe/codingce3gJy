@@ -421,6 +421,44 @@ func ezfyActivityDefender(actType, level, terrain int) []ezfyUnitGroup {
 
 // ============ 活动战斗结算（复刻 processActivityBattle） ============
 
+// ezfyActDefConfig 活动目标「守将 / 守军微调 / 被俘」配置：
+// 坐标级 aw（enabled=1）优先，否则回退「活动目标配置」按 (ActType, Level)。
+//
+// ★ 2026-10-24 活动目标等级配置（al）也支持与活动野地同款的守将配置；
+//   个别坐标想特调 → 在活动野地 tab 配 aw，启用后优先于本表。
+type ezfyActDefConfig struct {
+	OfficerId    int    // 守将军官（军官池 ID，0 = 不设）
+	DefLevel     int    // 守将战斗等级（0 = 用军官池默认）
+	DefMoveDir   string // 守军行为 JSON map {兵种ID:1前进/0停止/-1后退}
+	CaptureRate  int    // 被俘虏概率%（0 = 不俘虏）
+	MaxCapture   int    // 同一玩家可抓次数（默认 1，0 = 不限）
+	CaptiveLevel int    // 被俘虏默认等级（0 = 用军官池默认）
+}
+
+func ezfyActDefConfigOf(aw *model.EzfyActWild, actType, level int) ezfyActDefConfig {
+	if aw != nil && aw.Enabled == 1 {
+		return ezfyActDefConfig{
+			OfficerId:    aw.OfficerId,
+			DefLevel:     aw.DefLevel,
+			DefMoveDir:   aw.DefMoveDir,
+			CaptureRate:  aw.CaptureRate,
+			MaxCapture:   aw.MaxCapture,
+			CaptiveLevel: aw.CaptiveLevel,
+		}
+	}
+	if cfg := ezfyActLevelCfg(actType, level); cfg != nil {
+		return ezfyActDefConfig{
+			OfficerId:    cfg.OfficerId,
+			DefLevel:     cfg.DefLevel,
+			DefMoveDir:   cfg.DefMoveDir,
+			CaptureRate:  cfg.CaptureRate,
+			MaxCapture:   cfg.MaxCapture,
+			CaptiveLevel: cfg.CaptiveLevel,
+		}
+	}
+	return ezfyActDefConfig{MaxCapture: 1}
+}
+
 // processActivityBattle 活动目标战斗结算（独立于普通野地/寇城流程，打赢不占领）
 func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, order *model.EzfyOrder,
 	now int64, actType int) {
@@ -502,17 +540,19 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	if actType == ezfyActKou || actType == ezfyActCity {
 		defCamp = 2
 	}
-	// ★ 2026-09-29 修复「守方军官加成恒为 0」：活动野地配置了守将时，把守将的
+	// ★ 2026-09-29 修复「守方军官加成恒为 0」：活动目标配置了守将时，把守将的
 	//   防御加成 / 速度加成 / 战报描述 接进战斗引擎（指挥室和战报都从这里生成）。
+	// ★ 2026-10-24 守将配置 aw 启用优先，否则回退「活动目标配置」按 (ActType, Level)。
+	defCfg := ezfyActDefConfigOf(aw, actType, level)
 	var defGeneral *model.EzfyCfgGeneral
-	if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
-		defGeneral = ezfyCfg.general(aw.OfficerId)
+	if defCfg.OfficerId > 0 {
+		defGeneral = ezfyCfg.general(defCfg.OfficerId)
 	}
-	// ★ 2026-10-24 活动野地「守军等级」：0 = 用军官池默认；>0 覆盖守将等级（浅拷贝，
+	// ★ 2026-10-24 「守军等级」：0 = 用军官池默认；>0 覆盖守将等级（浅拷贝，
 	//   不污染 ezfyCfg 缓存里其他请求共用的对象）。等级影响守将技能 / 组合技等级。
-	if aw != nil && aw.Enabled == 1 && defGeneral != nil && aw.DefLevel > 0 {
+	if defGeneral != nil && defCfg.DefLevel > 0 {
 		g := *defGeneral
-		g.Level = aw.DefLevel
+		g.Level = defCfg.DefLevel
 		defGeneral = &g
 	}
 	defBonus, defSpeedBonus := ezfyActWildDefBonus(defGeneral)
@@ -551,12 +591,11 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	}
 	// ★ 2026-10-24 守军行为（**按兵种**配置）：JSON map {"兵种ID":1前进/0停止/-1后退}，
 	//   直接转成引擎的 defMoves map[int]int；空/{} = 全部兵种默认前进（引擎缺省行为）。
+	//   配置来源与守将同款：aw 启用优先，否则回退活动目标配置。
 	defMoves := map[int]int{}
-	if aw != nil && aw.Enabled == 1 {
-		if raw := strings.TrimSpace(aw.DefMoveDir); raw != "" && raw != "{}" {
-			if json.Unmarshal([]byte(raw), &defMoves) != nil {
-				defMoves = map[int]int{} // 脏数据兜底：当没配
-			}
+	if raw := strings.TrimSpace(defCfg.DefMoveDir); raw != "" && raw != "{}" {
+		if json.Unmarshal([]byte(raw), &defMoves) != nil {
+			defMoves = map[int]int{} // 脏数据兜底：当没配
 		}
 	}
 	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
@@ -859,17 +898,18 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		}
 		h.addPrestige(uid, prestigeGain)
 		report += fmt.Sprintf("\n军功声望+%d", prestigeGain)
-		// ★ 2026-09-29 活动野地守将：是否被俘虏只看 **CaptureRate**。
-		//   aw.CaptureRate=0 → 不俘虏；>0 → 按该百分比（100=必俘虏）。
-		// ★ 2026-09-30 同一玩家可抓次数上限（aw.MaxCapture，默认 1）：
+		// ★ 2026-09-29 活动目标守将：是否被俘虏只看 **CaptureRate**。
+		//   CaptureRate=0 → 不俘虏；>0 → 按该百分比（100=必俘虏）。
+		// ★ 2026-09-30 同一玩家可抓次数上限（MaxCapture，默认 1）：
 		//   玩家已经抓到过该守将 ≥ 上限次数 → 本次概率强制 0（不再俘虏）。
 		//   判定口径：该玩家名下所有城里、general_id 为该守将、且是「真俘虏」（IsCaptive=1 或
 		//   已收编的也得算 —— 收编后 IsCaptive=0 但玩家已拥有，不能再抓）。
 		//   所以直接用「该玩家已拥有该守将的军官实例数」来算（含俘虏与收编，一次发放=1）。
-		if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 && aw.CaptureRate > 0 {
-			if g := ezfyCfg.general(aw.OfficerId); g != nil {
+		// ★ 2026-10-24 配置来源 aw 启用优先，否则回退活动目标配置（同一套口径，按 general_id 统计与坐标无关）。
+		if defCfg.OfficerId > 0 && defCfg.CaptureRate > 0 {
+			if g := ezfyCfg.general(defCfg.OfficerId); g != nil {
 				captures := 0
-				if aw.MaxCapture > 0 {
+				if defCfg.MaxCapture > 0 {
 					var had int64
 					// ★ 2026-10-06：军校招募的军官现在也写 general_id（= 池子 id，便于丢官追溯），
 					//   所以这里必须**排掉「军校招募」来源**，否则「从军校招过同一个池子军官」会被
@@ -881,16 +921,18 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 						Count(&had)
 					captures = int(had)
 				}
-				rate := aw.CaptureRate
-				if captures >= aw.MaxCapture {
+				rate := defCfg.CaptureRate
+				// ★ 2026-10-24 顺带修复：MaxCapture=0（不限）时 captures=0，旧写法 `captures >= 0` 恒真
+				//   会把概率强制归 0，等于「不限」反而永远抓不到 —— 只在上限 >0 时判达上限。
+				if defCfg.MaxCapture > 0 && captures >= defCfg.MaxCapture {
 					rate = 0 // 已达上限 → 概率 0
 					report += "\n" + g.Name + "已被你捕获达到上限，无法再次俘虏"
 				}
 				if rate > 0 {
 					// ★ 2026-10-24 被俘虏默认等级：配置了 CaptiveLevel 就按该等级发放俘虏（0 = 用军官池默认 1 级）
 					captiveLv := 0
-					if aw.CaptiveLevel > 0 {
-						captiveLv = aw.CaptiveLevel
+					if defCfg.CaptiveLevel > 0 {
+						captiveLv = defCfg.CaptiveLevel
 					}
 					if c := h.createCaptiveOfficer(city, g, level, true, rate, captiveLv); c != "" {
 						report += "\n" + c
@@ -1061,8 +1103,9 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 	officerName := ""
 	officerKind := 0
 	officerStar := 0
-	if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
-		if g := ezfyCfg.general(aw.OfficerId); g != nil {
+	// ★ 2026-10-24 守将来源与战斗同口径：aw 启用优先，否则回退活动目标配置
+	if dc := ezfyActDefConfigOf(aw, actType, level); dc.OfficerId > 0 {
+		if g := ezfyCfg.general(dc.OfficerId); g != nil {
 			officerName = g.Name
 			officerKind = g.Kind // 1普通军官 2名将
 			officerStar = g.Star
@@ -1089,13 +1132,8 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		"terrain_name": ezfyWildTerrainDisplayName(x, y, true),
 		"continent":    ezfyContinentName(x, y),
 		"jewel":        jewelName,
-		// ★ 2026-09-29 活动野地守将（配置的军官池军官）
-		"officer_id": func() int {
-			if aw != nil && aw.Enabled == 1 {
-				return aw.OfficerId
-			}
-			return 0
-		}(),
+		// ★ 2026-09-29 活动目标守将（配置的军官池军官；★ 2026-10-24 aw 优先，否则回退等级配置）
+		"officer_id":   ezfyActDefConfigOf(aw, actType, level).OfficerId,
 		"officer_name": officerName,
 		"officer_kind": officerKind, // ★ 2026-09-30 区分名将(2)/普通(1)
 		"officer_star": officerStar,

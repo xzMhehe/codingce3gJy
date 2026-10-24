@@ -275,9 +275,11 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 					// 格子名直接用活动标签, 目标详情页标题即「活动野地2级 / 特殊城市3级」
 					cell["name"] = ezfyActTargetLabel(act, actLevel)
 					// ★ 2026-09-30 带守将军官的活动野地加特殊标识（玩家区分普通活动野地与带名将守将的）
-					if aw := ezfyActWildAt(x, y); aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
+					// ★ 2026-10-24 守将来源与战斗/详情同口径：aw 启用优先，否则回退活动目标配置
+					aw := ezfyActWildAt(x, y)
+					if dc := ezfyActDefConfigOf(aw, act, actLevel); dc.OfficerId > 0 {
 						cell["act_officer"] = true
-						if g := ezfyCfg.general(aw.OfficerId); g != nil {
+						if g := ezfyCfg.general(dc.OfficerId); g != nil {
 							cell["act_officer_name"] = g.Name
 							cell["act_officer_kind"] = g.Kind // 1普通军官 2名将
 							cell["act_officer_star"] = g.Star

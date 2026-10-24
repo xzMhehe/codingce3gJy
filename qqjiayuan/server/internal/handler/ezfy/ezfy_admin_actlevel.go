@@ -1,6 +1,7 @@
 package ezfy
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -19,6 +20,9 @@ import (
 //	活动野地 / 活动寇城 / 特殊城市 三类活动目标，位置可以先不维护，
 //	但每个等级的「兵力配置、资源奖励、必掉宝物、掉落道具」必须可维护。
 //
+// ★ 2026-10-24 与活动野地同款：每个等级还可配 守将 / 守军等级 / 守军行为 / 被俘，
+//   坐标级「活动野地」配置（ezfy_act_wild）仍然优先于本表。
+//
 // 数据表 ezfy_act_level：(ActType, Level) 唯一。
 // 运行时由 ezfy_act_level_cfg 读取（配置缓存），战斗结算/详情预览都走它；
 // 坐标级「活动野地」配置（ezfy_act_wild）仍然优先于本表。
@@ -26,6 +30,9 @@ var ezfyActLevelFields = map[string]string{
 	"act_type": "int", "level": "int", "troops": "string",
 	"res": "int64", "gold": "int64", "prestige": "int",
 	"treasures": "string", "drop_items": "string", "des": "string",
+	// ★ 2026-10-24 与活动野地同款：守将 / 守军微调 / 被俘
+	"officer_id": "int", "def_level": "int", "captive_level": "int",
+	"def_move_dir": "string", "capture_rate": "int", "max_capture": "int",
 }
 
 // AdminEzfyActLevelList GET /admin/ezfy-act-levels —— 活动目标等级配置列表
@@ -48,11 +55,21 @@ func (h *EzfyAdmin) AdminEzfyActLevelList(c *gin.Context) {
 
 	out := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
+		oName := ""
+		oStar := 0
+		if g := ezfyCfg.general(r.OfficerId); g != nil {
+			oName = g.Name
+			oStar = g.Star
+		}
 		out = append(out, gin.H{
 			"id": r.ID, "act_type": r.ActType, "act_type_name": ezfyActTargetName(r.ActType),
 			"level": r.Level, "troops": r.Troops,
 			"res": r.Res, "gold": r.Gold, "prestige": r.Prestige,
 			"treasures": r.Treasures, "drop_items": r.DropItems, "des": r.Des,
+			// ★ 2026-10-24 守将 / 守军微调 / 被俘（编辑弹窗回填 + 列表展示）
+			"officer_id": r.OfficerId, "officer_name": oName, "officer_star": oStar,
+			"capture_rate": r.CaptureRate, "max_capture": r.MaxCapture,
+			"def_level": r.DefLevel, "captive_level": r.CaptiveLevel, "def_move_dir": r.DefMoveDir,
 			"updated_at": r.UpdatedAt,
 		})
 	}
@@ -93,6 +110,24 @@ func (h *EzfyAdmin) AdminEzfyActLevelSave(c *gin.Context) {
 			vals[k] = ""
 		}
 	}
+	// ★ 2026-10-24 守将 / 被俘默认值（与活动野地同款）：概率 0、次数 1、等级 0、行为空
+	if _, ok := vals["officer_id"]; !ok {
+		vals["officer_id"] = 0
+	}
+	if _, ok := vals["capture_rate"]; !ok {
+		vals["capture_rate"] = 0
+	}
+	if _, ok := vals["max_capture"]; !ok {
+		vals["max_capture"] = 1
+	}
+	for _, k := range []string{"def_level", "captive_level"} {
+		if _, ok := vals[k]; !ok {
+			vals[k] = 0
+		}
+	}
+	if _, ok := vals["def_move_dir"]; !ok {
+		vals["def_move_dir"] = ""
+	}
 
 	id := ezfyAnyInt(in["id"])
 	if id > 0 {
@@ -123,6 +158,9 @@ func (h *EzfyAdmin) AdminEzfyActLevelSave(c *gin.Context) {
 		Columns: []clause.Column{{Name: "act_type"}, {Name: "level"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"troops", "res", "gold", "prestige", "treasures", "drop_items", "des",
+			// ★ 2026-10-24 守将 / 守军微调 / 被俘
+			"officer_id", "capture_rate", "max_capture",
+			"def_level", "captive_level", "def_move_dir",
 		}),
 	}).Model(&model.EzfyActLevel{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
@@ -197,6 +235,34 @@ func checkActLevelVals(vals map[string]interface{}) string {
 			if ezfyCfg.item(d[0]) == nil {
 				return fmt.Sprintf("道具 ID %d 不存在，请重新选择", d[0])
 			}
+		}
+	}
+	// ★ 2026-10-24 与活动野地同款校验：守将 / 守军微调 / 被俘
+	if v, ok := vals["capture_rate"].(int); ok && (v < 0 || v > 100) {
+		return "被俘虏概率只能是 0~100（0 = 不俘虏，100 = 必俘虏）"
+	}
+	if v, ok := vals["max_capture"].(int); ok && v < 0 {
+		return "可抓次数不能为负（0 = 不限，>=1 为上限）"
+	}
+	if s, ok := vals["def_move_dir"].(string); ok && strings.TrimSpace(s) != "" && strings.TrimSpace(s) != "{}" {
+		m := map[int]int{}
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			return "守军行为格式不对，应为 {\"兵种ID\":1前进/0停止/-1后退}"
+		}
+		for id, dir := range m {
+			if dir != 0 && dir != 1 && dir != -1 {
+				return fmt.Sprintf("兵种 %d 的守军行为只能是 1（前进）/ 0（停止）/ -1（后退）", id)
+			}
+		}
+	}
+	for _, k := range []string{"def_level", "captive_level"} {
+		if v, ok := vals[k].(int); ok && v < 0 {
+			return k + "不能为负（0 = 用军官池默认）"
+		}
+	}
+	if v, ok := vals["officer_id"].(int); ok && v > 0 {
+		if ezfyCfg.general(v) == nil {
+			return "守将军官不在军官池中，请重新选择"
 		}
 	}
 	return ""

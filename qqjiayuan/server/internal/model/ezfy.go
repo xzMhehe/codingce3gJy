@@ -224,8 +224,21 @@ type EzfyActLevel struct {
 	Treasures string `gorm:"type:varchar(500);comment:必掉宝物JSON [[cfg_id,count],...]" json:"treasures"`
 	// DropItems 商城道具掉落 JSON [[道具cfg_id,数量,概率%],...]
 	DropItems string `gorm:"type:varchar(1000);comment:商城道具掉落JSON [[cfg_id,count,pct],...]" json:"drop_items"`
-	Des       string `gorm:"type:varchar(500);comment:说明" json:"des"`
-	UpdatedAt time.Time
+	// ★ 2026-10-24 与活动野地同款：守将 / 守军微调 / 被俘（坐标级 aw 启用时优先，否则回退本表）。
+	//   - OfficerId：守将军官（军官池 ID，0 = 不设守将）
+	//   - CaptureRate：守将被俘虏概率%（0 = 不俘虏；>0 按该百分比，100 = 必俘虏）
+	//   - MaxCapture：同一玩家可抓该守将次数（默认 1；抓满后概率归 0；0 = 不限）
+	//   - DefLevel：守将战斗等级（影响守将技能 / 组合技等级）；0 = 用军官池默认
+	//   - CaptiveLevel：被俘虏默认等级（0 = 用军官池 Level，通常 1 级）
+	//   - DefMoveDir：守军行为（按兵种）JSON map {"兵种ID":1前进/0停止/-1后退}；空/{} = 全部默认前进
+	OfficerId    int    `gorm:"default:0;comment:守将军官ID，0=不设" json:"officer_id"`
+	CaptureRate  int    `gorm:"default:0;comment:守将被俘虏概率%，0=不俘虏" json:"capture_rate"`
+	MaxCapture   int    `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
+	DefLevel     int    `gorm:"default:0;comment:守将等级,0=用军官池默认" json:"def_level"`
+	CaptiveLevel int    `gorm:"default:0;comment:被俘虏默认等级,0=用军官池默认(1级)" json:"captive_level"`
+	DefMoveDir   string `gorm:"type:varchar(255);default:'';comment:守军行为JSON map{兵种ID:1前进/0停止/-1后退}" json:"def_move_dir"`
+	Des          string `gorm:"type:varchar(500);comment:说明" json:"des"`
+	UpdatedAt    time.Time
 }
 
 func (EzfyActLevel) TableName() string { return "ezfy_act_level" }

@@ -294,6 +294,18 @@
               </template>
             </el-table-column>
             <el-table-column prop="level" label="等级" width="65" align="center" />
+            <!-- ★ 2026-10-24 守将 / 被俘（与活动野地同款，编辑弹窗里配） -->
+            <el-table-column label="守将/被俘" min-width="150" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <div v-if="row.officer_id">
+                  <span class="td-blue">{{ row.officer_name }}（{{ row.officer_star }}星）</span>
+                  <span class="td-sub" v-if="row.def_level"> Lv.{{ row.def_level }}</span>
+                </div>
+                <div v-else class="td-sub">未设守将</div>
+                <div v-if="row.capture_rate" class="td-sub">被俘{{ row.capture_rate }}% · 抓{{ row.max_capture ? row.max_capture : '不限' }}次</div>
+                <div v-else class="td-sub">不俘虏</div>
+              </template>
+            </el-table-column>
             <el-table-column label="守军配置" min-width="210" show-overflow-tooltip>
               <template slot-scope="{row}">
                 <span v-if="row.troops" class="td-blue">{{ alTroopText(row.troops) }}</span>
@@ -933,10 +945,26 @@
             <el-input-number v-model.number="r.min" :min="1" controls-position="right" style="width:115px" />
             <span class="td-sub">~最大</span>
             <el-input-number v-model.number="r.max" :min="1" controls-position="right" style="width:115px" />
+            <!-- ★ 2026-10-24 守军行为按兵种配置：每行独立 前进/停止/后退（与活动野地同款） -->
+            <el-select v-model.number="r.dir" size="small" style="width:96px">
+              <el-option label="前进" :value="1" />
+              <el-option label="停止" :value="0" />
+              <el-option label="后退" :value="-1" />
+            </el-select>
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="alTroops.splice(i, 1)" />
           </div>
           <div class="old-line" v-if="!alTroops.length">（未配置守军，按内置陆/海默认配比）</div>
           <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAlTroop">添加兵种</el-button>
+          <el-tooltip placement="top" content="守军行为可逐兵种配置：前进 = 主动迎击（默认）；停止 = 原地驻守；后退 = 且战且退">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
+        <!-- ★ 2026-10-24 守军等级：0 = 用军官池默认；>0 覆盖守将（与活动野地同款） -->
+        <el-form-item label="守军等级">
+          <el-input-number v-model.number="al.def_level" :min="0" :max="350" controls-position="right" style="width:160px" />
+          <el-tooltip placement="top" content="守将战斗等级（影响守将技能 / 组合技等级，名将满级 350）；0 = 用军官池默认">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="资源奖励">
           <el-input-number v-model.number="al.res" :min="0" controls-position="right" style="width:100%" />
@@ -982,6 +1010,41 @@
           </div>
           <div class="old-line" v-if="!alDrops.length">（未配置，打赢不掉商城道具）</div>
           <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAlDrop">添加道具</el-button>
+        </el-form-item>
+        <!-- ★ 2026-10-24 守将军官 + 被俘（与活动野地同款） -->
+        <el-form-item label="守将军官">
+          <div style="display:flex;align-items:center;gap:10px;width:100%;flex-wrap:wrap">
+            <el-radio-group v-model="alOfficerKind" size="small" @change="alOfficerKindChange">
+              <el-radio-button :label="1">普通</el-radio-button>
+              <el-radio-button :label="2">名将</el-radio-button>
+            </el-radio-group>
+            <el-select v-model.number="alStarFilter" clearable placeholder="星级" style="width:90px">
+              <el-option v-for="s in alStarOptions" :key="'alst' + s" :label="s + '★'" :value="s" />
+            </el-select>
+            <el-select v-model.number="al.officer_id" filterable clearable placeholder="不设守将（打赢也俘不到军官）" style="flex:1;min-width:180px">
+              <el-option v-for="g in alGeneralsFiltered" :key="'alg' + g.id"
+                         :label="g.name + '（' + g.star + '星' + '）'" :value="g.id" />
+            </el-select>
+          </div>
+          <span class="td-sub">先选「普通/名将」→ 可再按星级筛选；不设则打赢俘不到军官</span>
+        </el-form-item>
+        <el-form-item label="被俘概率%">
+          <el-input-number v-model.number="al.capture_rate" :min="0" :max="100" controls-position="right" style="width:160px" />
+          <el-tooltip placement="top" content="0 = 不俘虏；1~100 按该百分比（100=必俘虏）">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
+        <el-form-item label="被俘默认等级">
+          <el-input-number v-model.number="al.captive_level" :min="0" :max="350" controls-position="right" style="width:160px" />
+          <el-tooltip placement="top" content="俘虏到的守将从这个等级起步；0 = 用军官池默认（通常 1 级）">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
+        <el-form-item label="可抓次数">
+          <el-input-number v-model.number="al.max_capture" :min="0" controls-position="right" style="width:160px" />
+          <el-tooltip placement="top" content="同一玩家最多可抓该守将几次（默认1，抓满后概率归0）；0 = 不限">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="al.des" type="textarea" :rows="2" maxlength="500" show-word-limit />
@@ -1055,9 +1118,11 @@ function emptyWc () {
     wcTroops: [], wcDrops: [], wcTreasures: [] }
 }
 // ★ 2026-10-22 活动目标等级配置（活动野地 / 活动寇城 / 特殊城市）
+// ★ 2026-10-24 与活动野地同款：守将 / 守军等级 / 守军行为 / 被俘
 function emptyActLevel () {
   return { id: 0, act_type: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0,
-    treasures: '', drop_items: '', des: '' }
+    treasures: '', drop_items: '', des: '',
+    officer_id: 0, capture_rate: 0, max_capture: 1, def_level: 0, captive_level: 0, def_move_dir: '' }
 }
 
 export default {
@@ -1092,6 +1157,8 @@ export default {
       // 活动目标等级配置（2026-10-22：活动野地 / 活动寇城 / 特殊城市）
       actLevels: [], alTotal: 0, alPage: 1, alSize: 15, alType: -1, alLevel: 0, loadingAl: false,
       alDlg: false, al: emptyActLevel(),
+      // ★ 2026-10-24 活动目标等级配置的守将军官筛选（与活动野地同款）
+      alOfficerKind: 1, alStarFilter: 0,
       alTroops: [], // 可视化守军行 [{troop_id,min,max}]
       alTreasures: [], // 可视化必掉宝物行 [{treasure_id,count}]
       alDrops: [], // 可视化掉落道具行 [{cfg_id,count,pct}]
@@ -1151,6 +1218,27 @@ export default {
       if (s > 0) list = list.filter(g => (Number(g.star) || 1) === s)
       // ★ 已选中的守将即使不满足当前类型/星级筛选也保证可见，否则编辑时下拉里看不到已配军官（星级跟丢）
       const sel = Number(this.aw.officer_id) || 0
+      if (sel > 0 && !list.some(g => Number(g.id) === sel)) {
+        const hit = (this.generals || []).find(g => Number(g.id) === sel)
+        if (hit) list = [hit].concat(list)
+      }
+      return list
+    },
+    // ★ 2026-10-24 活动目标等级配置的守将军官筛选（与活动野地同款）
+    alKindGenerals () {
+      const k = this.alOfficerKind
+      if (k !== 1 && k !== 2) return []
+      return (this.generals || []).filter(g => Number(g.kind) === k)
+    },
+    alStarOptions () {
+      const set = new Set(this.alKindGenerals.map(g => Number(g.star) || 1))
+      return Array.from(set).sort((a, b) => a - b)
+    },
+    alGeneralsFiltered () {
+      let list = this.alKindGenerals
+      const s = Number(this.alStarFilter) || 0
+      if (s > 0) list = list.filter(g => (Number(g.star) || 1) === s)
+      const sel = Number(this.al.officer_id) || 0
       if (sel > 0 && !list.some(g => Number(g.id) === sel)) {
         const hit = (this.generals || []).find(g => Number(g.id) === sel)
         if (hit) list = [hit].concat(list)
@@ -1433,16 +1521,17 @@ export default {
       })
       return rows
     },
-    // ★ 2026-10-24 守军行为（按兵种）序列化：{兵种ID: 方向}；前进(1)=默认，省略
-    awMoveDirTxt () {
+    // ★ 2026-10-24 守军行为（按兵种）序列化：{兵种ID: 方向}；前进(1)=默认，省略（活动野地/等级配置共用）
+    moveDirTxt (rows) {
       const m = {}
-      ;(this.awTroops || []).forEach(r => {
+      ;(rows || []).forEach(r => {
         const id = Number(r.troop_id)
         const dir = Number(r.dir)
         if (id > 0 && (dir === 0 || dir === -1)) m[id] = dir
       })
       return Object.keys(m).length ? JSON.stringify(m) : ''
     },
+    awMoveDirTxt () { return this.moveDirTxt(this.awTroops) },
     // 解析 [[兵种id,数量]]（旧）或 [[兵种id,最小,最大]]（新）JSON → 可视化行
     parseAwTroops (raw) {
       const out = []
@@ -1561,18 +1650,31 @@ export default {
       this.alTroops = []
       this.alTreasures = []
       this.alDrops = []
+      // ★ 2026-10-24 守将筛选复位（与活动野地同款）
+      this.alOfficerKind = 1
+      this.alStarFilter = 0
       this.alDlg = true
     },
     openAlEdit (row) {
       this.al = Object.assign(emptyActLevel(), row)
       this.alTroops = this.parseAwTroops(row.troops)
+      // ★ 2026-10-24 守军行为（按兵种 JSON map）回填到每行；守将类型/星级按已配军官推断
+      this.applyAwDir(this.alTroops, row.def_move_dir)
+      const g = (this.generals || []).find(x => Number(x.id) === Number(row.officer_id))
+      this.alOfficerKind = g ? (Number(g.kind) === 2 ? 2 : 1) : 1
+      this.alStarFilter = Number(row.officer_star) || 0
       this.alTreasures = this.parseAwTreasures(row.treasures)
       this.alDrops = this.parseWcDrops(row.drop_items)
       this.alDlg = true
     },
+    // ★ 2026-10-24 切换普通/名将 时清空已选军官 + 星级筛选（与活动野地同款）
+    alOfficerKindChange () {
+      this.al.officer_id = 0
+      this.alStarFilter = 0
+    },
     addAlTroop () {
       const first = this.troopCfgs[0]
-      if (first) this.alTroops.push({ troop_id: first.id, min: 100, max: 200 })
+      if (first) this.alTroops.push({ troop_id: first.id, min: 100, max: 200, dir: 1 })
     },
     addAlTreasure () {
       const first = this.treasures[0]
@@ -1609,6 +1711,13 @@ export default {
         prestige: Number(a.prestige) || 0,
         treasures: treasureRows.length ? JSON.stringify(treasureRows) : '',
         drop_items: dropRows.length ? JSON.stringify(dropRows) : '',
+        // ★ 2026-10-24 守将 / 守军等级 / 守军行为 / 被俘（与活动野地同款）
+        officer_id: Number(a.officer_id) || 0,
+        capture_rate: Number(a.capture_rate) || 0,
+        max_capture: Number(a.max_capture) >= 0 ? Number(a.max_capture) : 1,
+        def_level: Number(a.def_level) || 0,
+        captive_level: Number(a.captive_level) || 0,
+        def_move_dir: this.moveDirTxt(this.alTroops),
         des: a.des || ''
       }
       this.saving = true
