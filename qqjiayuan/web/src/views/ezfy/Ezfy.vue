@@ -7765,7 +7765,9 @@ export default {
       api.post('/games/ezfy/officers/' + o.id + '/treasure-grant', { equip_id: e.id }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '赏赐失败'); return }
         this.notify(r.data && r.data.msg ? r.data.msg : ('赏赐成功, 忠诚 +' + gain))
-        this.officerTreasureOpen = false
+        // ★ 2026-10-24 不再收列表：保持展开，赏赐后数量就地 -1、忠诚就地 +N，玩家看得见局部刷新
+        //   （原来成功分支在服务端返回 code=400 时根本不执行；列表也总是被关掉，
+        //     数量变化被遮住，用户以为「没刷新」）
         // ★ 2026-10-05 局部刷新（，别全页面刷新）：就地更新、零接口重拉——
         //   · 忠诚 +gain（封顶 100）
         //   · 从详情背包里移除已赏赐的那件宝物（数量 -1，computed officerTreasures 自动刷新，

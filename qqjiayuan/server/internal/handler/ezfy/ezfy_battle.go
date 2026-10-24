@@ -2179,7 +2179,9 @@ func ezfyPickAttack(atk, def *ezfyTroopStats) int {
 // 家园版（公式套 damage_formula=1，图片公式）：
 //
 //	伤害 = 数量×基础伤害²×(1+攻击加成%) / [基础防御×(1+防御加成%)]
-//	最小伤害 = 数量（每个兵至少 1 点，避免高防时完全打不动）。
+//	★ 2026-10-24 家园版**没有最小伤害**：伤害完全按公式结算，
+//	  高防目标可打出 0 伤害（原「最小伤害 = 数量，每个兵至少 1 点」会让
+//	  1 架侦察机对 10 万航母编队也至少削掉 1 点，用户认为不合理，已移除）。
 func ezfyCalcDamage(baseAtk, def int, count int64, atkBonus, defBonus int) int64 {
 	if ezfyDamageFormulaCfg() == 1 {
 		if def < 1 {
@@ -2196,9 +2198,8 @@ func ezfyCalcDamage(baseAtk, def int, count int64, atkBonus, defBonus int) int64
 			denom = 1
 		}
 		damage := count * int64(baseAtk) * int64(baseAtk) * int64(100+atkBonus) / denom
-		if damage < count {
-			damage = count
-		}
+		// ★ 2026-10-24 不再兜底最小伤害 = 数量：公式算出来是 0 就是 0，
+		//   打不动高防目标（战斗循环 for remaining > 0 会直接跳过，不会死循环）
 		return damage
 	}
 	bonusDef := def * (100 + defBonus) / 100

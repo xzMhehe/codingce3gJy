@@ -746,30 +746,35 @@ func (h *EzfyHandler) grantOfficer(city *model.EzfyCity, officerId int64) string
 var ezfyTreasureLoyalty = []int{0, 10, 20, 35, 50}
 
 // treasureGrantOfficer 赏赐宝物：消耗 1 件背包未穿戴的宝物，按品质加忠诚（最高 +50）
-func (h *EzfyHandler) treasureGrantOfficer(city *model.EzfyCity, officerId int64, equipId uint) string {
+//
+// ★ 2026-10-24 返回值拆成 (错误文案, 成功文案)：**成功时错误文案为空字符串**。
+//   原来成功也返回「赏赐【玉石】...」这类非空文案，OfficerTreasureGrant 用 h.done 处理时
+//   会把非空一律当 code=400 错误返回 —— 宝物已被消耗、忠诚已加，前端却收到失败，
+//   局部刷新（忠诚/数量）全部不生效，再点同一组宝物就用已删除的代表 id 去查 → 报「宝物不存在」。
+func (h *EzfyHandler) treasureGrantOfficer(city *model.EzfyCity, officerId int64, equipId uint) (string, string) {
 	h.calcResource(city)
 	o := h.officerOf(city.ID, officerId)
 	if o == nil {
-		return "武将不存在"
+		return "武将不存在", ""
 	}
 	if o.Loyalty >= ezfyOfficerLoyaltyMax {
-		return "忠诚已满"
+		return "忠诚已满", ""
 	}
 	var e model.EzfyEquipment
 	if err := h.DB.First(&e, equipId).Error; err != nil {
-		return "宝物不存在"
+		return "宝物不存在", ""
 	}
 	if e.UserId != city.UserID {
-		return "宝物不属于你"
+		return "宝物不属于你", ""
 	}
 	if e.OfficerId != 0 {
-		return "这件宝物已穿戴, 请先卸下"
+		return "这件宝物已穿戴, 请先卸下", ""
 	}
 	// ★ 2026-09-28 只有「采集宝物」能赏赐 ——
 	//   装备表里还混着步枪/钢盔/合金装甲这类普通装备，它们不是宝物，不能拿来换忠诚。
 	//   宝物签到抽的也是同一池（9 种珠宝），所以签到领的宝物天然可赏赐。
 	if !ezfyCollectibleTreasureNames()[e.Name] {
-		return fmt.Sprintf("「%s」不是采集宝物, 不可用于赏赐", e.Name)
+		return fmt.Sprintf("「%s」不是采集宝物, 不可用于赏赐", e.Name), ""
 	}
 	gain := 10
 	if e.Tier > 0 && e.Tier < len(ezfyTreasureLoyalty) {
@@ -780,7 +785,7 @@ func (h *EzfyHandler) treasureGrantOfficer(city *model.EzfyCity, officerId int64
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
 		Update("loyalty", minInt(ezfyOfficerLoyaltyMax, o.Loyalty+gain))
 	// ★ 文案里不写机器码（原来写「品质1」玩家看不懂）→ 用中文档位名
-	return fmt.Sprintf("赏赐【%s】(品质%s), 忠诚 +%d", e.Name, ezfyTierName(e.Tier), gain)
+	return "", fmt.Sprintf("赏赐【%s】(品质%s), 忠诚 +%d", e.Name, ezfyTierName(e.Tier), gain)
 }
 
 // learnSkill 学习技能：消耗 1 本「军官技能书」（道具 15），最多 3 个，出征中不可学
@@ -3335,7 +3340,15 @@ func (h *EzfyHandler) OfficerTreasureGrant(c *gin.Context) {
 		EquipId uint `json:"equip_id"`
 	}
 	c.ShouldBindJSON(&in)
-	h.done(c, h.treasureGrantOfficer(&city, id, in.EquipId), "赏赐成功, 忠诚已提升")
+	// ★ 2026-10-24 修「赏赐宝物成功却被当失败返回」：errMsg=="" 才算成功，
+	//   成功文案走 resp.OK(gin.H{"msg"})（自动提升到顶层 msg）→ code=0，
+	//   前端局部刷新分支（忠诚/数量/重拉校准）才会执行。
+	errMsg, okMsg := h.treasureGrantOfficer(&city, id, in.EquipId)
+	if errMsg != "" {
+		resp.ParamError(c, errMsg)
+		return
+	}
+	resp.OK(c, gin.H{"msg": okMsg})
 }
 
 // OfficerAttr POST /games/ezfy/officers/:id/attr  {attr: military|logistics|learning, count}
