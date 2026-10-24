@@ -493,6 +493,13 @@
                   </el-tag>
                 </template>
               </el-table-column>
+              <el-table-column label="加成明细" width="90" align="center">
+                <template slot-scope="scope">
+                  <el-tag size="mini" :type="Number(scope.row.show_battle_bonus_detail) === 0 ? 'info' : 'success'">
+                    {{ Number(scope.row.show_battle_bonus_detail) === 0 ? '关闭' : '展示' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
               <el-table-column v-for="f in formulaFields" :key="f.key" :label="f.short" width="110" align="center">
                 <template slot-scope="scope">{{ formulaCell(scope.row, f) }}</template>
               </el-table-column>
@@ -523,6 +530,13 @@
             <el-radio-group v-model.number="formulaForm.damage_formula">
               <el-radio :label="0">原版（攻防系数）</el-radio>
               <el-radio :label="1">家园版（图片公式）</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item>
+            <template slot="label">加成明细展示<el-tooltip placement="top" :content="tips.show_battle_bonus_detail"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+            <el-radio-group v-model.number="formulaForm.show_battle_bonus_detail">
+              <el-radio :label="1">展示（默认）</el-radio>
+              <el-radio :label="0">关闭</el-radio>
             </el-radio-group>
           </el-form-item>
           <!-- ★ 2026-10-24 公式预览：新建/编辑时直观展示当前公式（原版代入实时数值），便于管理员理解各参数作用 -->
@@ -635,7 +649,7 @@ export default {
       formulaDialog: false,
       formulaEditId: 0,
       formulaForm: {
-        name: '', remark: '', damage_formula: 0,
+        name: '', remark: '', damage_formula: 0, show_battle_bonus_detail: 1,
         battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
         atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5,
@@ -712,6 +726,9 @@ export default {
           '家园版 = 数量×基础伤害²×(1+攻击%)÷[基础防御×(1+防御%)]（图片公式）。' +
           '家园版不使用暴击基础伤害加成/攻击系数/攻击加值/防御系数/防御加值/最小伤害系数这 6 项，选中家园版时表单会自动隐藏。' +
           '城墙耐久只有征服战会扣，掠夺战忽略城墙。',
+        show_battle_bonus_detail: '回合行动日志是否展示加成来源明细「(军官·名+% 科技·+% 装备+%…)」：' +
+          '默认展示；关闭后只显示加成总百分比（如「攻击加成+79%」）。' +
+          '明细原始数据仍完整存进战场快照，关闭展示不影响事后对账。',
         // ★ 2026-10-13 回合战斗公式（可调，默认 = 移植前的硬编码值）
         battle_max_rounds: '单场战斗最多打多少回合：打满仍未分胜负则按平局处理（守方视为守住，攻方无胜果），默认 40，可调 1~200',
         battle_start_dist: '战场初始距离：攻方从 0 出发、守方站在该距离处（两者相距该值），默认 6000，可调 1000~50000。' +
@@ -1035,7 +1052,7 @@ export default {
     // ===== ★ 2026-10-23 战斗公式套 =====
     emptyFormula () {
       return {
-        name: '', remark: '', damage_formula: 0,
+        name: '', remark: '', damage_formula: 0, show_battle_bonus_detail: 1,
         battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
         atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5
@@ -1078,6 +1095,7 @@ export default {
           if (row[x.key] !== undefined && row[x.key] !== null) f[x.key] = Number(row[x.key])
         })
         f.damage_formula = Number(row.damage_formula) === 1 ? 1 : 0
+        f.show_battle_bonus_detail = Number(row.show_battle_bonus_detail) === 0 ? 0 : 1
         f.name = copy ? (row.name + ' 副本').slice(0, 50) : row.name
         f.remark = row.remark || ''
       }

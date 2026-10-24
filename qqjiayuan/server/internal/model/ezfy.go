@@ -789,6 +789,9 @@ type EzfyCfgBattleFormula struct {
 	//   1 = 家园版（图片公式：数量×基础伤害²×(1+攻%) / [基础防御×(1+防%)]）。
 	//   家园版不使用 CritBaseBonusPct/AtkCoeff/AtkBase/DefCoeff/DefBase/MinDmgCoeff 六项。
 	DamageFormula int `gorm:"default:0;comment:伤害算法(0=原版 1=家园版)" json:"damage_formula"`
+	// ★ 2026-10-24 战斗加成明细开关：1 = 行动日志展示「(军官·名+% 科技·+%…)」逐项来源；
+	//   0 = 关闭，只显示加成总百分比（明细原始数据仍在战场快照 JSON 里，可事后对账）。
+	ShowBattleBonusDetail int `gorm:"default:1;comment:展示战斗加成明细(1=展示 0=关闭)" json:"show_battle_bonus_detail"`
 	// 战斗机制
 	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`
 	BattleStartDist  int `gorm:"default:6000;comment:战场初始距离" json:"battle_start_dist"`

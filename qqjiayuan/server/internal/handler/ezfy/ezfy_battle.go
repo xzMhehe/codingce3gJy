@@ -132,6 +132,20 @@ func ezfyDamageFormulaCfg() int {
 	return 0
 }
 
+// 战斗加成明细开关（二战系统配置 → 战斗公式套 show_battle_bonus_detail，默认展示）。
+//
+// ★ 2026-10-24 用户需求「回合中具体加成展示加开关」：关闭后行动日志只显示加成总百分比
+//
+//	（如「攻击加成+79%」「防御加成+50%」），不再展开「(军官·菜比+29% 科技·武器科技+30%…)」这类来源明细。
+//	明细原始数据仍在快照里（AtkSkillBreak/AtkTechBreak/DefDefBreak… 整段 JSON 存库），
+//	事后对账/扯皮时可从战场记录还原，不因关闭展示而丢失。
+func ezfyShowBattleBonusDetailCfg() bool {
+	if f := ezfyBattleFormulaActive(); f != nil && f.ShowBattleBonusDetail == 0 {
+		return false
+	}
+	return true
+}
+
 // 城墙耐久上限 = 围墙等级² × 20000（1级2万 / 2级8万 / … / 10级200万）。
 func ezfyWallDurabilityMax(level int) int64 {
 	if level <= 0 {
@@ -980,6 +994,19 @@ func (st *ezfyBattleState) wallDefBonus() int {
 	return int(int64(st.WallDefBonusMax) * st.WallHp / st.WallHpMax)
 }
 
+// wallBonusFor 城墙加成（守城防御 / 远程射程）**只对城防兵种生效**。
+//
+// ★ 2026-10-24 用户规则：「城墙的守城防御+45%、远程射程+45% 是城防兵种的加成，
+//
+//	而不是非城防单位」。普通部队(陆/海/空)打不动的高防目标不再白吃城墙加成。
+//	射程与防御同值、同按剩余耐久比例折算（城墙满耐久 = 等级×5%，耐久下降同比衰减）。
+func (st *ezfyBattleState) wallBonusFor(unit *ezfyFightUnit) int {
+	if unit == nil || unit.cfg == nil || unit.cfg.Type != ezfyTroopTypeCity {
+		return 0
+	}
+	return st.wallDefBonus()
+}
+
 // wallAtkBonus 攻方打城墙时的攻击加成：通用加成 + 对防御设施（兵种 type=4）的专属加成。
 //
 // ★ 2026-10-24 用户规则：城墙耐久属于防御设施，伤害取「对防」（AtkDef），
@@ -1101,6 +1128,11 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	// ★ 2026-10-07 攻方「防御加成」来源拆解：攻方被打（守方行动、守方绝地反击还击）时展示，
 	//   来源 = 攻方军官属性+防御技能(弧形防御/弹幕支援)+装备 Def。攻方无明细 → 不展示防御段（回退老行为）。
 	atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)
+	// ★ 2026-10-24 加成明细开关：关闭后所有「(来源逐项)」明细置空，行动日志只留加成总百分比
+	//   （明细原始数据仍在快照 JSON 里，事后可核，见 ezfyShowBattleBonusDetailCfg）。
+	if !ezfyShowBattleBonusDetailCfg() {
+		atkBonusBreak, defBonusBreak, defBonusTxt, atkDefBonusTxt = "", "", "", ""
+	}
 
 	// ★ 2026-10-08 技能发动播报：每个生效回合都提示。
 	//   攻/守方的攻击类技能（AtkSkillBreak/DefSkillBreak）逐个写一行带感口号，再带出防御类军官技能
@@ -1162,11 +1194,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		target := ezfyPickTarget(unit, liveEnemies, targetMap)
 
 		// ★ 2026-10-06 射程 = 兵种基础射程 × (1 + 射程科技加成%)（）
+		// ★ 2026-10-24 城墙「远程射程」只对城防兵种生效（wallBonusFor，非城防单位 +0）。
 		rangeD := unit.cfg.AttackRange
 		if isAtk {
 			rangeD = unit.cfg.AttackRange * (100 + atkRangeBonusAll) / 100
 		} else {
-			rangeD = unit.cfg.AttackRange * (100 + defRangeBonusAll) / 100
+			rangeD = unit.cfg.AttackRange * (100 + defRangeBonusAll + st.wallBonusFor(unit)) / 100
 		}
 		dist := ezfyAbs(target.pos - unit.pos)
 
@@ -1313,6 +1346,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if atkFlat = st.AtkType.atkFlatOf(unit.cfg.Type); atkFlat > 0 {
 					typeAtkTxt += fmt.Sprintf(" 兵种攻击+%d", atkFlat)
 				}
+				if !ezfyShowBattleBonusDetailCfg() {
+					typeAtkTxt = ""
+				}
 				// ★★ 2026-10-09 修复「装备防御被算两遍」（用户确认修复）：
 				//   `defBonus` 上面已经是 `st.DefBonus + st.DefEquip.Def`（DefBonus = 城墙+科技+城守，
 				//   不含装备），这里再 `+ st.DefEquip.Def` 会把装备/套装的防御算**两遍** ——
@@ -1321,9 +1357,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				// ★★ 2026-10-09 被攻击方（守方）还要加**兵种专属防御**：
 				//   掩体防御「只对城防单位生效」（用户口径）→ 从通用防御里移出，按被攻击方的兵种 type 取。
 				//   普通部队(陆/海/空)恒为 0，只有城防单位(4) 吃这一截。
-				// ★ 2026-10-24 城墙：征服战里按剩余耐久比例提供 0~等级×5% 的守城防御。
-				//   掠夺战 WallEnabled=false → 不生效；耐久打光后 wallDefBonus=0。
-				unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type) + st.wallDefBonus()
+				// ★ 2026-10-24 城墙：征服战里按剩余耐久比例提供 0~等级×5% 的守城防御，
+				//   同样**只对城防兵种生效**（wallBonusFor）；掠夺战 WallEnabled=false → 不生效。
+				unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type) + st.wallBonusFor(target)
 				equip = st.AtkEquip
 			} else {
 				// ★ 2026-10-06 守方行动时也要吃科技+军官技能的攻击加成
@@ -1336,6 +1372,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				if atkFlat = st.DefType.atkFlatOf(unit.cfg.Type); atkFlat > 0 {
 					typeAtkTxt += fmt.Sprintf(" 兵种攻击+%d", atkFlat)
+				}
+				if !ezfyShowBattleBonusDetailCfg() {
+					typeAtkTxt = ""
 				}
 				// ★ 2026-10-07 攻方「防御加成」= 出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def。
 				//   原来攻方被打时防御恒 0 —— 攻方军官带弧形防御 Lv.5「防御力+150%」完全看不见也不生效（用户反馈）。
@@ -1415,6 +1454,25 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			remaining := damage
 			first := true
 			lastTarget := target // 当前 remaining 是按 lastTarget 的防御/兵种类型算出的
+			// ★ 2026-10-24 家园版公式去掉最小伤害后，打不动高防目标时伤害=0，
+			//   原实现 for remaining>0 循环被跳过 → 攻击行完全不展示（用户反馈「打了 0 个也要展示」）。
+			//   这里先补一行「造成0伤害, 消灭0个」，结算循环只跑正伤害。
+			if remaining <= 0 {
+				line := fmt.Sprintf("%s%s攻击%s%s%s, 攻击加成+%d%%%s%s",
+					side, stName(unit), critTxt, enemySide, stName(target), unitAtkBonus, bonusBreak, typeAtkTxt)
+				if isAtk {
+					if defBonusTxt != "" {
+						line += ", " + defBonusTxt
+					}
+					if st.WallEnabled && st.WallHp > 0 && target.cfg.Type == ezfyTroopTypeCity {
+						line += fmt.Sprintf(", 城墙防御+%d%%(耐久%d/%d)", st.wallDefBonus(), st.WallHp, st.WallHpMax)
+					}
+				} else if atkDefBonusTxt != "" {
+					line += ", " + atkDefBonusTxt
+				}
+				line += ", 造成0伤害, 消灭0个"
+				st.Actions = append(st.Actions, line)
+			}
 			for remaining > 0 {
 				live := ezfyAliveList(enemies)
 				if len(live) == 0 {
@@ -1491,7 +1549,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 						if defBonusTxt != "" {
 							line += ", " + defBonusTxt
 						}
-						if st.WallEnabled && st.WallHp > 0 {
+						if st.WallEnabled && st.WallHp > 0 && cur.cfg.Type == ezfyTroopTypeCity {
 							line += fmt.Sprintf(", 城墙防御+%d%%(耐久%d/%d)", st.wallDefBonus(), st.WallHp, st.WallHpMax)
 						}
 					} else if atkDefBonusTxt != "" {
@@ -1508,7 +1566,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 						if defBonusTxt != "" {
 							line += ", " + defBonusTxt
 						}
-						if st.WallEnabled && st.WallHp > 0 {
+						if st.WallEnabled && st.WallHp > 0 && cur.cfg.Type == ezfyTroopTypeCity {
 							line += fmt.Sprintf(", 城墙防御+%d%%(耐久%d/%d)", st.wallDefBonus(), st.WallHp, st.WallHpMax)
 						}
 					} else if atkDefBonusTxt != "" {
@@ -1543,7 +1601,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		//   2026-10-06 技能随军官等级自动升级：1级=前1回合 / 2级=前2回合 / 3级=前3回合。
 		targetRangeD := target.cfg.AttackRange
 		if isAtk {
-			targetRangeD = target.cfg.AttackRange * (100 + defRangeBonusAll) / 100
+			// ★ 2026-10-24 城墙「远程射程」只对城防兵种生效（wallBonusFor）
+			targetRangeD = target.cfg.AttackRange * (100 + defRangeBonusAll + st.wallBonusFor(target)) / 100
 		} else {
 			targetRangeD = target.cfg.AttackRange * (100 + atkRangeBonusAll) / 100
 		}
@@ -1586,6 +1645,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				if cbFlat > 0 {
 					cbTypeTxt += fmt.Sprintf(" 兵种攻击+%d", cbFlat)
+				}
+				if !ezfyShowBattleBonusDetailCfg() {
+					cbTypeTxt = ""
 				}
 				// ★ 反击同样吃反击方的兵种攻击属性加成（绝对值）
 				dmg := ezfyCalcDamage(ezfyPickAttack(target.cfg, unit.cfg)+cbFlat, unit.cfg.Defence, target.count, cbAtk, cbDef)

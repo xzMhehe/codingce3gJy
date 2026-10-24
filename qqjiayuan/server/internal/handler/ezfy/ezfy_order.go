@@ -4354,8 +4354,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				st.WallHp = hp
 				st.WallHpMax = maxHp
 				st.WallDefBonusMax = ezfyWallDefBonusMax(lv)
-				// 参考：1级围墙远程射程+5%/级；只在征服战生效。
-				st.DefRangeBonus += ezfyWallDefBonusMax(lv)
+				// ★ 2026-10-24 城墙「远程射程」不再整体并入 DefRangeBonus（否则全员射程受益）：
+				//   改为战斗内按兵种过滤，只对城防兵种生效（见 ezfy_battle.go wallBonusFor）。
+				//   参考：1级围墙远程射程+5%/级；只在征服战生效。
 				st.Head = append(st.Head, fmt.Sprintf("【城墙】耐久 %d/%d，守城防御+%d%%，远程射程+%d%%",
 					hp, maxHp, ezfyWallDefBonusMax(lv), lv*5))
 				// ★ 2026-10-24 守方无兵但有城墙：不能 0 回合直接判胜，仍需打完城墙耐久

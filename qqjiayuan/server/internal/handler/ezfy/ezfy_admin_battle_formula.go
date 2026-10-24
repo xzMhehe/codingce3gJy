@@ -41,26 +41,30 @@ var ezfyBattleFormulaRules = []struct {
 }
 
 type ezfyBattleFormulaIn struct {
-	ID               int    `json:"id"`
-	Name             string `json:"name"`
-	Remark           string `json:"remark"`
-	DamageFormula    *int   `json:"damage_formula"`
-	BattleMaxRounds  *int   `json:"battle_max_rounds"`
-	BattleStartDist  *int   `json:"battle_start_dist"`
-	BattleRetreatMax *int   `json:"battle_retreat_max"`
-	CritBaseBonusPct *int   `json:"crit_base_bonus_pct"`
-	GarrisonBreakPct *int   `json:"garrison_break_pct"`
-	BattleRoundMs    *int   `json:"battle_round_ms"`
-	AtkCoeff         *int   `json:"atk_coeff"`
-	AtkBase          *int   `json:"atk_base"`
-	DefCoeff         *int   `json:"def_coeff"`
-	DefBase          *int   `json:"def_base"`
-	MinDmgCoeff      *int   `json:"min_dmg_coeff"`
+	ID                    int    `json:"id"`
+	Name                  string `json:"name"`
+	Remark                string `json:"remark"`
+	DamageFormula         *int   `json:"damage_formula"`
+	ShowBattleBonusDetail *int   `json:"show_battle_bonus_detail"`
+	BattleMaxRounds       *int   `json:"battle_max_rounds"`
+	BattleStartDist       *int   `json:"battle_start_dist"`
+	BattleRetreatMax      *int   `json:"battle_retreat_max"`
+	CritBaseBonusPct      *int   `json:"crit_base_bonus_pct"`
+	GarrisonBreakPct      *int   `json:"garrison_break_pct"`
+	BattleRoundMs         *int   `json:"battle_round_ms"`
+	AtkCoeff              *int   `json:"atk_coeff"`
+	AtkBase               *int   `json:"atk_base"`
+	DefCoeff              *int   `json:"def_coeff"`
+	DefBase               *int   `json:"def_base"`
+	MinDmgCoeff           *int   `json:"min_dmg_coeff"`
 }
 
 func (in *ezfyBattleFormulaIn) applyTo(f *model.EzfyCfgBattleFormula) {
 	if in.DamageFormula != nil {
 		f.DamageFormula = *in.DamageFormula
+	}
+	if in.ShowBattleBonusDetail != nil {
+		f.ShowBattleBonusDetail = *in.ShowBattleBonusDetail
 	}
 	if in.BattleMaxRounds != nil {
 		f.BattleMaxRounds = *in.BattleMaxRounds
@@ -100,8 +104,9 @@ func (in *ezfyBattleFormulaIn) applyTo(f *model.EzfyCfgBattleFormula) {
 func ezfyBattleFormulaJSON(f model.EzfyCfgBattleFormula) gin.H {
 	return gin.H{
 		"id": f.ID, "name": f.Name, "remark": f.Remark,
-		"damage_formula":    f.DamageFormula,
-		"battle_max_rounds": f.BattleMaxRounds, "battle_start_dist": f.BattleStartDist,
+		"damage_formula":           f.DamageFormula,
+		"show_battle_bonus_detail": f.ShowBattleBonusDetail,
+		"battle_max_rounds":        f.BattleMaxRounds, "battle_start_dist": f.BattleStartDist,
 		"battle_retreat_max": f.BattleRetreatMax, "crit_base_bonus_pct": f.CritBaseBonusPct,
 		"garrison_break_pct": f.GarrisonBreakPct, "battle_round_ms": f.BattleRoundMs,
 		"atk_coeff": f.AtkCoeff, "atk_base": f.AtkBase,
