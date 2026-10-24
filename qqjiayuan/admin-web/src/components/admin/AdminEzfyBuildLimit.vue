@@ -305,10 +305,14 @@
               <template slot="label">安抚冷却(分钟)<el-tooltip placement="top" :content="tips.placate_cooldown_min"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.placate_cooldown_min" :min="1" controls-position="right" style="width:180px" />
             </el-form-item>
-            <!-- ★ 2026-10-24 民心自然恢复速率：默认 12 小时回满；恢复上限受「民心+民怨+税率=100」约束 -->
+            <!-- ★ 2026-10-24 民心平滑回归（秒级）：上升/下降独立配置，默认均 3600 秒；恢复上限受「民心+民怨+税率=100」约束 -->
             <el-form-item>
-              <template slot="label">民心自动恢复(小时)<el-tooltip placement="top" :content="tips.feelings_recover_hours"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model.number="form.feelings_recover_hours" :min="1" controls-position="right" style="width:180px" />
+              <template slot="label">民心回归上升(秒)<el-tooltip placement="top" :content="tips.feelings_recover_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.feelings_recover_seconds" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">民心回归下降(秒)<el-tooltip placement="top" :content="tips.feelings_drop_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.feelings_drop_seconds" :min="1" controls-position="right" style="width:180px" />
             </el-form-item>
             <el-form-item>
               <template slot="label">军官工资系数<el-tooltip placement="top" :content="tips.officer_salary_per_level"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -596,8 +600,8 @@ export default {
         battle_round_ms: 30000, atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5,
         // ★ 2026-09-28 安抚参数（黄金 / 民怨- / 民心+ / 冷却分钟），默认 5万 / 2 / 1 / 15
         placate_gold: 50000, placate_grievance: 2, placate_feelings: 1, placate_cooldown_min: 15,
-        // ★ 2026-10-24 民心自然恢复满小时数（默认 12）
-        feelings_recover_hours: 12,
+        // ★ 2026-10-24 民心平滑回归（秒级）：上升/下降默认均 3600 秒
+        feelings_recover_seconds: 3600, feelings_drop_seconds: 3600,
         officer_salary_per_level: 20, wound_heal_divisor: 100,
         // ★ 野地兵力倍数 / 野地获取资源倍率（都允许小数，默认 1 = 原样）
         wild_troop_mult: 1, wild_res_mult: 1,
@@ -688,7 +692,7 @@ export default {
         battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
           'garrison_break_pct', 'battle_round_ms', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base',
           'min_dmg_coeff', 'conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'placate_gold',
-          'placate_grievance', 'placate_feelings', 'placate_cooldown_min', 'feelings_recover_hours', 'officer_salary_per_level',
+          'placate_grievance', 'placate_feelings', 'placate_cooldown_min', 'feelings_recover_seconds', 'feelings_drop_seconds', 'officer_salary_per_level',
           'speed_train_on', 'speed_train_rate', 'res_max_food', 'res_max_steel', 'res_max_oil',
           'res_max_rare', 'res_max_gold'],
         switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'train_mayor_military_on',
@@ -725,10 +729,11 @@ export default {
         march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
         conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 5',
         loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 3',
-        feelings_recover_hours: '民心被掠夺/征服扣掉后，自然恢复满所需的小时数，默认 12。' +
+        feelings_recover_seconds: '民心被掠夺/征服扣掉后，平滑回归到上限所需的秒数，默认 3600 秒（1 小时）。' +
           '恢复上限受「民心 + 民怨 + 税率 = 100」约束：民怨没清掉时民心最多只能回到 100 − 税率 − 民怨，' +
-          '用安抚把民怨清到 0 后民心才会继续往上涨（例：民心50 民怨40 税率10 → 民心只能回 50，清民怨后可回 90）。' +
-          '改税率只调整恢复上限，不再瞬间把民心拉到 100 − 税率。',
+          '用安抚把民怨清到 0 后民心才会继续往上涨（例：民心50 民怨40 税率10 → 民心只能回 50，清民怨后可回 90）。',
+        feelings_drop_seconds: '民心高于上限（上调税率 / 民怨上升）时，平滑回归降到上限所需的秒数，默认 3600 秒（1 小时）。' +
+          '例如民怨 0 时把税率调到 90%，民心会在一小时内从 80 平滑降到 10，不再瞬间暴跌。',
         // ★ 2026-10-23 战斗公式来源（按套维护）
         battle_formula_id: '选择本服生效的战斗公式：内置配置 = 使用本页下方 11 项数值；选某个公式套 = 整套覆盖下方数值，立即生效。' +
           '公式套在「战斗公式」页新建/编辑/复制，可维护多套随时切换',
@@ -974,8 +979,9 @@ export default {
             placate_gold: pos(Number(r.data.placate_gold) || 0, 50000),
             placate_grievance: pos(r.data.placate_grievance, 2),
             placate_feelings: pos(r.data.placate_feelings, 1),
-            // ★ 2026-10-24 民心自然恢复满小时数（默认 12）
-            feelings_recover_hours: pos(r.data.feelings_recover_hours, 12),
+            // ★ 2026-10-24 民心平滑回归（秒级）：0 无意义 → pos 各自回落默认 3600
+            feelings_recover_seconds: pos(r.data.feelings_recover_seconds, 3600),
+            feelings_drop_seconds: pos(r.data.feelings_drop_seconds, 3600),
             placate_cooldown_min: pos(r.data.placate_cooldown_min, 15),
             officer_salary_per_level: pos(r.data.officer_salary_per_level, 2),
             wound_heal_divisor: pos(r.data.wound_heal_divisor, 100),

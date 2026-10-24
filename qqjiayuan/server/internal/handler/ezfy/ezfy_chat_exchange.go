@@ -1390,7 +1390,8 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Updates(map[string]interface{}{"user_id": o.DefUserId})
 		if city.Feelings < 20 {
-			h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Update("feelings", 20)
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+				Updates(map[string]interface{}{"feelings": 20, "feel_settle_at": time.Now().UnixMilli()})
 		}
 		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 2)
 		h.addReport(o.DefUserId, 5, "城市归还",
@@ -1586,7 +1587,8 @@ func (h *EzfyHandler) RansomHandle(c *gin.Context) {
 		// 同意：城市返还（同「放弃归还」口径：user_id 本仍属守方，补民心）
 		var ct model.EzfyCity
 		if tx.First(&ct, r.CityId).Error == nil && ct.Feelings < 20 {
-			tx.Model(&model.EzfyCity{}).Where("id = ?", r.CityId).Update("feelings", 20)
+			tx.Model(&model.EzfyCity{}).Where("id = ?", r.CityId).
+				Updates(map[string]interface{}{"feelings": 20, "feel_settle_at": time.Now().UnixMilli()})
 		}
 		tx.Model(&model.EzfyOccupy{}).Where("id = ?", r.OccupyId).Update("status", 2)
 		if err := tx.Commit().Error; err != nil {

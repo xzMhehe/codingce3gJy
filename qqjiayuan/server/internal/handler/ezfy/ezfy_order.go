@@ -5032,7 +5032,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if cur > 0 {
 				target.Feelings = cur
 				h.saveCityRes(target)
-				h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("feelings", target.Feelings)
+				h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
+					Updates(map[string]interface{}{"feelings": target.Feelings, "feel_settle_at": time.Now().UnixMilli()})
 				travel := ezfyOneWayTravel(order)
 				order.Status = 2
 				order.ReturnTime = now + travel
@@ -5054,7 +5055,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if targetProtected {
 				report += "\n民心已失，但目标处于免战保护期，无法征服!"
 				target.Feelings = cur
-				h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("feelings", target.Feelings)
+				h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
+					Updates(map[string]interface{}{"feelings": target.Feelings, "feel_settle_at": time.Now().UnixMilli()})
 				travel := ezfyOneWayTravel(order)
 				order.Status = 2
 				order.ReturnTime = now + travel
@@ -5165,7 +5167,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 			h.saveCityRes(target)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
-				Updates(map[string]interface{}{"feelings": 0, "grievance": target.Grievance})
+				Updates(map[string]interface{}{"feelings": 0, "grievance": target.Grievance,
+					"feel_settle_at": time.Now().UnixMilli()})
 			// ★ 2026-10-06 「被征服报告」：顶部保留守方结论，完整战斗正文（与攻方
 			//   「征服报告」同款：主题/时间/公文报告/战斗经过/双方兵力/战果/逐回合详情）
 			//   在结算完统一拼写（见函数末尾），标题带守方城名+坐标
@@ -5188,7 +5191,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			target.Grievance = minInt(100, target.Grievance+lootFeel)
 			h.saveCityRes(target)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
-				Updates(map[string]interface{}{"feelings": target.Feelings, "grievance": target.Grievance})
+				Updates(map[string]interface{}{"feelings": target.Feelings, "grievance": target.Grievance,
+					"feel_settle_at": time.Now().UnixMilli()})
 			// ★ 2026-10-24 攻方「掠夺报告」补民心变化（与征服报告同款格式），
 			//   玩家被掠夺后一眼能看出民心扣了多少、还剩多少。
 			report += fmt.Sprintf("\n民心 - %d\n当前民心 %d", lootFeel, target.Feelings)

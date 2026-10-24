@@ -903,12 +903,14 @@ func ezfyMarchSpeedBonus() float64 {
 const (
 	ezfyConquerFeelingsDef = 5 // 征服单次最多扣民心（默认 5）
 	ezfyLootFeelingsDef    = 3 // 掠夺每次扣民心（默认 3）
-	// ★ 2026-10-24 民心自然恢复满所需小时数（默认 12）：被掠夺/征服扣掉的民心
-	//   按「民心+民怨+税率=100」的上限线性恢复；0 无意义 → 读取端回落默认。
-	ezfyFeelingsRecoverDef  = 12
-	ezfyRansomCostDefault   = 500 // 赎城所需钻石（默认 500）
-	ezfyOfficerSalaryDef    = 20  // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
-	ezfyWoundHealDivisorDef = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
+	// ★ 2026-10-24 民心平滑回归（秒级，默认 3600 秒回归到合理位置）：
+	//   上升：民心低于上限时按秒线性涨回；下降：民心高于上限时按秒平滑降回。
+	//   0 无意义 → 读取端回落默认。
+	ezfyFeelingsRecoverSecDef = 3600
+	ezfyFeelingsDropSecDef    = 3600
+	ezfyRansomCostDefault     = 500 // 赎城所需钻石（默认 500）
+	ezfyOfficerSalaryDef      = 20  // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
+	ezfyWoundHealDivisorDef   = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
 	// ★ 商城单次购买数量上限（默认 999；2026-10-22 由 99 上调，线上原配置 15 也由 seed 一次性抬高）
 	ezfyMallBuyMaxDef = 999
 	// ★ 背包单件道具持有上限（默认 5000）：同一种道具在玩家背包里不得超过它。
@@ -1144,9 +1146,14 @@ func ezfyLootFeelingsCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.LootFeelings, ezfyLootFeelingsDef)
 }
 
-// ezfyFeelingsRecoverHoursCfg 民心自然恢复满所需小时数（默认 12；0 无意义回落默认）
-func ezfyFeelingsRecoverHoursCfg() int {
-	return ezfyLimitOr(ezfyCfg.limit.FeelingsRecoverHours, ezfyFeelingsRecoverDef)
+// ezfyFeelingsRecoverSecondsCfg 民心平滑回归上升秒数（默认 3600；0 无意义回落默认）
+func ezfyFeelingsRecoverSecondsCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.FeelingsRecoverSeconds, ezfyFeelingsRecoverSecDef)
+}
+
+// ezfyFeelingsDropSecondsCfg 民心平滑回归下降秒数（默认 3600；0 无意义回落默认）
+func ezfyFeelingsDropSecondsCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.FeelingsDropSeconds, ezfyFeelingsDropSecDef)
 }
 
 // ezfyPlacateGoldCost 安抚花费的黄金（默认 5 万）

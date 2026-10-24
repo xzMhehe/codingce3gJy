@@ -1135,9 +1135,9 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	//
 	//	- 民心恢复上限 = 100 − 税率 − 民怨。民怨没清掉，民心最多只能回到这个上限
 	//	  （例：民心50 民怨40 税率10 → 民心只能回到 50；安抚把民怨清到 0 → 上限 90）。
-	//	- 恢复是**渐进的**：按管理端「民心自动恢复速率」（feelings_recover_hours，
-	//	  默认 12 小时回满）线性回归。改税率只调整上限（SetTax 不再瞬间联动），
-	//	  民心由这里按速率逐步靠拢。
+	//	- 恢复是**渐进的**：按管理端「民心平滑回归」秒级配置（feelings_recover_seconds
+	//	  上升 / feelings_drop_seconds 下降，默认均 3600 秒回归到合理位置）线性靠拢。
+	//	  改税率只调整上限（SetTax 不再瞬间联动），民心由这里按速率逐步靠拢。
 	//	- 民心高于上限（税率上调 / 民怨上升）→ 同样按速率平滑回归下来，不会暴跌。
 	//	- 民怨是**独立**的一条线：不再像原来那样「每小时自动 −1」（那会让民怨永远自动消失），
 	//	  只能靠安抚降低；民怨 > 0 会持续掉人口（见下方人口段）。
@@ -1161,23 +1161,50 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	if capFeelings > 100 {
 		capFeelings = 100
 	}
-	recoverH := ezfyFeelingsRecoverHoursCfg()
-	frac := hours / float64(recoverH)
-	if frac > 1 {
-		frac = 1
+	// ★ 2026-10-24 民心平滑回归（秒级配置）：上升/下降两个方向独立秒数，默认均 3600。
+	recoverSec := ezfyFeelingsRecoverSecondsCfg() // 民心平滑回归**上升**秒数
+	dropSec := ezfyFeelingsDropSecondsCfg()       // 民心平滑回归**下降**秒数
+	// ★★ 2026-10-24 民心时钟与资源时钟**分开**：资源 last_time 被写合并（约 60s）频繁推进，
+	//   若民心也按 last_time 算，在线玩家每轮轮询的变化量都被 int() 舍成 0 且时钟已推进
+	//   → 民心永远不动（掉和涨都停住）。这里按「上次民心结算/变更时间」累进，
+	//   变化量为 0 时不推进该时钟，时间会一直积攒到能产出 1 点为止。
+	settleAt := city.FeelSettleAt
+	if settleAt <= 0 {
+		settleAt = last // 兼容老数据：从未结算过就从资源 last_time 起算
 	}
+	elapsedMs := now - settleAt
+	feelChanged := false
 	if feelings < capFeelings {
-		// 民心低于上限（被掠夺/征服打下来 / 刚降税率）→ 按速率线性回满（默认 12 小时）
-		feelings += int(float64(capFeelings-feelings)*frac + 0.5)
-		if feelings > capFeelings {
-			feelings = capFeelings
+		// 民心低于上限（被掠夺/征服打下来 / 刚降税率）→ 按「上升秒数」线性回满（默认 3600 秒）
+		frac := float64(elapsedMs) / 1000.0 / float64(recoverSec)
+		if frac > 1 {
+			frac = 1
+		}
+		add := int(float64(capFeelings-feelings)*frac + 0.5)
+		if add > 0 {
+			feelings += add
+			if feelings > capFeelings {
+				feelings = capFeelings
+			}
+			feelChanged = true
 		}
 	} else if feelings > capFeelings {
-		// 民心高于上限（税率上调 / 民怨上升）→ 平滑回归到上限
-		feelings -= int(float64(feelings-capFeelings)*frac + 0.5)
-		if feelings < capFeelings {
-			feelings = capFeelings
+		// 民心高于上限（税率上调 / 民怨上升）→ 按「下降秒数」平滑回归到上限（默认 3600 秒）
+		frac := float64(elapsedMs) / 1000.0 / float64(dropSec)
+		if frac > 1 {
+			frac = 1
 		}
+		sub := int(float64(feelings-capFeelings)*frac + 0.5)
+		if sub > 0 {
+			feelings -= sub
+			if feelings < capFeelings {
+				feelings = capFeelings
+			}
+			feelChanged = true
+		}
+	}
+	if feelChanged {
+		city.FeelSettleAt = now
 	}
 	if feelings < 0 {
 		feelings = 0
@@ -1527,7 +1554,8 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 		}
 		q.Updates(map[string]interface{}{
 			"feelings": city.Feelings, "grievance": city.Grievance,
-			"pop": city.Pop, "pop_max": city.PopMax,
+			"feel_settle_at": city.FeelSettleAt,
+			"pop":            city.Pop, "pop_max": city.PopMax,
 			// ★ 2026-10-13 空闲人口慢恢复的三个字段一起写（与上面的内存结算同口径）
 			"pop_recover": city.PopRecover, "pop_recover_at": city.PopRecoverAt,
 			"pop_recover_end_at": city.PopRecoverEndAt,
@@ -5269,8 +5297,8 @@ func (h *EzfyHandler) RenameCity(c *gin.Context) {
 // ★ 2026-09-28 用户规则：民心 + 税率 = 100（民心恢复上限 = 100 − 税率 − 民怨）。
 // ★ 2026-10-24 改税率**不再瞬间把民心拉到 100 − 税率**：税率只调整「恢复上限」，
 //
-//	民心由 calcResourceD 按管理端「民心自动恢复速率」（默认 12 小时回满）惰性结算
-//	逐步回归到上限（民怨没清掉时只能回到 100 − 税率 − 民怨）。
+//	民心由 calcResourceD 按管理端「民心平滑回归」秒级配置（上升/下降默认均 3600 秒）
+//	惰性结算逐步回归到上限（民怨没清掉时只能回到 100 − 税率 − 民怨）。
 func (h *EzfyHandler) SetTax(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 改税率 → 资源详情缓存失效
@@ -5308,9 +5336,15 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 			maxTax, grv, maxTax))
 		return
 	}
-	// ★ 2026-10-24 只改税率，民心交给 calcResourceD 按恢复速率逐步回归（不再瞬间联动）
+	// ★★ 2026-10-24 用户规则：设高税率**不再即时掉**民心 → 改为**平滑回归下降**：
+	//   只改税率（恢复上限随之变成 100 − 新税率 − 民怨），民心由 calcResourceD 按管理端
+	//   「民心回归下降秒数」（默认 3600 秒）从这一刻起平滑降回新上限 —— 民怨0 设税率 90
+	//   民心会在一小时内平滑掉到 10，不再瞬间暴跌、也不会停在 80 不动。
+	//   设低税率同样不即时抬民心，按「民心回归上升秒数」平滑涨回平衡点。
+	//   两种情况都重置「民心结算时钟」feel_settle_at，回归从设置这一刻重新起算。
+	now := time.Now().UnixMilli()
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
-		Update("tax_rate", req.TaxRate)
+		Updates(map[string]interface{}{"tax_rate": req.TaxRate, "feel_settle_at": now})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("税率已调整为%d%%", req.TaxRate)})
 }
 
@@ -5512,7 +5546,7 @@ func (h *EzfyHandler) Placate(c *gin.Context) {
 	h.saveCityRes(city)
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 		Updates(map[string]interface{}{"feelings": feelings, "grievance": grievance,
-			"placate_time": now})
+			"placate_time": now, "feel_settle_at": now})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("安抚成功: 民怨 -%d → %d, 民心 +%d → %d",
 		ezfyPlacateGrievanceDown(), grievance, ezfyPlacateFeelingsUp(), feelings)})
 }

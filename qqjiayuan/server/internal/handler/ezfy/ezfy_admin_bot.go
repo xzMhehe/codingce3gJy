@@ -1379,7 +1379,8 @@ func (h *EzfyAdmin) adminRansomApprove(c *gin.Context, r *model.EzfyRansom) (str
 	// 同意：城市返还（user_id 本仍属守方，补民心）
 	var ct model.EzfyCity
 	if tx.First(&ct, r.CityId).Error == nil && ct.Feelings < 20 {
-		tx.Model(&model.EzfyCity{}).Where("id = ?", r.CityId).Update("feelings", 20)
+		tx.Model(&model.EzfyCity{}).Where("id = ?", r.CityId).
+			Updates(map[string]interface{}{"feelings": 20, "feel_settle_at": time.Now().UnixMilli()})
 	}
 	tx.Model(&model.EzfyOccupy{}).Where("id = ?", r.OccupyId).Update("status", 2)
 	if err := tx.Commit().Error; err != nil {
@@ -1436,7 +1437,8 @@ func (h *EzfyAdmin) AdminEzfyBotOccupyOp(c *gin.Context) {
 			Updates(map[string]interface{}{"user_id": o.DefUserId})
 		var city model.EzfyCity
 		if h.DB.First(&city, o.CityId).Error == nil && city.Feelings < 20 {
-			h.DB.Model(&model.EzfyCity{}).Where("id = ?", o.CityId).Update("feelings", 20)
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", o.CityId).
+				Updates(map[string]interface{}{"feelings": 20, "feel_settle_at": time.Now().UnixMilli()})
 		}
 		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 2)
 		if o.DefUserId != 0 {
