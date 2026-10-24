@@ -5380,8 +5380,15 @@ export default {
         if (!await this.ask(`确定花费 ${cost} 钻石赎回城市[${ct.name}](${ct.x},${ct.y})吗?\n` +
           '发起即扣押金, 占领方同意后返还城市(成交收取20%手续费, 占领方实收80%), 拒绝/撤销则自动退回。')) return
         const r = await api.post('/games/ezfy/city/ransom', { city_id: ct.id })
-        this.alert(r, '赎城请求已提交')
-        ct.ransoming = true // 乐观置位 → [赎城] 立刻变 [撤赎城]，重连点击被前端和后端双重拦下
+        // ★ 2026-10-24 修复「钻石不够 → 赎城状态异常」：失败时（钻石不足/已有待处理请求等）
+        //   后端不会创建任何请求，这里不能乐观置 ransoming，否则城市会误显示 [撤赎城]，
+        //   点了又报「该城市没有待处理的赎城请求」——状态卡死。只有成功才置位。
+        if (r && r.code === 0) {
+          ct.ransoming = true // 乐观置位 → [赎城] 立刻变 [撤赎城]，重连点击被前端和后端双重拦下
+          this.alert(r, '赎城请求已提交')
+        } else {
+          this.alert(r, '赎城请求已提交')
+        }
         this.go('cities')
       } finally {
         this.ransomBusy = false

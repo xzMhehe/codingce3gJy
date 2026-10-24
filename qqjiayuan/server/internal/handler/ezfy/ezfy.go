@@ -206,14 +206,25 @@ func (h *EzfyHandler) currentCity(uid uint) model.EzfyCity {
 	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err == nil && p.CurrentCityId > 0 {
 		var city model.EzfyCity
 		if err := h.DB.Where("id = ? AND user_id = ?", p.CurrentCityId, uid).First(&city).Error; err == nil {
-			return city
+			// ★ 2026-10-24 修复「被占城还能操作」：当前城已被占领 → 不返回它，落到下面的空闲城
+			if !h.cityOccupied(int64(city.ID)) {
+				return city
+			}
 		}
 	}
 	var city model.EzfyCity
-	if err := h.DB.Where("user_id = ?", uid).Order("id ASC").First(&city).Error; err == nil {
+	if err := h.DB.Where("user_id = ? AND id NOT IN (SELECT city_id FROM ezfy_occupy WHERE status = 1)", uid).
+		Order("id ASC").First(&city).Error; err == nil {
 		return city
 	}
 	return h.createMainCity(uid)
+}
+
+// cityOccupied 该城市当前是否处于「占领中」(ezfy_occupy status=1)
+func (h *EzfyHandler) cityOccupied(cityId int64) bool {
+	var oc int64
+	h.DB.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", cityId).Count(&oc)
+	return oc > 0
 }
 
 // anyCity 取玩家已有的任意一座城（id 最小 = 主城），不会建城。
@@ -5272,6 +5283,10 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 		return
 	}
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	if req.TaxRate < 0 || req.TaxRate > 100 {
 		resp.ParamError(c, "税率范围0-100")
 		return

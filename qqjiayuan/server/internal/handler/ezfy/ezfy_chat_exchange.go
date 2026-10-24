@@ -1375,6 +1375,18 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 		}
 		resp.OK(c, gin.H{"msg": "摧毁成功"})
 	case "return":
+		// ★ 2026-10-24 归还卡控（防「占领→归还→系统补给」刷无限城）：守方军衔必须能支持
+		//   收回这座城。守方现城数（含这座被占城）超过军衔上限 → 拒绝归还，与「建城」同口径。
+		defProf := h.ensureProfile(o.DefUserId)
+		var owned int64
+		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", o.DefUserId).Count(&owned)
+		defLv := ezfyProfileRank(&defProf)
+		maxCity := ezfyRankCityMaxAt(defLv)
+		if int(owned) > maxCity {
+			resp.ParamError(c, fmt.Sprintf("该玩家军衔「%s」最多只能拥有 %d 座城市（当前已有 %d 座），无法归还",
+				ezfyRankNameAt(defLv), maxCity, owned))
+			return
+		}
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Updates(map[string]interface{}{"user_id": o.DefUserId})
 		if city.Feelings < 20 {
@@ -1528,6 +1540,34 @@ func (h *EzfyHandler) RansomHandle(c *gin.Context) {
 			h.addReport(r.DefUserId, 5, "赎城押金退回",
 				fmt.Sprintf("你为赎回城市[%s](%d,%d)支付的%d钻石押金已退回: 该城市已被占领方处理, 请求作废。", r.CityName, r.X, r.Y, r.Cost))
 			resp.ParamError(c, "该城市已被处理(建立/摧毁/归还), 赎城请求已作废并退回押金")
+			return
+		}
+		// ★ 2026-10-24 同意前卡控（与「归还」同口径，防刷无限城）：原主人军衔必须能支持
+		//   收回城市，否则请求作废 + 押金退回（不满足条件就同意，等于把城强塞给军衔不够的人）。
+		defProf := h.ensureProfile(r.DefUserId)
+		var owned int64
+		tx.Model(&model.EzfyCity{}).Where("user_id = ?", r.DefUserId).Count(&owned)
+		defLv := ezfyProfileRank(&defProf)
+		if int(owned) > ezfyRankCityMaxAt(defLv) {
+			if res := tx.Model(&model.EzfyRansom{}).Where("id = ? AND status = 0", r.ID).
+				Update("status", 3); res.RowsAffected != 1 {
+				resp.ParamError(c, "该请求已被处理")
+				return
+			}
+			if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", r.DefUserId).
+				Update("diamond", gorm.Expr("diamond + ?", r.Cost)).Error; err != nil {
+				resp.ParamError(c, "退回押金失败："+err.Error())
+				return
+			}
+			if err := tx.Commit().Error; err != nil {
+				resp.ParamError(c, "提交失败："+err.Error())
+				return
+			}
+			h.logDiamond(r.DefUserId, r.Cost, "原主人军衔不足, 赎城请求作废, 押金退回")
+			h.addReport(r.DefUserId, 5, "赎城押金退回",
+				fmt.Sprintf("你为赎回城市[%s](%d,%d)支付的%d钻石押金已退回: 你的军衔不足以支持收回该城。", r.CityName, r.X, r.Y, r.Cost))
+			resp.ParamError(c, fmt.Sprintf("原主人军衔「%s」最多只能拥有 %d 座城市（当前已有 %d 座），无法同意赎城, 请求已作废并退回押金",
+				ezfyRankNameAt(defLv), ezfyRankCityMaxAt(defLv), owned))
 			return
 		}
 		// 原子置终态（锁内 + WHERE status=0 兜底）：并发的第二个同意/撤销等锁后必被拒，杜绝重复发放

@@ -738,6 +738,12 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 	go func() { defer cwg.Done(); h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities) }()
 	cwg.Wait()
 	if city == nil {
+		// ★ 2026-10-24 修复「被占城还能出征」：出征源城必须是自己的空闲城。
+		//   显式传了 city_id 但不存在/不属于自己/已被占领 → 直接拒绝，不再静默回落主城。
+		if req.CityId > 0 {
+			resp.ParamError(c, "城市不存在或已被占领")
+			return
+		}
 		city2 := h.getOrCreateCity(uid)
 		city = &city2
 		cities = nil // 新建的城不在上面那份列表里，交给懒结算自己查
@@ -786,6 +792,10 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		return
 	}
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	// ★ 2026-10-05 性能（用户反馈「/order/preview 还是 2s」）：原 refreshCity 串行跑
 	//   建筑/科技/队列/资源懒结算 + processOrders（5+ 条跨 WAN RDS），是 2s 的根源。
 	//   预览是**纯只读计算**（不下达命令、不扣资源），订单/资源结算交给 /view 轮询照常

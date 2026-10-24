@@ -22,9 +22,10 @@ import (
 
 func (h *EzfyHandler) bodyCity(uid uint, cityId int64) *model.EzfyCity {
 	if cityId > 0 {
-		if c := h.cityOf(uid, cityId); c != nil {
-			return c
-		}
+		// ★ 2026-10-24 修复「被占领的城还能操作/造兵/出征」：cityOf 对「不存在/不属于自己/已被占领」
+		//   的城市返回 nil，原来这里**静默回落主城** → 玩家操作被占城时实际作用在主城（造兵/调整
+		//   资源全跑到主城，且 UI 表现像是能在被占城操作）。现在显式返回 nil，由调用方拒绝操作。
+		return h.cityOf(uid, cityId)
 	}
 	main := h.getOrCreateCity(uid)
 	return &main
@@ -263,6 +264,10 @@ func (h *EzfyHandler) Build(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	h.done(c, h.buildBuilding(city, req.BuildingId), "建造命令已下达")
 }
 
@@ -279,6 +284,10 @@ func (h *EzfyHandler) Upgrade(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	h.done(c, h.upgradeBuilding(city, req.RecordId), "建筑已开始升级")
 }
 
@@ -304,6 +313,10 @@ func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	target, msg := h.maxLevelBuilding(city, req.RecordId, req.TargetLevel)
 	// ★ 2026-09-29 修复：不能走 h.done(c, msg, msg) —— done 把「非空 msg」一律当错误，
 	//   会令**成功**的一键升级也返回 400（把成功文案显示成报错），前端因此不刷新。
@@ -337,6 +350,10 @@ func (h *EzfyHandler) CancelBuilding(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	// ⚠️ 不能直接用 h.done：它把「非空 msg」一律当错误 → 退还文案会被当成失败返回 400。
 	msg := h.cancelBuildingUpgrade(city, req.RecordId)
 	// 「已取消升级」「该建筑已完成…」都算成功路径（后者=建筑刚好完工、保留了新等级）
@@ -360,6 +377,10 @@ func (h *EzfyHandler) DeleteBuilding(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	h.done(c, h.deleteBuilding(city, req.RecordId), "建筑已拆除")
 }
 
@@ -377,6 +398,10 @@ func (h *EzfyHandler) SpeedBuilding(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	if req.Minutes <= 0 {
 		req.Minutes = 10
 	}
@@ -578,6 +603,10 @@ func (h *EzfyHandler) DismissDefence(c *gin.Context) {
 		return
 	}
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	var ct model.EzfyCityTroop
 	if err := h.DB.Where("city_id = ? AND troop_id = ?", city.ID, req.TroopId).First(&ct).Error; err != nil || ct.Count <= 0 {
 		resp.ParamError(c, "城内没有该城防设施")
@@ -631,6 +660,10 @@ func (h *EzfyHandler) Train(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	h.done(c, h.trainTroop(city, req.TroopId, req.Count, req.Split), "征兵已开始")
 }
 
@@ -734,6 +767,10 @@ func (h *EzfyHandler) DisbandTroops(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	h.refreshCity(uid, city)
 	cfg := ezfyCfg.troop(req.TroopId)
 	if cfg == nil {
@@ -815,7 +852,12 @@ func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 	if req.AllCity {
 		h.DB.Where("user_id = ?", uid).Find(&targets)
 	} else {
-		targets = append(targets, *h.bodyCity(uid, req.CityId))
+		city := h.bodyCity(uid, req.CityId)
+		if city == nil {
+			resp.ParamError(c, "城市不存在或已被占领")
+			return
+		}
+		targets = append(targets, *city)
 	}
 	if len(targets) == 0 {
 		resp.ParamError(c, "没有可加速的城市")
@@ -895,6 +937,10 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 	}
 
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	if req.All {
 		if req.UseDiamond {
 			// ★ 2026-10-14 「伤兵营 500 钻石恢复全部伤兵」：钻石=账号级货币，校验口径与黄金版一致
@@ -989,6 +1035,10 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 	//   直接读 query 参数选城，与前端 loadTechs 的调用（?city_id=X）对上。
 	cityId, _ := strconv.ParseInt(c.Query("city_id"), 10, 64)
 	city := h.bodyCity(uid, cityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	// ★ 2026-10-05 性能（用户反馈「/techs 还是 3s」）：原 refreshCityRead 串行跑
 	//   checkBuildingDone / collectTrainQueue / calcResource（建筑、训练队列、军官各查一遍 +
 	//   资源结算写库），跨 WAN RDS 就是 3s 的根源。科技页只需要「已完成科技」结算：
@@ -1072,6 +1122,10 @@ func (h *EzfyHandler) Research(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	// ★ 2026-10-05 性能（用户反馈「/techs/research 3s」）：先一次并行取数 + 完整懒结算，
 	//   再把快照交给 researchTech 复用（建筑等级/科技等级/进行中研究全走内存，零额外读）。
 	d := h.ezfyActionSettle(uid, city)
@@ -1090,6 +1144,10 @@ func (h *EzfyHandler) SpeedTech(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	// ★ 2026-09-26 修复「加速道具买完实际使用不生效」：
 	//
 	//	原来这里直接 `h.speedUpTech(city, req.Minutes)` —— **不校验道具、不扣任何东西**，
@@ -1124,6 +1182,10 @@ func (h *EzfyHandler) CancelTech(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	h.done(c, h.cancelTech(city, req.TechId), "已取消研究, 已消耗资源不退还")
 }
 
@@ -1159,6 +1221,10 @@ func (h *EzfyHandler) ProduceSet(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	vals := []int{req.RateFood, req.RateSteel, req.RateOil, req.RateRare}
 	for _, v := range vals {
 		if v < 0 || v > 100 {
@@ -1201,6 +1267,10 @@ func (h *EzfyHandler) SaveTarget(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	tc := ezfyCfg.troop(req.TroopId)
 	if tc == nil {
 		resp.ParamError(c, "兵种不存在")
@@ -2633,6 +2703,10 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		return
 	}
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	// ★★ 2026-10-08 并发卡控：条件原子扣黄金。原来 `city.Gold -= cost; saveCityRes(city)`
 	//   是读-改-写，连点并发会「扣一次钱发多次货」；这里只认 RowsAffected（见 ezfySpendGold）。
 	//   ★ 不再调 saveCityRes：它会把 city 的快照值（含未落库的产出）整体写回，覆盖原子扣减结果。
@@ -2918,6 +2992,10 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 	}
 
 	city := h.bodyCity(uid, req.CityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	msg := h.useItem(uid, city, req.CfgId, req.Count, req.OfficerId, req.SkillId, req.RecordId)
 	if msg == "" {
 		// ★ 原来这里是写死的 "ok"（用户反馈的「提示还都是 ok」）
