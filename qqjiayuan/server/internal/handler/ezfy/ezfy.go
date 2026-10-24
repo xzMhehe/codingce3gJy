@@ -5257,8 +5257,9 @@ func (h *EzfyHandler) RenameCity(c *gin.Context) {
 //
 // ★ 2026-09-28 用户规则：民心 + 税率 = 100（民心恢复上限 = 100 − 税率 − 民怨）。
 // ★ 2026-10-24 改税率**不再瞬间把民心拉到 100 − 税率**：税率只调整「恢复上限」，
-//   民心由 calcResourceD 按管理端「民心自动恢复速率」（默认 12 小时回满）惰性结算
-//   逐步回归到上限（民怨没清掉时只能回到 100 − 税率 − 民怨）。
+//
+//	民心由 calcResourceD 按管理端「民心自动恢复速率」（默认 12 小时回满）惰性结算
+//	逐步回归到上限（民怨没清掉时只能回到 100 − 税率 − 民怨）。
 func (h *EzfyHandler) SetTax(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 改税率 → 资源详情缓存失效
@@ -5273,6 +5274,27 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 	city := h.bodyCity(uid, req.CityId)
 	if req.TaxRate < 0 || req.TaxRate > 100 {
 		resp.ParamError(c, "税率范围0-100")
+		return
+	}
+	// ★ 2026-10-24 卡控：**民心 + 民怨 + 税率 ≤ 100**。
+	//   税率 >= 100 − 民心 − 民怨 时直接拒绝（民怨占着上限，得先安抚降民怨）。
+	//   例：民心50 民怨40 → 100−50−40=10，税率 >=10 一律拒绝，最多只能设 9。
+	feels := city.Feelings
+	if feels < 0 {
+		feels = 0
+	}
+	if feels > 100 {
+		feels = 100
+	}
+	grv := city.Grievance
+	if grv < 0 {
+		grv = 0
+	}
+	if grv > 100 {
+		grv = 100
+	}
+	if req.TaxRate >= 100-feels-grv {
+		resp.ParamError(c, "请先安抚民心降低民怨")
 		return
 	}
 	// ★ 2026-10-24 只改税率，民心交给 calcResourceD 按恢复速率逐步回归（不再瞬间联动）
