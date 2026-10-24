@@ -1,6 +1,7 @@
 package ezfy
 
 import (
+	"strings"
 	"testing"
 
 	"qqjiayuan/server/internal/model"
@@ -100,11 +101,14 @@ func TestEzfyWallDurabilityAndDamage(t *testing.T) {
 
 // ★ 2026-10-24 征服战：守军全灭后必须继续拆城墙，耐久归零才判攻方胜；
 // 拆墙伤害取「对防」AtkDef（城墙属于防御设施），并吃对城防(type=4)的兵种专属加成。
+// ★ 2026-10-24 城墙=静止目标（位置=守方初始位置），**进射程才拆墙**：
+//   攻方速度给到 6000 → 第1回合前进5999贴墙后开拆，第2回合拆完判胜。
 func TestEzfyWallSiegeAfterDefendersDead(t *testing.T) {
 	mk := func() *ezfyBattleState {
 		a := ezfyTestUnit("A1", "步兵", 0, 10)
 		a.cfg.AtkGround = 1
 		a.cfg.AtkDef = 1000
+		a.cfg.Speed = 6000 // 一回合冲 5999 贴墙（墙在守方初始位置），验证「射程外先推进」路径
 		return &ezfyBattleState{
 			Attackers:   []*ezfyFightUnit{a},
 			Defenders:   []*ezfyFightUnit{},
@@ -118,9 +122,12 @@ func TestEzfyWallSiegeAfterDefendersDead(t *testing.T) {
 
 	st := mk()
 	st.Step(nil, nil)
-	// 10*1000²*150%/20000 = 75000；守军已灭但墙未破 → 继续战斗，不能判胜
+	// 第1回合：先「前进5999, 与城墙相距1」，再 10*1000²*150%/20000 = 75000 拆墙
 	if st.WallHp != 25000 {
-		t.Fatalf("围城伤害应按对防+对城防加成计算，城墙剩余应为 25000，得到 %d", st.WallHp)
+		t.Fatalf("围城应先推进再按对防+对城防加成拆墙，城墙剩余应为 25000，得到 %d", st.WallHp)
+	}
+	if !strings.Contains(strings.Join(st.Actions, "\n"), "前进5999") {
+		t.Fatalf("围城第1回合应先向城墙推进（射程外不能直接拆），Actions=%v", st.Actions)
 	}
 	if st.Done || st.AttackerWin || st.Draw {
 		t.Fatalf("城墙未破不能结束战斗，done=%v win=%v draw=%v", st.Done, st.AttackerWin, st.Draw)

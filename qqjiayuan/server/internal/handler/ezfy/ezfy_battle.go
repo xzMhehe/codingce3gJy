@@ -1046,17 +1046,44 @@ func (st *ezfyBattleState) hitWall(unit *ezfyFightUnit, atkBonus int) int64 {
 	return wallDmg
 }
 
-// siegeWall 守军全灭后的围城阶段：每回合所有存活攻方按「对防」拆城墙。
+// siegeWall 守军全灭后的围城阶段：攻方把城墙当「静止的耐久目标」继续推进，
+// 城墙位置 = 守方军队初始位置（ezfyBattleStartDistCfg），**进了射程才拆墙**；
 // 城墙未破则战斗继续，直到耐久归零（攻方胜）或回合耗尽（平局）。
-func (st *ezfyBattleState) siegeWall(atkBonus int, alreadyHit map[*ezfyFightUnit]bool) {
+func (st *ezfyBattleState) siegeWall(atkBonus, atkRangeBonusAll, atkSpeedBonus int, alreadyHit map[*ezfyFightUnit]bool) {
 	if !st.WallEnabled || st.WallHp <= 0 {
 		return
 	}
+	wallPos := ezfyBattleStartDistCfg() // 城墙不动，和守方军队初始位置一样
 	for _, unit := range st.Attackers {
 		if !unit.alive() || st.WallHp <= 0 || alreadyHit[unit] {
 			continue
 		}
-		st.hitWall(unit, atkBonus)
+		rangeD := unit.cfg.AttackRange * (100 + atkRangeBonusAll) / 100
+		dist := ezfyAbs(wallPos - unit.pos)
+		// 射程外：按速度向城墙推进（与主循环前进同口径），进了射程才动手。
+		if dist > rangeD {
+			speedBonus := atkSpeedBonus + st.AtkType.speedOf(unit.cfg.Type)
+			move := unit.cfg.Speed * (100 + speedBonus) / 100
+			if limit := dist - 1; move > limit {
+				move = limit
+			}
+			if move > 0 {
+				if unit.pos < wallPos {
+					unit.pos += move
+				} else if unit.pos > wallPos {
+					unit.pos -= move
+				}
+				dist = ezfyAbs(wallPos - unit.pos)
+				name := ezfyCfg.troopName(unit.cfg.ID, 0)
+				if name == "" {
+					name = unit.cfg.Name
+				}
+				st.Actions = append(st.Actions, fmt.Sprintf("【攻方】%s前进%d, 与城墙相距%d", name, move, dist))
+			}
+		}
+		if dist <= rangeD {
+			st.hitWall(unit, atkBonus)
+		}
 	}
 }
 
@@ -1751,9 +1778,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	// ★ 2026-10-23 名将组合技能：回合结束结算（回合治疗 + 生效回合数递减）
 	st.comboEndRound(atkCombo, defCombo)
 
-	// ★ 2026-10-24 守军全灭但城墙未破 → 进入围城阶段：每回合存活攻方继续拆墙。
+	// ★ 2026-10-24 守军全灭但城墙未破 → 进入围城阶段：攻方向城墙推进、进射程才拆墙。
 	if !st.Done && len(ezfyAliveList(st.Defenders)) == 0 {
-		st.siegeWall(atkBonus, wallHitThisRound)
+		st.siegeWall(atkBonus, atkRangeBonusAll, atkSpeedBonus, wallHitThisRound)
 	}
 
 	if !st.Done {
