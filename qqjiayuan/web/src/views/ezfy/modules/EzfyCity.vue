@@ -153,7 +153,6 @@
             新税率: <input v-model="ezfy.taxInput" type="number" min="0" max="100" style="width:70px"/>%
             <button @click="ezfy.doTax">[设置]</button>
           </div>
-          <div class="old-line gray">设置后民心将联动为 {{ 100 - (parseInt(ezfy.taxInput) || 0) }}</div>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>
