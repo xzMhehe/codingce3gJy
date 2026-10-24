@@ -4342,15 +4342,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		st.appendComboHead()
 		// ★ 2026-10-24 城墙耐久：只有「征服玩家城(3)」启用；「掠夺(2)」完全忽略城墙
 		//   （不打耐久、也不吃城墙防御/射程加成）。上限 = 围墙等级²×20000。
+		// ★ 2026-10-24 用户规则「每场都恢复满」：开战时城墙耐久**无条件补满**，
+		//   不打跨场持久化损伤 —— 上一场打掉的耐久不带到下一场，城墙是一道每场重刷的屏障。
 		if target != nil && order.OrderType == 3 {
 			if lv := h.buildingLevel(target.ID, 7); lv > 0 {
 				maxHp := ezfyWallDurabilityMax(lv)
-				hp := target.WallHp
-				if hp < 0 || hp > maxHp {
-					hp = maxHp
-					target.WallHp = hp
-					h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("wall_hp", hp)
-				}
+				hp := maxHp
+				target.WallHp = hp
+				h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("wall_hp", hp)
 				st.WallEnabled = true
 				st.WallHp = hp
 				st.WallHpMax = maxHp
@@ -4472,18 +4471,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	win = br.AttackerWin
 	draw := br.Draw
-	// ★ 2026-10-24 城墙耐久写回：只有征服战会带上 WallHpMax（掠夺/野地/老战报 = 0，跳过）。
-	if target != nil && order.OrderType == 3 && br.WallHpMax > 0 {
-		hp := br.WallHp
-		if hp < 0 {
-			hp = 0
-		}
-		if hp > br.WallHpMax {
-			hp = br.WallHpMax
-		}
-		target.WallHp = hp
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("wall_hp", hp)
-	}
+	// ★ 2026-10-24 城墙耐久**每场恢复满**（用户规则）：开战时已无条件补满（见上方初始化），
+	//   这里不再把打掉的耐久写回 —— 城墙不跨场持久化损伤。
 
 	// ★★ 风云榜（★ 2026-10-14）：按自然周统计**玩家 vs 玩家**战绩（灭敌/战损/场次/胜场）。
 	//   只记打玩家城（target_type=3）的一场完整对局 —— 这里是攻守双方战果齐备、
