@@ -22,10 +22,10 @@
         <el-table-column label="归属账号" width="90" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ row.user_id }}</span></template>
         </el-table-column>
+        <!-- ★ 2026-10-24 玩家列去掉 (家园号)：列表接口 home_num 恒为空，原来只显示空括号 -->
         <el-table-column label="玩家" min-width="110" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span class="td-main">{{ row.player_name }}</span>
-            <span class="td-gray">({{ row.home_num }})</span>
           </template>
         </el-table-column>
         <el-table-column label="类型" width="90" align="center">

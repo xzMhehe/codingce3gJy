@@ -55,12 +55,10 @@
             <el-form-item>
               <template slot="label">系统回收手续费(%)<el-tooltip placement="top" :content="tips.sys_sell_fee"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.sys_sell_fee" :min="1" :max="90" controls-position="right" style="width:180px" />
-              <span class="unit-hint">默认 30%</span>
             </el-form-item>
             <el-form-item>
               <template slot="label">系统回收每日上限<el-tooltip placement="top" :content="tips.sys_sell_daily_limit"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.sys_sell_daily_limit" :min="0" :max="10000000000" :step="100000" controls-position="right" style="width:180px" />
-              <span class="unit-hint">每种资源；0 = 不限</span>
             </el-form-item>
             <!-- ★ 2026-09-28 军官军事加成：每点累加出征上限 + 每点加速（二战系统配置可调） -->
             <el-form-item>
@@ -237,10 +235,13 @@
               <template slot="label">战斗最大后退距离<el-tooltip placement="top" :content="tips.battle_retreat_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.battle_retreat_max" :min="1000" :max="100000" :step="100" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-24 家园版公式不使用下面 6 项：选中的公式来源为家园版时隐藏，避免管理员误配 -->
+            <template v-if="!activeFormulaIsHome">
             <el-form-item>
               <template slot="label">暴击基础伤害加成(%)<el-tooltip placement="top" :content="tips.crit_base_bonus_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.crit_base_bonus_pct" :min="1" :max="500" controls-position="right" style="width:180px" />
             </el-form-item>
+            </template>
             <el-form-item>
               <template slot="label">驻军溃败撤退阈值(%)<el-tooltip placement="top" :content="tips.garrison_break_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.garrison_break_pct" :min="1" :max="100" controls-position="right" style="width:180px" />
@@ -250,6 +251,8 @@
               <template slot="label">每回合时长(毫秒)<el-tooltip placement="top" :content="tips.battle_round_ms"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.battle_round_ms" :min="25000" :max="120000" :step="1000" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-24 以下 5 项仅原版公式使用，家园版隐藏 -->
+            <template v-if="!activeFormulaIsHome">
             <el-form-item>
               <template slot="label">伤害攻击系数<el-tooltip placement="top" :content="tips.atk_coeff"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.atk_coeff" :min="1" :max="100" controls-position="right" style="width:180px" />
@@ -270,6 +273,7 @@
               <template slot="label">最小伤害系数<el-tooltip placement="top" :content="tips.min_dmg_coeff"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.min_dmg_coeff" :min="1" :max="1000" controls-position="right" style="width:180px" />
             </el-form-item>
+            </template>
             <el-form-item>
               <template slot="label">征服单次扣民心<el-tooltip placement="top" :content="tips.conquer_feelings_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.conquer_feelings_max" :min="1" controls-position="right" style="width:180px" />
@@ -521,6 +525,14 @@
               <el-radio :label="1">家园版（图片公式）</el-radio>
             </el-radio-group>
           </el-form-item>
+          <!-- ★ 2026-10-24 公式预览：新建/编辑时直观展示当前公式（原版代入实时数值），便于管理员理解各参数作用 -->
+          <el-alert :title="formulaPreview.title" type="info" :closable="false" show-icon style="margin:2px 0 10px">
+            <div class="fx-preview">
+              <div class="fx-line">{{ formulaPreview.formula }}</div>
+              <div class="fx-line">{{ formulaPreview.min }}</div>
+              <div v-if="formulaPreview.note" class="fx-note">{{ formulaPreview.note }}</div>
+            </div>
+          </el-alert>
           <el-form-item v-for="f in visibleFormulaFields" :key="f.key">
             <template slot="label">{{ f.label }}<el-tooltip placement="top" :content="tips[f.tip]"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
             <el-input-number v-model.number="formulaForm[f.key]" :min="f.min" :max="f.max" :step="f.step" controls-position="right" style="width:180px" />
@@ -830,8 +842,17 @@ export default {
       return f ? f.name : '内置配置（所选公式套已不存在）'
     },
     formulaSourceTip () {
+      const extra = this.activeFormulaIsHome
+        ? '当前生效的是家园版，原版专用的暴击加成/攻击系数/攻击加值/防御系数/防御加值/最小伤害系数 6 项不生效，已自动隐藏。'
+        : '内置配置/原版公式会使用下方全部数值。'
       return '内置配置 = 使用下方 11 项数值；选择公式套后下方 11 项不生效，以所选套为准。' +
-        '当前生效：' + this.activeFormulaName + '。公式套可在「战斗公式」页新建/编辑。'
+        '当前生效：' + this.activeFormulaName + '。' + extra + '公式套可在「战斗公式」页新建/编辑。'
+    },
+    // ★ 2026-10-24 当前生效公式是否为家园版：是则隐藏原版专用的 6 项配置
+    activeFormulaIsHome () {
+      if (!this.activeFormulaId) return false
+      const f = this.formulas.find(x => Number(x.id) === Number(this.activeFormulaId))
+      return !!(f && Number(f.damage_formula) === 1)
     },
     formulaTabTip () {
       return '战斗公式按套维护，本服选择其中一套生效；「内置配置」= 使用「战斗与经济」页里的 11 项数值。' +
@@ -845,6 +866,25 @@ export default {
       if (Number(this.formulaForm.damage_formula) !== 1) return this.formulaFields
       const skip = ['crit_base_bonus_pct', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base', 'min_dmg_coeff']
       return this.formulaFields.filter(f => skip.indexOf(f.key) < 0)
+    },
+    // ★ 2026-10-24 公式预览：按所选伤害算法生成公式文本，原版代入实时参数值
+    formulaPreview () {
+      if (Number(this.formulaForm.damage_formula) === 1) {
+        return {
+          title: '家园版伤害公式（图片公式）',
+          formula: '伤害 = 数量 × 基础伤害² × (1 + 攻加成%) ÷ [基础防御 × (1 + 防加成%)]',
+          min: '最小伤害 = 数量（每名士兵至少造成 1 点伤害，避免高防时打不动）',
+          note: '本算法不使用：暴击基础伤害加成 / 攻击系数 / 攻击加值 / 防御系数 / 防御加值 / 最小伤害系数（已隐藏）'
+        }
+      }
+      const v = this.formulaForm
+      return {
+        title: '原版伤害公式（攻防系数）',
+        formula: '伤害 = (攻 × ' + v.atk_coeff + ' + ' + v.atk_base + ') ÷ [守防 × (1+防加成%) × ' + v.def_coeff +
+          ' + ' + v.def_base + '] × 数量 × (1+攻加成%)',
+        min: '最小伤害 = 数量 × ' + v.min_dmg_coeff + '（单次伤害低于该值时按它结算）',
+        note: '调整上方参数即可直观看到公式变化；攻加成% / 防加成% 来自兵种与军官属性'
+      }
     }
   },
   mounted () { this.load(); this.loadFormulas() },
@@ -1096,5 +1136,14 @@ export default {
 .formula-empty {
   margin-top: 12px; padding: 18px; text-align: center; font-size: 13px; color: #909399;
   background: #fafafa; border: 1px dashed #dcdfe6; border-radius: 4px;
+}
+/* ★ 2026-10-24 战斗公式弹窗里的公式预览 */
+.fx-preview { font-size: 13px; line-height: 1.9; }
+.fx-line { font-weight: 600; color: #303133; }
+.fx-note { font-weight: 400; color: #909399; }
+/* ★ 2026-10-24 7 个 tab 默认间距放不下（表单 maxWidth 660px），压缩间距让「战斗公式」tab 直接可见，无需点溢出箭头 */
+.farm-admin ::v-deep .el-tabs__item {
+  padding: 0 12px;
+  font-size: 13px;
 }
 </style>
