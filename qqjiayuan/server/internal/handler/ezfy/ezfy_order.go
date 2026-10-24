@@ -4359,6 +4359,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				st.DefRangeBonus += ezfyWallDefBonusMax(lv)
 				st.Head = append(st.Head, fmt.Sprintf("【城墙】耐久 %d/%d，守城防御+%d%%，远程射程+%d%%",
 					hp, maxHp, ezfyWallDefBonusMax(lv), lv*5))
+				// ★ 2026-10-24 守方无兵但有城墙：不能 0 回合直接判胜，仍需打完城墙耐久
+				//   （前提：攻方有兵；否则没人拆墙）。墙破 → 攻方胜；回合耗尽未破 → 平局（守方视为守住）。
+				//   城墙没破（hp=0）或没城墙（本分支不进来）仍按原 0 回合直接结算。
+				if st.Done && len(st.Defenders) == 0 && len(st.Attackers) > 0 {
+					st.Done, st.AttackerWin, st.Draw = false, false, false
+				}
 			}
 		}
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：

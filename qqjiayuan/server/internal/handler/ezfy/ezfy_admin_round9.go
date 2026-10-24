@@ -1482,6 +1482,27 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN battle_formula_id int DEFAULT 0")
 	}
 	h.DB.Exec("UPDATE ezfy_cfg_limit SET battle_formula_id = 0 WHERE battle_formula_id IS NULL")
+	// ★ 2026-10-24 同样防御「Unknown column」（seed.skip 节点缺列 → Save 全字段更新失败）：
+	//   系统回收手续费/每日上限、建造队列、召集三件套、空闲人口两件套、人机征兵线/出征时间段。
+	for _, c := range []struct {
+		col, ddl, def string
+	}{
+		{"sys_sell_fee", "int DEFAULT 30", "30"},
+		{"sys_sell_daily_limit", "bigint DEFAULT 1000000", "1000000"},
+		{"build_queue_max", "int DEFAULT 5", "5"},
+		{"pop_recover_seconds", "int DEFAULT 1200", "1200"},
+		{"pop_extra_decay_seconds", "int DEFAULT 300", "300"},
+		{"convene_pop_pct", "int DEFAULT 10", "10"},
+		{"convene_cooldown_seconds", "int DEFAULT 3", "3"},
+		{"convene_cap_cooldown_seconds", "int DEFAULT 300", "300"},
+		{"bot_train_threshold", "bigint DEFAULT 500000", "500000"},
+		{"bot_atk_windows", "varchar(120) DEFAULT ''", "''"},
+	} {
+		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " " + c.ddl)
+		}
+		h.DB.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + c.def + " WHERE " + c.col + " IS NULL")
+	}
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
