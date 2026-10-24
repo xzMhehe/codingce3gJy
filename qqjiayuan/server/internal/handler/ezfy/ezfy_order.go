@@ -5187,11 +5187,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			//   在结算完统一拼写（见函数末尾），标题带守方城名+坐标
 			//   （原误用攻方 city.Name 是 bug）。
 			if !lastCity {
-				defConqBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n民心 - %d\n当前民心 0\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
-					targetName, conqFeelDrop, lootFood, lootSteel, lootOil, lootRare, lootGold)
+				defConqBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold)
 			} else {
 				// 该城已被先到的队伍占走（本次重复攻打）
-				defConqBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n民心清零, 但该城已被其他部队占领, 无法重复占领!\n当前民心 0\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
+				defConqBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n但该城已被其他部队占领, 无法重复占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
 					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold)
 			}
 		}
@@ -5323,6 +5323,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(cityGuard),
 					PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef,
 					AtkLabel: atkLabel, DefLabel: defLabel,
+					// ★ 2026-10-24 被征服报告：民心块放正文 [守方] 行下（用户指定格式，头部不再放）
+					DefFeelShow: order.OrderType == 3, DefFeelDrop: conqFeelDrop, DefFeelCur: 0,
 				})
 				head := defConqBody
 				if order.OrderType == 2 {
@@ -6190,6 +6192,10 @@ type ezfyDefReportSpec struct {
 	PrestigeGain   int                // 守方本场军功声望（>0 才输出该行）
 	DefExp         int64              // 守方军官本场经验（>0 才输出该行）
 	HealLineDef    string             // 守方「回收比例」行（空串=不显示）
+	// ★ 2026-10-24 守方「民心」块（被征服报告正文 [守方] 行下展示，头部不再放）：扣减量 + 当前值
+	DefFeelShow bool // 是否输出民心块
+	DefFeelDrop int  // 民心扣减
+	DefFeelCur  int  // 当前民心
 	// ★ 2026-10-21 [攻方]/[守方] 行展示名（玩家昵称；空=沿用城市名/野地名）
 	AtkLabel string
 	DefLabel string
@@ -6231,6 +6237,9 @@ func (h *EzfyHandler) ezfyDefenderReportBody(s ezfyDefReportSpec) string {
 	}
 	b += troopChangeText(s.AtkBefore, s.AtkAfter)
 	b += fmt.Sprintf("--------------------\n[%s]守方:%s\n", s.DefTag, defLabel)
+	if s.DefFeelShow {
+		b += fmt.Sprintf("\n民心 - %d\n当前民心 %d", s.DefFeelDrop, s.DefFeelCur)
+	}
 	if s.DefOfficerDesc != "" {
 		b += "军官:" + s.DefOfficerDesc + "\n"
 	}
