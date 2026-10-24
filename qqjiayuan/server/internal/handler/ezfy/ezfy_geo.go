@@ -901,8 +901,11 @@ func ezfyMarchSpeedBonus() float64 {
 //
 //	所以读到 <= 0 时一律回落默认值（与 ezfyGatherMax 同一套兜底思路）。
 const (
-	ezfyConquerFeelingsDef  = 5   // 征服单次最多扣民心（默认 5）
-	ezfyLootFeelingsDef     = 3   // 掠夺每次扣民心（默认 3）
+	ezfyConquerFeelingsDef = 5 // 征服单次最多扣民心（默认 5）
+	ezfyLootFeelingsDef    = 3 // 掠夺每次扣民心（默认 3）
+	// ★ 2026-10-24 民心自然恢复满所需小时数（默认 12）：被掠夺/征服扣掉的民心
+	//   按「民心+民怨+税率=100」的上限线性恢复；0 无意义 → 读取端回落默认。
+	ezfyFeelingsRecoverDef  = 12
 	ezfyRansomCostDefault   = 500 // 赎城所需钻石（默认 500）
 	ezfyOfficerSalaryDef    = 20  // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
 	ezfyWoundHealDivisorDef = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
@@ -1139,6 +1142,11 @@ func ezfyConquerFeelingsCfg() int {
 // ezfyLootFeelingsCfg 掠夺(2) 每次扣目标多少民心
 func ezfyLootFeelingsCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.LootFeelings, ezfyLootFeelingsDef)
+}
+
+// ezfyFeelingsRecoverHoursCfg 民心自然恢复满所需小时数（默认 12；0 无意义回落默认）
+func ezfyFeelingsRecoverHoursCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.FeelingsRecoverHours, ezfyFeelingsRecoverDef)
 }
 
 // ezfyPlacateGoldCost 安抚花费的黄金（默认 5 万）

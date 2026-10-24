@@ -1119,17 +1119,20 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	techStore := tech[14]
 	techSupply := tech[18]
 
-	// ★★ 2026-09-28 用户规则大改：**民心与税率联动，「民心 + 税率 = 100」**。
+	// ★★ 2026-09-28 用户规则大改：**民心 + 税率 = 100**；★ 2026-10-24 扩展为
+	//   **民心 + 民怨 + 税率 = 100**，且民心是**随时间渐进恢复**、不再瞬间秒回。
 	//
-	//	- 基准民心 = 100 − 税率（税率 20% → 民心 80）。设税率时民心**立即**设为该值（见 SetTax）。
-	//	- 被征服/掠夺导致民心下降、民怨升高，**但税率不动**；民心之后**自动回归**，
-	//	  每小时朝 (100 − 税率) 靠拢，直到重新满足 民心 + 税率 = 100。
-	//	- 回归速度：民心低于基准时每分钟 +1（即每小时 +60 上限），温和且能在几小时内恢复。
+	//	- 民心恢复上限 = 100 − 税率 − 民怨。民怨没清掉，民心最多只能回到这个上限
+	//	  （例：民心50 民怨40 税率10 → 民心只能回到 50；安抚把民怨清到 0 → 上限 90）。
+	//	- 恢复是**渐进的**：按管理端「民心自动恢复速率」（feelings_recover_hours，
+	//	  默认 12 小时回满）线性回归。改税率只调整上限（SetTax 不再瞬间联动），
+	//	  民心由这里按速率逐步靠拢。
+	//	- 民心高于上限（税率上调 / 民怨上升）→ 同样按速率平滑回归下来，不会暴跌。
 	//	- 民怨是**独立**的一条线：不再像原来那样「每小时自动 −1」（那会让民怨永远自动消失），
 	//	  只能靠安抚降低；民怨 > 0 会持续掉人口（见下方人口段）。
 	//
-	//	旧实现的问题（已废弃）：民心按「税率档位」每小时 ±1~2，与税率只是**间接**相关；
-	//	税 20% 时民心会停在 100 而不是 80，与用户的「民心+税率=100」口径不符。
+	//	旧实现（已废弃）：民心按「每分钟 ±1」（每小时 ±60）朝 100−税率 硬靠，
+	//	既不含民怨约束，也和「12 小时回满」的速率口径不符。
 	feelings := city.Feelings
 	grievance := city.Grievance
 	// 税率兜底到 [0,100]，避免脏数据把基准民心算成负数
@@ -1140,18 +1143,29 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	if tax > 100 {
 		tax = 100
 	}
-	baseFeelings := 100 - tax // 民心基准 = 100 − 税率
-	if feelings < baseFeelings {
-		// 民心低于基准（被征服/掠夺打下来）→ 自动回归，每分钟 +1
-		feelings += int(hours*60 + 0.5)
-		if feelings > baseFeelings {
-			feelings = baseFeelings
+	capFeelings := 100 - tax - grievance // 恢复上限 = 100 − 税率 − 民怨
+	if capFeelings < 0 {
+		capFeelings = 0
+	}
+	if capFeelings > 100 {
+		capFeelings = 100
+	}
+	recoverH := ezfyFeelingsRecoverHoursCfg()
+	frac := hours / float64(recoverH)
+	if frac > 1 {
+		frac = 1
+	}
+	if feelings < capFeelings {
+		// 民心低于上限（被掠夺/征服打下来 / 刚降税率）→ 按速率线性回满（默认 12 小时）
+		feelings += int(float64(capFeelings-feelings)*frac + 0.5)
+		if feelings > capFeelings {
+			feelings = capFeelings
 		}
-	} else if feelings > baseFeelings {
-		// 民心高于基准（刚降过税率 / 安抚加过头）→ 同样回归，每分钟 −1
-		feelings -= int(hours*60 + 0.5)
-		if feelings < baseFeelings {
-			feelings = baseFeelings
+	} else if feelings > capFeelings {
+		// 民心高于上限（税率上调 / 民怨上升）→ 平滑回归到上限
+		feelings -= int(float64(feelings-capFeelings)*frac + 0.5)
+		if feelings < capFeelings {
+			feelings = capFeelings
 		}
 	}
 	if feelings < 0 {
@@ -5239,12 +5253,12 @@ func (h *EzfyHandler) RenameCity(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "改名成功"})
 }
 
-// SetTax 设置税率
 // SetTax 调整税率
 //
-// ★ 2026-09-28 用户规则：**民心 + 税率 = 100**，设税率时民心**立即**联动到 (100 − 税率)。
-// 例如税率设成 20% → 民心立即变 80。之后被征服/掠夺把民心打下去时税率不动，
-// 民心由 calcResource 每小时自动回归到基准值（见那里的说明）。
+// ★ 2026-09-28 用户规则：民心 + 税率 = 100（民心恢复上限 = 100 − 税率 − 民怨）。
+// ★ 2026-10-24 改税率**不再瞬间把民心拉到 100 − 税率**：税率只调整「恢复上限」，
+//   民心由 calcResourceD 按管理端「民心自动恢复速率」（默认 12 小时回满）惰性结算
+//   逐步回归到上限（民怨没清掉时只能回到 100 − 税率 − 民怨）。
 func (h *EzfyHandler) SetTax(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 改税率 → 资源详情缓存失效
@@ -5261,11 +5275,10 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 		resp.ParamError(c, "税率范围0-100")
 		return
 	}
-	// ★ 民心立即联动：民心 = 100 − 税率
-	feelings := 100 - req.TaxRate
+	// ★ 2026-10-24 只改税率，民心交给 calcResourceD 按恢复速率逐步回归（不再瞬间联动）
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
-		Updates(map[string]interface{}{"tax_rate": req.TaxRate, "feelings": feelings})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("税率已调整为%d%%, 民心联动为%d", req.TaxRate, feelings)})
+		Update("tax_rate", req.TaxRate)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("税率已调整为%d%%", req.TaxRate)})
 }
 
 // Convene 召集人口（只消耗粮食）

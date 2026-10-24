@@ -5301,8 +5301,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				if order.OrderType == 2 {
 					// 掠夺：守方看不到战利品明细（原攻方正文里的「战果」）→ 抬头里补上「被掠夺资源」，
 					// 不能因为改了视角就把「我被抢了多少」这个关键信息弄丢。
-					head = fmt.Sprintf("你的城市%s被敌方部队掠夺!\n民心-%d 民怨+%d\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
-						targetName, lootFeel, lootFeel, lootFood, lootSteel, lootOil, lootRare, lootGold)
+					// ★ 2026-10-24 被掠夺报告也展示「民心 - N / 当前民心 X」（与攻方掠夺报告/征服同款），
+					//   让守方一眼看到民心扣了多少、还剩多少。
+					head = fmt.Sprintf("你的城市%s被敌方部队掠夺!\n民心-%d 民怨+%d\n民心 - %d\n当前民心 %d\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
+						targetName, lootFeel, lootFeel, lootFeel, target.Feelings, lootFood, lootSteel, lootOil, lootRare, lootGold)
 				}
 				if order.OrderType == 2 {
 					h.addReport(target.UserID, 2, "被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",

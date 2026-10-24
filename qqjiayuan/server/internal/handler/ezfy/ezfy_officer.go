@@ -1165,8 +1165,11 @@ func (h *EzfyHandler) recruitCaptive(uid uint, officerId int64) string {
 	if cap := h.officerCapacity(city.ID); h.officerCount(city.ID) >= cap {
 		return "参谋部容量不足(参谋部" + strconv.Itoa(staff) + "级容纳" + strconv.Itoa(cap) + "名军官)"
 	}
-	// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：同城已同名 → 拒绝收编
-	if h.ezfyOfficerNameTaken(city.ID, o.Name, o.ID) {
+	// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：同城已同名 → 拒绝收编。
+	// ★★ 2026-10-24 用户规则「抢别人的军官（普通、名将）不受同名卡控」：
+	//   PvP 抢来的俘虏（source=4 抢玩家获取）允许同名收编 —— 否则抢到的同名将永远卡在战俘营收不了；
+	//   野地/活动守将俘虏（source=3）仍查同名，防「同一守将被反复俘 → 军官超编」。
+	if o.Source != model.EzfyOfficerSourcePvp && h.ezfyOfficerNameTaken(city.ID, o.Name, o.ID) {
 		return "本城已有同名军官「" + o.Name + "」, 无法重复收编"
 	}
 	loyalty := o.Loyalty
@@ -2669,17 +2672,11 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 	}
 	for i := range defected {
 		o := &defected[i]
-		// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：
-		//   攻方城里已有同名军官 → 不再重复收押（否则同城同名堆积，军官数「卡」着涨）。
-		//   与 createCaptiveOfficer 同口径：同名一律跳过，连战俘营空位都不占。
-		if h.ezfyOfficerNameTaken(atkCity.ID, o.Name, 0) {
-			h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
-			h.DB.Delete(&model.EzfyOfficer{}, o.ID)
-			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零离去(我方已有同名军官, 未收押)")
-			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
-				o.Name+"因忠诚度归零而离开了你的城市。", "", 0, target.ID)
-			continue
-		}
+		// ★★ 2026-10-24 用户规则「抢别人的军官（普通、名将）不受同名卡控」：
+		//   2026-10-09 加的「攻方城已有同名 → 不收押」与 2026-10-05 的
+		//   「玩家抢玩家的名将不受重复卡控」矛盾，经用户确认废除 PvP 路径同名卡控：
+		//   忠诚归零的敌将一律照常收押为战俘（仍受战俘营容量约束）。
+		//   （野地/寇城/活动守将仍走 createCaptiveOfficer 的查重，防「同一守将被反复俘」。）
 		if room > 0 {
 			// 收编为攻方战俘(等级/属性保留, 忠诚重置为 30 待收编)
 			// ★ 2026-10-05 Source=抢玩家获取：标记来源，管理端军官列表据此标注

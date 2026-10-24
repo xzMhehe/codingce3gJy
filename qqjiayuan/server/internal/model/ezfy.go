@@ -411,6 +411,10 @@ type EzfyCfgLimit struct {
 	//   掠夺(2)：每次固定扣目标多少民心（原来写死 5，线上现值 3）。
 	ConquerFeelingsMax int `gorm:"default:5;comment:Conquer民心上限" json:"conquer_feelings_max"`
 	LootFeelings       int `gorm:"default:3;comment:掠夺民心" json:"loot_feelings"`
+	// ★ 2026-10-24 民心自然恢复速率：被掠夺/征服扣掉的民心按速率**随时间线性恢复**，
+	//   恢复上限受「民心 + 民怨 + 税率 = 100」约束（民怨没清掉民心只能回到上限）；
+	//   0 无意义 → 读取端回落默认 12。
+	FeelingsRecoverHours int `gorm:"default:12;comment:民心自动恢复满小时" json:"feelings_recover_hours"`
 	// ★ 2026-10-07 赎城功能：被占城市原主人赎回需消耗的钻石（管理端「建筑上限配置」可维护，默认 500）。
 	//   0 无意义（= 禁止赎城）→ 读取端回落默认 500。
 	RansomCost int `gorm:"default:500;comment:赎城金额钻石" json:"ransom_cost"`

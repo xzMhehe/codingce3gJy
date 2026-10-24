@@ -42,7 +42,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-10-23 临时空闲人口回落窗口（缺行时默认 300 秒 = 5 分钟）
 		PopExtraDecaySeconds: ezfyPopExtraDecaySecondsDef,
 		ConquerFeelingsMax:   ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
-		RansomCost: ezfyRansomCostDefault,
+		// ★ 2026-10-24 民心自然恢复满小时数（默认 12）
+		FeelingsRecoverHours: ezfyFeelingsRecoverDef,
+		RansomCost:           ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
 		PlacateGold: ezfyPlacateGoldDef, PlacateGrievance: ezfyPlacateGrievanceDef,
 		PlacateFeelings: ezfyPlacateFeelingsDef, PlacateCooldownMin: ezfyPlacateCooldownDef,
@@ -165,6 +167,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	}
 	if lim.LootFeelings <= 0 {
 		lim.LootFeelings = ezfyLootFeelingsDef
+	}
+	if lim.FeelingsRecoverHours <= 0 {
+		lim.FeelingsRecoverHours = ezfyFeelingsRecoverDef
 	}
 	if lim.OfficerSalaryPerLevel <= 0 {
 		lim.OfficerSalaryPerLevel = ezfyOfficerSalaryDef
@@ -361,6 +366,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MoveCoolH          *int `json:"move_cool_h"`
 		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
 		LootFeelings       *int `json:"loot_feelings"`
+		// ★ 2026-10-24 民心自然恢复满小时数（默认 12）
+		FeelingsRecoverHours *int `json:"feelings_recover_hours"`
 		// ★ 2026-10-07 赎城金额（钻石，默认 500；>= 1 才合法）
 		RansomCost *int `json:"ransom_cost"`
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -495,7 +502,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-10-23 临时空闲人口回落窗口（缺行时默认 300 秒 = 5 分钟）
 		PopExtraDecaySeconds: ezfyPopExtraDecaySecondsDef,
 		ConquerFeelingsMax:   ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
-		RansomCost: ezfyRansomCostDefault,
+		// ★ 2026-10-24 民心自然恢复满小时数（默认 12）
+		FeelingsRecoverHours: ezfyFeelingsRecoverDef,
+		RansomCost:           ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
 		PlacateGold: ezfyPlacateGoldDef, PlacateGrievance: ezfyPlacateGrievanceDef,
 		PlacateFeelings: ezfyPlacateFeelingsDef, PlacateCooldownMin: ezfyPlacateCooldownDef,
@@ -805,6 +814,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	if !setPos(in.LootFeelings, &lim.LootFeelings, "掠夺单次扣民心") {
+		return
+	}
+	if !setPos(in.FeelingsRecoverHours, &lim.FeelingsRecoverHours, "民心自动恢复小时") {
 		return
 	}
 	if !setPos(in.RansomCost, &lim.RansomCost, "赎城金额") {
@@ -1269,6 +1281,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	if lim.LootFeelings <= 0 {
 		lim.LootFeelings = ezfyLootFeelingsDef
+	}
+	if lim.FeelingsRecoverHours <= 0 {
+		lim.FeelingsRecoverHours = ezfyFeelingsRecoverDef
 	}
 	if lim.OfficerSalaryPerLevel <= 0 {
 		lim.OfficerSalaryPerLevel = ezfyOfficerSalaryDef

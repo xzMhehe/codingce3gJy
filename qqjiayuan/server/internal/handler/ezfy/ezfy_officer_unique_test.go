@@ -112,7 +112,8 @@ func TestHireOfficerDraftRejectsDuplicateName(t *testing.T) {
 	}
 }
 
-// ④ 俘虏收编 recruitCaptive 必须查同城同名（排除自己）
+// ④ 俘虏收编 recruitCaptive 必须查同城同名（排除自己）——
+//    但 PvP 抢来的俘虏（source=4 抢玩家获取）豁免同名（2026-10-24 用户规则「抢别人的军官不受同名卡控」）
 func TestRecruitCaptiveRejectsDuplicateName(t *testing.T) {
 	src := readOfficerSrc(t)
 	idx := strings.Index(src, "func (h *EzfyHandler) recruitCaptive(")
@@ -126,10 +127,18 @@ func TestRecruitCaptiveRejectsDuplicateName(t *testing.T) {
 	if !strings.Contains(body, "h.ezfyOfficerNameTaken(city.ID, o.Name, o.ID)") {
 		t.Fatal("recruitCaptive 必须查同城同名（排除自己）")
 	}
+	// ★ 2026-10-24 PvP 来源（source=4 抢玩家获取）的俘虏允许同名收编
+	if !strings.Contains(body, "o.Source != model.EzfyOfficerSourcePvp && h.ezfyOfficerNameTaken(city.ID, o.Name, o.ID)") {
+		t.Fatal("recruitCaptive 必须豁免 PvP 来源俘虏的同名限制（否则抢来的同名将无法收编）")
+	}
 }
 
-// ⑤ PvP 归降 defectDefenderOfficers 收押前必须查攻方城同名
-func TestDefectDefenderRejectsDuplicateName(t *testing.T) {
+// ⑤ PvP 归降 defectDefenderOfficers 收押**不得查攻方城同名**
+//
+// ★ 2026-10-24 用户规则「抢别人的军官（普通、名将）不受同名卡控」：
+//   2026-10-09 曾在 PvP 收押前查同名（同名即放弃收押，玩家反馈「隆美尔忠诚归零却未收押」），
+//   与 2026-10-05 的「玩家抢玩家的名将不受重复卡控」矛盾 → 已移除。此测试防止再把它加回来。
+func TestDefectDefenderAllowsDuplicateName(t *testing.T) {
 	src := readOfficerSrc(t)
 	idx := strings.Index(src, "func (h *EzfyHandler) defectDefenderOfficers(")
 	if idx < 0 {
@@ -139,8 +148,8 @@ func TestDefectDefenderRejectsDuplicateName(t *testing.T) {
 	if end := strings.Index(body, "\nfunc "); end > 0 {
 		body = body[:end]
 	}
-	if !strings.Contains(body, "h.ezfyOfficerNameTaken(atkCity.ID, o.Name, 0)") {
-		t.Fatal("defectDefenderOfficers 收押前必须查攻方城同名")
+	if strings.Contains(body, "h.ezfyOfficerNameTaken(atkCity.ID, o.Name, 0)") {
+		t.Fatal("defectDefenderOfficers 不得查攻方城同名（PvP 抢将不受同名卡控）")
 	}
 }
 
