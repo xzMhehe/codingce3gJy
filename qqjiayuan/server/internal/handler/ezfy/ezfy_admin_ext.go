@@ -2472,9 +2472,19 @@ func (h *EzfyAdmin) AdminEzfyPrivchats(c *gin.Context) {
 		}
 		n, num := h.ezfyAdminName(uid)
 		if n == "" {
+			// ★ 2026-10-24 防御修复「发送方/接收方名字为空」：私聊里的 id 可能是游戏号
+			//   （game_uid，靓号后与 user_id 解耦），按 user_id 查 profile 查不到时，
+			//   再按 game_uid 反查游戏昵称；最后兜底家园昵称/家园号。
+			var p model.EzfyProfile
+			if err := h.DB.Where("game_uid = ?", uid).First(&p).Error; err == nil {
+				n = p.Nickname
+			}
 			var u model.User
 			if err := h.home().First(&u, uid).Error; err == nil {
-				n, num = u.Nickname, u.Username
+				if n == "" {
+					n = u.Nickname
+				}
+				num = u.Username
 			}
 		}
 		names[uid] = n

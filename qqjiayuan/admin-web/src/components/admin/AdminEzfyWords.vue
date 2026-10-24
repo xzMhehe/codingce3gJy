@@ -161,7 +161,10 @@
             <el-table-column prop="id" label="ID" width="70" align="center" />
             <el-table-column label="收件人" min-width="140" show-overflow-tooltip>
               <template slot-scope="{row}">
-                <span class="td-main">{{ row.target_id === 0 ? '全体玩家' : (row.receiver_name || ('玩家' + row.target_id)) }}</span>
+                <!-- ★ 2026-10-24 修复「收件人显示 玩家undefined」：后端返回 receiver_id/receiver_name，
+                     前端原来读 row.target_id（接口没有这个字段）→ 全体邮件(0)永远不走「全体玩家」分支，
+                     指定收件人名字为空时拼出「玩家undefined」。统一读 receiver_id。 -->
+                <span class="td-main">{{ row.receiver_id === 0 ? '全体玩家' : (row.receiver_name || ('玩家' + row.receiver_id)) }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="subject" label="主题" min-width="160" show-overflow-tooltip />
