@@ -1506,6 +1506,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						// ★ 2026-10-14 发放宝箱给玩家（入待开宝箱表，玩家在「我的宝箱」里自己开）
 						admin.GET("/ezfy-chest-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrantOptions)
 						admin.POST("/ezfy-chest-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrant)
+						// ★ 2026-10-24 发放宝箱：全员发放 + 目标人数预览（与「发放道具」同款）
+						admin.GET("/ezfy-chest-grant/targets", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrantTargets)
+						admin.POST("/ezfy-chest-grant/all", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrantAll)
 						// ★ 计谋配置（消耗信号弹）
 						admin.GET("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemes)
 						admin.POST("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeCreate)
@@ -1716,13 +1719,13 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.DELETE("/ezfy-corps-chats/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsChatDelete)
 
 						// ---- 私聊管理 ----
-						admin.GET("/ezfy-privchats", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchats)
-						admin.DELETE("/ezfy-privchats/:id", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchatDelete)
-						admin.POST("/ezfy-privchats/clear", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchatClear)
+						admin.GET("/ezfy-privchats", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyPrivchats)
+						admin.DELETE("/ezfy-privchats/:id", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyPrivchatDelete)
+						admin.POST("/ezfy-privchats/clear", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyPrivchatClear)
 
 						// ---- 系统邮件（★ 2026-10-13 管理端群发/单发，玩家在「邮箱 → 系统邮件」收到）----
-						admin.GET("/ezfy-mails/system", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyMailSystemList)
-						admin.POST("/ezfy-mails/system", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyMailSystemSend)
+						admin.GET("/ezfy-mails/system", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyMailSystemList)
+						admin.POST("/ezfy-mails/system", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyMailSystemSend)
 					}
 				} else {
 					// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============

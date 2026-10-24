@@ -197,10 +197,16 @@
         </div>
       </el-dialog>
 
-      <!-- ★ 2026-10-14 发放宝箱：指定玩家，待开宝箱入背包（玩家在游戏内「我的宝箱」里自己开箱，与发放道具同款交互） -->
+      <!-- ★ 2026-10-14 发放宝箱：走系统邮件+附件（玩家在邮箱领取），2026-10-24 支持全体玩家（与发放道具同款） -->
       <el-dialog title="发放宝箱" :visible.sync="chGrantDlg" width="580px" :close-on-click-modal="false">
         <el-form label-width="90px" size="small">
-          <el-form-item label="发放对象">
+          <el-form-item label="发放范围">
+            <el-radio-group v-model="chGrantAll" @change="onChGrantScopeChange">
+              <el-radio-button :label="false">指定玩家</el-radio-button>
+              <el-radio-button :label="true">全体玩家</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="!chGrantAll" label="发放对象">
             <div>
               <el-input v-model="grantPlayer" placeholder="玩家昵称 / 游戏ID" clearable style="width:210px"
                         @keyup.enter.native="searchGrantPlayer" />
@@ -215,6 +221,12 @@
             </el-select>
             <div v-if="grantUserId" class="grant-target">已选：{{ grantTargetName }}</div>
           </el-form-item>
+          <el-form-item v-else label="发放对象">
+            <div class="grant-all-tip">
+              ⚠️ 将给全部 <b>{{ chGrantAllTotal }}</b> 名二战玩家 <b>各发放一份</b>下列宝箱，<b>发放后不可撤销</b>。<br/>
+              对象 = 全部二战玩家档案；发放走系统邮件，玩家在邮箱领取，7 天内有效，过期作废。
+            </div>
+          </el-form-item>
           <el-form-item label="宝箱">
             <div v-for="(it, i) in chGrantItems" :key="i" class="grant-item-row">
               <el-select v-model="it.chest_id" filterable placeholder="选择宝箱" style="width:230px">
@@ -225,11 +237,14 @@
               <el-button type="text" class="danger-btn" @click="chGrantItems.splice(i, 1)">删除</el-button>
             </div>
             <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="chGrantItems.push({ chest_id: '', count: 1 })">添加宝箱</el-button>
+            <div class="td-sub" style="margin-top:4px">发放 = 系统邮件 + 附件，玩家在邮箱点「领取」才到账；7 天内有效，过期作废。</div>
           </el-form-item>
         </el-form>
         <div slot="footer">
           <el-button size="small" @click="chGrantDlg = false">取 消</el-button>
-          <el-button size="small" type="primary" :loading="chGrantSaving" @click="doChestGrant">发 放</el-button>
+          <el-button size="small" :type="chGrantAll ? 'danger' : 'primary'" :loading="chGrantSaving" @click="doChestGrant">
+            {{ chGrantAll ? '全员发放' : '发 放' }}
+          </el-button>
         </div>
       </el-dialog>
 
@@ -925,6 +940,8 @@ export default {
       // ★ 2026-10-14 发放宝箱对话框状态（目标玩家复用 grantPlayer/grantPlayers/grantUserId 搜索）
       chGrantDlg: false, chGrantSaving: false,
       chGrantOpts: [], chGrantItems: [],
+      // ★ 2026-10-24 发放宝箱范围：false=指定玩家 true=全体玩家（与发放道具同款）
+      chGrantAll: false, chGrantAllTotal: 0,
       // ★ 2026-10-18 宝箱开启「开出的东西」详情弹窗状态
       chResultDlg: false, chResultTitle: '', chResultList: [],
       // ★ 套装装备配置（宝箱）→ 奖池管理状态（2026-09-27 从「军官管理 → 宝箱」迁来）
@@ -1207,18 +1224,45 @@ export default {
         if (r.code === 0) { this.$message.success(r.data.msg || '发放成功'); this.grantDlg = false } else this.$message.error(r.msg || '发放失败')
       }).catch(() => { this.grantSaving = false })
     },
-    // ============ 宝箱配置 → 发放宝箱（待开宝箱入玩家背包，2026-10-14） ============
+    // ============ 宝箱配置 → 发放宝箱（系统邮件+附件，玩家在邮箱领取，2026-10-14） ============
     openChestGrant () {
       this.chGrantDlg = true
       this.grantPlayer = ''; this.grantPlayers = []; this.grantUserId = 0
       this.chGrantItems = [{ chest_id: '', count: 1 }]
+      // ★ 2026-10-24 每次打开都回到「指定玩家」（全员发放是危险操作，不做记忆）
+      this.chGrantAll = false
       api.get('/admin/ezfy-chest-grant/options').then(r => {
         if (r.code === 0) this.chGrantOpts = r.data.list || []
       })
     },
+    // ★ 2026-10-24 发放宝箱范围切到「全体玩家」时取一次目标人数（与发放道具同款）
+    onChGrantScopeChange (v) {
+      if (v) {
+        api.get('/admin/ezfy-chest-grant/targets').then(r => {
+          if (r.code === 0) this.chGrantAllTotal = r.data.total || 0
+        })
+      }
+    },
     doChestGrant () {
       const items = this.chGrantItems.filter(it => it.chest_id && it.count > 0)
       if (!items.length) { this.$message.warning('请添加要发放的宝箱'); return }
+      // ★ 2026-10-24 全员发放：不可撤销，先二次确认（把「发给谁 + 发什么」写进确认文案）
+      if (this.chGrantAll) {
+        const names = items.map(it => {
+          const o = this.chGrantOpts.find(x => x.id === it.chest_id)
+          return '【' + (o ? o.name : it.chest_id) + '】×' + it.count
+        }).join(' ')
+        this.$confirm('确认给全部 ' + this.chGrantAllTotal + ' 名二战玩家各发放：' + names + '？（走系统邮件，7 天有效）该操作不可撤销！',
+          '全员发放', { type: 'warning', confirmButtonText: '确认全员发放' }).then(() => {
+          this.chGrantSaving = true
+          api.post('/admin/ezfy-chest-grant/all', { items }).then(r => {
+            this.chGrantSaving = false
+            if (r.code === 0) { this.$message.success(r.data.msg || '全员发放成功'); this.chGrantDlg = false }
+            else this.$message.error(r.msg || '发放失败')
+          }).catch(() => { this.chGrantSaving = false })
+        }).catch(() => {})
+        return
+      }
       const target = this.grantUserId || ((this.grantPlayer || '').trim())
       if (!target) { this.$message.warning('请先搜索并选择要发放的玩家'); return }
       this.chGrantSaving = true

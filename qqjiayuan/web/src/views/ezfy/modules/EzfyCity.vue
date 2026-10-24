@@ -44,11 +44,12 @@
           <div class="old-line">
             坐标X: <input v-model="ezfy.newCityX" type="number" style="width:70px"/>
             坐标Y: <input v-model="ezfy.newCityY" type="number" style="width:70px"/>
-            <button @click="ezfy.doCreateCity">建新城</button>
+            <a href="javascript:;" @click="ezfy.doCreateCity">[新建]</a>
           </div>
           <!-- ★ 2026-09-25 去掉内联 font-size:14px，改为继承全站统一字号（--fs） -->
+          <!-- ★ 2026-10-24 文案简化：内陆城市→陆城；沿海城市→海城 -->
           <div class="gray">
-            <b>平原</b> → 内陆城市; <b>沿海平原</b> → 沿海城市<br/>
+            <b>平原</b> → 陆城; <b>沿海平原</b> → 海城<br/>
             <!-- 沿海城市(可建航海协会、训练海军)。其他地形(含海洋)不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。 -->
           </div>
         </div>

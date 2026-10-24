@@ -202,7 +202,7 @@ export const menu = [
           { key: 'ezfyTechs', name: '科技管理', icon: 'el-icon-cpu', component: () => import(/* webpackChunkName: "admin-AdminEzfyTechs" */ './components/admin/AdminEzfyTechs.vue'), perm: 'module:ezfyTechs' },
           { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: () => import(/* webpackChunkName: "admin-AdminEzfyMap" */ './components/admin/AdminEzfyMap.vue'), perm: 'module:ezfyMap' },
           { key: 'ezfyCorps', name: '军团管理', icon: 'el-icon-s-flag', component: () => import(/* webpackChunkName: "admin-AdminEzfyCorps" */ './components/admin/AdminEzfyCorps.vue'), perm: 'module:ezfyCorps' },
-          { key: 'ezfyPrivchat', name: '私聊管理', icon: 'el-icon-chat-line-square', component: () => import(/* webpackChunkName: "admin-AdminEzfyPrivchat" */ './components/admin/AdminEzfyPrivchat.vue'), perm: 'module:ezfyPrivchat' },
+          // ★ 2026-10-24 「私聊管理」合并进「聊天管理」：菜单项移除，私聊/系统邮件从聊天管理页进入
           // ★ 菜单名由「建筑上限配置」改成「系统配置」，随后又要求改成「二战系统配置」
           //   （避免和下面「系统管理」那组混淆）。key / perm 保持不变，不动已分配的权限。
           { key: 'ezfyBuildLimit', name: '二战系统配置', icon: 'el-icon-set-up', component: () => import(/* webpackChunkName: "admin-AdminEzfyBuildLimit" */ './components/admin/AdminEzfyBuildLimit.vue'), perm: 'module:ezfyBuildLimit' },

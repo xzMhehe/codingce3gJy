@@ -679,7 +679,7 @@
             数量: <input v-model="ezfy.sellCount" type="number" style="width:90px"/><br/>
             总价({{ ezfy.resNames.gold }}): <input v-model="ezfy.sellPrice" type="number" style="width:90px" max="1000000000" placeholder="单价≤100"/><br/>
             <div class="old-line gray">单价不得超过 100 {{ ezfy.resNames.gold }}/单位</div>
-            <button @click="ezfy.doExchangeSell">[挂单出售]</button>
+            <a href="javascript:;" @click="ezfy.doExchangeSell">[挂单]</a>
           </div>
           <div class="panel-title">向系统出售</div>
           <div class="old-line">
@@ -696,7 +696,7 @@
               今日该资源：已售 {{ ezfy.fmtN(ezfy.sysSellUsedCount()) }}
               <template v-if="ezfy.sysSellDailyLimit > 0">/ {{ ezfy.fmtN(ezfy.sysSellDailyLimit) }}，还可售 {{ ezfy.fmtN(ezfy.sysSellRemain()) }}</template>
             </div>
-            <button @click="ezfy.doExchangeSysSell">[向系统出售]</button>
+            <a href="javascript:;" @click="ezfy.doExchangeSysSell">[出售]</a>
             <div v-if="ezfy.sysSellLostWarn" class="red">{{ ezfy.sysSellLostWarn }}</div>
           </div>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>

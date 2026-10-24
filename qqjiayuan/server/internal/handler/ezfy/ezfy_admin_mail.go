@@ -17,14 +17,20 @@ import (
 //   GET  /admin/ezfy-mails/system?target_id=   最近系统邮件列表
 //   POST /admin/ezfy-mails/system {target_id(0=全体), subject, content}  发送系统邮件
 
-// AdminEzfyMailSystemList GET /admin/ezfy-mails/system?target_id=
+// AdminEzfyMailSystemList GET /admin/ezfy-mails/system?target_id=&page=&size=
+//
+// ★ 2026-10-24 用户需求「系统邮件 做下分页」：原来固定 Limit(50) 不分页，记录一多就看不到历史。
+//   改为标准分页（page/size，返回 total），前端翻页查看。
 func (a *EzfyAdmin) AdminEzfyMailSystemList(c *gin.Context) {
+	page, offset, size := pageOf(c, 20)
 	var rows []model.EzfyMail
-	q := a.DB.Where("sender_id = 0")
+	q := a.DB.Model(&model.EzfyMail{}).Where("sender_id = 0")
 	if v := c.Query("target_id"); v != "" && v != "0" {
 		q = q.Where("receiver_id = ?", v)
 	}
-	q.Order("id DESC").Limit(50).Find(&rows)
+	var total int64
+	q.Count(&total)
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
 	// 批量取收件人昵称（家园库）
 	names := map[uint]string{}
 	var ids []uint
@@ -46,7 +52,7 @@ func (a *EzfyAdmin) AdminEzfyMailSystemList(c *gin.Context) {
 			"receiver_name": names[m.ReceiverId], "subject": m.Subject,
 			"content": m.Content, "created_at": m.CreatedAt})
 	}
-	resp.OK(c, gin.H{"list": out, "total": len(out)})
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
 // AdminEzfyMailSystemSend POST /admin/ezfy-mails/system {target_id(0=全体), subject, content}

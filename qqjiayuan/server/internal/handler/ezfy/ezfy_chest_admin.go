@@ -1,7 +1,8 @@
-// 二战风云 管理端「发放宝箱」：给玩家发待开宝箱（入 ezfy_user_chest，玩家自己开）
+// 二战风云 管理端「发放宝箱」：给玩家发待开宝箱（玩家在邮箱点「领取」才入 ezfy_user_chest）
 //
 // ★ 2026-10-14 用户需求「宝箱也能发放给玩家加个功能」：在「套装装备配置（宝箱）」页发放。
-//   与「发放道具」同款：player 支持玩家昵称或游戏ID(user_id)，发放入持有表 + 站内通知。
+// ★ 2026-10-24 用户需求「发宝箱也是 发到邮箱吧 然后 7 天内有效」：
+//   与「发放道具」同口径，发放 = 系统邮件 + 附件（宝箱），支持单人 / 全体玩家，7 天过期作废。
 package ezfy
 
 import (
@@ -10,8 +11,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
@@ -30,8 +29,9 @@ func (h *EzfyAdmin) AdminEzfyChestGrantOptions(c *gin.Context) {
 
 // AdminEzfyChestGrant POST /admin/ezfy-chest-grant {player, items:[{chest_id, count}]}
 //
-// 目标玩家进入「我的宝箱」（ezfy_user_chest）：已有的宝箱数量累加（唯一键 user_id+chest_id）。
-// ⚠️ 与发放道具口径一致：不校验数量上限（运营发放本就该给多少算多少）。
+// ★ 2026-10-24 与「发放道具」同口径：**改走系统邮件 + 附件**，不再直接写待开宝箱表。
+//   玩家在邮箱点「领取」才到账（领取时按附件入 ezfy_user_chest），7 天不领过期作废。
+// ⚠️ 不校验数量上限（运营发放本就该给多少算多少）。
 func (h *EzfyAdmin) AdminEzfyChestGrant(c *gin.Context) {
 	var in struct {
 		Player string `json:"player"`
@@ -66,6 +66,7 @@ func (h *EzfyAdmin) AdminEzfyChestGrant(c *gin.Context) {
 		}
 	}
 	names := ""
+	attaches := make([]model.EzfyMailAttach, 0, len(in.Items))
 	for _, it := range in.Items {
 		if it.ChestID <= 0 || it.Count <= 0 {
 			continue
@@ -75,22 +76,99 @@ func (h *EzfyAdmin) AdminEzfyChestGrant(c *gin.Context) {
 			resp.ParamError(c, "宝箱不存在："+strconv.Itoa(it.ChestID))
 			return
 		}
-		// 原子 upsert：已有该宝箱 → count 累加；没有 → 新建一行（唯一键 user_id+chest_id）
-		h.DB.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "user_id"}, {Name: "chest_id"}},
-			DoUpdates: clause.Assignments(map[string]interface{}{
-				"count": gorm.Expr("count + ?", it.Count),
-			}),
-		}).Create(&model.EzfyUserChest{UserID: p.UserID, ChestId: it.ChestID, Count: it.Count})
+		attaches = append(attaches, model.EzfyMailAttach{
+			Kind: ezfyAttachChest, CfgID: it.ChestID, Num: int64(it.Count), Name: chest.Name,
+		})
 		names += fmt.Sprintf(" 【%s】×%d", chest.Name, it.Count)
 	}
-	if names == "" {
+	if names == "" || len(attaches) == 0 {
 		resp.ParamError(c, "请添加要发放的宝箱")
 		return
 	}
-	h.DB.Create(&model.EzfyNotice{UserId: p.UserID, Title: "管理员发放宝箱",
-		Content: "管理员发放宝箱：" + strings.TrimSpace(names) + "，请在「我的宝箱」中开启，请查收。"})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发放给玩家「%s」(ID:%d)%s", p.Nickname, p.UserID, names)})
+	content := "管理员发放宝箱：" + strings.TrimSpace(names) +
+		fmt.Sprintf("，请在 %d 天内到邮箱领取，过期作废。", ezfyMailAttachExpireDays)
+	if _, err := ezfyMailSendBatch(h.DB, []ezfyMailDraft{{
+		ReceiverID: p.UserID, Subject: "管理员发放宝箱", Content: content, Attaches: attaches,
+	}}, ezfyMailAttachExpireDays); err != nil {
+		resp.ServerError(c, fmt.Errorf("发放失败：%w", err))
+		return
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已通过系统邮件发放给玩家「%s」(ID:%d)%s，玩家需在邮箱领取",
+		p.Nickname, p.UserID, names)})
+}
+
+// AdminEzfyChestGrantTargets GET /admin/ezfy-chest-grant/targets —— 全员发放的「目标人数」预览。
+//
+// 与 AdminEzfyItemGrantTargets 同款：权限点挂在 module:ezfyData 下，
+// 复用 /admin/ezfy-players（module:ezfyPlayers）会对只有数据管理权限的管理员 403。
+func (h *EzfyAdmin) AdminEzfyChestGrantTargets(c *gin.Context) {
+	var n int64
+	h.DB.Model(&model.EzfyProfile{}).Count(&n)
+	resp.OK(c, gin.H{"total": n})
+}
+
+// AdminEzfyChestGrantAll POST /admin/ezfy-chest-grant/all {items[]} —— 「发放宝箱」的**全员发放**。
+//
+// ★ 2026-10-24 用户需求「发放宝箱也要支持 全体玩家 发放 参考道具」。
+//   发放对象 = 全部二战玩家档案（ezfy_profile 的所有 user_id），每人一封系统邮件 + 同一份宝箱附件，
+//   7 天不领过期作废（与「发放道具」全员发放完全同口径）。
+func (h *EzfyAdmin) AdminEzfyChestGrantAll(c *gin.Context) {
+	var in struct {
+		Items []struct {
+			ChestID int `json:"chest_id"`
+			Count   int `json:"count"`
+		} `json:"items"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if len(in.Items) == 0 {
+		resp.ParamError(c, "请添加要发放的宝箱")
+		return
+	}
+	var uids []uint
+	if err := h.DB.Model(&model.EzfyProfile{}).Pluck("user_id", &uids).Error; err != nil {
+		resp.ServerError(c, fmt.Errorf("读取玩家列表失败：%w", err))
+		return
+	}
+	if len(uids) == 0 {
+		resp.NotFound(c, "还没有任何二战玩家档案，无法全员发放")
+		return
+	}
+	names := ""
+	attaches := make([]model.EzfyMailAttach, 0, len(in.Items))
+	for _, it := range in.Items {
+		if it.ChestID <= 0 || it.Count <= 0 {
+			continue
+		}
+		var chest model.EzfyCfgChest
+		if err := h.DB.First(&chest, it.ChestID).Error; err != nil {
+			resp.ParamError(c, "宝箱不存在："+strconv.Itoa(it.ChestID))
+			return
+		}
+		attaches = append(attaches, model.EzfyMailAttach{
+			Kind: ezfyAttachChest, CfgID: it.ChestID, Num: int64(it.Count), Name: chest.Name,
+		})
+		names += fmt.Sprintf(" 【%s】×%d", chest.Name, it.Count)
+	}
+	if names == "" || len(attaches) == 0 {
+		resp.ParamError(c, "请添加要发放的宝箱")
+		return
+	}
+	content := "管理员发放宝箱：" + strings.TrimSpace(names) +
+		fmt.Sprintf("，请在 %d 天内到邮箱领取，过期作废。", ezfyMailAttachExpireDays)
+	drafts := make([]ezfyMailDraft, 0, len(uids))
+	for _, uid := range uids {
+		drafts = append(drafts, ezfyMailDraft{
+			ReceiverID: uid, Subject: "管理员发放宝箱", Content: content, Attaches: attaches,
+		})
+	}
+	if _, err := ezfyMailSendBatch(h.DB, drafts, ezfyMailAttachExpireDays); err != nil {
+		resp.ServerError(c, fmt.Errorf("发放失败：%w", err))
+		return
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给全部 %d 名玩家发送系统邮件%s，玩家需在邮箱领取", len(uids), names), "players": len(uids)})
 }
 
 // AdminEzfyPlayerChestOptions GET /admin/ezfy-player-chests/options —— 玩家详情「添加宝箱」下拉选项。
