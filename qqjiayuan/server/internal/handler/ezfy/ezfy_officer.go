@@ -3015,7 +3015,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			// ★ 2026-09-29 上限分档：名将 350 / 普通军官 150，前端按此显示「满级」
 			"max_level": h.officerMaxLevelOf(o),
 			// ★ 2026-10-23 名将组合技能（普通军官恒为 nil，前端据此不显示这一行）
-			"combo_skill": h.officerComboView(o),
+			//   ★ 2026-10-24 多技能：下发数组 combo_skills（一个名将可学多个）
+			"combo_skills": h.officerComboView(o),
 		},
 		"skills": skillViews, "all_skills": allSkills,
 		// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
@@ -4484,6 +4485,7 @@ func (h *EzfyHandler) OfficerGenerals(c *gin.Context) {
 			"military": g.Military, "logistics": g.Logistics, "learning": g.Learning,
 			"source": "管理端发放", "skill": g.Skill, "des": g.Des, "owned": owned[g.ID],
 			// ★ 2026-10-23 名将组合技能（池子搭配；没配 → nil，前端不渲染这一列）
+			//   ★ 2026-10-24 多技能：值为数组（一个名将可配多个组合技）
 			"combo": ezfyComboBriefAtMax(&g),
 		})
 	}

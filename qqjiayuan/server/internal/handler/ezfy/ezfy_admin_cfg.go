@@ -67,8 +67,9 @@ var ezfyGeneralFields = map[string]string{
 	"star": "int", "source": "string", "get_condition": "string",
 	"skill": "string", "des": "string", "recruit": "int",
 	"kind": "int", "weight": "int",
-	// ★ 2026-10-23 名将组合技能池 ID（0=无；只有 kind=2 名将可配）
-	"combo_skill_id": "int",
+	// ★ 2026-10-23 名将组合技能池 ID 列表（JSON 数组字符串，如 "[1,5,9]"；只有 kind=2 名将可配）
+	//   ★ 2026-10-24 多技能：旧单技能字段 combo_skill_id 已停用（仅老数据回退），白名单只收新字段
+	"combo_skill_ids": "string",
 }
 
 // 技能配置可改字段（ezfy_cfg_skill）

@@ -4340,14 +4340,15 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 2026-10-08 兵种专属加成（喷气引擎=空军速度、军官兵种技能）
 			atkType, defType)
 		// ★★ 2026-10-23 名将组合技能（系统专属战法）：攻方带队名将 / 守方城守（或野地守将）。
-		//   普通军官没有 GeneralId → comboSkillOfOfficer 返回 nil，等于没这功能，不影响老战斗。
-		st.AtkCombo = h.comboSkillOfOfficer(leadOfficer)
+		//   普通军官没有 GeneralId → comboSkillsOfOfficer 返回 nil，等于没这功能，不影响老战斗。
+		//   ★ 2026-10-24 多技能：名将可配多个，comboRuntimes 包成运行时（每回合独立掷骰）。
+		st.AtkCombos = comboRuntimes(h.comboSkillsOfOfficer(leadOfficer))
 		if target != nil {
-			st.DefCombo = h.comboSkillOfOfficer(cityGuard)
+			st.DefCombos = comboRuntimes(h.comboSkillsOfOfficer(cityGuard))
 		} else if wildDefCommander != nil {
-			st.DefCombo = h.comboSkillOfOfficer(wildDefCommander)
+			st.DefCombos = comboRuntimes(h.comboSkillsOfOfficer(wildDefCommander))
 		} else if defGeneral != nil {
-			st.DefCombo = ezfyComboOfGeneralCfg(defGeneral, defGeneral.Level)
+			st.DefCombos = comboRuntimes(ezfyComboOfGeneralCfg(defGeneral, defGeneral.Level))
 		}
 		st.appendComboHead()
 		// ★ 2026-10-24 城墙耐久：只有「征服玩家城(3)」启用；「掠夺(2)」完全忽略城墙

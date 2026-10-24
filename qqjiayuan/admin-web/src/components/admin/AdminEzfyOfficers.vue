@@ -749,15 +749,17 @@
           <el-input v-model="gf.get_condition" maxlength="255" placeholder="例如：任务 / 505" />
         </el-form-item>
         <!-- ★ 2026-10-23 名将组合技能：系统专属战法池，只有名将（kind=2）能配；
-             效果随星级升级（1~5 星 = 1~5 级），每回合按发动率掷骰，不是常驻。 -->
+             效果随**军官等级**分档（默认每 35 级 +1，名将 350 级 = Lv.10），每回合按发动率掷骰，不是常驻。
+             ★ 2026-10-24 多技能：一个名将可学多个（多选）；「普通军官学不到」提示改成 i 图标悬浮展示（用户要求）。 -->
         <el-form-item label="名将组合技能" v-if="gf.kind === 2">
-          <el-select v-model.number="gf.combo_skill_id" clearable filterable style="width:460px"
-                     placeholder="不配（没有组合技）">
+          <el-select v-model="gf.combo_skill_ids_arr" multiple clearable filterable style="width:460px"
+                     placeholder="可多选组合技（不选 = 没有组合技）">
             <el-option v-for="c in combos" :key="'gc' + c.id"
                        :label="c.id + ' · ' + c.name + '（' + c.kind_name + '，满级' + c.value_at_max + '，发动' + c.proc_pct + '%）'"
                        :value="c.id" />
           </el-select>
-          <div class="td-sub">普通军官学不到；在「组合技能」页签里维护池子（可改名/调数值/调概率/上下架）</div>
+          <i class="el-icon-info" style="cursor:help;margin-left:6px;color:#909399;font-size:14px"
+             title="普通军官学不到；在「组合技能」页签里维护池子（可改名/调数值/调概率/上下架）；一个名将可学多个，效果随军官等级成长"></i>
         </el-form-item>
         <el-form-item label="组合技/技能">
           <el-input v-model="gf.des" maxlength="500" placeholder="例如：全技能+2，攻击+20%" />
@@ -888,6 +890,7 @@
     </el-dialog>
 
     <!-- ============ 组合技能 · 配给名将（2026-10-23） ============ -->
+    <!-- ★ 2026-10-24 多技能：保存 = 追加学会（已有技能保留、去重），不再覆盖 -->
     <el-dialog title="配给名将" :visible.sync="asDlg" width="640px" :close-on-click-modal="false">
       <el-form label-width="110px" size="small">
         <el-form-item label="组合技能">
@@ -896,10 +899,10 @@
         <el-form-item label="选择名将">
           <el-select v-model="asf.ids" multiple filterable style="width:420px" placeholder="可多选名将（只有名将能学）">
             <el-option v-for="g in asGenerals" :key="'ag' + g.id"
-                       :label="g.id + ' · ' + g.name + (g.combo_skill_id ? '（现：' + comboNameOf(g.combo_skill_id) + '）' : '（未配）')"
+                       :label="g.id + ' · ' + g.name + (g.combo_skills && g.combo_skills.length ? '（现：' + g.combo_skills.map(id => comboNameOf(id)).join('、') + '）' : '（未配）')"
                        :value="g.id" />
           </el-select>
-          <div class="td-sub">保存后这些名将改为该组合技（会覆盖原来的）；普通军官学不到</div>
+          <div class="td-sub">保存后这些名将追加学会该组合技（已有技能保留、去重）；普通军官学不到</div>
         </el-form-item>
       </el-form>
       <div slot="footer">
@@ -1085,7 +1088,7 @@
 <script>
 import api from '../../api'
 
-const G_KEYS = ['name', 'level', 'military', 'logistics', 'learning', 'star', 'source', 'get_condition', 'skill', 'des', 'recruit', 'kind', 'weight', 'combo_skill_id']
+const G_KEYS = ['name', 'level', 'military', 'logistics', 'learning', 'star', 'source', 'get_condition', 'skill', 'des', 'recruit', 'kind', 'weight', 'combo_skill_ids']
 // ★ 2026-10-23 名将组合技能池可改字段
 const C_KEYS = ['name', 'des', 'kind', 'base_value', 'grow_per_level', 'max_level', 'level_per_step', 'proc_pct', 'rounds', 'enabled', 'sort_no']
 const S_KEYS = ['name', 'effect', 'type', 'des']
@@ -1267,14 +1270,17 @@ export default {
         star: 5, source: '', get_condition: '', skill: '', des: '', recruit: 1,
         // ★ 默认按普通军官建（军校招募池），要建名将就切一下
         kind: this.gKind === 2 ? 2 : 1, weight: 100,
-        // ★ 2026-10-23 名将组合技能（0 = 不配）
-        combo_skill_id: 0
+        // ★ 2026-10-23/24 名将组合技能：combo_skill_ids（JSON 数组字符串）落库；多选数组给控件
+        combo_skill_ids: '',
+        combo_skill_ids_arr: []
       }
       this.gDlg = true
     },
     openGeneralEdit (row) {
       const f = { id: row.id }
       G_KEYS.forEach(k => { f[k] = row[k] })
+      // ★ 2026-10-24 多技能：combo_skill_ids 是 JSON 数组字符串 → 解析成数组给多选控件
+      f.combo_skill_ids_arr = this.parseComboIds(row.combo_skill_ids)
       this.gf = f
       // ★ 2026-10-11 事故修复：记录打开时的原值，保存时只提交真正变更的字段。
       //   若三属性字段被全量提交，后端会误触发 syncRecruitedOfficerBase，
@@ -1283,11 +1289,29 @@ export default {
       G_KEYS.forEach(k => { this.gfOrig[k] = row[k] })
       this.gDlg = true
     },
+    // ★ 2026-10-24 多技能：combo_skill_ids（JSON 数组字符串）↔ 多选数组 互转
+    parseComboIds (s) {
+      try {
+        const a = JSON.parse(s || '[]')
+        return Array.isArray(a) ? a : []
+      } catch (e) { return [] }
+    },
+    comboIdsTxt (arr) {
+      return JSON.stringify(arr || [])
+    },
     doGeneralSave () {
       if (!String(this.gf.name || '').trim()) { this.$message.warning('军官名称不能为空'); return }
       const isNew = !this.gf.id
       const body = {}
-      G_KEYS.forEach(k => { if (isNew || this.gf[k] !== this.gfOrig[k]) body[k] = this.gf[k] })
+      G_KEYS.forEach(k => {
+        if (k === 'combo_skill_ids') {
+          // ★ 2026-10-24 多技能：把多选数组序列化成 JSON 字符串再提交（后端白名单是 string 类型）
+          const s = this.comboIdsTxt(this.gf.combo_skill_ids_arr)
+          if (isNew || s !== (this.gfOrig.combo_skill_ids || '')) body[k] = s
+        } else if (isNew || this.gf[k] !== this.gfOrig[k]) {
+          body[k] = this.gf[k]
+        }
+      })
       if (!isNew && Object.keys(body).length === 0) { this.$message.info('未修改任何字段，无需保存'); return }
       this.saving = true
       const req = isNew ? api.post('/admin/ezfy-generals', body) : api.put('/admin/ezfy-generals/' + this.gf.id, body)

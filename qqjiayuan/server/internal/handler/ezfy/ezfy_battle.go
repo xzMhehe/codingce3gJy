@@ -497,15 +497,11 @@ type ezfyBattleState struct {
 	AtkCounterRounds int
 	DefCounterRounds int
 
-	// ★★ 2026-10-23 名将组合技能：双方各配一个（名将才有），
-	//   每回合按 ProcPct 掷骰发动，生效 Rounds 回合。
-	//   AtkComboLeft/DefComboLeft = 剩余生效回合；AtkComboUsed = 「反击回合+」是否已加过（一次性）。
-	AtkCombo     *ezfyComboSkill
-	DefCombo     *ezfyComboSkill
-	AtkComboLeft int
-	DefComboLeft int
-	AtkComboUsed bool
-	DefComboUsed bool
+	// ★★ 2026-10-23 名将组合技能；★★ 2026-10-24 改为**可学多个**（用户要求）：
+	//   双方各配一组技能，每个技能每回合独立按 ProcPct 掷骰发动、生效 Rounds 回合。
+	//   Runtime.Left = 剩余生效回合；Runtime.Used = 「反击回合+」是否已加过（一次性）。
+	AtkCombos []*ezfyComboRuntime
+	DefCombos []*ezfyComboRuntime
 
 	// ★ 2026-09-23 指挥室/回合日志里攻守双方的兵种名都显示「阵营兵种名」。
 	// 攻方=出征方阵营；守方只有玩家城才有值，野地/AI/寇城为 0（通用名）。
@@ -1113,8 +1109,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	// ★★ 2026-10-23 名将组合技能：每回合开始掷骰（到期失效 / 按概率发动），
 	//   本回合生效的技能在下面按类型参与加成、破防、减伤、连击、治疗。
 	st.comboRoll()
-	atkCombo := comboActive(st.AtkCombo, st.AtkComboLeft)
-	defCombo := comboActive(st.DefCombo, st.DefComboLeft)
+	atkAct := activeCombos(st.AtkCombos)
+	defAct := activeCombos(st.DefCombos)
 
 	// ★ 2026-10-05 ：战报里的兵种名**统一展示基础兵种名**（不带阵营前缀）。
 	//   本函数生成的日志就是战报「战斗过程」正文，故不再按攻守阵营取名。
@@ -1127,22 +1123,22 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 
 	// 装备加成在这里叠加（快照里存的是不含装备的基础值）
 	// ★ 2026-10-23 名将组合技能：攻击/防御/速度加成本回合生效时并入（与科技/装备同一口径）
-	atkBonus := st.AtkBonus + st.AtkEquip.Dmg + comboOfKind(atkCombo, ezfyComboAtk)
-	defBonus := st.DefBonus + st.DefEquip.Def + comboOfKind(defCombo, ezfyComboDef)
-	atkSpeedBonus := st.AtkSpeedBonus + st.AtkEquip.Move + comboOfKind(atkCombo, ezfyComboSpeed)
-	defSpeedBonus := st.DefSpeedBonus + st.DefEquip.Move + comboOfKind(defCombo, ezfyComboSpeed)
+	atkBonus := st.AtkBonus + st.AtkEquip.Dmg + comboOfKind(atkAct, ezfyComboAtk)
+	defBonus := st.DefBonus + st.DefEquip.Def + comboOfKind(defAct, ezfyComboDef)
+	atkSpeedBonus := st.AtkSpeedBonus + st.AtkEquip.Move + comboOfKind(atkAct, ezfyComboSpeed)
+	defSpeedBonus := st.DefSpeedBonus + st.DefEquip.Move + comboOfKind(defAct, ezfyComboSpeed)
 	// ★ 射程同理（弹道学那套之外，组合技可以再给一截）
-	atkRangeBonusAll := st.AtkRangeBonus + comboOfKind(atkCombo, ezfyComboRange)
-	defRangeBonusAll := st.DefRangeBonus + comboOfKind(defCombo, ezfyComboRange)
+	atkRangeBonusAll := st.AtkRangeBonus + comboOfKind(atkAct, ezfyComboRange)
+	defRangeBonusAll := st.DefRangeBonus + comboOfKind(defAct, ezfyComboRange)
 	// ★ 2026-10-06 「攻击加成」来源拆解（军官属性/军官技能/科技/装备），写进每行行动日志，
 	//   玩家一眼能看到加成是谁给的 —— 攻方=军官技能+科技+装备，守方=城守技能+科技。
 	// ★ 2026-10-23 组合技生效时也要进「来源拆解」，否则总计(含组合技)和括号内各项对不上
 	atkComboPart, defComboPart := "", ""
-	if p := comboOfKind(atkCombo, ezfyComboAtk); p > 0 {
-		atkComboPart = fmt.Sprintf("组合技·%s+%d%%", atkCombo.Name, p)
+	if p := comboBreakTxt(atkAct, ezfyComboAtk, "组合技"); p != "" {
+		atkComboPart = p
 	}
-	if p := comboOfKind(defCombo, ezfyComboDef); p > 0 {
-		defComboPart = fmt.Sprintf("组合技·%s+%d%%", defCombo.Name, p)
+	if p := comboBreakTxt(defAct, ezfyComboDef, "组合技"); p != "" {
+		defComboPart = p
 	}
 	atkBonusBreak := ezfyBonusBreakdown(st.AtkOfficerBonus, st.AtkOfficerSkill, st.AtkBonus, st.AtkEquip.Dmg,
 		ezfyOfficerShortName(st.AtkOfficerDesc), st.AtkSkillBreak, st.AtkTechBreak, atkComboPart)
@@ -1334,13 +1330,14 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			dist = ezfyAbs(target.pos - unit.pos)
 		}
 		// ★ 2026-10-23 名将组合技能：破防（本方发动 → 无视目标防御%）/ 减伤（对方发动 → 本次伤害-%）
+		//   ★ 2026-10-24 多技能：atkAct/defAct 是**本回合生效的全部技能**，同类效果叠加
 		defBreakPct, reducePct := 0, 0
 		if isAtk {
-			defBreakPct = comboOfKind(atkCombo, ezfyComboBreak)
-			reducePct = comboOfKind(defCombo, ezfyComboReduce)
+			defBreakPct = comboOfKind(atkAct, ezfyComboBreak)
+			reducePct = comboOfKind(defAct, ezfyComboReduce)
 		} else {
-			defBreakPct = comboOfKind(defCombo, ezfyComboBreak)
-			reducePct = comboOfKind(atkCombo, ezfyComboReduce)
+			defBreakPct = comboOfKind(defAct, ezfyComboBreak)
+			reducePct = comboOfKind(atkAct, ezfyComboReduce)
 		}
 		if dist <= rangeD {
 			baseAtk := ezfyPickAttack(unit.cfg, target.cfg)
@@ -1608,13 +1605,14 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			}
 			// ★ 2026-10-23 名将组合技能【连击】：主攻击结算完，追加一次攻击
 			//   （伤害 = 主攻击的 Value%，只打单体，不做溢出级联，避免一次连击清场）
-			comboSide := defCombo
+			//   ★ 2026-10-24 多技能：多个连击技同时生效时只取**最强**一个触发（避免连击清场）
+			comboSide := defAct
 			if isAtk {
-				comboSide = atkCombo
+				comboSide = atkAct
 			}
-			if pct := comboOfKind(comboSide, ezfyComboDouble); pct > 0 {
+			if cb, ok := comboDoubleBest(comboSide); ok {
 				st.comboFollowUp(unit, target, enemies, rangeD, atkFlat, unitAtkBonus, unitDefBonus,
-					defBreakPct, side, enemySide, stName, comboSide.Name, pct)
+					defBreakPct, side, enemySide, stName, cb.Name, cb.Value)
 			}
 			// ★ 2026-10-24 城墙是「像单位一样的耐久目标、只能被打」：**没有顺带拆墙**。
 			//   攻方开火只打守军；守军全灭后进入围城阶段（下方 siegeWall）才把墙当目标拆。
@@ -1776,7 +1774,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	}
 
 	// ★ 2026-10-23 名将组合技能：回合结束结算（回合治疗 + 生效回合数递减）
-	st.comboEndRound(atkCombo, defCombo)
+	st.comboEndRound()
 
 	// ★ 2026-10-24 守军全灭但城墙未破 → 进入围城阶段：攻方向城墙推进、进射程才拆墙。
 	if !st.Done && len(ezfyAliveList(st.Defenders)) == 0 {
@@ -2000,12 +1998,9 @@ type ezfyBattleSnapshot struct {
 	AtkCounterRounds int `json:"atk_counter_rounds"`
 	DefCounterRounds int `json:"def_counter_rounds"`
 	// ★ 2026-10-23 名将组合技能（老快照没有 → nil/0，等于没有组合技，行为与之前完全一致）
-	AtkCombo     *ezfyComboSkill `json:"atk_combo,omitempty"`
-	DefCombo     *ezfyComboSkill `json:"def_combo,omitempty"`
-	AtkComboLeft int             `json:"atk_combo_left"`
-	DefComboLeft int             `json:"def_combo_left"`
-	AtkComboUsed bool            `json:"atk_combo_used"`
-	DefComboUsed bool            `json:"def_combo_used"`
+	//   ★ 2026-10-24 多技能：存运行时数组（每个技能的生效回合/是否已用随快照持久化）
+	AtkCombos []*ezfyComboRuntime `json:"atk_combos,omitempty"`
+	DefCombos []*ezfyComboRuntime `json:"def_combos,omitempty"`
 
 	AtkCamp int `json:"atk_camp"`
 	DefCamp int `json:"def_camp"`
@@ -2071,9 +2066,8 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkCounter: st.AtkCounter, DefCounter: st.DefCounter,
 		AtkCounterRounds: st.AtkCounterRounds, DefCounterRounds: st.DefCounterRounds,
 		// ★ 2026-10-23 名将组合技能：生效中/已搭配都要存，指挥室暂停再打不能丢
-		AtkCombo: st.AtkCombo, DefCombo: st.DefCombo,
-		AtkComboLeft: st.AtkComboLeft, DefComboLeft: st.DefComboLeft,
-		AtkComboUsed: st.AtkComboUsed, DefComboUsed: st.DefComboUsed,
+		//   ★ 2026-10-24 多技能：直接存运行时数组（Left=剩余生效回合，Used=反击是否已加）
+		AtkCombos: st.AtkCombos, DefCombos: st.DefCombos,
 		AtkCamp: st.AtkCamp, DefCamp: st.DefCamp,
 		AtkType: st.AtkType, DefType: st.DefType,
 
@@ -2112,10 +2106,9 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkMoves: snap.AtkMoves, DefMoves: snap.DefMoves,
 		AtkOfficerDesc: snap.AtkOfficerDesc, DefOfficerDesc: snap.DefOfficerDesc,
 		AtkCounter: snap.AtkCounter, DefCounter: snap.DefCounter,
-		// ★ 2026-10-23 名将组合技能（老快照为 nil/0 → 没有组合技，行为与之前一致）
-		AtkCombo: snap.AtkCombo, DefCombo: snap.DefCombo,
-		AtkComboLeft: snap.AtkComboLeft, DefComboLeft: snap.DefComboLeft,
-		AtkComboUsed: snap.AtkComboUsed, DefComboUsed: snap.DefComboUsed,
+		// ★ 2026-10-23 名将组合技能（老快照为 nil → 没有组合技，行为与之前一致）
+		//   ★ 2026-10-24 多技能：直接取运行时数组（Left/Used 随快照恢复，暂停再打不丢状态）
+		AtkCombos: snap.AtkCombos, DefCombos: snap.DefCombos,
 		AtkCounterRounds: atkRounds, DefCounterRounds: defRounds,
 		AtkCamp: snap.AtkCamp, DefCamp: snap.DefCamp,
 		AtkType: snap.AtkType, DefType: snap.DefType,

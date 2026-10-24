@@ -12,7 +12,7 @@ import (
 // ============ 管理端：名将组合技能池（2026-10-23） ============
 //
 // 「组合技能」是系统专属战法：普通军官学不到，只能由管理端把池子里的技能
-// 配给名将（ezfy_cfg_general.combo_skill_id）。这里提供池子的增删改查，
+// 配给名将（ezfy_cfg_general.combo_skill_ids，JSON 数组，一个名将可配多个）。这里提供池子的增删改查，
 // 名称/说明/数值/概率全部可改，改完调 h.ezfyReload() 让配置缓存立即生效。
 
 // ezfyGeneralSkillFields 池子可改字段白名单（xyPickVals 用）
@@ -38,11 +38,14 @@ func (h *EzfyAdmin) AdminEzfyGeneralSkills(c *gin.Context) {
 	q.Order("sort_no, id").Find(&rows)
 	// ★ 2026-10-23 一并下发「哪些名将在用这个技能」——管理端一眼能看出搭配情况，
 	//   也能从这里直接改配（见 AdminEzfyGeneralSkillAssign）。
+	//   ★ 2026-10-24 多技能：名将可配多个，combo_skill_ids 是 JSON 数组 → 逐个累计
 	var gs []model.EzfyCfgGeneral
-	h.DB.Select("id, name, combo_skill_id").Where("kind = 2 AND combo_skill_id > 0").Find(&gs)
+	h.DB.Select("id, name, combo_skill_ids, combo_skill_id").Where("kind = 2").Find(&gs)
 	users := map[int][]gin.H{}
 	for _, g := range gs {
-		users[g.ComboSkillId] = append(users[g.ComboSkillId], gin.H{"id": g.ID, "name": g.Name})
+		for _, sid := range comboSkillIdsOfCfg(&g) {
+			users[sid] = append(users[sid], gin.H{"id": g.ID, "name": g.Name})
+		}
 	}
 	list := make([]gin.H, 0, len(rows))
 	for _, s := range rows {
@@ -140,7 +143,18 @@ func (h *EzfyAdmin) AdminEzfyGeneralSkillDelete(c *gin.Context) {
 		return
 	}
 	var used int64
-	h.DB.Model(&model.EzfyCfgGeneral{}).Where("combo_skill_id = ?", id).Count(&used)
+	// ★ 2026-10-24 多技能：combo_skill_ids 是 JSON 数组字符串，不能用 WHERE 等值，
+	//   逐个名将解析后统计「在用的个数」。
+	var gs []model.EzfyCfgGeneral
+	h.DB.Select("id, combo_skill_ids, combo_skill_id").Where("kind = 2").Find(&gs)
+	for _, g := range gs {
+		for _, sid := range comboSkillIdsOfCfg(&g) {
+			if sid == id {
+				used++
+				break
+			}
+		}
+	}
 	if used > 0 {
 		resp.ParamError(c, "还有 "+strconv.FormatInt(used, 10)+" 名名将在用这个组合技能，请先改配或直接下架（启用=0）")
 		return
@@ -152,12 +166,13 @@ func (h *EzfyAdmin) AdminEzfyGeneralSkillDelete(c *gin.Context) {
 
 // AdminEzfyGeneralSkillAssign POST /admin/ezfy-general-skills/:id/assign
 //
-// 把组合技能**配给名将**（等价于在名将编辑里改 combo_skill_id，但可以一次配多个）：
+// 把组合技能**配给名将**（等价于在名将编辑里改 combo_skill_ids，但可以一次配多个）：
 //
-//	{ "general_ids": [1,18,9], "unbind": false }   → 这些名将学会该技能（覆盖它们原来的组合技）
-//	{ "general_ids": [], "unbind": true }          → 把所有配了该技能的名将清空
+//	{ "general_ids": [1,18,9], "unbind": false }   → 这些名将**学会**该技能（追加到已有组合技，去重）
+//	{ "general_ids": [], "unbind": true }          → 把所有会该技能的名将**解除**（从各自组合技列表移除）
 //
 // 只接受 kind=2 的名将；普通军官（kind=1）一律忽略（系统专属，军官学不到）。
+// ★ 2026-10-24 多技能：学会 = 追加+去重（不再覆盖原组合技）；解除 = 只移除该技能，保留其余。
 func (h *EzfyAdmin) AdminEzfyGeneralSkillAssign(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var sc model.EzfyCfgGeneralSkill
@@ -174,10 +189,21 @@ func (h *EzfyAdmin) AdminEzfyGeneralSkillAssign(c *gin.Context) {
 		return
 	}
 	if in.Unbind {
-		res := h.DB.Model(&model.EzfyCfgGeneral{}).
-			Where("kind = 2 AND combo_skill_id = ?", id).Update("combo_skill_id", 0)
+		var gs []model.EzfyCfgGeneral
+		h.DB.Select("id, combo_skill_ids, combo_skill_id").Where("kind = 2").Find(&gs)
+		removed := 0
+		for _, g := range gs {
+			ids := comboSkillIdsOfCfg(&g)
+			nid := comboSkillIdsRemove(ids, id)
+			if len(nid) == len(ids) {
+				continue // 本来就没配，跳过
+			}
+			removed++
+			h.DB.Model(&model.EzfyCfgGeneral{}).Where("id = ?", g.ID).
+				Updates(map[string]interface{}{"combo_skill_ids": comboSkillIdsTxt(nid), "combo_skill_id": 0})
+		}
 		h.ezfyReload()
-		resp.OK(c, gin.H{"msg": "已解除 " + strconv.FormatInt(res.RowsAffected, 10) + " 名名将的「" + sc.Name + "」"})
+		resp.OK(c, gin.H{"msg": "已解除 " + strconv.Itoa(removed) + " 名名将的「" + sc.Name + "」"})
 		return
 	}
 	if len(in.GeneralIds) == 0 {
@@ -192,29 +218,36 @@ func (h *EzfyAdmin) AdminEzfyGeneralSkillAssign(c *gin.Context) {
 		resp.ParamError(c, "选中的都不是名将（普通军官学不到组合技能）")
 		return
 	}
-	if err := h.DB.Model(&model.EzfyCfgGeneral{}).
-		Where("kind = 2 AND id IN ?", okIDs).
-		Update("combo_skill_id", id).Error; err != nil {
-		resp.ParamError(c, "配给失败："+err.Error())
-		return
+	// ★ 2026-10-24 多技能：逐名将「追加 + 去重」写入 combo_skill_ids（JSON 数组），
+	//   旧单技能字段 combo_skill_id 一并清 0（已迁移到新字段，不再当回退源）。
+	var gs []model.EzfyCfgGeneral
+	h.DB.Where("kind = 2 AND id IN ?", okIDs).Find(&gs)
+	for _, g := range gs {
+		nid := comboSkillIdsAdd(comboSkillIdsOfCfg(&g), id)
+		if err := h.DB.Model(&model.EzfyCfgGeneral{}).Where("id = ?", g.ID).
+			Updates(map[string]interface{}{"combo_skill_ids": comboSkillIdsTxt(nid), "combo_skill_id": 0}).Error; err != nil {
+			resp.ParamError(c, "配给失败："+err.Error())
+			return
+		}
 	}
 	h.ezfyReload()
-	msg := "已让 " + strconv.Itoa(len(okIDs)) + " 名名将学会「" + sc.Name + "」"
-	if len(okIDs) < len(in.GeneralIds) {
-		msg += "（另有 " + strconv.Itoa(len(in.GeneralIds)-len(okIDs)) + " 个不是名将，已忽略）"
+	msg := "已让 " + strconv.Itoa(len(gs)) + " 名名将学会「" + sc.Name + "」"
+	if len(gs) < len(in.GeneralIds) {
+		msg += "（另有 " + strconv.Itoa(len(in.GeneralIds)-len(gs)) + " 个不是名将，已忽略）"
 	}
 	resp.OK(c, gin.H{"msg": msg})
 }
 
 // AdminEzfyGeneralSkillPickers GET /admin/ezfy-general-skills/pickers
 //
-// 给「配给名将」弹窗用的名将清单（kind=2，含当前已配的组合技 ID，前端可据此回显）。
+// 给「配给名将」弹窗用的名将清单（kind=2，含当前已配的组合技 ID 数组，前端可据此回显）。
 func (h *EzfyAdmin) AdminEzfyGeneralSkillPickers(c *gin.Context) {
 	var rows []model.EzfyCfgGeneral
-	h.DB.Select("id, name, star, combo_skill_id").Where("kind = 2").Order("id").Find(&rows)
+	h.DB.Select("id, name, star, combo_skill_ids, combo_skill_id").Where("kind = 2").Order("id").Find(&rows)
 	list := make([]gin.H, 0, len(rows))
 	for _, g := range rows {
-		list = append(list, gin.H{"id": g.ID, "name": g.Name, "star": g.Star, "combo_skill_id": g.ComboSkillId})
+		list = append(list, gin.H{"id": g.ID, "name": g.Name, "star": g.Star,
+			"combo_skills": comboSkillIdsOfCfg(&g)})
 	}
 	var skills []model.EzfyCfgGeneralSkill
 	h.DB.Select("id, name, kind").Order("sort_no, id").Find(&skills)

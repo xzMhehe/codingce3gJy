@@ -2085,10 +2085,12 @@ type EzfyCfgGeneral struct {
 	Kind int `gorm:"default:2;comment:种类" json:"kind"`
 	// ★ 普通军官在军校刷新时的抽取权重（越大越容易刷到），名将不用
 	Weight int `gorm:"default:100;comment:权重" json:"weight"`
-	// ★★ 2026-10-23 名将组合技能（只能给 kind=2 名将配，普通军官池一律 0）：
-	//   指向 ezfy_cfg_general_skill 的池子 ID，0 = 没有组合技。
-	//   效果按**名将星级**升级（星级 1~5 → 组合技 1~5 级），见 ezfy_combo.go。
-	ComboSkillId int `gorm:"default:0;comment:名将组合技能池ID(0=无)" json:"combo_skill_id"`
+	// ★★ 2026-10-24 名将组合技能改为**可学多个**（用户要求「能学多个，现在只能学一个不对」）：
+	//   组合技池 ID 列表，JSON 数组字符串（如 "[1,5,9]"；空 = 没有组合技）。
+	//   只有 kind=2 名将可配，普通军官池一律空；效果按**军官等级**成长，见 ezfy_combo.go。
+	ComboSkillIds string `gorm:"type:varchar(255);default:'';comment:名将组合技能池ID列表(JSON数组)" json:"combo_skill_ids"`
+	// 旧字段（单技能时代）只作**回退**：combo_skill_ids 为空时按它读，管理端保存后清 0。
+	ComboSkillId int `gorm:"default:0;comment:旧字段(单技能时代)仅回退用" json:"-"`
 }
 
 func (EzfyCfgGeneral) TableName() string { return "ezfy_cfg_general" }
@@ -2096,7 +2098,8 @@ func (EzfyCfgGeneral) TableName() string { return "ezfy_cfg_general" }
 // EzfyCfgGeneralSkill 名将组合技能**池**（★ 2026-10-23）。
 //
 // 「组合技能」是**系统专属**的一类战法：普通军官（kind=1）学不到，
-// 只能由管理端把池子里的技能搭配给名将（ezfy_cfg_general.combo_skill_id）。
+// 只能由管理端把池子里的技能搭配给名将（ezfy_cfg_general.combo_skill_ids，
+// JSON 数组，★ 2026-10-24 一个名将可配多个）。
 //
 // 设计口径（参考率土之滨战法，但只取「每回合按概率发动」这一层，不引入拆解/连携）：
 //   - 通用：一套效果对所有兵种生效，不区分陆/海/空（兵种专属还是走通用技能那套）；

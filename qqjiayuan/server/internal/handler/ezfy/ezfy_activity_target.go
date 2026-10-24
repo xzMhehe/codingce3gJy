@@ -569,9 +569,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			// ★ 2026-10-08 兵种专属加成（攻方喷气引擎=空军速度+军官兵种技能；活动守军无科技 → 空表）
 			atkType, ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}})
 		// ★ 2026-10-23 名将组合技能：攻方带队名将 / 活动守将（池子配置，按星级定级）
-		st.AtkCombo = h.comboSkillOfOfficer(leadOfficer)
+		//   ★ 2026-10-24 多技能：名将可配多个，comboRuntimes 包成运行时数组，每个技能独立掷骰
+		st.AtkCombos = comboRuntimes(h.comboSkillsOfOfficer(leadOfficer))
 		if defGeneral != nil {
-			st.DefCombo = ezfyComboOfGeneralCfg(defGeneral, defGeneral.Level)
+			st.DefCombos = comboRuntimes(ezfyComboOfGeneralCfg(defGeneral, defGeneral.Level))
 		}
 		st.appendComboHead()
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：

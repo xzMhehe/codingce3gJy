@@ -504,7 +504,8 @@
             <td>{{ g.name }}</td>
             <td>{{ g.military }}/{{ g.logistics }}/{{ g.learning }}</td>
             <td>
-              <span v-if="g.combo" class="green">{{ g.combo.name }}</span>
+              <!-- ★ 2026-10-24 多技能：组合技是数组，逐个列出 -->
+              <span v-if="g.combo && g.combo.length" class="green">{{ g.combo.map(c => c.name).join('、') }}</span>
               <span v-else class="gray">—</span>
             </td>
             <td>
@@ -564,12 +565,13 @@
           <div class="old-line" v-if="ezfy.officerDetail.officer.general_des">
             二战功勋：{{ ezfy.officerDetail.officer.general_des }}
           </div>
-          <!-- ★ 2026-10-23 名将组合技能（系统专属战法，管理端可改名/调数值） -->
-          <div class="old-line" v-if="ezfy.officerDetail.officer.combo_skill">
-            组合技：<b class="green">{{ ezfy.officerDetail.officer.combo_skill.name }}</b>
-            <span class="gray">Lv.{{ ezfy.officerDetail.officer.combo_skill.level }}
-              · 发动率 {{ ezfy.officerDetail.officer.combo_skill.proc_pct }}%
-              · {{ ezfy.officerDetail.officer.combo_skill.value_text }}</span>
+          <!-- ★ 2026-10-23 名将组合技能（系统专属战法，管理端可改名/调数值）
+               ★ 2026-10-24 多技能：combo_skills 是数组，一个名将可学多个 -->
+          <div class="old-line" v-for="cs in ezfy.officerDetail.officer.combo_skills || []" :key="'oc' + cs.id">
+            组合技：<b class="green">{{ cs.name }}</b>
+            <span class="gray">Lv.{{ cs.level }}
+              · 发动率 {{ cs.proc_pct }}%
+              · {{ cs.value_text }}</span>
           </div>
           <div class="old-line gray" v-else>(该名将暂无功勋介绍)</div>
         </div>
@@ -595,18 +597,19 @@
           &nbsp;防御加成：{{ ezfy.officerDetail.officer.defence }}
         </div>
 
-        <!-- ★ 2026-10-23 名将组合技能：系统专属战法（普通军官没有，后端下发 null 就不渲染）
-             等级 = 名将星级；每回合按「发动率」掷骰，命中才生效，不是全程常驻。 -->
-        <template v-if="ezfy.officerDetail.officer.combo_skill">
+        <!-- ★ 2026-10-23 名将组合技能：系统专属战法（普通军官没有，后端下发 nil 就不渲染）
+             等级随**军官等级**分档；每回合按「发动率」掷骰，命中才生效，不是全程常驻。
+             ★ 2026-10-24 多技能：combo_skills 是数组，一个名将可学多个。 -->
+        <template v-if="ezfy.officerDetail.officer.combo_skills && ezfy.officerDetail.officer.combo_skills.length">
           <hr/>
-          <div class="old-line">
-            组合技：<b class="green">{{ ezfy.officerDetail.officer.combo_skill.name }}</b>
-            <span class="gray">Lv.{{ ezfy.officerDetail.officer.combo_skill.level }}
-              · {{ ezfy.officerDetail.officer.combo_skill.kind_name }}
-              · 发动率 {{ ezfy.officerDetail.officer.combo_skill.proc_pct }}%</span>
+          <div class="old-line" v-for="cs in ezfy.officerDetail.officer.combo_skills" :key="'ocs' + cs.id">
+            组合技：<b class="green">{{ cs.name }}</b>
+            <span class="gray">Lv.{{ cs.level }}
+              · {{ cs.kind_name }}
+              · 发动率 {{ cs.proc_pct }}%</span>
             <br/>
-            <span class="green">{{ ezfy.officerDetail.officer.combo_skill.value_text }}</span>
-            <span class="gray" v-if="ezfy.officerDetail.officer.combo_skill.des">（{{ ezfy.officerDetail.officer.combo_skill.des }}）</span>
+            <span class="green">{{ cs.value_text }}</span>
+            <span class="gray" v-if="cs.des">（{{ cs.des }}）</span>
           </div>
         </template>
 

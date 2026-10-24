@@ -1,6 +1,7 @@
 package ezfy
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -14,7 +15,8 @@ import (
 //
 // 「组合技能」是**系统专属**的一类战法：普通军官（kind=1）学不到，
 // 只能由管理端把池子（ezfy_cfg_general_skill）里的技能配给名将
-// （ezfy_cfg_general.combo_skill_id）。参考率土之滨的「每回合按概率发动」，
+// （ezfy_cfg_general.combo_skill_ids，JSON 数组，★ 2026-10-24 一个名将可配多个）。
+// 参考率土之滨的「每回合按概率发动」，
 // 但只取这一层，不引入拆解/连携，避免玩法过重。
 //
 // 三条硬规则（详见仓库根目录 `1022名将组合技能.md`）：
@@ -121,42 +123,98 @@ func ezfyComboLevelOf(officerLevel, maxLevel, step int) int {
 	return lv
 }
 
-// ezfyComboOfGeneralCfg 由「名将池配置 + 该军官的等级」生成战斗用组合技（nil = 没配 / 已下架）
+// ezfyComboOfGeneralCfg 由「名将池配置 + 该军官的等级」生成战斗用组合技列表
+// （nil / 空 = 没配或已下架）。★ 2026-10-24 支持**一个名将配多个技能**（用户要求），
+// 每个技能独立定级、独立掷骰；普通军官（kind=1）即便误配也不生效。
 //
 // officerLevel 传**军官实例等级**（名将满级 350）；AI 守将没有实例时传池子配置的 Level。
-func ezfyComboOfGeneralCfg(g *model.EzfyCfgGeneral, officerLevel int) *ezfyComboSkill {
-	if g == nil || g.Kind != 2 || g.ComboSkillId <= 0 {
+func ezfyComboOfGeneralCfg(g *model.EzfyCfgGeneral, officerLevel int) []*ezfyComboSkill {
+	if g == nil || g.Kind != 2 {
 		return nil
 	}
-	s := ezfyCfg.generalSkill(g.ComboSkillId)
-	if s == nil || s.Enabled == 0 {
-		return nil
+	out := []*ezfyComboSkill{}
+	for _, id := range comboSkillIdsOfCfg(g) {
+		s := ezfyCfg.generalSkill(id)
+		if s == nil || s.Enabled == 0 {
+			continue
+		}
+		maxLv := s.MaxLevel
+		if maxLv < 1 {
+			maxLv = 10
+		}
+		lv := ezfyComboLevelOf(officerLevel, maxLv, s.LevelPerStep)
+		rounds := s.Rounds
+		if rounds < 1 {
+			rounds = 1
+		}
+		proc := s.ProcPct
+		if proc < 0 {
+			proc = 0
+		}
+		if proc > 100 {
+			proc = 100
+		}
+		out = append(out, &ezfyComboSkill{
+			ID: s.ID, Name: s.Name, Kind: s.Kind, Level: lv,
+			Value:   ezfyComboValue(s.BaseValue, s.GrowPerLevel, lv, maxLv),
+			ProcPct: proc, Rounds: rounds,
+		})
 	}
-	maxLv := s.MaxLevel
-	if maxLv < 1 {
-		maxLv = 10
-	}
-	lv := ezfyComboLevelOf(officerLevel, maxLv, s.LevelPerStep)
-	rounds := s.Rounds
-	if rounds < 1 {
-		rounds = 1
-	}
-	proc := s.ProcPct
-	if proc < 0 {
-		proc = 0
-	}
-	if proc > 100 {
-		proc = 100
-	}
-	return &ezfyComboSkill{
-		ID: s.ID, Name: s.Name, Kind: s.Kind, Level: lv,
-		Value:   ezfyComboValue(s.BaseValue, s.GrowPerLevel, lv, maxLv),
-		ProcPct: proc, Rounds: rounds,
-	}
+	return out
 }
 
-// comboSkillOfOfficer 军官实例（名将）的组合技；普通军官 / 非名将一律 nil。
-func (h *EzfyHandler) comboSkillOfOfficer(o *model.EzfyOfficer) *ezfyComboSkill {
+// comboSkillIdsOfCfg 名将池配置 → 组合技池 ID 列表。
+//
+// ★ 2026-10-24 新字段 combo_skill_ids（JSON 数组）优先；旧库只有 combo_skill_id
+// （单技能时代）→ 回退成 [combo_skill_id]，保证老数据无缝升级、管理端保存前不丢技能。
+func comboSkillIdsOfCfg(g *model.EzfyCfgGeneral) []int {
+	if g == nil {
+		return nil
+	}
+	ids := []int{}
+	if s := strings.TrimSpace(g.ComboSkillIds); s != "" && s != "[]" {
+		if err := json.Unmarshal([]byte(s), &ids); err != nil {
+			ids = nil // 非法 JSON → 当没配
+		}
+	}
+	if len(ids) == 0 && g.ComboSkillId > 0 {
+		ids = []int{g.ComboSkillId}
+	}
+	return ids
+}
+
+// comboSkillIdsTxt 技能 ID 列表 → 落库 JSON 字符串（管理端保存用）。
+func comboSkillIdsTxt(ids []int) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(ids)
+	return string(b)
+}
+
+// comboSkillIdsAdd 给列表追加一个技能 ID（去重）。
+func comboSkillIdsAdd(ids []int, id int) []int {
+	for _, v := range ids {
+		if v == id {
+			return ids
+		}
+	}
+	return append(ids, id)
+}
+
+// comboSkillIdsRemove 从列表移除一个技能 ID。
+func comboSkillIdsRemove(ids []int, id int) []int {
+	out := []int{}
+	for _, v := range ids {
+		if v != id {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// comboSkillsOfOfficer 军官实例（名将）的组合技列表；普通军官 / 非名将一律空。
+func (h *EzfyHandler) comboSkillsOfOfficer(o *model.EzfyOfficer) []*ezfyComboSkill {
 	if o == nil || o.GeneralId <= 0 {
 		return nil
 	}
@@ -259,82 +317,150 @@ func ezfyComboProcTxt(c *ezfyComboSkill) string {
 	return ezfyComboValueTxt(c)
 }
 
+// ezfyComboRuntime 战斗内**单个**组合技的运行时状态（快照要能序列化，全部导出+json tag）。
+//
+// ★ 2026-10-24 名将可学多个组合技：每个技能一组独立运行时，各自掷骰、各自倒计时。
+type ezfyComboRuntime struct {
+	Skill *ezfyComboSkill `json:"skill"`
+	Left  int             `json:"left"` // 剩余生效回合（0 = 本回合未生效）
+	Used  bool            `json:"used"` // 「反击回合+」是否已加过（一次性）
+}
+
+// comboRuntimes 把技能列表包成运行时（Left=0 未生效，等每回合掷骰）。
+func comboRuntimes(skills []*ezfyComboSkill) []*ezfyComboRuntime {
+	out := []*ezfyComboRuntime{}
+	for _, s := range skills {
+		if s == nil {
+			continue
+		}
+		out = append(out, &ezfyComboRuntime{Skill: s})
+	}
+	return out
+}
+
+// activeCombos 本回合已生效（Left>0）的技能列表。
+func activeCombos(rts []*ezfyComboRuntime) []*ezfyComboSkill {
+	out := []*ezfyComboSkill{}
+	for _, rt := range rts {
+		if rt != nil && rt.Left > 0 && rt.Skill != nil {
+			out = append(out, rt.Skill)
+		}
+	}
+	return out
+}
+
 // comboRoll 每回合开始掷骰：到期的效果自然失效，没生效的按概率尝试发动。
 //
-// 返回本回合是否生效（供加成计算使用）。发动时写一行战报播报，
+// ★ 2026-10-24 多技能：每个技能**独立掷骰**，多个技能可同时发动（播报各一行），
 // 让玩家一眼看到「这回合为什么多了加成」。
 func (st *ezfyBattleState) comboRoll() {
-	roll := func(c *ezfyComboSkill, left *int, side, offName string, used *bool) {
-		if c == nil {
-			return
-		}
-		if *left > 0 {
-			return // 还在持续期内，不重复掷
-		}
-		if c.ProcPct <= 0 || rand.Intn(100) >= c.ProcPct {
-			return
-		}
-		*left = c.Rounds
-		if *left < 1 {
-			*left = 1
-		}
-		// 反击回合是「一次性永久加成」，整场只加一次，避免每回合叠上去
-		if c.Kind == ezfyComboCounter && used != nil && !*used {
-			*used = true
-			if side == "【攻方】" {
-				st.AtkCounterRounds += c.Value
-				st.AtkCounter = true
-			} else {
-				st.DefCounterRounds += c.Value
-				st.DefCounter = true
+	roll := func(rts []*ezfyComboRuntime, side, offName string) {
+		for _, rt := range rts {
+			if rt == nil || rt.Skill == nil {
+				continue
 			}
+			c := rt.Skill
+			if rt.Left > 0 {
+				continue // 还在持续期内，不重复掷
+			}
+			if c.ProcPct <= 0 || rand.Intn(100) >= c.ProcPct {
+				continue
+			}
+			rt.Left = c.Rounds
+			if rt.Left < 1 {
+				rt.Left = 1
+			}
+			// 反击回合是「一次性永久加成」，整场只加一次，避免每回合叠上去
+			if c.Kind == ezfyComboCounter && !rt.Used {
+				rt.Used = true
+				if side == "【攻方】" {
+					st.AtkCounterRounds += c.Value
+					st.AtkCounter = true
+				} else {
+					st.DefCounterRounds += c.Value
+					st.DefCounter = true
+				}
+			}
+			idx := (st.Round*3 + len(st.Actions)) % len(ezfySlogans)
+			st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】！%s，%s",
+				side, offName, c.Name, ezfySlogans[idx], ezfyComboProcTxt(c)))
 		}
-		idx := (st.Round*3 + len(st.Actions)) % len(ezfySlogans)
-		st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】！%s，%s",
-			side, offName, c.Name, ezfySlogans[idx], ezfyComboProcTxt(c)))
 	}
-	roll(st.AtkCombo, &st.AtkComboLeft, "【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), &st.AtkComboUsed)
-	roll(st.DefCombo, &st.DefComboLeft, "【守方】", ezfyOfficerShortName(st.DefOfficerDesc), &st.DefComboUsed)
+	roll(st.AtkCombos, "【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc))
+	roll(st.DefCombos, "【守方】", ezfyOfficerShortName(st.DefOfficerDesc))
 }
 
-// comboActive 某一方本回合的组合技是否生效，以及生效的技能（nil = 没生效）
-func comboActive(c *ezfyComboSkill, left int) *ezfyComboSkill {
-	if c == nil || left <= 0 {
-		return nil
-	}
-	return c
-}
-
-// comboOfKind 本回合生效的技能是否是指定类型（不是该类型返回 0）
-func comboOfKind(c *ezfyComboSkill, kind int) int {
-	if c == nil || c.Kind != kind {
+// comboOfKind 本回合生效的技能里，指定类型的效果值合计（多个同类技能**叠加**）。
+func comboOfKind(active []*ezfyComboSkill, kind int) int {
+	if len(active) == 0 {
 		return 0
 	}
-	return c.Value
+	sum := 0
+	for _, c := range active {
+		if c != nil && c.Kind == kind {
+			sum += c.Value
+		}
+	}
+	return sum
 }
 
-// comboEndRound 回合结束：治疗结算 + 生效回合数递减。
+// comboBreakTxt 来源拆解文本：指定类型的生效技能逐项列出（空格分隔）。
+//
+//	例：组合技·铁血军魂+180% 组合技·万钧之势+120%
+func comboBreakTxt(active []*ezfyComboSkill, kind int, prefix string) string {
+	out := ""
+	for _, c := range active {
+		if c == nil || c.Kind != kind {
+			continue
+		}
+		out += fmt.Sprintf("%s·%s+%d%% ", prefix, c.Name, c.Value)
+	}
+	return strings.TrimSpace(out)
+}
+
+// comboDoubleBest 连击：多个连击技同时生效时，只取最强的一个触发**一次**追加攻击
+// （避免一次主攻击连击好几次把对面清场）。
+func comboDoubleBest(active []*ezfyComboSkill) (*ezfyComboSkill, bool) {
+	var best *ezfyComboSkill
+	for _, c := range active {
+		if c == nil || c.Kind != ezfyComboDouble {
+			continue
+		}
+		if best == nil || c.Value > best.Value {
+			best = c
+		}
+	}
+	return best, best != nil
+}
+
+// comboEndRound 回合结束：治疗结算 + 每个技能的生效回合数递减。
 //
 // 治疗放在回合结束，用「本回合损失」为基数（回合中单位可能已被打光，
 // 只要还有存活单位就按各自已损比例回补），符合「回合治疗」的直觉。
-func (st *ezfyBattleState) comboEndRound(atkActive, defActive *ezfyComboSkill) {
-	if pct := comboOfKind(atkActive, ezfyComboHeal); pct > 0 {
-		if n := ezfyComboHealSide(st.Attackers, pct); n > 0 {
-			st.Actions = append(st.Actions, fmt.Sprintf("【攻方】%s组合技【%s】生效，治疗兵力%d",
-				ezfyOfficerShortName(st.AtkOfficerDesc), atkActive.Name, n))
+// ★ 2026-10-24 多技能：每个生效中的治疗技独立结算、各播报一行。
+func (st *ezfyBattleState) comboEndRound() {
+	heal := func(rts []*ezfyComboRuntime, side string, units []*ezfyFightUnit, offDesc string) {
+		for _, rt := range rts {
+			if rt == nil || rt.Left <= 0 || rt.Skill == nil || rt.Skill.Kind != ezfyComboHeal {
+				continue
+			}
+			if n := ezfyComboHealSide(units, rt.Skill.Value); n > 0 {
+				st.Actions = append(st.Actions, fmt.Sprintf("%s%s组合技【%s】生效，治疗兵力%d",
+					side, ezfyOfficerShortName(offDesc), rt.Skill.Name, n))
+			}
 		}
 	}
-	if pct := comboOfKind(defActive, ezfyComboHeal); pct > 0 {
-		if n := ezfyComboHealSide(st.Defenders, pct); n > 0 {
-			st.Actions = append(st.Actions, fmt.Sprintf("【守方】%s组合技【%s】生效，治疗兵力%d",
-				ezfyOfficerShortName(st.DefOfficerDesc), defActive.Name, n))
+	heal(st.AtkCombos, "【攻方】", st.Attackers, st.AtkOfficerDesc)
+	heal(st.DefCombos, "【守方】", st.Defenders, st.DefOfficerDesc)
+	for _, rt := range st.AtkCombos {
+		if rt != nil && rt.Left > 0 {
+			rt.Left--
 		}
 	}
-	if st.AtkComboLeft > 0 {
-		st.AtkComboLeft--
-	}
-	if st.DefComboLeft > 0 {
-		st.DefComboLeft--
+	for _, rt := range st.DefCombos {
+		if rt != nil && rt.Left > 0 {
+			rt.Left--
+		}
 	}
 }
 
@@ -452,21 +578,54 @@ func ezfyComboBrief(c *ezfyComboSkill) interface{} {
 	}
 }
 
+// ezfyComboBriefs 组合技列表的对外结构（空 → nil，前端据此不渲染）。
+//
+// ★ 2026-10-24 名将可学多个组合技：玩家端下发**数组**（普通军官恒 nil）。
+func ezfyComboBriefs(skills []*ezfyComboSkill) interface{} {
+	if len(skills) == 0 {
+		return nil
+	}
+	out := make([]gin.H, 0, len(skills))
+	for _, c := range skills {
+		if b := ezfyComboBrief(c); b != nil {
+			out = append(out, b.(gin.H))
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // ezfyComboBriefAtMax 组合技的**满级**展示（名将图鉴用）。
 //
 // 图鉴是「这个技能满级多强」的预览，不该拿池子配置的 level 去定级
 // （池里 level 是「等级上限」，本地库甚至可能填 1 → 图鉴会显示成 Lv.1 很误导）。
 func ezfyComboBriefAtMax(g *model.EzfyCfgGeneral) interface{} {
-	if g == nil || g.Kind != 2 || g.ComboSkillId <= 0 {
+	if g == nil || g.Kind != 2 {
 		return nil
 	}
 	// 传一个足够大的等级 → 必被夹到 max_level，即「满级」
-	return ezfyComboBrief(ezfyComboOfGeneralCfg(g, 1<<20))
+	return ezfyComboBriefs(ezfyComboOfGeneralCfg(g, 1<<20))
 }
 
-// officerComboView 军官详情里的组合技（普通军官恒 nil）
+// officerComboView 军官详情里的组合技列表（普通军官恒 nil）
 func (h *EzfyHandler) officerComboView(o *model.EzfyOfficer) interface{} {
-	return ezfyComboBrief(h.comboSkillOfOfficer(o))
+	return ezfyComboBriefs(h.comboSkillsOfOfficer(o))
+}
+
+// comboShortTxts 运行时列表 → 短效果文案列表（准备回合军官行内联用）
+func comboShortTxts(rts []*ezfyComboRuntime) []string {
+	out := []string{}
+	for _, rt := range rts {
+		if rt == nil || rt.Skill == nil {
+			continue
+		}
+		if t := ezfyComboShortTxt(rt.Skill); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // appendComboHead 战报「准备回合」展示组合技。
@@ -476,8 +635,9 @@ func (h *EzfyHandler) officerComboView(o *model.EzfyOfficer) interface{} {
 // 格式对齐军官技能：
 //
 //	【攻方军官】斯大林 Lv.350 攻击加成+477% 防御加成+253% 尖兵突击(Lv.6 攻击力+180%) …
-//	              └→ 追加：铁血军魂(Lv.10 攻击力+180%，发动40%)
+//	              └→ 追加：铁血军魂(Lv.10 攻击力+180%，发动40%) 万钧之势(Lv.8 攻击力+120%，发动30%)
 //
+// ★ 2026-10-24 名将可学多个组合技：多个技能文案用空格接在军官行后面。
 // 没有军官行（AI 守将 / 老战场）时退回单独一行，插在「准备回合:」之后。
 func (st *ezfyBattleState) appendComboHead() {
 	merge := func(side, txt string) bool {
@@ -493,7 +653,8 @@ func (st *ezfyBattleState) appendComboHead() {
 		}
 		return false
 	}
-	atkTxt, defTxt := ezfyComboShortTxt(st.AtkCombo), ezfyComboShortTxt(st.DefCombo)
+	atkTxt := strings.Join(comboShortTxts(st.AtkCombos), " ")
+	defTxt := strings.Join(comboShortTxts(st.DefCombos), " ")
 	okA, okD := merge("攻方", atkTxt), merge("守方", defTxt)
 	// 没有军官行 → 退回单独一行，按「攻方 → 守方」顺序插到「准备回合:」后面
 	extra := []string{}

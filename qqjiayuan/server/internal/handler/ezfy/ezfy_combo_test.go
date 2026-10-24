@@ -90,36 +90,67 @@ func TestComboOnlyForGenerals(t *testing.T) {
 		MaxLevel: 10, LevelPerStep: 35, ProcPct: 50, Rounds: 1, Enabled: 1,
 	})
 	defer restorePool()
-	restoreG := stubGeneralCfg(t, model.EzfyCfgGeneral{ID: 9901, Name: "测试名将", Kind: 2, ComboSkillId: 901, Star: 5})
+	restoreG := stubGeneralCfg(t, model.EzfyCfgGeneral{ID: 9901, Name: "测试名将", Kind: 2, ComboSkillIds: "[901]", Star: 5})
 	defer restoreG()
-	// 普通军官池（kind=1）即便误配了 combo_skill_id 也不生效
-	restoreG2 := stubGeneralCfg(t, model.EzfyCfgGeneral{ID: 9902, Name: "测试普通", Kind: 1, ComboSkillId: 901})
+	// 普通军官池（kind=1）即便误配了 combo_skill_ids 也不生效
+	restoreG2 := stubGeneralCfg(t, model.EzfyCfgGeneral{ID: 9902, Name: "测试普通", Kind: 1, ComboSkillIds: "[901]"})
 	defer restoreG2()
 
 	// 210 级 → 1+(210-1)/35 = 6 级：10 + 5×2 = 20
-	c := ezfyComboOfGeneralCfg(ezfyCfg.general(9901), 210)
-	if c == nil {
-		t.Fatal("名将应能拿到组合技")
+	cs := ezfyComboOfGeneralCfg(ezfyCfg.general(9901), 210)
+	if len(cs) != 1 {
+		t.Fatalf("名将应拿到 1 个组合技, 实际 %d 个", len(cs))
 	}
+	c := cs[0]
 	if c.Level != 6 || c.Value != 20 {
 		t.Fatalf("210 级名将应为 6 级/20 点, 实际 Lv.%d/%d", c.Level, c.Value)
 	}
 	// 350 级（名将满级）→ 10 级吃满：10 + 9×2 = 28
-	if max := ezfyComboOfGeneralCfg(ezfyCfg.general(9901), 350); max == nil || max.Level != 10 || max.Value != 28 {
+	max := ezfyComboOfGeneralCfg(ezfyCfg.general(9901), 350)
+	if len(max) != 1 || max[0].Level != 10 || max[0].Value != 28 {
 		t.Fatalf("350 级名将应为 10 级/28 点, 实际 %+v", max)
 	}
-	if ezfyComboOfGeneralCfg(ezfyCfg.general(9902), 5) != nil {
+	if len(ezfyComboOfGeneralCfg(ezfyCfg.general(9902), 5)) != 0 {
 		t.Fatal("普通军官（kind=1）不该有组合技")
 	}
-	if ezfyComboOfGeneralCfg(nil, 5) != nil {
-		t.Fatal("nil 名将配置应返回 nil")
+	if len(ezfyComboOfGeneralCfg(nil, 5)) != 0 {
+		t.Fatal("nil 名将配置应返回空")
+	}
+	// ★ 2026-10-24 多技能：一个名将配多个技能 → 全部下发、顺序按配置
+	restorePool2 := stubComboPool(t, model.EzfyCfgGeneralSkill{
+		ID: 902, Name: "测试组合技2", Kind: ezfyComboDef, BaseValue: 5, GrowPerLevel: 1,
+		MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 2, Enabled: 1,
+	})
+	defer restorePool2()
+	restoreG3 := stubGeneralCfg(t, model.EzfyCfgGeneral{ID: 9903, Name: "测试名将2", Kind: 2, ComboSkillIds: "[901,902]"})
+	defer restoreG3()
+	multi := ezfyComboOfGeneralCfg(ezfyCfg.general(9903), 100)
+	if len(multi) != 2 {
+		t.Fatalf("配 2 个技能应下发 2 个, 实际 %d", len(multi))
+	}
+	if multi[0].ID != 901 || multi[1].ID != 902 {
+		t.Fatalf("多技能顺序/ID 不对：%+v", multi)
+	}
+	// 多技能里混了不存在的 ID → 只跳过不存在那个
+	restoreG4 := stubGeneralCfg(t, model.EzfyCfgGeneral{ID: 9904, Name: "测试名将3", Kind: 2, ComboSkillIds: "[901,999]"})
+	defer restoreG4()
+	skip := ezfyComboOfGeneralCfg(ezfyCfg.general(9904), 100)
+	if len(skip) != 1 || skip[0].ID != 901 {
+		t.Fatalf("不存在/下架的 ID 应跳过：%+v", skip)
+	}
+	// ★ 2026-10-24 旧字段回退：combo_skill_ids 为空、只有 combo_skill_id → 按旧字段读一个
+	restoreG5 := stubGeneralCfg(t, model.EzfyCfgGeneral{ID: 9905, Name: "测试名将-旧字段", Kind: 2, ComboSkillId: 901})
+	defer restoreG5()
+	legacy := ezfyComboOfGeneralCfg(ezfyCfg.general(9905), 350)
+	if len(legacy) != 1 || legacy[0].ID != 901 || legacy[0].Level != 10 {
+		t.Fatalf("旧字段 combo_skill_id 回退失败：%+v", legacy)
 	}
 	// 下架后不再生效
 	s := ezfyCfg.generalSkill(901)
 	s.Enabled = 0
-	restorePool2 := stubComboPool(t, *s)
-	defer restorePool2()
-	if ezfyComboOfGeneralCfg(ezfyCfg.general(9901), 5) != nil {
+	restorePool3 := stubComboPool(t, *s)
+	defer restorePool3()
+	if len(ezfyComboOfGeneralCfg(ezfyCfg.general(9901), 5)) != 0 {
 		t.Fatal("下架（enabled=0）的组合技不该生效")
 	}
 }
@@ -140,14 +171,14 @@ func TestComboProcAndBonuses(t *testing.T) {
 			map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
 			0, 0, 1, 2,
 			ezfyTypeBonus{}, ezfyTypeBonus{})
-		st.AtkCombo = combo
+		st.AtkCombos = comboRuntimes([]*ezfyComboSkill{combo})
 		return st
 	}
 	// ① 100% 发动 → 第 1 回合就生效并播报
 	st := build(&ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 100, Rounds: 1})
 	st.Step(nil, nil)
-	if st.AtkComboLeft != 0 { // 本回合生效，回合末递减回 0
-		t.Fatalf("1 回合技能应在回合末递减回 0, 实际 %d", st.AtkComboLeft)
+	if st.AtkCombos[0].Left != 0 { // 本回合生效，回合末递减回 0
+		t.Fatalf("1 回合技能应在回合末递减回 0, 实际 %d", st.AtkCombos[0].Left)
 	}
 	if !strings.Contains(strings.Join(st.Actions, "\n"), "【铁血军魂】") {
 		t.Fatalf("100%% 发动率却没播报：%v", st.Actions)
@@ -188,12 +219,12 @@ func TestComboProcAndBonuses(t *testing.T) {
 	// ③ 持续 2 回合：第 1 回合发动后，第 2 回合仍生效
 	st3 := build(&ezfyComboSkill{ID: 10, Name: "万钧之势", Kind: ezfyComboAtk, Level: 5, Value: 14, ProcPct: 100, Rounds: 2})
 	st3.Step(nil, nil)
-	if st3.AtkComboLeft != 1 {
-		t.Fatalf("2 回合技能第 1 回合末应剩 1 回合, 实际 %d", st3.AtkComboLeft)
+	if st3.AtkCombos[0].Left != 1 {
+		t.Fatalf("2 回合技能第 1 回合末应剩 1 回合, 实际 %d", st3.AtkCombos[0].Left)
 	}
 	st3.Step(nil, nil)
-	if st3.AtkComboLeft != 0 {
-		t.Fatalf("第 2 回合末应归零, 实际 %d", st3.AtkComboLeft)
+	if st3.AtkCombos[0].Left != 0 {
+		t.Fatalf("第 2 回合末应归零, 实际 %d", st3.AtkCombos[0].Left)
 	}
 }
 
@@ -231,8 +262,8 @@ func TestComboHeadMergedIntoOfficer(t *testing.T) {
 			"【守方军官】杰里米·贝克 Lv.1 攻击加成+18%",
 			"战场初始相距6000, 攻守双方相向推进",
 		},
-		AtkCombo: &ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 40, Rounds: 1},
-		DefCombo: &ezfyComboSkill{ID: 2, Name: "不动如山", Kind: ezfyComboDef, Level: 3, Value: 54, ProcPct: 35, Rounds: 1},
+		AtkCombos: comboRuntimes([]*ezfyComboSkill{{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 40, Rounds: 1}}),
+		DefCombos: comboRuntimes([]*ezfyComboSkill{{ID: 2, Name: "不动如山", Kind: ezfyComboDef, Level: 3, Value: 54, ProcPct: 35, Rounds: 1}}),
 	}
 	st.appendComboHead()
 	if len(st.Head) != 4 {

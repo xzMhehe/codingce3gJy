@@ -1,6 +1,7 @@
 package seed
 
 import (
+	"fmt"
 	"log"
 
 	"gorm.io/gorm"
@@ -12,7 +13,7 @@ import (
 //
 // 设计要点（详见仓库根目录 `1022名将组合技能.md`）：
 //   - **系统专属**：普通军官（kind=1）学不到，只能由管理端把池子里的技能配给名将
-//     （`ezfy_cfg_general.combo_skill_id`）；
+//     （`ezfy_cfg_general.combo_skill_ids`，JSON 数组，一个名将可配多个）；
 //   - **通用**：一套效果对所有兵种生效（陆/海/空不区分），与战争系统的攻击/防御/射程/
 //     速度/反击/治疗/连击 同一套参数，不做第二套数值体系；
 //   - **按等级成长**：组合技等级由**军官等级**分档（默认每 35 级 +1，350 级 = 10 级），
@@ -128,15 +129,21 @@ func EnsureEzfyGeneralSkills(db *gorm.DB) {
 	}
 	upgradeLegacyEzfyGeneralSkills(db)
 	// 名将默认搭配：只在「一个都没配」时灌（幂等闸门）
+	// ★ 2026-10-24 多技能：combo_skill_ids（JSON 数组）也计入「已配过」闸门
 	var assigned int64
-	db.Model(&model.EzfyCfgGeneral{}).Where("kind = 2 AND combo_skill_id > 0").Count(&assigned)
+	db.Model(&model.EzfyCfgGeneral{}).
+		Where("kind = 2 AND (combo_skill_id > 0 OR (combo_skill_ids IS NOT NULL AND combo_skill_ids <> '' AND combo_skill_ids <> '[]'))").
+		Count(&assigned)
 	if assigned > 0 {
 		return
 	}
 	for gid, sid := range ezfyDefaultComboOfGeneral {
 		db.Model(&model.EzfyCfgGeneral{}).
 			Where("id = ? AND kind = 2", gid).
-			Update("combo_skill_id", sid)
+			Updates(map[string]interface{}{
+				"combo_skill_ids": fmt.Sprintf("[%d]", sid),
+				"combo_skill_id":  0,
+			})
 	}
 }
 
