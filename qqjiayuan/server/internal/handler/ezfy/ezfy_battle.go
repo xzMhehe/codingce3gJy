@@ -1589,13 +1589,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				st.comboFollowUp(unit, target, enemies, rangeD, atkFlat, unitAtkBonus, unitDefBonus,
 					defBreakPct, side, enemySide, stName, comboSide.Name, pct)
 			}
-			// ★ 2026-10-24 城墙耐久：只有攻方打「征服战」才扣；掠夺战 WallEnabled=false。
-			//   伤害取「对防」(AtkDef)，城墙属于防御设施；耐久打光后城墙防御加成随即归零。
-			if isAtk && st.WallEnabled && st.WallHp > 0 {
-				if st.hitWall(unit, atkBonus) > 0 {
-					wallHitThisRound[unit] = true
-				}
-			}
+			// ★ 2026-10-24 城墙是「像单位一样的耐久目标、只能被打」：**没有顺带拆墙**。
+			//   攻方开火只打守军；守军全灭后进入围城阶段（下方 siegeWall）才把墙当目标拆。
+			//   原来每回合附带 hitWall 的机制已按用户规则删除。
 		}
 		// ★ 军官技能「绝地反击」：**前N回合**被打且存活 → 立即反击本次攻击者。
 		//   2026-10-06 技能随军官等级自动升级：1级=前1回合 / 2级=前2回合 / 3级=前3回合。
