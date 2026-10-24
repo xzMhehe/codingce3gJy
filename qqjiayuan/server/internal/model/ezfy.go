@@ -1504,7 +1504,9 @@ type EzfyOrder struct {
 	Troops     string `gorm:"type:varchar(2000);comment:[{”troopId”:1,”count”:100}]" json:"troops"` // [{"troopId":1,"count":100}]
 	Officer    string `gorm:"type:varchar(255);comment:军官" json:"officer"`
 	// ★ 2026-10-24 带队军官 ID（默认 0）：命令与军官按 **id** 关联，解决同城同名军官
-	//   （历史遗留重名）互相误伤 —— 出征校验/自愈/改名都优先按 id，老数据无 id 时按名字兜底。
+	//   （历史遗留重名）互相误伤 —— 出征校验/自愈/改名/结算都只认 id。
+	//   存量在途订单由 seed.EnsureEzfyOrderOfficerIdBackfill 一次性回填；
+	//   仍为 0 的只是「军官已改名/删除」的孤儿订单（名字也关联不到，运行时不误伤任何人）。
 	OfficerId  uint   `gorm:"default:0;index;comment:带队军官ID" json:"officer_id"`
 	StartTime  int64  `gorm:"comment:开始时间" json:"start_time"`
 	ArriveTime int64  `gorm:"comment:Arrive时间" json:"arrive_time"`

@@ -124,6 +124,8 @@ func Run(db *gorm.DB, staticDir string) {
 		//   **不会删老唯一索引**（只锁 user_id）——不删的话同一玩家在第二个榜标记直接撞唯一键。
 		//   这里补上「删老索引 + 一次性复制老记录到另外两榜」（幂等）。
 		EnsureEzfyPvpExcludeTable(db)
+		// ★ 2026-10-24 单库模式同样回填存量在途订单 officer_id（与独立库 RunEzfy 同入口）
+		EnsureEzfyOrderOfficerIdBackfill(db)
 	}
 	// 二战风云：道具库存列是后加的，老行 NULL 回填 -1（无限库存）
 	if db.Migrator().HasTable("ezfy_cfg_item") {
@@ -3130,6 +3132,9 @@ func EnsureEzfyPvpFoeTable(db *gorm.DB) {
 
 // ezfyPvpExcludeBoardMigratedKey 「榜单排除名单拆分」一次性迁移的标记位（settings 表）。
 const ezfyPvpExcludeBoardMigratedKey = "ezfy_pvp_exclude_board_migrated"
+
+// ★ 2026-10-24 存量在途订单 officer_id 回填标记位（见 ezfy_order_officer_backfill.go）。
+const ezfyOrderOfficerIdBackfillKey = "ezfy_order_officer_id_backfill_v1"
 
 // EnsureEzfyPvpExcludeTable 幂等补建/升级 ezfy_pvp_exclude 表。
 //

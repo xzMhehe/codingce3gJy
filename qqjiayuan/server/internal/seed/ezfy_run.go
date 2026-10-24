@@ -114,6 +114,8 @@ func RunEzfy(db *gorm.DB, homeDB *gorm.DB) {
 	EnsureEzfyBattleLockColumns(db)
 	EnsureEzfyExchangeColumns(db)
 	EnsureEzfyOrderColumns(db)
+	// ★ 2026-10-24 存量在途订单 officer_id 回填（幂等，只在 officer_id=0 上动作）
+	EnsureEzfyOrderOfficerIdBackfill(db)
 	// ★★ 2026-10-18 装备是玩家背包资产（只认 user_id/officer_id），city_id 已废弃 →
 	//   存量清零，让任何按 city_id 删/迁装备的 SQL 天然命中 0 行（幂等）。
 	EnsureEzfyEquipmentNoCity(db)

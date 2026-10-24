@@ -862,6 +862,7 @@ export default {
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
       officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备 / bag装备背包
+      officerRenameInput: '',   // ★ 2026-10-24 怀旧军官详情：名称输入框（点 [改名] 用输入框里的名字）
       officerTreasureOpen: false, // ★ 2026-09-28 赏赐宝物：展开的未穿戴宝物列表
       // ★ 2026-10-10 性能（玩家反馈「军官详情非常卡」）：背包装备不再随军官详情下发，
       //   切到装备背包/装备/赏赐宝物时才按需拉 /officers/:id/backpack，切换军官时清空。
@@ -7650,6 +7651,8 @@ export default {
         if (r.code === 0) {
           this.officerDetailError = ''
           this.officerDetail = r.data
+          // ★ 2026-10-24 怀旧军官详情：加载后同步名称输入框（改名直接用输入框的值）
+          this.officerRenameInput = (r.data && r.data.officer && r.data.officer.name) || ''
           // ★ 2026-10-04 兜底：接口成功但没带回军官（异常/旧后端）→ 明确提示，
           //   别让页面永远停在「加载中...」
           if (!r.data || !r.data.officer) {
@@ -7835,16 +7838,15 @@ export default {
     // ★ 军官改名（消耗「军官改名卡」，只改玩家自己的军官）
     //   ⚠️ 方法名不能叫 doRename：城市改名已用该名，对象字面量后定义会覆盖先定义，
     //   导致城市改名的 [确定] 跑到军官改名逻辑（读 officerDetail 报错）。
-    async doOfficerRename () {
+    doOfficerRename () {
       const o = this.officerDetail.officer
       if (o.is_captive === 1) { this.notify('俘虏不能改名, 请先在军校收编'); return }
       // ★ 2026-10-23 在外采集/出征中禁止改名（订单按军官名关联，改名会导致归队/重复出征异常）
       if (o.status === 1) { this.notify('军官在外采集/出征中, 归队后才能改名'); return }
       if (o.rename_card <= 0) { this.notify('没有「军官改名卡」，可在商城购买'); return }
-      const name = await this.ask('给 ' + o.name + ' 改个新名字？', {
-        input: true, placeholder: '2~12 个字符', value: o.name
-      })
-      if (!name) return
+      const name = (this.officerRenameInput || '').trim()
+      if (!name) { this.notify('请输入新名字'); return }
+      if (name.length < 2 || name.length > 12) { this.notify('名字需 2~12 个字符'); return }
       const id = o.id
       api.post('/games/ezfy/officers/' + id + '/rename', { name }).then(r => {
         if (r.code !== 0) this.notify(r.msg || '改名失败')
@@ -7923,6 +7925,24 @@ export default {
         })
         // ★ 任命/卸任后同步刷新出征页的带队军官列表：若玩家随后立即出征，
         //   下拉里必须是最新的可选军官（避免「刚任命的市长/城守不出现在下拉」的观感）
+        this.loadOnDutyOfficers()
+        this.loadCityOfficers()
+      })
+    },
+    // ★ 2026-10-24 怀旧军官详情：[任命市长]（军校页任命逻辑的详情页入口，
+    //   任命后刷新详情让职位/状态即时更新）
+    doAppointMayor () {
+      const o = this.officerDetail && this.officerDetail.officer
+      if (!o) return
+      if (o.status === 1) { this.notify('军官在外采集/出征中, 归来后才能任命'); return }
+      if (o.is_captive === 1) { this.notify('俘虏不能任命市长'); return }
+      api.post('/games/ezfy/officers/' + o.id + '/position', { position: 1 }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '任命失败'); return }
+        this.notify('已任命为市长')
+        this.loadOfficerDetail(o.id)
+        api.get('/games/ezfy/officers').then(rr => {
+          if (rr.code === 0) this.officerData = rr.data
+        })
         this.loadOnDutyOfficers()
         this.loadCityOfficers()
       })

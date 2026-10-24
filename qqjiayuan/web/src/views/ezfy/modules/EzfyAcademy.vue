@@ -576,47 +576,62 @@
           <div class="old-line gray" v-else>(该名将暂无功勋介绍)</div>
         </div>
 
-        <!-- 属性 tab -->
+        <!-- 属性 tab（★ 2026-10-24 怀旧直排布局：基础信息区/核心属性区/战斗属性区/养成属性区/技能装备区/特殊技能区） -->
         <div v-if="ezfy.officerDetailTab === 'attr'">
+        <!-- ===== 基础信息区 ===== -->
         <div class="old-line">
-          星级：<b>{{ ezfy.officerDetail.officer.star }}</b><span class="gray" v-if="ezfy.officerDetail.officer.star_max">/{{ ezfy.officerDetail.officer.star_max }}</span>
-          &nbsp;等级：<b>{{ ezfy.officerDetail.officer.level }}</b>
-          &nbsp;经验：<span class="gray">{{ ezfy.officerDetail.officer.level >= ezfy.detailOfficerMaxLevel ? '—' : (ezfy.officerDetail.officer.exp + '/' + ezfy.officerDetail.officer.exp_need) }}</span>
-          &nbsp;忠诚：<b>{{ ezfy.officerDetail.officer.loyalty }}</b>
-          <br/>
-          职位：<b>{{ ezfy.officerDetail.officer.position_name }}</b>
-          &nbsp;状态：<b :class="ezfy.officerDetail.officer.status_name === '出征中' ? 'red' : ''">{{ ezfy.officerDetail.officer.status_name }}</b>
+          名称：
+          <input v-model="ezfy.officerRenameInput" type="text" maxlength="12" placeholder="2~12 个字符" style="width:120px"/>
+          <a href="javascript:;" @click="ezfy.doOfficerRename">[改名]</a>
+          <span class="gray" v-if="ezfy.officerDetail.officer.is_general">（名将）</span>
         </div>
+        <div class="old-line">归属统帅：<b>{{ ezfy.profile.nickname || '—' }}</b></div>
+        <div class="old-line">
+          等级：<b>{{ ezfy.officerDetail.officer.level }}</b>
+          <a v-if="ezfy.officerDetail.officer.status !== 1 && ezfy.officerDetail.officer.position === 0"
+             href="javascript:;" @click="ezfy.doExile">[解雇]</a>
+          <span v-if="ezfy.officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能解雇)</span>
+          <span v-else-if="ezfy.officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能解雇)</span>
+        </div>
+        <div class="old-line">
+          状态：<b :class="ezfy.officerDetail.officer.status_name === '出征中' ? 'red' : ''">{{ ezfy.officerDetail.officer.status_name }}</b>
+          <a v-if="ezfy.officerDetail.officer.status !== 1 && ezfy.officerDetail.officer.position === 0"
+             href="javascript:;" @click="ezfy.doAppointMayor">[任命市长]</a>
+        </div>
+        <div class="old-line">
+          星级：<b class="red">{{ '★'.repeat(ezfy.officerDetail.officer.star || 0) }}</b>
+          <span class="gray" v-if="ezfy.officerDetail.officer.star_max">({{ ezfy.officerDetail.officer.star }}/{{ ezfy.officerDetail.officer.star_max }})</span>
+          <a v-if="ezfy.officerDetail.officer.star_up_on && ezfy.officerDetail.officer.star < ezfy.officerDetail.officer.star_max"
+             href="javascript:;" @click="ezfy.doStarUp">[升星]</a>
+          <span v-if="ezfy.officerDetail.officer.star_up_on && ezfy.officerDetail.officer.star < ezfy.officerDetail.officer.star_max"
+                class="gray">(徽章 {{ ezfy.officerDetail.officer.star_card }} 枚)</span>
+        </div>
+        <div class="old-line">
+          经验：<span class="gray">{{ ezfy.officerDetail.officer.level >= ezfy.detailOfficerMaxLevel ? '—' : (ezfy.officerDetail.officer.exp + '/' + ezfy.officerDetail.officer.exp_need) }}</span>
+        </div>
+        <div class="old-line" v-if="ezfy.officerDetail.officer.salary > 0">薪水：{{ ezfy.officerDetail.officer.salary }}</div>
         <hr/>
+
+        <!-- ===== 核心属性区 ===== -->
+        <div class="old-line">
+          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_military">(+{{ ezfy.officerDetail.officer.equip_military }})</span>
+        </div>
+        <div class="old-line">
+          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_learning">(+{{ ezfy.officerDetail.officer.equip_learning }})</span>
+        </div>
         <div class="old-line">
           后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_logistics">(+{{ ezfy.officerDetail.officer.equip_logistics }})</span>
-          &nbsp;军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_military">(+{{ ezfy.officerDetail.officer.equip_military }})</span>
-          &nbsp;学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_learning">(+{{ ezfy.officerDetail.officer.equip_learning }})</span>
-          <br/>
+        </div>
+        <hr/>
+
+        <!-- ===== 战斗属性区 ===== -->
+        <div class="old-line">
           攻击加成：{{ ezfy.officerDetail.officer.attack }}
           &nbsp;防御加成：{{ ezfy.officerDetail.officer.defence }}
         </div>
-
-        <!-- ★ 2026-10-23 名将组合技能：系统专属战法（普通军官没有，后端下发 nil 就不渲染）
-             等级随**军官等级**分档；每回合按「发动率」掷骰，命中才生效，不是全程常驻。
-             ★ 2026-10-24 多技能：combo_skills 是数组，一个名将可学多个。 -->
-        <template v-if="ezfy.officerDetail.officer.combo_skills && ezfy.officerDetail.officer.combo_skills.length">
-          <hr/>
-          <div class="old-line" v-for="cs in ezfy.officerDetail.officer.combo_skills" :key="'ocs' + cs.id">
-            组合技：<b class="green">{{ cs.name }}</b>
-            <span class="gray">Lv.{{ cs.level }}
-              · {{ cs.kind_name }}
-              · 发动率 {{ cs.proc_pct }}%</span>
-            <br/>
-            <span class="green">{{ cs.value_text }}</span>
-            <span class="gray" v-if="cs.des">（{{ cs.des }}）</span>
-          </div>
-        </template>
-
         <!-- 套装与战斗加成（套装穿齐才生效；战斗加成只列**单件**的，套装加成单独一行，不重复） -->
         <template v-if="(ezfy.officerDetail.officer.set_progress && ezfy.officerDetail.officer.set_progress.length) ||
                          ezfy.officerEquipText(ezfy.officerDetail.officer)">
-          <hr/>
           <div class="old-line" v-if="ezfy.officerEquipText(ezfy.officerDetail.officer)">
             装备战斗加成：<span class="green">{{ ezfy.officerEquipText(ezfy.officerDetail.officer) }}</span>
           </div>
@@ -626,13 +641,15 @@
             <span v-if="sp.active && ezfy.equipAttrText(sp)" class="green">（{{ ezfy.equipAttrText(sp) }}）</span>
           </div>
         </template>
+        <hr/>
 
-        <!-- 属性加点（每升 1 级得 1 点） -->
+        <!-- ===== 养成属性区 ===== -->
         <div class="old-line">
-          可用属性点
+          可用属性点：
           <b :class="ezfy.officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ ezfy.officerDetail.officer.free_points }}</b>
           <span class="gray">（已分配 {{ ezfy.officerDetail.officer.used_points }}）</span>
           <span class="gray" v-if="ezfy.officerDetail.officer.star_points > 0">（其中升星加点 {{ ezfy.officerDetail.officer.star_points }}）</span>
+          <a href="javascript:;" @click="ezfy.doRespec">[洗点]</a>
         </div>
         <div class="old-line" v-if="ezfy.officerDetail.officer.free_points > 0">
           分配：
@@ -640,21 +657,15 @@
           &nbsp;军事<a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全加]</a>
           &nbsp;学识<a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全加]</a>
         </div>
-
-        <!-- 操作 -->
-        <div class="old-line officer-actions">
-          <a href="javascript:;" @click="ezfy.doGrant">[赏赐黄金]</a>
+        <div class="old-line">
+          忠诚：<b>{{ ezfy.officerDetail.officer.loyalty }}</b>
+          <a href="javascript:;" @click="ezfy.doGrant">[赏赐]</a>
           <a href="javascript:;" @click="ezfy.doTreasureGrant()">[赏赐宝物]</a>
-          <a href="javascript:;" @click="ezfy.doRespec">[洗点]</a>
-          <a v-if="ezfy.officerDetail.officer.status !== 1 && ezfy.officerDetail.officer.position === 0"
-             href="javascript:;" @click="ezfy.doExile">[流放]</a>
-          <a v-if="ezfy.officerDetail.officer.star_up_on &&
-                   ezfy.officerDetail.officer.star < ezfy.officerDetail.officer.star_max"
-             href="javascript:;" @click="ezfy.doStarUp">[升星]</a>
-          <span v-if="ezfy.officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能流放)</span>
-          <span v-else-if="ezfy.officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能流放)</span>
-          <span v-if="ezfy.officerDetail.officer.star_up_on && ezfy.officerDetail.officer.star < ezfy.officerDetail.officer.star_max"
-                class="gray">星级徽章 {{ ezfy.officerDetail.officer.star_card }} 枚</span>
+        </div>
+        <div class="old-line">
+          等级上限：<span :class="ezfy.officerDetail.officer.level >= ezfy.officerDetail.officer.max_level ? 'gray' : ''">
+            {{ ezfy.officerDetail.officer.level >= ezfy.officerDetail.officer.max_level ? '已突破等级上限' : ezfy.officerDetail.officer.max_level + ' 级' }}
+          </span>
         </div>
 
         <!-- 赏赐宝物：展开可选宝物列表（只列背包未穿戴的，按品质 +10/+20/+35/+50 忠诚） -->
@@ -674,6 +685,28 @@
             <tr v-if="!ezfy.officerTreasures.length"><td colspan="4" class="gray">(背包没有未穿戴的采集宝物, 可去野地采集或宝物签到获取)</td></tr>
           </table>
         </div>
+        <hr/>
+
+        <!-- ===== 技能装备区 ===== -->
+        <div class="old-line" v-for="(s, i) in ezfy.officerDetail.skills" :key="'ds' + s.name">
+          技能{{ i + 1 }}：{{ s.name }}<span v-if="s.level" class="green"> Lv.{{ s.level }}</span>
+          <a href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
+        </div>
+        <div class="old-line gray" v-if="!ezfy.officerDetail.skills.length">(未学技能, 可到「技能」tab 学习)</div>
+        <div class="old-line">
+          装备：<a href="javascript:;" @click="ezfy.openOfficerDetailTab('equip')">[查看]</a>
+        </div>
+        <hr/>
+
+        <!-- ===== 特殊技能区（名将组合技） ===== -->
+        <template v-if="ezfy.officerDetail.officer.combo_skills && ezfy.officerDetail.officer.combo_skills.length">
+          <div class="old-line red" v-for="cs in ezfy.officerDetail.officer.combo_skills" :key="'ocs' + cs.id">
+            特殊技能：[{{ cs.name }}]：{{ cs.value_text }}
+          </div>
+          <div class="old-line gray" v-if="ezfy.officerDetail.officer.combo_skills[0] && ezfy.officerDetail.officer.combo_skills[0].des">
+            （{{ ezfy.officerDetail.officer.combo_skills[0].des }}）
+          </div>
+        </template>
         </div>
 
         <!-- 技能 tab（已学 / 可学） -->

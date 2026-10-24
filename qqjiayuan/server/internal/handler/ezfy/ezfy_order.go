@@ -1449,7 +1449,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// 带队军官校验: 必须存在且在职(未出征/非俘虏)
 	// ★ 2026-10-05 性能：军官只查一次并全程复用（原来「校验/移速技能/军事加成/置出征态」各查一次 = 4 条）
 	// ★ 2026-10-24 同名军官不误伤：officerByNameUsable 在同名里优先挑「在职且未在外」的那位；
-	//   在外校验按军官 **id**（老数据命令无 id 时按名字兜底）。
+	//   在外校验按军官 **id**（存量在途订单已由 seed 迁移回填 officer_id）。
 	var lead *model.EzfyOfficer
 	if officer != "" {
 		lead = h.officerByNameUsable(city.ID, officer)
@@ -3119,7 +3119,16 @@ func (h *EzfyHandler) gatherYieldAt(order *model.EzfyOrder, wl *model.EzfyWildla
 	isSea := ezfyIsSeaWildRules(terrain)
 	troops := ezfyGatherTroopCount(order.Troops)
 	logistics := 0
-	if officer := h.envOfficer(env, uint(order.CityId), order.Officer); officer != nil {
+	// ★ 2026-10-24 优先按命令里的军官 id 取（同名军官互不误伤）；无 id（孤儿订单）才按名字，
+	//   名字也关联不到 → 无后勤加成（与老逻辑一致）。
+	var officer *model.EzfyOfficer
+	if order.OfficerId > 0 {
+		officer = h.officerOf(uint(order.CityId), int64(order.OfficerId))
+	}
+	if officer == nil {
+		officer = h.envOfficer(env, uint(order.CityId), order.Officer)
+	}
+	if officer != nil {
 		logistics = officer.Logistics
 	}
 	wildPct := h.ezfyGatherWildBonusPctFor(order, wl, resName, env)

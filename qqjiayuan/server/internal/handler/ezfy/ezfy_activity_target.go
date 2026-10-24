@@ -487,7 +487,13 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 
 	// 攻方加成与普通出征完全一致（军官 + 科技 + 技能）
 	atkTech := h.techMap(city.ID)
+	// ★ 2026-10-24 优先按命令里的军官 id 精确取（同名军官互不误伤）；老数据无 id 按名字兜底
 	leadOfficer := h.officerByName(city.ID, order.Officer)
+	if order.OfficerId > 0 {
+		if o := h.officerOf(city.ID, int64(order.OfficerId)); o != nil {
+			leadOfficer = o
+		}
+	}
 	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（：弹道学=射程，不参与攻击加成）
 	// ★ 2026-10-21 军训艺术(5) 改为造兵速度科技，不再参与战斗攻击加成。
 	atkBonus := h.officerBattleBonus(leadOfficer) +

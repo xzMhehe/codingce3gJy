@@ -165,13 +165,9 @@ func (h *EzfyHandler) officerList(cityId uint) []model.EzfyOfficer {
 		}
 		busy := false
 		for j := range orders {
-			// ★ 2026-10-24 优先按军官 id 比对（同名军官互不误伤）；老数据命令无 id 按名字兜底
-			if orders[j].OfficerId > 0 {
-				if orders[j].OfficerId == uint(o.ID) {
-					busy = true
-					break
-				}
-			} else if orders[j].Officer == o.Name {
+			// ★★ 2026-10-24 只认军官 id：命令表 officer 存名字会因改名/重名互相误伤，
+			//   存量在途订单已由 seed.EnsureEzfyOrderOfficerIdBackfill 回填 id。
+			if orders[j].OfficerId == uint(o.ID) {
 				busy = true
 				break
 			}
@@ -210,32 +206,18 @@ func (h *EzfyHandler) orderListByCity(cityId uint) []model.EzfyOrder {
 	return orders
 }
 
-// officerBusyOrder 军官当前是否还有未结束的命令（0行军中/1驻守中/2返航中/5战斗中/6等待中）
-//
-// 与 officer.Status 双保险：officer.Status 可能因历史数据漂移而不准，
-// 这里直接按命令表判定，保证「没回来就不能再出征」。
-func (h *EzfyHandler) officerBusyOrder(cityId uint, name string) bool {
-	if name == "" {
-		return false
-	}
-	for _, o := range h.orderListByCity(cityId) {
-		if o.Officer == name {
-			return true
-		}
-	}
-	return false
-}
-
 // officerBusyOrderByID 按**军官 ID** 判断该军官是否还有未结束的命令。
 //
-// ★ 2026-10-24 修复「同名军官互相误伤」：命令表存军官名，历史遗留的同城同名军官
-//   （线上实测 William·Rogers×4 等）会让按名字判断的外出状态**张冠李戴** ——
+// ★★ 2026-10-24 修复「同名军官互相误伤」：命令表 ezfy_order.officer 历史上只存军官名，
+//   历史遗留的同城同名军官（线上实测 William·Rogers×4 等）让按名字判断的外出状态**张冠李戴** ——
 //   出征中的「张三」会让在城的另一个「张三」改名/出征全被拦。
-//   新订单落库时同时写 officer_id，这里优先按 id 精确判断；officer_id=0（老数据）
-//   才回退按名字判断。
+//   新订单落库时同时写 officer_id，这里**只认 id**，不按名字关联（名字可改名/重名，不可靠）。
+//   存量在途订单的 officer_id 已由 seed.EnsureEzfyOrderOfficerIdBackfill 一次性回填；
+//   仍为 0 的只有「军官已改名/删除」的孤儿订单 —— 按名字也关联不到，直接视为不在外（安全：
+//   与老逻辑按名字匹配不到任何军官的结果一致，只是不再误判同城同名的其他军官）。
 func (h *EzfyHandler) officerBusyOrderByID(cityId uint, name string, officerId uint) bool {
 	if officerId == 0 {
-		return h.officerBusyOrder(cityId, name)
+		return false
 	}
 	for _, o := range h.orderListByCity(cityId) {
 		if o.OfficerId == officerId {
@@ -3066,6 +3048,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o), "is_captive": o.IsCaptive,
 			"exp_need": o.Level * 200,
+			// ★ 2026-10-24 怀旧军官详情：单军官每小时薪水（与原版列表口径一致，被俘不计）
+			"salary": officerSalaryOf([]model.EzfyOfficer{*o}),
 			// ★ 2026-09-29 上限分档：名将 350 / 普通军官 150，前端按此显示「满级」
 			"max_level": h.officerMaxLevelOf(o),
 			// ★ 2026-10-23 名将组合技能（普通军官恒为 nil，前端据此不显示这一行）
