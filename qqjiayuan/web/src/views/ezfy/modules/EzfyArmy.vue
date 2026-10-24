@@ -427,7 +427,7 @@
             时间：{{ ezfy.durText(ezfy.trainSel.train_time) }}<br/>
             <template v-if="ezfy.trainMode !== 'defence'">需要军工厂：{{ ezfy.trainSel.need_factory }}级<br/></template>
             <!-- ★ 2026-09-28 资源/前提条件移到这里（训练详情页）展示 -->
-            前提：{{ ezfy.trainSel.require || '无' }}<template v-if="ezfy.trainSel.type === 1"> <span class="red">(海军: 仅海城可训练)</span></template><br/>
+            前提：{{ ezfy.trainSel.require || '无' }}<template v-if="ezfy.trainSel.type === 1"></template><br/>
           </div>
           <div class="old-line green" v-if="ezfy.troopsData.train_discount > 0 && ezfy.trainMode !== 'defence'">
             节日活动·造兵打折：资源消耗 -{{ ezfy.troopsData.train_discount }}%（上方为折后价）
