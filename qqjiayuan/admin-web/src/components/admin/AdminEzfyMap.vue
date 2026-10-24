@@ -188,7 +188,6 @@
               <el-option label="已关闭" :value="0" />
             </el-select>
             <el-button type="primary" icon="el-icon-search" @click="awPage = 1; loadActWilds()">查询</el-button>
-            <span class="td-sub">活动野地 = 区别于普通野地、可打活动（守军/奖励可配）；关 = 普通野地</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openAwCreate">新增活动野地</el-button>
             <!-- ★ 2026-10-05 「管理端删除做好批量删除」 -->
@@ -196,13 +195,6 @@
               批量删除（已选 {{ awSel.length }}）
             </el-button>
           </div>
-
-          <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
-            <template slot="title">
-              给坐标设置活动野地配置：启用开关打开 = 该格按活动野地玩法（玩家可出征打活动、赢奖励但不占领）；
-              关闭或删除 = 该格按普通野地处理。等级/守军/奖励不填则用默认活动档。
-            </template>
-          </el-alert>
 
           <el-table :data="actWilds" v-loading="loadingAw" stripe border @selection-change="s => awSel = s">
             <el-table-column type="selection" width="46" align="center" />
@@ -818,6 +810,35 @@
           <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAwTroop">添加兵种</el-button>
           <span class="td-sub" style="margin-left:8px">不填则用默认活动守军</span>
         </el-form-item>
+        <!-- ★ 2026-10-24 守军行为：前进(默认) / 停止 / 后退 -->
+        <el-form-item label="守军行为">
+          <el-select v-model.number="aw.def_move_dir" style="width:160px">
+            <el-option label="前进（默认）" :value="1" />
+            <el-option label="停止" :value="0" />
+            <el-option label="后退" :value="-1" />
+          </el-select>
+          <el-tooltip placement="top" content="守军进场后的行为：前进 = 主动迎击攻方（默认）；停止 = 原地驻守；后退 = 且战且退">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
+        <!-- ★ 2026-10-24 守军等级 / 守军加点：0 = 用军官池默认；>0 覆盖守将 -->
+        <el-form-item label="守军等级">
+          <el-input-number v-model.number="aw.def_level" :min="0" :max="350" controls-position="right" style="width:160px" />
+          <el-tooltip placement="top" content="守将战斗等级（影响守将技能 / 组合技等级，名将满级 350）；0 = 用军官池默认">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
+        <el-form-item label="守军加点">
+          <span class="td-sub">武力</span>
+          <el-input-number v-model.number="aw.def_military" :min="0" controls-position="right" style="width:120px" />
+          <span class="td-sub" style="margin-left:8px">统率</span>
+          <el-input-number v-model.number="aw.def_logistics" :min="0" controls-position="right" style="width:120px" />
+          <span class="td-sub" style="margin-left:8px">谋略</span>
+          <el-input-number v-model.number="aw.def_learning" :min="0" controls-position="right" style="width:120px" />
+          <el-tooltip placement="top" content="守将三维加点，覆盖军官池属性（影响守方攻击 / 防御加成）；0 = 用军官池默认">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
         <el-form-item label="资源奖励">
           <el-input-number v-model.number="aw.res" :min="0" controls-position="right" style="width:100%" />
         </el-form-item>
@@ -862,11 +883,21 @@
         </el-form-item>
         <el-form-item label="被俘概率%">
           <el-input-number v-model.number="aw.capture_rate" :min="0" :max="100" controls-position="right" style="width:160px" />
-          <span class="td-sub">0 = 不俘虏；1~100 按该百分比（100=必俘虏）</span>
+          <el-tooltip placement="top" content="0 = 不俘虏；1~100 按该百分比（100=必俘虏）">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
+        <el-form-item label="被俘默认等级">
+          <el-input-number v-model.number="aw.captive_level" :min="0" :max="350" controls-position="right" style="width:160px" />
+          <el-tooltip placement="top" content="俘虏到的守将从这个等级起步；0 = 用军官池默认（通常 1 级）">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="可抓次数">
           <el-input-number v-model.number="aw.max_capture" :min="0" controls-position="right" style="width:160px" />
-          <span class="td-sub">同一玩家最多可抓该守将几次（默认1，抓满后概率归0）；0 = 不限</span>
+          <el-tooltip placement="top" content="同一玩家最多可抓该守将几次（默认1，抓满后概率归0）；0 = 不限">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="aw.des" maxlength="200" show-word-limit />
@@ -1064,7 +1095,7 @@ export default {
       alTroops: [], // 可视化守军行 [{troop_id,min,max}]
       alTreasures: [], // 可视化必掉宝物行 [{treasure_id,count}]
       alDrops: [], // 可视化掉落道具行 [{cfg_id,count,pct}]
-      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1 },
+      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, def_level: 0, def_military: 0, def_logistics: 0, def_learning: 0, captive_level: 0, def_move_dir: 1 },
       awOfficerKind: 1, // 活动野地守将类型：0未选 1普通 2名将（按下拉里军官的 kind 推断）
       awStarFilter: 0, // 活动野地守将星级筛选（0=全部）
       awTroops: [], // 活动野地守军可视化行 [{troop_id,count},...]（保存时序列化成 [[tid,count]]）
@@ -1341,7 +1372,7 @@ export default {
       })
     },
     openAwCreate () {
-      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1 }
+      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, def_level: 0, def_military: 0, def_logistics: 0, def_learning: 0, captive_level: 0, def_move_dir: 1 }
       this.awOfficerKind = 1 // ★ 默认守将类型 = 普通
       this.awStarFilter = 5  // ★ 默认星级筛选 = 5 星
       // ★ 默认直接选中一个「普通 5 星」守将（有就放进下拉）
@@ -1461,7 +1492,14 @@ export default {
         officer_id: Number(a.officer_id) || 0,
         treasures: treasures,
         capture_rate: Number(a.capture_rate) || 0,
-        max_capture: Number(a.max_capture) >= 0 ? Number(a.max_capture) : 1
+        max_capture: Number(a.max_capture) >= 0 ? Number(a.max_capture) : 1,
+        // ★ 2026-10-24 守军等级 / 加点 / 被俘等级 / 守军行为（0 = 用军官池默认；行为默认前进）
+        def_level: Number(a.def_level) || 0,
+        def_military: Number(a.def_military) || 0,
+        def_logistics: Number(a.def_logistics) || 0,
+        def_learning: Number(a.def_learning) || 0,
+        captive_level: Number(a.captive_level) || 0,
+        def_move_dir: Number(a.def_move_dir) === 0 ? 0 : (Number(a.def_move_dir) === -1 ? -1 : 1)
       }
       this.saving = true
       api.post('/admin/ezfy-act-wilds', payload).then(r => {
@@ -1842,5 +1880,8 @@ export default {
 <style scoped>
 /* 野地类型弹窗的「守军搭配」行 */
 .wild-troop-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+/* ★ 2026-10-24 i 图标悬浮提示（与其他管理页同款） */
+.cfg-tip { margin-left: 3px; padding: 1px 3px; color: #909399; font-size: 13px; cursor: help; vertical-align: -1px; }
+.cfg-tip:hover { color: #409eff; }
 @import './farm-admin.css';
 </style>

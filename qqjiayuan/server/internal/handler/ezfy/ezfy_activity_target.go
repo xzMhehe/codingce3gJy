@@ -508,6 +508,26 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
 		defGeneral = ezfyCfg.general(aw.OfficerId)
 	}
+	// ★ 2026-10-24 活动野地「守军等级 / 守军加点」：0 = 用军官池默认；>0 覆盖守将等级与三维
+	//   （浅拷贝，不污染 ezfyCfg 缓存里其他请求共用的对象）。等级影响守将技能 / 组合技等级，
+	//   三维影响守方攻/防加成（ezfyAttrToBonus(Learning) 等）。
+	if aw != nil && aw.Enabled == 1 && defGeneral != nil &&
+		(aw.DefLevel > 0 || aw.DefMilitary > 0 || aw.DefLogistics > 0 || aw.DefLearning > 0) {
+		g := *defGeneral
+		if aw.DefLevel > 0 {
+			g.Level = aw.DefLevel
+		}
+		if aw.DefMilitary > 0 {
+			g.Military = aw.DefMilitary
+		}
+		if aw.DefLogistics > 0 {
+			g.Logistics = aw.DefLogistics
+		}
+		if aw.DefLearning > 0 {
+			g.Learning = aw.DefLearning
+		}
+		defGeneral = &g
+	}
 	defBonus, defSpeedBonus := ezfyActWildDefBonus(defGeneral)
 	defOfficerDesc := ""
 	if defGeneral != nil {
@@ -542,6 +562,23 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
 		}
 	}
+	// ★ 2026-10-24 守军行为：前进(默认1) / 停止(0) / 后退(-1) → 注入守方每兵种默认移动方向。
+	//   前进是引擎默认行为，只有配了 停止/后退 才需要覆盖 defMoves。
+	defMoves := map[int]int{}
+	if aw != nil && aw.Enabled == 1 && aw.DefMoveDir != 1 {
+		dir := aw.DefMoveDir
+		if dir < -1 {
+			dir = -1
+		}
+		if dir > 1 {
+			dir = 1
+		}
+		for _, g := range defender {
+			if g.TroopId > 0 {
+				defMoves[g.TroopId] = dir
+			}
+		}
+	}
 	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
 		br = done
 	} else {
@@ -562,7 +599,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			atkSkillBreak, generalSkillDefBreak(defGeneral), atkTechs, nil, defDefBreak,
 			atkDefBonus, atkDefBreak,
 			h.buildTargetMap(city.ID, true), map[int]int{},
-			h.buildMoveMap(city.ID, true), map[int]int{},
+			h.buildMoveMap(city.ID, true), defMoves,
 			h.officerCounterRounds(leadOfficer),
 			generalCounterRounds(defGeneral),
 			h.ensureProfile(uid).Camp, defCamp,
@@ -870,7 +907,12 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 					report += "\n" + g.Name + "已被你捕获达到上限，无法再次俘虏"
 				}
 				if rate > 0 {
-					if c := h.createCaptiveOfficer(city, g, level, true, rate); c != "" {
+					// ★ 2026-10-24 被俘虏默认等级：配置了 CaptiveLevel 就按该等级发放俘虏（0 = 用军官池默认 1 级）
+					captiveLv := 0
+					if aw.CaptiveLevel > 0 {
+						captiveLv = aw.CaptiveLevel
+					}
+					if c := h.createCaptiveOfficer(city, g, level, true, rate, captiveLv); c != "" {
 						report += "\n" + c
 						// ★ 2026-10-05 名将野地**按玩家判定**（用户纠正）：只有**已抓到该守将的玩家**
 						//   该坐标才是普通野地；对没抓到的玩家仍是名将野地。所以这里**不再全局禁用**——

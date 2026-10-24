@@ -28,6 +28,9 @@ var ezfyActWildFields = map[string]string{
 	"level": "int", "troops": "string", "res": "int64",
 	"gold": "int64", "prestige": "int", "jewel": "string", "des": "string",
 	"officer_id": "int", "treasures": "string", "capture_rate": "int", "max_capture": "int",
+	// ★ 2026-10-24 守军强度微调 + 被俘等级 + 守军行为（0/默认 = 用军官池默认）
+	"def_level": "int", "def_military": "int", "def_logistics": "int", "def_learning": "int",
+	"captive_level": "int", "def_move_dir": "int",
 }
 
 // AdminEzfyActWildList GET /admin/ezfy-act-wilds —— 活动野地配置列表（分页）
@@ -69,6 +72,10 @@ func (h *EzfyAdmin) AdminEzfyActWildList(c *gin.Context) {
 			"gold": r.Gold, "prestige": r.Prestige, "jewel": r.Jewel, "des": r.Des,
 			"officer_id": r.OfficerId, "officer_name": oName, "officer_star": oStar,
 			"treasures": r.Treasures, "capture_rate": r.CaptureRate, "max_capture": r.MaxCapture,
+			// ★ 2026-10-24 守军强度微调 + 被俘等级 + 守军行为（编辑弹窗回填用）
+			"def_level": r.DefLevel, "def_military": r.DefMilitary,
+			"def_logistics": r.DefLogistics, "def_learning": r.DefLearning,
+			"captive_level": r.CaptiveLevel, "def_move_dir": r.DefMoveDir,
 			// 当前生效判定（enabled=1 才算活动目标）
 			"eff_act": (r.Enabled == 1),
 		})
@@ -131,6 +138,16 @@ func (h *EzfyAdmin) AdminEzfyActWildSave(c *gin.Context) {
 	if _, ok := vals["max_capture"]; !ok {
 		vals["max_capture"] = 1 // 默认同一玩家可抓 1 次
 	}
+	// ★ 2026-10-24 守军微调默认值：等级/加点/被俘等级 0 = 用军官池默认；守军行为默认前进(1)
+	for _, k := range []string{"def_level", "def_military", "def_logistics", "def_learning", "captive_level", "def_move_dir"} {
+		if _, ok := vals[k]; !ok {
+			if k == "def_move_dir" {
+				vals[k] = 1
+			} else {
+				vals[k] = 0
+			}
+		}
+	}
 	// ★★ 2026-10-05 修复「编辑会新增一个」：
 	//
 	//	原来**只按 (x,y) upsert**（不带 id）。在「编辑」对话框里改一下坐标再保存，
@@ -169,6 +186,7 @@ func (h *EzfyAdmin) AdminEzfyActWildSave(c *gin.Context) {
 		DoUpdates: clause.AssignmentColumns([]string{
 			"enabled", "level", "troops", "res", "gold", "prestige", "jewel", "des", "officer_id",
 			"treasures", "capture_rate", "max_capture",
+			"def_level", "def_military", "def_logistics", "def_learning", "captive_level", "def_move_dir",
 		}),
 	}).Model(&model.EzfyActWild{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
@@ -472,6 +490,16 @@ func checkActWildVals(vals map[string]interface{}) string {
 	// 同一玩家可抓次数：0 = 不限；否则 >= 1
 	if v, ok := vals["max_capture"].(int); ok && v < 0 {
 		return "可抓次数不能为负（0 = 不限，>=1 为上限）"
+	}
+	// ★ 2026-10-24 守军行为只能是 1（前进）/ 0（停止）/ -1（后退）
+	if v, ok := vals["def_move_dir"].(int); ok && v != 0 && v != 1 && v != -1 {
+		return "守军行为只能是 1（前进）/ 0（停止）/ -1（后退）"
+	}
+	// 守将等级 / 被俘等级不能超过名将满级 350
+	for _, k := range []string{"def_level", "captive_level"} {
+		if v, ok := vals[k].(int); ok && v < 0 {
+			return k + "不能为负（0 = 用军官池默认）"
+		}
 	}
 	// 守将军官必须来自军官池（普通军官/名将都可选）
 	if v, ok := vals["officer_id"].(int); ok && v > 0 {

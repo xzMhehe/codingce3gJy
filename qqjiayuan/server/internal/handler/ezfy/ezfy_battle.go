@@ -796,10 +796,14 @@ func ezfyMoveDir(unit *ezfyFightUnit, moveMap map[int]int, cmd string) int {
 	// (Java: moveMap.getOrDefault(unit.cfg.getId(), 1) > 0)
 	// 注意不能写成 moveMap[id] > 0: 缺键会取零值 0 变成「停止」,
 	// 导致攻方近战兵种原地不动、永远够不到敌人而必败。
+	// ★ 2026-10-24 扩展：map 值 <0 表示「后退」（活动野地守军行为可配 前进/停止/后退）。
 	if moveMap != nil {
 		if v, ok := moveMap[unit.cfg.ID]; ok {
 			if v > 0 {
 				return 1
+			}
+			if v < 0 {
+				return -1
 			}
 			return 0
 		}

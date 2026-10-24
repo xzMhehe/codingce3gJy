@@ -182,7 +182,18 @@ type EzfyActWild struct {
 	CaptureRate int `gorm:"default:0;comment:守将被俘虏概率%，0=不俘虏" json:"capture_rate"`
 	// ★ 2026-09-30 同一玩家可抓守将次数上限（默认 1）。玩家已抓到上限后，
 	//   再次胜利抓取概率强制 0（详见 ezfy_activity_target.go 的结算判定）。
-	MaxCapture int    `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
+	MaxCapture int `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
+	// ★ 2026-10-24 守军强度微调（0 = 用军官池默认）：
+	//   - DefLevel：守将战斗等级（影响守将技能 / 组合技等级）；0 = 跟随军官池 Level（通常 1）
+	//   - DefMilitary/DefLogistics/DefLearning：守将三维加点，覆盖军官池属性，影响守方攻/防加成
+	DefLevel     int `gorm:"default:0;comment:守将等级,0=用军官池默认" json:"def_level"`
+	DefMilitary  int `gorm:"default:0;comment:守将武力加点,0=用军官池默认" json:"def_military"`
+	DefLogistics int `gorm:"default:0;comment:守将统率加点,0=用军官池默认" json:"def_logistics"`
+	DefLearning  int `gorm:"default:0;comment:守将谋略加点,0=用军官池默认" json:"def_learning"`
+	// CaptiveLevel 被俘虏默认等级（0 = 用军官池 Level，即默认 1 级；>0 按该等级发放俘虏）
+	CaptiveLevel int `gorm:"default:0;comment:被俘虏默认等级,0=用军官池默认(1级)" json:"captive_level"`
+	// DefMoveDir 守军进场后的行为：1 前进（默认，主动迎击） 0 停止（原地驻守） -1 后退（且战且退）
+	DefMoveDir int `gorm:"default:1;comment:守军行为 1前进 0停止 -1后退(默认前进)" json:"def_move_dir"`
 	Des        string `gorm:"type:varchar(200);comment:描述" json:"des"`
 }
 
