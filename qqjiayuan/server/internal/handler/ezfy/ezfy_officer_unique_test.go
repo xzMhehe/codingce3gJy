@@ -78,6 +78,8 @@ func TestOfficerRenameRejectsDuplicateName(t *testing.T) {
 // 命令表 ezfy_order.officer 存的是军官名，改名后按旧名找不回军官 → 归队解不掉出征态，
 //
 //	officerList 自愈还会把 status 改回 0，导致同一军官被重复派出。
+//
+// ★ 2026-10-24 按军官 **id** 判断在外（同名军官互不误伤），文案保留「归队后才能改名」。
 func TestOfficerRenameRejectsBusyOfficer(t *testing.T) {
 	src := readOfficerSrc(t)
 	idx := strings.Index(src, "func (h *EzfyHandler) OfficerRename(")
@@ -88,8 +90,8 @@ func TestOfficerRenameRejectsBusyOfficer(t *testing.T) {
 	if end := strings.Index(body, "\nfunc "); end > 0 {
 		body = body[:end]
 	}
-	if !strings.Contains(body, "o.Status == 1 || h.officerBusyOrder(city.ID, o.Name)") {
-		t.Fatal("OfficerRename 必须拒绝在外采集/出征中的军官（status=1 或仍有未结束命令）")
+	if !strings.Contains(body, "o.Status == 1 || h.officerBusyOrderByID(city.ID, o.Name, uint(o.ID))") {
+		t.Fatal("OfficerRename 必须按军官 id 拒绝在外采集/出征中的军官（status=1 或仍有未结束命令）")
 	}
 	if !strings.Contains(body, "归队后才能改名") {
 		t.Fatal("OfficerRename 拒绝文案必须提示「归队后才能改名」")

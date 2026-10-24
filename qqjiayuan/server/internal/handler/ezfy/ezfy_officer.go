@@ -165,7 +165,13 @@ func (h *EzfyHandler) officerList(cityId uint) []model.EzfyOfficer {
 		}
 		busy := false
 		for j := range orders {
-			if orders[j].Officer == o.Name {
+			// ★ 2026-10-24 优先按军官 id 比对（同名军官互不误伤）；老数据命令无 id 按名字兜底
+			if orders[j].OfficerId > 0 {
+				if orders[j].OfficerId == uint(o.ID) {
+					busy = true
+					break
+				}
+			} else if orders[j].Officer == o.Name {
 				busy = true
 				break
 			}
@@ -198,7 +204,7 @@ func (h *EzfyHandler) orderListByCity(cityId uint) []model.EzfyOrder {
 	//     不加限定会把「刚打完仗返航归队的订单」当成还在驻守，
 	//     军官被永久判忙、出征页选不到（线上 1 区「斯大林无法出征」就是这么来的：
 	//     两条 status=3 result='' 的征服野地订单把它锁死了）。
-	h.DB.Select("id, officer").
+	h.DB.Select("id, officer, officer_id").
 		Where("city_id = ? AND (status IN (0,1,2,5,6) OR (status = 3 AND order_type = 6 AND IFNULL(result,'') = ''))", cityId).
 		Find(&orders)
 	return orders
@@ -218,6 +224,50 @@ func (h *EzfyHandler) officerBusyOrder(cityId uint, name string) bool {
 		}
 	}
 	return false
+}
+
+// officerBusyOrderByID 按**军官 ID** 判断该军官是否还有未结束的命令。
+//
+// ★ 2026-10-24 修复「同名军官互相误伤」：命令表存军官名，历史遗留的同城同名军官
+//   （线上实测 William·Rogers×4 等）会让按名字判断的外出状态**张冠李戴** ——
+//   出征中的「张三」会让在城的另一个「张三」改名/出征全被拦。
+//   新订单落库时同时写 officer_id，这里优先按 id 精确判断；officer_id=0（老数据）
+//   才回退按名字判断。
+func (h *EzfyHandler) officerBusyOrderByID(cityId uint, name string, officerId uint) bool {
+	if officerId == 0 {
+		return h.officerBusyOrder(cityId, name)
+	}
+	for _, o := range h.orderListByCity(cityId) {
+		if o.OfficerId == officerId {
+			return true
+		}
+	}
+	return false
+}
+
+// officerByNameUsable 按名字取本城**可带队**的军官（在职、非俘虏、未在外）。
+//
+// ★ 2026-10-24 修复「同名军官不能出征」：同名时 officerByName 只认第一行，
+//   出征页选「在城的那位」也可能拿到「出征中的那位」→ 被误判拒绝。
+//   这里在同名里优先挑真正空闲的；没有空闲的才回落第一个。
+func (h *EzfyHandler) officerByNameUsable(cityId uint, name string) *model.EzfyOfficer {
+	if name == "" {
+		return nil
+	}
+	var list []model.EzfyOfficer
+	if err := h.DB.Where("city_id = ? AND name = ?", cityId, name).Order("id ASC").Find(&list).Error; err != nil {
+		return nil
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	for i := range list {
+		o := &list[i]
+		if o.Status == 0 && o.IsCaptive != 1 && o.Position == 0 && !h.officerBusyOrderByID(cityId, name, uint(o.ID)) {
+			return o
+		}
+	}
+	return &list[0]
 }
 
 func (h *EzfyHandler) officerOf(cityId uint, id int64) *model.EzfyOfficer {
@@ -1356,7 +1406,7 @@ func (h *EzfyHandler) officerOnDutyList(cityId uint) []model.EzfyOfficer {
 		// ★ 2026-09-24 俘虏出征 bug 加固：与出征入口 createOrder 同一套口径，
 		//   Status 必须为 0(在职) 且不是俘虏、也没有带未归队的命令。
 		//   ★ 市长/城守有城务在身，不出现在可选出征军官列表。
-		if o.Status == 0 && o.IsCaptive != 1 && o.Position == 0 && !h.officerBusyOrder(cityId, o.Name) {
+		if o.Status == 0 && o.IsCaptive != 1 && o.Position == 0 && !h.officerBusyOrderByID(cityId, o.Name, uint(o.ID)) {
 			out = append(out, o)
 		}
 	}
@@ -2396,7 +2446,7 @@ func (h *EzfyHandler) OfficerDispatch(c *gin.Context) {
 		resp.ParamError(c, "俘虏不能派遣, 请先在军校收编")
 		return
 	}
-	if o.Status == 1 || h.officerBusyOrder(src.ID, o.Name) {
+	if o.Status == 1 || h.officerBusyOrderByID(src.ID, o.Name, uint(o.ID)) {
 		resp.ParamError(c, "军官"+o.Name+"正在出征中, 未归队前不能派遣")
 		return
 	}
@@ -3557,7 +3607,9 @@ func (h *EzfyHandler) OfficerRename(c *gin.Context) {
 	//   行军命令 ezfy_order.officer 存的是**军官名**（不是 id），军官在外采集/出征时改名会让
 	//   命令按旧名字找不回军官 —— 归航时 officerGoOut 解不掉出征态、officerList 还会把
 	//   status 自愈成 0，玩家就能把同一名军官重复派出去。统一要求归队后再改名。
-	if o.Status == 1 || h.officerBusyOrder(city.ID, o.Name) {
+	// ★★ 2026-10-24 按**军官 id** 判断在外：历史遗留的同城同名军官不再互相误伤 ——
+	//   出征中的「张三」不影响在城的另一个「张三」改名（原来按名字查命令表会误判）。
+	if o.Status == 1 || h.officerBusyOrderByID(city.ID, o.Name, uint(o.ID)) {
 		resp.ParamError(c, "军官在外采集/出征中, 归队后才能改名")
 		return
 	}

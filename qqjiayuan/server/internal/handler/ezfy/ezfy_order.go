@@ -1448,9 +1448,11 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	}
 	// 带队军官校验: 必须存在且在职(未出征/非俘虏)
 	// ★ 2026-10-05 性能：军官只查一次并全程复用（原来「校验/移速技能/军事加成/置出征态」各查一次 = 4 条）
+	// ★ 2026-10-24 同名军官不误伤：officerByNameUsable 在同名里优先挑「在职且未在外」的那位；
+	//   在外校验按军官 **id**（老数据命令无 id 时按名字兜底）。
 	var lead *model.EzfyOfficer
 	if officer != "" {
-		lead = h.officerByName(city.ID, officer)
+		lead = h.officerByNameUsable(city.ID, officer)
 		if lead == nil {
 			return "军官不存在"
 		}
@@ -1459,7 +1461,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		//   这里查命令表而不是只看 officer.Status —— 后者可能因历史数据漂移不准。
 		// ★ 2026-09-24 俘虏出征 bug 加固：只有 Status=0(在职) 的军官才能带队，
 		//   Status=1(出征中)/2(被俘) 一律拒绝（历史数据里被俘军官可能 IsCaptive=0, 单看字段会漏拦）。
-		if lead.Status != 0 || h.officerBusyOrder(city.ID, officer) {
+		if lead.Status != 0 || h.officerBusyOrderByID(city.ID, officer, uint(lead.ID)) {
 			return "军官" + lead.Name + "正在出征中, 未归队前不能再次出征"
 		}
 		if lead.IsCaptive == 1 {
@@ -1631,9 +1633,14 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		TargetX: targetX, TargetY: targetY, TargetId: targetId,
 		Troops:    groupsJSON(validTroops),
 		Officer:   officer,
+		// ★ 2026-10-24 命令同时记带队军官 id：归航/自愈/出征校验按 id 精确关联（同名军官互不误伤）
+		OfficerId: uint(0),
 		StartTime: now, ArriveTime: now + travelSec*1000,
 		ReturnTime: now + travelSec*1000*2, Status: 0,
 		OilUsed: oilCost, WaitMin: waitMin, AutoBattle: autoBattle,
+	}
+	if lead != nil {
+		order.OfficerId = uint(lead.ID)
 	}
 	if resources != nil {
 		b, _ := json.Marshal(resources)
@@ -2446,8 +2453,13 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 				}(), "", order.ID)
 	}
 	// 带队军官归来, 恢复在职
+	// ★ 2026-10-24 按命令里的军官 id 精确解锁（同名军官互不误伤）；老数据无 id 按名字兜底
 	if order.Officer != "" {
-		h.officerGoOut(city, order.Officer, false)
+		if order.OfficerId > 0 {
+			h.officerGoOutByID(order.OfficerId, false)
+		} else {
+			h.officerGoOut(city, order.Officer, false)
+		}
 	}
 	order.Status = 3
 	order.Carry = ""
@@ -3540,7 +3552,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	attacker := parseGroups(order.Troops)
 	atkTech := h.techMap(city.ID)
 	// 带队军官(军事属性 + 装备 + 技能)与科技加成
+	// ★ 2026-10-24 按命令里的军官 id 精确取（同名军官互不误伤）；老数据无 id 按名字兜底
 	leadOfficer := h.officerByName(city.ID, order.Officer)
+	if order.OfficerId > 0 {
+		if o := h.officerOf(city.ID, int64(order.OfficerId)); o != nil {
+			leadOfficer = o
+		}
+	}
 	officerBonus := h.officerBattleBonus(leadOfficer)
 	// 攻击加成：武器科技(6)+3%/级 · 重工技术(9)+2%/级
 	// ★ 2026-10-21 军训艺术(5) 改为「造兵速度」科技，不再参与战斗攻击加成。
