@@ -5179,6 +5179,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.saveCityRes(target)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
 				Updates(map[string]interface{}{"feelings": target.Feelings, "grievance": target.Grievance})
+			// ★ 2026-10-24 攻方「掠夺报告」补民心变化（与征服报告同款格式），
+			//   玩家被掠夺后一眼能看出民心扣了多少、还剩多少。
+			report += fmt.Sprintf("\n民心 - %d\n当前民心 %d", lootFeel, target.Feelings)
 			// ★ 2026-10-06 「被掠夺报告」正文延后到战斗结算完统一写（见函数末尾），
 			//   与攻方「掠夺报告」同款完整格式；这里只扣民心/民怨。
 		}
