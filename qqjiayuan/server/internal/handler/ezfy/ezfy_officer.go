@@ -3511,7 +3511,9 @@ func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (stri
 	}
 	rate := ezfyStarSuccessRate()
 	if rand.Intn(100) >= rate {
-		return fmt.Sprintf("升星失败(成功率%d%%，星级不变)", rate), false
+		// ★ 2026-10-25 用户要求「提示不要给玩家展示具体概率」→ 失败只说「升星失败」，
+		//   成功率属于运维参数（管理端可调），玩家端不再外露。
+		return "升星失败", false
 	}
 	// ★ 2026-09-26 「每星三维加成 随机 1-配置的属性」：
 	//   三维**各自**随机 +[1, 配置值]（配置 = 管理端 `officer_star_attr_gain`，默认 10），

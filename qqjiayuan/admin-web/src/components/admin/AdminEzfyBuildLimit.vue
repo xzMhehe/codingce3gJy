@@ -472,7 +472,7 @@
               <el-input-number v-model.number="form.officer_star_max" :min="1" :max="100" controls-position="right" style="width:180px" />
             </el-form-item>
             <el-form-item>
-              <template slot="label">招生简章出五星军官概率(%)<el-tooltip placement="top" :content="tips.recruit_five_star_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <template slot="label">招生简章出五星军官概率<el-tooltip placement="top" :content="tips.recruit_five_star_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.recruit_five_star_rate" :min="1" :max="100" controls-position="right" style="width:180px" />
             </el-form-item>
             <div class="tab-save-bar">
@@ -879,10 +879,11 @@ export default {
           '与「排行榜 → 风云榜」页顶部的开关是同一项配置',
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
         officer_star_chance: '每次升星的成功概率，失败同样消耗 1 枚星级徽章，默认 20',
-        officer_star_attr_gain: '每升 1 星，军官三维属性各 +N，默认 10',
+        officer_star_attr_gain: '每升 1 星，军官三维（军事/后勤/学识）各自独立随机 +1~N，默认 10。' +
+          '例：配 10 → 军事随机 1~10、后勤随机 1~10、学识随机 1~10，三项互不相等也没关系。',
         officer_star_max: '军官最高可升到的星级，默认 5',
         // ★ 2026-09-30 招生简章出五星军官概率
-        recruit_five_star_rate: '使用「招生简章」刷新军校候选时出 5 星军官的概率：1 = 1%，100 = 100% 必刷出 5 星军官',
+        recruit_five_star_rate: '使用「招生简章」刷新军校候选时出 5 星军官的概率（百分比）：1 = 1%，100 = 100% 必刷出 5 星军官',
       }
     }
   },

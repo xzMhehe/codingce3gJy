@@ -7893,12 +7893,13 @@ export default {
       })
     },
     // ★ 升星（消耗「星级徽章」；成功率/每星加点/上限均可后台配置）
+    // ★ 2026-10-25 用户要求：**不给玩家展示成功率和每星加成**（那是运维参数），
+    //   确认框只问「要不要升星」，失败提示也只有「升星失败」。
     async doStarUp () {
       const o = this.officerDetail.officer
       if (o.star >= o.star_max) { this.notify('星级已达上限'); return }
       if (o.star_card <= 0) { this.notify('没有「星级徽章」，可在商城购买或开宝箱获得'); return }
-      if (!await this.ask('使用 1 枚「星级徽章」给 ' + o.name + ' 升星吗？\n成功率 ' + o.star_rate +
-        '%，成功后三维各 +' + o.star_attr_gain + '（星级 ' + o.star + '→' + (o.star + 1) + '）')) return
+      if (!await this.ask('使用 1 枚「星级徽章」给 ' + o.name + ' 升星吗？（星级 ' + o.star + '→' + (o.star + 1) + '）')) return
       const id = o.id
       api.post('/games/ezfy/officers/' + id + '/starup', {}).then(r => {
         this.notify(r.msg || (r.code === 0 ? '升星成功' : '升星失败'))

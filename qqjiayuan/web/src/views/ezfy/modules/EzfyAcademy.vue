@@ -188,7 +188,7 @@
                   style="display:inline-block;background:linear-gradient(180deg,#ffd700,#e6a800);color:#5b3a00;font-size:12px;line-height:14px;padding:0 5px;border-radius:3px;font-weight:bold;margin-left:4px;vertical-align:1px;">名将</span>
             ({{ o.level }}级)
             <a href="javascript:;" @click="ezfy.openOfficer(o.id)">查看</a><br/>
-            状态:{{ o.status_name }}<span v-if="o.position_name !== '无'" class="blue">（{{ o.position_name }}）</span> &nbsp; 评价:{{ o.star }}星<br/>
+            状态:{{ o.status_name }}<span v-if="o.position_name !== '无'" class="blue">（{{ o.position_name }}）</span> &nbsp; 评价:{{ '☆'.repeat(o.star || 0) }}<br/>
             后勤/军事/学识/忠诚：<br/>
             {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}
             <span class="green" v-if="ezfy.equipTip(o)">{{ ezfy.equipTip(o) }}</span><br/>
@@ -233,7 +233,7 @@
           <tr v-for="g in ezfy.recruitData.candidates" :key="'rc' + g.key">
             <td>{{ g.name }}</td>
             <td>{{ g.level }}级</td>
-            <td>{{ g.star }}星</td>
+            <td>{{ '☆'.repeat(g.star || 0) }}</td>
             <td>{{ g.logistics }}/{{ g.military }}/{{ g.learning }}</td>
             <td>{{ g.cost }}</td>
             <td>
@@ -481,7 +481,7 @@
           <tr v-for="o in ezfy.captiveOfficers" :key="'cp' + o.id">
             <td>{{ o.name }}</td>
             <td>{{ o.level }}级</td>
-            <td>{{ o.star }}星</td>
+            <td>{{ '☆'.repeat(o.star || 0) }}</td>
             <td>{{ o.logistics }}/{{ o.military }}/{{ o.learning }}</td>
             <td>免费</td>
             <td>
@@ -604,12 +604,10 @@
           </template>
         </div>
         <div class="old-line">
-          星级：<b class="red">{{ '★'.repeat(ezfy.officerDetail.officer.star || 0) }}</b>
+          星级：<b class="red">{{ '☆'.repeat(ezfy.officerDetail.officer.star || 0) }}</b>
           <span class="gray" v-if="ezfy.officerDetail.officer.star_max">({{ ezfy.officerDetail.officer.star }}/{{ ezfy.officerDetail.officer.star_max }})</span>
           <a v-if="ezfy.officerDetail.officer.star_up_on && ezfy.officerDetail.officer.star < ezfy.officerDetail.officer.star_max"
              href="javascript:;" @click="ezfy.doStarUp">[升星]</a>
-          <span v-if="ezfy.officerDetail.officer.star_up_on && ezfy.officerDetail.officer.star < ezfy.officerDetail.officer.star_max"
-                class="gray">(徽章 {{ ezfy.officerDetail.officer.star_card }} 枚)</span>
         </div>
         <div class="old-line">
           经验：<span class="gray">{{ ezfy.officerDetail.officer.level >= ezfy.detailOfficerMaxLevel ? '—' : (ezfy.officerDetail.officer.exp + '/' + ezfy.officerDetail.officer.exp_need) }}</span>
