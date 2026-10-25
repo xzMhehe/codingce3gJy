@@ -5804,15 +5804,8 @@ export default {
       })
     },
     // ---- 司令部 ----
-    // 军官装备加成提示（有加成才显示，例：装备 军事+5 后勤+5）
-    equipTip (o) {
-      if (!o) return ''
-      const parts = []
-      if (o.equip_military) parts.push('军事+' + o.equip_military)
-      if (o.equip_logistics) parts.push('后勤+' + o.equip_logistics)
-      if (o.equip_learning) parts.push('学识+' + o.equip_learning)
-      return parts.length ? '(装备 ' + parts.join(' ') + ')' : ''
-    },
+    // ★ 2026-10-25 用户要求「军官列表简约」：equipTip（列表里的「(装备 军事+5 后勤+5 学识+5)」）
+    //   已从 EzfyAcademy 列表删除，装备加成统一进军官详情（officerEquipText）看。
     // ★ 2026-09-25：openEquipDetail（跳独立「装备详情页」）已随页面一起删除 ——
     //   各装备表不再有 [查看] 按钮，改成点装备名/套装名在该行下面展开详情卡。
     // ★ 装备六项战斗属性的展示文案（伤害/防御/生命/移动距离/暴击几率/暴击伤害）

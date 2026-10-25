@@ -190,8 +190,8 @@
             <a href="javascript:;" @click="ezfy.openOfficer(o.id)">查看</a><br/>
             状态:{{ o.status_name }}<span v-if="o.position_name !== '无'" class="blue">（{{ o.position_name }}）</span> &nbsp; 星级:{{ o.star }}☆<br/>
             后勤/军事/学识/忠诚：<br/>
-            {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}
-            <span class="green" v-if="ezfy.equipTip(o)">{{ ezfy.equipTip(o) }}</span><br/>
+            <!-- ★ 2026-10-25 列表简约化：不再展示「(装备 军事+5 后勤+5 学识+5)」，装备加成进军官详情看 -->
+            {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}<br/>
             攻/防：{{ o.attack }}/{{ o.defence }}<br/>
             <!-- ★ 可用属性点：升过级还没点的军官一眼能看见 -->
             <span v-if="o.free_points > 0" class="red">
