@@ -591,7 +591,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		{ID: 1014, Name: "荣誉史记", ItemType: 10, Param1: 20000000, PriceGold: 0, PriceDiamond: 80, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官管理页面使用, 每本增加 20000000 经验"},
-		{ID: 1015, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 0, PriceDiamond: 100, Stock: -1,
+		{ID: 1015, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 0, PriceDiamond: 5, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
 		// ★ 2026-09-26 用户明确：洗点**只动属性**，技能/等级/经验都保留
@@ -613,7 +613,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Description: "出征时使用: 每使用1个本次出征兵力上限+10万"},
 		// ★ 2026-09-23 「军官升星卡」改名「星级徽章」，固定 20% 概率升 1 星、最高 5 星，
 		//   失败消耗徽章、不降星级与属性（星级上限/失败保留开关仍走管理端「系统配置」页）。
-		{ID: 1023, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 50, Stock: -1,
+		{ID: 1023, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 5, Stock: -1,
 			Category:    "军官道具",
 			Description: "对军官使用, 每枚有20%概率升1星, 最高五星; 失败消耗徽章, 不降低星级和属性"},
 		// ★ 2026-09-23 「玩家自己的军官也能改名」：消耗「军官改名卡」，
@@ -656,11 +656,13 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	// ★ 2026-09-26 按线上现值：军官洗点卡改回**黄金**渠道 80000（原为 2 钻石）→ 值成 {黄金, 钻石}。
 	// ★ 2026-10-11 修复「道具 cfg_id 全体 +1000 迁移没盖全」：这里的 key 是**新号**（原 14/15/16/23 已作废），
 	//   否则 Updates 打到不存在的行 → 价格强制对齐静默失效。
+	// ★★ 2026-10-25 用户要求降价：军官技能书 100 → **5 钻石**、星级徽章 50 → **5 钻石**。
+	//   这里是**每次启动强制对齐**的入口，改完重启二战服即生效（管理端后台改价会被这里覆盖，属既有设计）。
 	priceFix := map[int][2]int64{
 		1014: {0, 80},    // 荣誉史记   80 钻石（2026-09-30 按线上现值）
-		1015: {0, 100},   // 军官技能书 100 钻石
+		1015: {0, 5},     // 军官技能书 5 钻石（2026-10-25 由 100 下调）
 		1016: {80000, 0}, // 军官洗点卡 80000 黄金
-		1023: {0, 50},    // 星级徽章   50 钻石
+		1023: {0, 5},     // 星级徽章   5 钻石（2026-10-25 由 50 下调）
 	}
 	for id, p := range priceFix {
 		db.Model(&model.EzfyCfgItem{}).Where("id = ?", id).
