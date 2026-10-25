@@ -5014,12 +5014,14 @@ export default {
       if (name === null) return
       api.post('/games/ezfy/map/stars', { x: x, y: y, name: name }).then(r => {
         if (r.code === 0) {
-          this.showStars = true
+          // ★ 2026-10-25 用户要求：「收藏列表」只在点它时展开/收起，**收藏成功后不要自动展开**
+          //   （原来这里 showStars = true，收藏一次列表就被顶出来，玩家以为点了别的东西）
           // 本地先插一条（临时 id=0）→ 按钮立刻变「已收藏」，随后拉列表换成真实 id
           if (!this.mapStars.some(s => Number(s.x) === Number(x) && Number(s.y) === Number(y))) {
             this.mapStars = this.mapStars.concat([{ id: 0, x: x, y: y, name: name }])
           }
           this.loadStars()
+          this.notify(r.msg || '已收藏')
         } else {
           // 「该坐标已收藏」= 库里其实有、本地没同步 → 拉列表让它显示「已收藏」，下次点击就是取消
           this.loadStars()
