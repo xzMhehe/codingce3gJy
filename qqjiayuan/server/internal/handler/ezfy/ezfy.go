@@ -937,14 +937,17 @@ func (h *EzfyHandler) isCoastalCity(city *model.EzfyCity) bool {
 
 // cityKind 城市类型文案
 //
-// ★ 统一口径：建在沿海平原上的叫「沿海城市」，其余叫「内陆城市」。
+// ★ 统一口径：建在沿海平原上的叫「海城」，其余叫「陆城」。
 //
-//	（原来叫「海城 / 陆地城市」，与城市列表、城市状态页两处不一致）
+//	历史：2026-09 曾统一成长文案「沿海城市 / 内陆城市」以求两处一致；
+//	2026-10-24 用户要求「文案简化：内陆城市→陆城；沿海城市→海城」（建城页图例先改）；
+//	2026-10-25 用户在城市状态页又指出「[沿海城市] 太长，要 [海城]」→ 源头统一成短文案，
+//	  城市列表 / 城市状态页 / 迁城页共用这一个函数，别再各写一套。
 func (h *EzfyHandler) cityKind(city *model.EzfyCity) string {
 	if h.isSeaCity(city) {
-		return "沿海城市"
+		return "海城"
 	}
-	return "内陆城市"
+	return "陆城"
 }
 
 // ============ 懒结算五连（复刻 GameServiceImpl checkBuildingDone/collectTrainQueue/calcResource/processOrders） ============
@@ -4704,7 +4707,11 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 			"cooldown_min": ezfyPlacateCooldownMinutes(),
 			"cd_left":      max64(0, city.PlacateTime+ezfyPlacateCooldownMs()-time.Now().UnixMilli()),
 		},
-		"continent": ezfyContinentName(city.X, city.Y),
+		// ★ 2026-10-25 用户要求「大海改成洲（例如北冰洋）」：
+		//   ezfyContinentName 只在**陆地**上有意义，海洋坐标一律回落成「大海」；
+		//   ezfyRegionName 则陆地给洲名、海洋给大洋名（北冰洋/太平洋/大西洋/印度洋/南冰洋），
+		//   与地图格子「所属区域」、迁城页「所属洲」同一口径。
+		"continent": ezfyRegionName(city.X, city.Y),
 		// 海城/陆地城市(海城可建航海协会、训练海军)
 		"is_sea":       h.isSeaCity(&city),
 		"city_kind":    h.cityKind(&city),

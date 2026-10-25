@@ -62,15 +62,18 @@
                于是这里永远显示「陆地城市」，和城市列表的「海城」对不上 —— 用户反馈的 bug） -->
           <span :class="ezfy.cityIsSea ? 'green' : 'gray'">[{{ ezfy.cityKindLabel }}]</span><br/>
           市政厅: {{ ezfy.city.city_level }}级<br/>
-          <!-- ★ 2026-10-25 用户要求：本页显示当前城市的市长/城守是哪个军官（数据见 loadOfficerPosts） -->
-          市长: <span :class="ezfy.cityMayor ? '' : 'gray'">{{ ezfy.cityMayor || '未任命' }}</span>
+          <!-- ★ 2026-10-25 用户要求：本页显示当前城市的市长/城守是哪个军官（数据见 loadOfficerPosts），
+               且**分两行**显示（原来挤在一行太长）。 -->
+          市长: <span :class="ezfy.cityMayor ? '' : 'gray'">{{ ezfy.cityMayor || '未任命' }}</span><br/>
           城守: <span :class="ezfy.cityGuard ? '' : 'gray'">{{ ezfy.cityGuard || '未任命' }}</span><br/>
           <!-- ★ 2026-10-22 人口上限只由民居容量决定；★ 2026-10-23 超限人口在下一次懒结算直接夹平。 -->
           <!-- ★ 2026-10-25 用户要求压缩成一行：人口: 559354/553756 上限: 56万 -->
           人口: {{ ezfy.city.pop }}/{{ ezfy.freePop }} 上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '无' }}<br/>
           民心/民怨: {{ ezfy.city.feelings }}/{{ ezfy.city.grievance }} 税率: {{ ezfy.city.tax_rate }}%<br/>
-          建筑: {{ ezfy.buildings.length }}座 (军事+资源区 {{ ezfy.areaCount }}/{{ ezfy.areaCap }})<br/>
-          军队: {{ ezfy.totalTroops }} (城外{{ ezfy.marching }}支队伍行进, {{ ezfy.occupying }}支驻守)<br/>
+          <!-- ★ 2026-10-25 用户要求简写：军事+资源区 → 军+资 -->
+          建筑: {{ ezfy.buildings.length }}座 (军+资 {{ ezfy.areaCount }}/{{ ezfy.areaCap }})<br/>
+          <!-- ★ 2026-10-25 用户要求简写：城外N支队伍行进 → 城外N支 -->
+          军队: {{ ezfy.totalTroops }} (城外{{ ezfy.marching }}支, {{ ezfy.occupying }}支驻守)<br/>
           附属野地: {{ ezfy.wildlands.length }}/{{ ezfy.city.city_level }}<br/>
           训练队列: {{ ezfy.queues.length }} | 未读军情: {{ ezfy.unreadReports }}<br/>
           <!-- ★ 2026-10-15 免战状态 + 时效（剩余时间每秒本地重算，见 Ezfy.vue::peaceText） -->

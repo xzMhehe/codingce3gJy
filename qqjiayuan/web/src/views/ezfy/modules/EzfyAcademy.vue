@@ -590,8 +590,6 @@
           等级：<b>{{ ezfy.officerDetail.officer.level }}</b>
           <a v-if="ezfy.officerDetail.officer.status !== 1 && ezfy.officerDetail.officer.position === 0"
              href="javascript:;" @click="ezfy.doExile">[解雇]</a>
-          <span v-if="ezfy.officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能解雇)</span>
-          <span v-else-if="ezfy.officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能解雇)</span>
         </div>
         <!-- ★ 2026-10-25 状态行加「任命城守」，并**显示当前职位**：
              以前这里只写「在职」，任命成功后职位没地方显示 → 玩家以为「任命了不生效」
@@ -622,15 +620,17 @@
         <!-- ===== 核心属性区 ===== -->
         <!-- ★ 2026-10-25 加点按钮从下面「分配：后勤[+1][+10][全加] …」那一行**挪到三项各自后面**
              （用户要求）；「属性点」也从养成属性区提到这里，紧跟着它控制的三项，洗点留在同一行。
-             只有有可用属性点时才显示 [+1][+10][全]（与原来「分配」行的显隐条件一致）。 -->
+             只有有可用属性点时才显示 [+1][+10][全]（与原来「分配」行的显隐条件一致）。
+             ★ 后面的 `(+N)` 只表示**装备+套装**加成，用 `officerEquipPlus`（有效值−自身属性）现算，
+               不再用后端下发的 equip_* —— 那个字段口径一漂就会把玩家刚加的属性点也算成「(+3)」。 -->
         <div class="old-line">
-          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_military">(+{{ ezfy.officerDetail.officer.equip_military }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全]</a></template>
+          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerEquipPlus.mil">(+{{ ezfy.officerEquipPlus.mil }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全]</a></template>
         </div>
         <div class="old-line">
-          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_learning">(+{{ ezfy.officerDetail.officer.equip_learning }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全]</a></template>
+          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerEquipPlus.lea">(+{{ ezfy.officerEquipPlus.lea }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全]</a></template>
         </div>
         <div class="old-line">
-          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_logistics">(+{{ ezfy.officerDetail.officer.equip_logistics }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全]</a></template>
+          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerEquipPlus.log">(+{{ ezfy.officerEquipPlus.log }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全]</a></template>
         </div>
         <div class="old-line">
           属性点：<b :class="ezfy.officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ ezfy.officerDetail.officer.free_points }}</b><a href="javascript:;" @click="ezfy.doRespec">[洗点]</a>

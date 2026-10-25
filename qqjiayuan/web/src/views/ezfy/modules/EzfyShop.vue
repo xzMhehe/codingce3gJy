@@ -186,12 +186,11 @@
                · 库存 -1 = 无限（管理端「数据管理 → 道具配置」维护）。 -->
           <table class="ezfy-plain-table">
             <tr><th>名称</th><th>价格</th><th>库存</th><th>操作</th></tr>
-            <template v-for="(it, idx) in ezfy.mallPaged">
-              <!-- ★ 2026-10-20 「全部」视图按分类插入分组标题，同类商品聚在一起 -->
-              <tr v-if="!ezfy.mallCat && (idx === 0 || ezfy.mallPaged[idx - 1].category !== it.category)"
-                  :key="'mh' + it.category" class="mall-cat-row">
-                <td colspan="4">{{ ezfy.mallCatShort(it.category) || '其他' }}（{{ ezfy.mallCatCounts[it.category] || 0 }} 件）</td>
-              </tr>
+            <!-- ★ 2026-10-25 用户要求：**去掉分页列表里的分类分组标题**
+                 （原来「全部」视图会在每页中间插「资源（8 件）」「加速（15 件）」这种整行标题，
+                 占掉表格行、翻页时看着像多了一堆分类行）→ 现在只按分类顺序平铺。
+                 顶部的分类筛选按钮保留，想只看某一类仍可点。 -->
+            <template v-for="it in ezfy.mallPaged">
               <tr :key="'mi' + it.id">
                 <td>{{ it.name }}</td>
                 <td>
@@ -231,8 +230,10 @@
                    （套装 1~7 阶梯价见 seed 的 ezfySetDiamondPrice 100~300，8~17 顶套 400，
                     系列件 250~400，全部在 100~400 档内）；
                  · 买入后到「军官 → 军官详情」穿到军官身上。 -->
-            <!-- ★ 部位筛选（11 个部位，来自装备距离伤害表）：流式排列自动换行 -->
-            <div class="ezfy-slot-grid">
+            <!-- ★ 部位筛选（11 个部位，来自装备距离伤害表）：流式排列自动换行
+                 ★ 2026-10-25 用户要求「装备/套装的分类也按一行四个」→ 加 mall-cat-grid
+                   （与「道具」分栏的分类同一套 4 列网格；原来桌面端 11 个部位全挤在一行）。 -->
+            <div class="ezfy-slot-grid mall-cat-grid">
               <a href="javascript:;" :class="{ on: ezfy.shopSlot === '' }" @click="ezfy.setShopSlot('')">[全部]</a>
               <a v-for="s in ezfy.shopSlots" :key="'ss' + s" href="javascript:;" :class="{ on: ezfy.shopSlot === s }"
                  @click="ezfy.setShopSlot(s)">[{{ s }}]</a>

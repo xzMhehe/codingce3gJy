@@ -1540,6 +1540,23 @@ export default {
       for (const t of this.troopsData.troops) sum += t.count
       return sum
     },
+    // ★★ 2026-10-25 军官属性页「军事/学识/后勤」后面的 (+N)：只表示**装备+套装**加成，
+    //   而且**用 有效值 − 自身属性 现算**，不再直接信任后端下发的 equip_military/equip_learning/equip_logistics。
+    //
+    //   事故：玩家加了 3 点属性点后显示「军事：103(+3)」，看起来像把刚加的属性点当成装备加成。
+    //   `military_total` 与 `military` 这两个字段语义稳定（有效值 / 自身值），两者相减恒等于装备+套装；
+    //   后端那个 equip_* 字段一旦口径漂移（例如老版本按 total−base 算）就会把加点也算进去。
+    //   所以这里只认 total − military，且负值按 0 处理（防御性）。
+    officerEquipPlus () {
+      const o = (this.officerDetail && this.officerDetail.officer) || null
+      const d = (total, own) => Math.max(0, (total || 0) - (own || 0))
+      if (!o) return { mil: 0, log: 0, lea: 0 }
+      return {
+        mil: d(o.military_total, o.military),
+        log: d(o.logistics_total, o.logistics),
+        lea: d(o.learning_total, o.learning)
+      }
+    },
     areaCount () {
       return this.buildings.filter(b => b.type >= 1 && b.type <= 4).length
     },
@@ -1614,14 +1631,8 @@ export default {
       return cat ? list.filter(i => i.category === cat) : list
     },
     // ★ 2026-10-20 分类页签显示数量，玩家一眼知道哪类有货、有多少。
-    mallCatCounts () {
-      const out = {}
-      ;(this.mallItems || []).forEach(i => {
-        const c = i.category || '其他'
-        out[c] = (out[c] || 0) + 1
-      })
-      return out
-    },
+    // ★ 2026-10-25 分页列表里的分类分组标题已按用户要求去掉 → 这个计数没人用了，一并删除
+    //   （顶部 [全部][资源][加速]… 那排筛选按钮本来就不带数字）。
     // ============ ★ 通用「检索 + 分页」小工具（背包 / 装备列表共用） ============
     // 后端一次性把列表下发，检索与分页都在前端做（这些列表不会大到需要服务端分页）。
     // ★ 背包分类（按首次出现顺序，与商城的归类口径一致：后端 ezfyItemCategory）
@@ -1858,10 +1869,10 @@ export default {
         return !!ct.is_sea
       }
     },
-    // ★ 当前城市类型文案：统一为「沿海城市 / 内陆城市」（后端 city_kind 为准）
+    // ★ 当前城市类型文案：统一为「海城 / 陆城」（后端 city_kind 为准；2026-10-25 用户要求短文案）
     cityKindLabel () {
       if (this.cityKindRaw) return this.cityKindRaw
-      return this.cityIsSea ? '沿海城市' : '内陆城市'
+      return this.cityIsSea ? '海城' : '陆城'
     },
     // ★ 资源详情页显示对应科技名（1 种植 / 2 炼钢 / 3 勘探 / 4 冶炼）
     resTechName () {
@@ -8423,14 +8434,7 @@ body.ezfy-ios .ezfy-page textarea {
   text-align: center;
   vertical-align: middle;
 }
-/* ★ 2026-10-20 商城「全部」分类分组标题：同类商品聚在一起，标题左对齐便于扫读 */
-.ezfy-page .ezfy-plain-table tr.mall-cat-row td {
-  background: #f0ecdf;
-  color: #7a4b00;
-  font-weight: bold;
-  text-align: left;
-  padding-left: 8px;
-}
+/* ★ 2026-10-25 商城「全部」分类分组标题（tr.mall-cat-row）已按用户要求去掉，样式一并删除 */
 /* ★ 战场指挥室：本回合倒计时条（指令期绿色、锁定后红色） */
 .ezfy-page .ezfy-battle-bar {
   width: 100%;
@@ -8576,9 +8580,11 @@ body.ezfy-ios .ezfy-page textarea {
    原来只绑了 .on class 没写样式 → 选中项和未选看起来一样。
    口径与 .acade-tab a.on 一致：红 + 加粗。 */
 .ezfy-page .ezfy-slot-grid > a.on { color: #c0392b; font-weight: bold; }
-/* ★ 2026-10-21 商城道具分类：参考装备部位筛选的样式（左对齐、按内容宽度、10px 间距），
+/* ★ 2026-10-21 商城分类网格：参考装备部位筛选的样式（左对齐、按内容宽度、10px 间距），
    只是强制每行 4 个。★ 不能再用 repeat(4, 1fr)：桌面端会把 4 个分类摊到整行、
-   把文字居中，和装备分类那种紧凑左对齐完全不像。 */
+   把文字居中，和装备分类那种紧凑左对齐完全不像。
+   ★ 2026-10-25 用户「装备/套装的分类也按一行四个」→ 装备/套装分栏的「部位筛选」也套这个类
+     （两处共用：道具分类 mallCat / 装备部位 shopSlot）。 */
 .ezfy-page .ezfy-slot-grid.mall-cat-grid {
   display: grid;
   grid-template-columns: repeat(4, max-content);
