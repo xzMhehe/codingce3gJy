@@ -1710,6 +1710,75 @@ func officerAllocatedPoints(o *model.EzfyOfficer) int {
 	return n
 }
 
+// officerStarSplit 升星加点的**逐项**明细（军事 / 后勤 / 学识 各多少点）。
+//
+// ★★ 2026-10-25 用户规则：「洗点只能洗等级属性点，升星的属性点不能洗掉」。
+//
+//	洗点的重置目标 = 池属性 + 这三项，退回到待分配点的只有玩家自己加的点。
+//
+// 老数据（本次改动之前升的星）只有总数 StarPoints、三项都是 0 —— 这里按
+// 「各项超出池属性的比例」一次性反推，并夹在各自超出量以内；调用方（洗点）会把
+// 结果写回 star_* 列，之后就是精确值，不会每次重算。
+func officerStarSplit(o *model.EzfyOfficer) (int, int, int) {
+	if o == nil {
+		return 0, 0, 0
+	}
+	if o.StarMilitary > 0 || o.StarLogistics > 0 || o.StarLearning > 0 {
+		return o.StarMilitary, o.StarLogistics, o.StarLearning
+	}
+	if o.StarPoints <= 0 {
+		return 0, 0, 0
+	}
+	bm, bl, be := officerBaseAttr(o)
+	em, el, ee := o.Military-bm, o.Logistics-bl, o.Learning-be
+	if em < 0 {
+		em = 0
+	}
+	if el < 0 {
+		el = 0
+	}
+	if ee < 0 {
+		ee = 0
+	}
+	total := em + el + ee
+	if total <= 0 {
+		return 0, 0, 0
+	}
+	star := o.StarPoints
+	if star > total {
+		star = total // 防御：升星总数不该超过「超出池属性」的总量
+	}
+	// 按超出比例分配，再夹到各自超出量以内；因为 star ≤ em+el+ee，余数一定放得下。
+	sm := star * em / total
+	sl := star * el / total
+	se := star - sm - sl
+	if sm > em {
+		sm = em
+	}
+	if sl > el {
+		sl = el
+	}
+	if se > ee {
+		se = ee
+	}
+	// 整除/夹紧丢掉的零头补回（按 军事 → 后勤 → 学识 顺序，只补还有余量的项）
+	rest := star - sm - sl - se
+	add := func(cur *int, room int) {
+		if rest <= 0 || room <= 0 {
+			return
+		}
+		if room > rest {
+			room = rest
+		}
+		*cur += room
+		rest -= room
+	}
+	add(&sm, em-sm)
+	add(&sl, el-sl)
+	add(&se, ee-se)
+	return sm, sl, se
+}
+
 // officerAddAttr 分配属性点：只写玩家自己的军官实例，**绝不回写军官池**
 //
 // attr: military / logistics / learning（也接受中文「军事/后勤/学识」）
@@ -3551,7 +3620,11 @@ func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (stri
 		"military": newMil, "logistics": newLog, "learning": newLea,
 		// ★ 2026-09-30 升星累计加点（三维之和累加，洗点前玩家能看懂多少点是升星来的）
 		"star_points": o.StarPoints + dMil + dLog + dLea,
-		"update_time": time.Now(),
+		// ★★ 2026-10-25 逐项明细（洗点要保住升星加成，只退玩家自己加的点，见 model 注释）
+		"star_military":  o.StarMilitary + dMil,
+		"star_logistics": o.StarLogistics + dLog,
+		"star_learning":  o.StarLearning + dLea,
+		"update_time":    time.Now(),
 	})
 	h.addReport(city.UserID, 6, "军官升星: "+o.Name,
 		fmt.Sprintf("%s 升星成功: %d星→%d星, 军事+%d 后勤+%d 学识+%d。", o.Name, o.Star, newStar, dMil, dLog, dLea), "")

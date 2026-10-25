@@ -4215,10 +4215,15 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		// ★ 用户规则（原话）：「洗点就是洗点成原来军官池子武将的属性，等级不变；
 		//   待分配的属性 = 现在属性之和 − 军官池属性之和，玩家可以重新分配加点」。
 		//
-		//   重置目标走 officerBaseAttr（原始属性 = 军官池武将属性，升星不改它），
-		//   于是已分配的点 + 升星加成一起退回成可用属性点。
-		//   旧实现是「随机重新分配」，余数 `newLea = total - 军事 - 后勤` **全给学识**，
-		//   玩家投诉「洗点后全加到学识上了」—— 那个实现已废弃。
+		// ★★ 2026-10-25 用户补充（修正了上面那条的副作用）：
+		//   「洗点只能洗**等级属性点**，升星的属性点不能洗掉」。
+		//   原来重置目标 = 池属性，于是「玩家加的点 + 升星加的点」一起退成待分配点 ——
+		//   等于让玩家把升星加成重新分配到别的项上（bug）。
+		//   现在重置目标 = 池属性 + 升星逐项明细（star_military/logistics/learning），
+		//   只有玩家自己加的点会退回。
+		//
+		//   旧实现还曾「随机重新分配」，余数 `newLea = total - 军事 - 后勤` **全给学识**，
+		//   玩家投诉「洗点后全加到学识上了」—— 那个实现早已废弃。
 		o := h.officerOf(city.ID, officerId)
 		if o == nil {
 			return "军官不存在"
@@ -4227,28 +4232,29 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			return "军官出征中, 无法重修"
 		}
 		bm, bl, be := officerBaseAttr(o)
-		refund := (o.Military - bm) + (o.Logistics - bl) + (o.Learning - be)
+		// 升星加成（老数据只有总数 → 按「超出池属性的比例」反推一次，随后落库成精确值）
+		sm, sl, se := officerStarSplit(o)
+		tMil, tLog, tLea := bm+sm, bl+sl, be+se
+		refund := (o.Military - tMil) + (o.Logistics - tLog) + (o.Learning - tLea)
 		if refund < 0 {
 			refund = 0
 		}
 		free := o.FreePoints + refund
 		// ★ 用户规则：「洗点只是属性，跟其他没关系」——
-		//   只重置三维属性 + 退回待分配点，**技能/等级/经验/忠诚/装备一概不动**。
+		//   只重置三维属性 + 退回待分配点，**技能/等级/经验/忠诚/装备/升星加成一概不动**。
 		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
-			"military": bm, "logistics": bl, "learning": be,
-			// base_* 一起回到洗点目标，之后「已分配点数」的显示才对得上
+			"military": tMil, "logistics": tLog, "learning": tLea,
+			// base_* 仍是**池属性**（洗点的真正基准；升星不改 base_*）
 			"base_military": bm, "base_logistics": bl, "base_learning": be,
+			// 老数据反推出的逐项升星明细一并落库，下次洗点就是精确值
+			"star_military": sm, "star_logistics": sl, "star_learning": se,
 			"free_points": free, "update_time": time.Now(),
 		})
 		h.consumeItem(uid, cfgId, "使用道具")
-		starPts := 0
-		if o.StarPoints > 0 {
-			starPts = o.StarPoints
-		}
 		return fmt.Sprintf("使用成功: %s 洗点完成\n军事 %d→%d  后勤 %d→%d  学识 %d→%d\n"+
-			"待分配属性点 +%d（共 %d 点，去军官详情分配）\n（属性已重置为军官池初始属性；等级/经验/技能保留）"+
-			"\n其中升星加点 %d 点（含在待分配点内）",
-			o.Name, o.Military, bm, o.Logistics, bl, o.Learning, be, refund, free, starPts)
+			"待分配属性点 +%d（共 %d 点，去军官详情分配）\n"+
+			"（升星加成 军事+%d 后勤+%d 学识+%d 保留；等级/经验/技能不变）",
+			o.Name, o.Military, tMil, o.Logistics, tLog, o.Learning, tLea, refund, free, sm, sl, se)
 	case 19: // 星级徽章：按固定概率升 1 星，三维各 +N（概率/加多少/上限都走管理端配置）
 		if !ezfyStarUpOn() {
 			return "升星功能已关闭"

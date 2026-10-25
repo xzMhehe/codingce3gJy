@@ -2381,6 +2381,18 @@ type EzfyOfficer struct {
 	//   升星加的是当前属性、不动 base_*，洗点时差额会自动退回 ——
 	//   这里持久记录「其中多少点是升星来的」，玩家洗点前一眼能看懂。
 	StarPoints int `gorm:"default:0;comment:升星累计加点" json:"star_points"`
+	// ★★ 2026-10-25 升星加点的**逐项**明细（军事/后勤/学识各多少）。
+	//
+	//	为什么必须有：用户规则「洗点只能洗等级属性点，升星的属性点不能洗掉」——
+	//	只有总数 StarPoints 的话，洗点只能把「当前属性 − 池属性」全部退回成待分配点，
+	//	等于让玩家把升星加成重新分配到别的项上（就是那个 bug）。
+	//	有了逐项明细，洗点的重置目标 = 池属性 + star_military/logistics/learning，
+	//	退回到待分配点的只有「玩家自己加的点」。
+	//	老数据（本次改动之前升的星）三项都是 0、只有 StarPoints 有值 → 洗点时按
+	//	「各项超出池属性的比例」一次性反推并写回，之后就是精确值了。
+	StarMilitary  int `gorm:"default:0;comment:升星累计加军事" json:"star_military"`
+	StarLogistics int `gorm:"default:0;comment:升星累计加后勤" json:"star_logistics"`
+	StarLearning  int `gorm:"default:0;comment:升星累计加学识" json:"star_learning"`
 	// ★ 2026-10-05 获取途径：取值见下列 EzfyOfficerSource* 枚举（每种来源独立值，便于后续扩展）。
 	//   管理端军官列表据此标注来源（抢玩家获取、野地俘虏……）。
 	Source int `gorm:"default:0;comment:获取途径 0未标注 1系统发放 2军校招募 3野地俘虏 4抢玩家获取" json:"source"`
