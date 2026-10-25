@@ -1284,29 +1284,32 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 
 // ============ 被占城市管理 ============
 
-// ezfyOccupyDestroyCd 占领后多久才能「摧毁」这座城市。
+// ezfyOccupyFinalizeCd 占领后多久才能对这座城市做「最终处置」（建立 / 摧毁）。
 //
-// ★ 2026-10-25 用户需求：「占领后 摧毁 必须在占领 24 小时候后 才能点摧毁，给赎回的人点时间」
-// （先说过 4 小时，随后改成 24 小时）。
-// 冷却期内原主人可以随时花钻石赎回（赎回已改成直接成交，见 RansomCreate）；
-// 满 24 小时后占领方才能把城炸成平原。
-// ★ 2026-10-25 用户又明确「建立 别卡 24 小时没必要」→ **只卡摧毁**，建立随时可点
-//   （建立会把城市过户走、原主人就没法赎了，这是玩家自己的选择，不再拦）。
-// 改这个值时前端不用动（下发 can_destroy）；提示文案由常量推导，不会写死数字。
-const ezfyOccupyDestroyCd = 24 * time.Hour
+// ★ 2026-10-25 用户需求演变（结论就是现在这样，别再反复了）：
+//  1. 最初：「占领后 摧毁 必须在占领 24 小时后才能点，给赎回的人点时间」；
+//  2. 中途说过「建立 别卡 24 小时没必要」→ 短暂只卡摧毁；
+//  3. 最后：「建立 也得卡 24 小时……加回来吧」→ **建立 + 摧毁都卡 24 小时**。
+//
+// 理由：建立会把 `city.user_id` 过户给占领方、occupy 直接置终态，原主人从此再也赎不回来；
+// 只卡摧毁不卡建立 = 留个后门，冷却形同虚设。所以两个动作共用同一个冷却。
+// `return`（归还）不卡 —— 对原主人有利，没必要拦。
+//
+// 改这个值只需改这里：拒绝文案由常量推导，前端由 `can_finalize` 驱动。
+const ezfyOccupyFinalizeCd = 24 * time.Hour
 
-// ezfyOccupyDestroyLeft 距离可摧毁还剩多久；<=0 表示已可操作。
-func ezfyOccupyDestroyLeft(o *model.EzfyOccupy) time.Duration {
-	return ezfyOccupyDestroyCd - time.Since(o.CreatedAt)
+// ezfyOccupyFinalizeLeft 距离可处置（建立/摧毁）还剩多久；<=0 表示已可操作。
+func ezfyOccupyFinalizeLeft(o *model.EzfyOccupy) time.Duration {
+	return ezfyOccupyFinalizeCd - time.Since(o.CreatedAt)
 }
 
-// ezfyOccupyDestroyCdText 冷却时长的中文文案（「24小时」），用于拒绝提示。
+// ezfyOccupyFinalizeCdText 冷却时长的中文文案（「24小时」），用于拒绝提示。
 // 整小时就写「N小时」（24h 不写「1天」，玩家看「占领满24小时」比「满1天」直观）。
-func ezfyOccupyDestroyCdText() string {
-	if ezfyOccupyDestroyCd%time.Hour == 0 {
-		return fmt.Sprintf("%d小时", int(ezfyOccupyDestroyCd.Hours()))
+func ezfyOccupyFinalizeCdText() string {
+	if ezfyOccupyFinalizeCd%time.Hour == 0 {
+		return fmt.Sprintf("%d小时", int(ezfyOccupyFinalizeCd.Hours()))
 	}
-	return ezfyDurationText(int64(ezfyOccupyDestroyCd.Seconds()))
+	return ezfyDurationText(int64(ezfyOccupyFinalizeCd.Seconds()))
 }
 
 func (h *EzfyHandler) OccupyList(c *gin.Context) {
@@ -1358,7 +1361,13 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 	}
 	switch op {
 	case "build":
-		// ★ 2026-10-25 用户明确「建立 别卡 24 小时没必要」→ 建立不受摧毁冷却限制，随时可点。
+		// ★★ 2026-10-25 占领后 24 小时内不能「建立」：建立会把城市过户给占领方、原主人再也赎不回来，
+		//   与「摧毁」共用同一个冷却（给原主人留出赎回时间）。
+		if left := ezfyOccupyFinalizeLeft(&o); left > 0 {
+			resp.ParamError(c, fmt.Sprintf("占领满%s后才能建立（还需 %s）",
+				ezfyOccupyFinalizeCdText(), ezfyDurationText(int64(left.Seconds()))))
+			return
+		}
 		// ★ 2026-09-24 军衔 ×10 后卡控：占城「建城」同样受军衔可建城数限制，
 		//   与 CreateCity 同一口径，防绕过军衔上限白嫖一座城。
 		prof := h.ensureProfile(uid)
@@ -1389,10 +1398,10 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 		// ★★ 2026-10-25 用户需求（原话）：「占领后 摧毁 必须在占领 4 小时候后 才能点摧毁，
 		//   占领城市摧毁，加个冷却吧，给赎回的人点时间」。
 		//   冷却期内不给摧毁：原主人还来得及花钻石把城赎回去（否则刚占就炸，赎回形同虚设）。
-		//   前端按 `can_destroy` 直接不显示 [摧毁]，这里再兜一层（防旧页面/手工请求）。
-		if left := ezfyOccupyDestroyLeft(&o); left > 0 {
+		//   前端按 `can_finalize` 直接不显示 [摧毁]，这里再兜一层（防旧页面/手工请求）。
+		if left := ezfyOccupyFinalizeLeft(&o); left > 0 {
 			resp.ParamError(c, fmt.Sprintf("占领满%s后才能摧毁（还需 %s）",
-				ezfyOccupyDestroyCdText(), ezfyDurationText(int64(left.Seconds()))))
+				ezfyOccupyFinalizeCdText(), ezfyDurationText(int64(left.Seconds()))))
 			return
 		}
 		name := o.CityName
@@ -1981,12 +1990,12 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	occViews := []gin.H{}
 	nowMs := time.Now().UnixMilli()
 	for _, o := range occupies {
-		// ★ 2026-10-25 摧毁冷却（建立不卡）：前端按 can_destroy 决定是否显示 [摧毁]
+		// ★ 2026-10-25 建立/摧毁冷却：前端按 can_finalize 决定是否显示 [建立][摧毁]
 		//   （不到时间就不显示 = 零文案，符合用户「简约提示，不要冗余提示」）
-		destroyAt := o.CreatedAt.Add(ezfyOccupyDestroyCd).UnixMilli()
+		readyAt := o.CreatedAt.Add(ezfyOccupyFinalizeCd).UnixMilli()
 		occViews = append(occViews, gin.H{"id": o.ID, "x": o.X, "y": o.Y,
 			"city_id": o.CityId, "city_name": o.CityName, "def_user": nick[o.DefUserId],
-			"destroy_at": destroyAt, "can_destroy": nowMs >= destroyAt})
+			"ready_at": readyAt, "can_finalize": nowMs >= readyAt})
 	}
 	ransomViews := []gin.H{}
 	for _, r := range ransoms {

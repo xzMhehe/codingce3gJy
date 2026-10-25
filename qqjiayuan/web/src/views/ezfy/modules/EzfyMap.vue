@@ -753,11 +753,11 @@
                   <span v-else class="gray">—</span>
                 </td>
                 <td>
-                  <!-- ★ 2026-10-25 用户要求「占领满 24 小时才能摧毁，给赎回的人点时间」：
-                       未满 24 小时不显示 [摧毁]（到时间自动出现，不加任何提示文案）。
-                       建立不卡（用户明确「建立 别卡 24 小时没必要」）。 -->
-                  <a href="javascript:;" @click="ezfy.doOccupy('build', o)">[建立]</a>
-                  <a v-if="o.can_destroy" class="red" href="javascript:;" @click="ezfy.doOccupy('destroy', o)">[摧毁]</a>
+                  <!-- ★ 2026-10-25 用户要求「占领满 24 小时才能建立/摧毁，给赎回的人点时间」：
+                       未满 24 小时不显示 [建立][摧毁]（建立会把城过户走、原主人再也赎不回，
+                       所以和摧毁一起卡），只留 [归还]；到时间自动出现，不额外加任何提示文案。 -->
+                  <a v-if="o.can_finalize" href="javascript:;" @click="ezfy.doOccupy('build', o)">[建立]</a>
+                  <a v-if="o.can_finalize" class="red" href="javascript:;" @click="ezfy.doOccupy('destroy', o)">[摧毁]</a>
                   <a href="javascript:;" @click="ezfy.doOccupy('return', o)">[归还]</a>
                   <template v-if="ezfy.ransomOf(o.city_id)">
                     <a href="javascript:;" @click="ezfy.doRansomHandle(ezfy.ransomOf(o.city_id), 1)">[同意赎城]</a>
