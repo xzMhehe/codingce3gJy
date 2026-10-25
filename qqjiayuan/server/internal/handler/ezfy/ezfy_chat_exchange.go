@@ -1284,6 +1284,31 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 
 // ============ 被占城市管理 ============
 
+// ezfyOccupyDestroyCd 占领后多久才能「摧毁」这座城市。
+//
+// ★ 2026-10-25 用户需求：「占领后 摧毁 必须在占领 24 小时候后 才能点摧毁，给赎回的人点时间」
+// （先说过 4 小时，随后改成 24 小时）。
+// 冷却期内原主人可以随时花钻石赎回（赎回已改成直接成交，见 RansomCreate）；
+// 满 24 小时后占领方才能把城炸成平原。
+// ★ 2026-10-25 用户又明确「建立 别卡 24 小时没必要」→ **只卡摧毁**，建立随时可点
+//   （建立会把城市过户走、原主人就没法赎了，这是玩家自己的选择，不再拦）。
+// 改这个值时前端不用动（下发 can_destroy）；提示文案由常量推导，不会写死数字。
+const ezfyOccupyDestroyCd = 24 * time.Hour
+
+// ezfyOccupyDestroyLeft 距离可摧毁还剩多久；<=0 表示已可操作。
+func ezfyOccupyDestroyLeft(o *model.EzfyOccupy) time.Duration {
+	return ezfyOccupyDestroyCd - time.Since(o.CreatedAt)
+}
+
+// ezfyOccupyDestroyCdText 冷却时长的中文文案（「24小时」），用于拒绝提示。
+// 整小时就写「N小时」（24h 不写「1天」，玩家看「占领满24小时」比「满1天」直观）。
+func ezfyOccupyDestroyCdText() string {
+	if ezfyOccupyDestroyCd%time.Hour == 0 {
+		return fmt.Sprintf("%d小时", int(ezfyOccupyDestroyCd.Hours()))
+	}
+	return ezfyDurationText(int64(ezfyOccupyDestroyCd.Seconds()))
+}
+
 func (h *EzfyHandler) OccupyList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var cities []model.EzfyCity
@@ -1333,6 +1358,7 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 	}
 	switch op {
 	case "build":
+		// ★ 2026-10-25 用户明确「建立 别卡 24 小时没必要」→ 建立不受摧毁冷却限制，随时可点。
 		// ★ 2026-09-24 军衔 ×10 后卡控：占城「建城」同样受军衔可建城数限制，
 		//   与 CreateCity 同一口径，防绕过军衔上限白嫖一座城。
 		prof := h.ensureProfile(uid)
@@ -1360,6 +1386,15 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 			fmt.Sprintf("你的城市[%s](%d,%d)已被敌方建立为自己的城市, 不再属于你。", o.CityName, o.X, o.Y))
 		resp.OK(c, gin.H{"msg": "建城成功"})
 	case "destroy":
+		// ★★ 2026-10-25 用户需求（原话）：「占领后 摧毁 必须在占领 4 小时候后 才能点摧毁，
+		//   占领城市摧毁，加个冷却吧，给赎回的人点时间」。
+		//   冷却期内不给摧毁：原主人还来得及花钻石把城赎回去（否则刚占就炸，赎回形同虚设）。
+		//   前端按 `can_destroy` 直接不显示 [摧毁]，这里再兜一层（防旧页面/手工请求）。
+		if left := ezfyOccupyDestroyLeft(&o); left > 0 {
+			resp.ParamError(c, fmt.Sprintf("占领满%s后才能摧毁（还需 %s）",
+				ezfyOccupyDestroyCdText(), ezfyDurationText(int64(left.Seconds()))))
+			return
+		}
 		name := o.CityName
 		// ★ 2026-09-24 用户规则：占城摧毁 = 坐标变回原来的平原土地，建筑啥的都没了。
 		//   除了清掉城市数据，还要删掉该坐标的「玩家城」地图区域记录（与 ezfyDestroyCity 同口径），
@@ -1402,20 +1437,44 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 	}
 }
 
-// RansomCreate POST /city/ransom {city_id} —— 被占城市原主人发起赎城
+// RansomCreate POST /city/ransom {city_id} —— 被占城市原主人**立即赎回**（无需占领方同意）
 //
-// ★ 2026-10-07 赎城功能：发起即扣「赎城金额」钻石（押金），攻击者同意后金额归攻击者、城市返还，
+// ★★ 2026-10-25 用户需求（原话）：
 //
-//	拒绝/撤销押金退回。仅「占领中」(occupy status=1) 可赎；同一城市同时最多 1 条待处理请求。
+//	「赎回 改成 玩家赎回 无需 占领者同意，然后赎回 手续费系统会 收 20% 就相当于扣，
+//	 注意防抖，卡控 避免 靠这个刷钻石」
 //
-// ★ 2026-10-15 成交收取 20% 手续费：同意时占领方只实收 80%，20% 由系统收取（见 RansomHandle）。
+// 老流程是「发起申请（扣押金）→ 占领方同意/拒绝」；现在改成**一步成交**：
+//
+//	原子扣钻石 → 占领记录原子置终态 → 占领方实收 80%（系统收 20%）→ 城市返还 + 民心恢复。
+//
+// ★★ 防刷钻（改这段之前必须看懂，否则很容易把游戏经济打穿）：
+//  1. **「原子置终态」才是发钱的开关**：
+//     `UPDATE ezfy_occupy SET status=2 WHERE id=? AND status=1`，
+//     只有 RowsAffected==1 的那一次才给占领方加钻石。并发/双击时后到的请求拿到 0
+//     → 整笔回滚（连自己的钻石也没扣），绝不可能出现「扣一次钱、占领方收多次 80%」。
+//     反例：先发钱再改状态 = 双击双发 = 凭空刷钻（老 RansomHandle 注释里踩过的坑）。
+//  2. 城市行 `FOR UPDATE`：同城赎回强制串行，后到者等锁后必看到 status=2 → 直接拒绝。
+//  3. 玩家级 2 秒防抖 `ezfyActionThrottle`：连点 / 脚本刷接口在入口就被挡掉。
+//  4. 20% 手续费天然抑制「小号互占 → 赎回搬砖」：每循环一次净亏 20%，搬砖无利可图。
+//
+// 存量兼容：老版本发起、还挂在 status=0 的申请**不再等占领方审批**，这里顺手作废并全额
+// 退回押金（否则玩家会被一条永远没人处理的请求卡死）；`RansomHandle` 保留只为处理
+// 极少数并发残留，新流程不会再产生 status=0 的行。
 func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// 配置缓存：ezfyRansomCost() 读 ezfy_cfg_limit.ransom_cost，进程刚起还没人加载配置时会回落默认值
+	h.cfgs()
 	var req struct {
 		CityId int64 `json:"city_id"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || req.CityId <= 0 {
 		resp.ParamError(c, "参数错误")
+		return
+	}
+	// ★ 防抖 1/3：玩家级 2 秒一次（连点/脚本刷接口入口就挡；真正的防重复发钱靠下面事务里的原子置终态）
+	if !ezfyActionThrottle(uid, "city_ransom", 2000) {
+		resp.FailData(c, 429, "操作太快了，请稍后再试", nil)
 		return
 	}
 	var city model.EzfyCity
@@ -1423,65 +1482,115 @@ func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 		resp.ParamError(c, "城市不存在")
 		return
 	}
-	// ★ 2026-10-07 修复「赎城能一直扣」：原实现是「查 pending → 扣钻 → 插入」三段分离，
-	//   快速双击/连点/并发会同时通过查重（都看到 0 笔）→ 各扣一次钻石、各插入一条请求。
-	//   现在整段放进一个事务，并先对**城市行加排他锁(FOR UPDATE)**：
-	//   同城赎城被强制串行，后到的请求等前者提交后必能看到新插入的 pending → 拒绝。
-	//   （FOR UPDATE 是当前读、不建立快照，事务里第一次一致性读发生在锁拿到之后，
-	//    所以后到事务能看到先行事务已提交的插入。）
+	prof := h.ensureProfile(uid)
+	cost := ezfyRansomCost()
+	if prof.Diamond < cost {
+		resp.ParamError(c, fmt.Sprintf("钻石不足: 赎回需要%d钻石, 当前余额%d", cost, prof.Diamond))
+		return
+	}
+
 	tx := h.DB.Begin()
 	defer tx.Rollback()
-	var occ model.EzfyOccupy
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("id = ?", city.ID).First(&city).Error; err != nil {
+	// ★ 防抖 2/3：城市行排他锁 —— 同一座城的赎回强制串行（后到者等锁，拿到锁后必看到 status=2）
+	var cityLock model.EzfyCity
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&cityLock, city.ID).Error; err != nil {
 		resp.ParamError(c, "城市不存在")
 		return
 	}
+	var occ model.EzfyOccupy
 	if err := tx.Where("city_id = ? AND status = 1", city.ID).First(&occ).Error; err != nil {
-		resp.ParamError(c, "该城市未被占领, 无需赎城")
+		resp.ParamError(c, "该城市未被占领, 无需赎回")
 		return
 	}
 	if occ.DefUserId != uid {
-		resp.ParamError(c, "只有城市原主人才能发起赎城")
+		resp.ParamError(c, "只有城市原主人才能赎回")
 		return
 	}
-	var pending int64
-	if err := tx.Model(&model.EzfyRansom{}).Where("city_id = ? AND status = 0", city.ID).Count(&pending).Error; err != nil {
-		resp.ParamError(c, "查询赎城请求失败："+err.Error())
+	// 军衔卡控（与「归还」同口径）：赎回来的城市也占自己名额，超过军衔上限不许赎
+	var owned int64
+	tx.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
+	defLv := ezfyProfileRank(&prof)
+	if int(owned) > ezfyRankCityMaxAt(defLv) {
+		resp.ParamError(c, fmt.Sprintf("你的军衔「%s」最多只能拥有 %d 座城市（当前已有 %d 座），无法赎回",
+			ezfyRankNameAt(defLv), ezfyRankCityMaxAt(defLv), owned))
 		return
 	}
-	if pending > 0 {
-		resp.ParamError(c, "该城市已有一笔待处理的赎城请求")
-		return
+
+	// 存量兼容：老版本待处理申请作废 + 押金全额退回（与本次赎回同一事务，失败一起回滚）
+	var olds []model.EzfyRansom
+	tx.Where("city_id = ? AND status = 0", city.ID).Find(&olds)
+	var refunded int64
+	for _, old := range olds {
+		if res := tx.Model(&model.EzfyRansom{}).Where("id = ? AND status = 0", old.ID).
+			Update("status", 3); res.RowsAffected != 1 {
+			continue // 被并发处理了，跳过（钱已被那边处理，不能重复退）
+		}
+		if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", old.DefUserId).
+			Update("diamond", gorm.Expr("diamond + ?", old.Cost)).Error; err != nil {
+			resp.ServerError(c, fmt.Errorf("退回旧赎城押金失败：%w", err))
+			return
+		}
+		refunded += old.Cost
 	}
-	cost := ezfyRansomCost()
-	prof := h.ensureProfile(uid)
-	if prof.Diamond < cost {
-		resp.ParamError(c, fmt.Sprintf("钻石不足: 赎城需要%d钻石, 当前余额%d", cost, prof.Diamond))
-		return
-	}
-	// 原子扣减（WHERE diamond>=cost 兜底并发扣爆）
+
+	// 1) 原子扣钻石（WHERE diamond >= cost 兜底并发扣爆）
 	if res := tx.Model(&model.EzfyProfile{}).Where("id = ? AND diamond >= ?", prof.ID, cost).
 		Update("diamond", gorm.Expr("diamond - ?", cost)); res.RowsAffected != 1 {
 		resp.ParamError(c, "扣钻石失败, 请重试")
 		return
 	}
-	r := model.EzfyRansom{CityId: int64(city.ID), OccupyId: occ.ID, DefUserId: uid,
+	// 2) ★★ 防抖 3/3（核心）：原子置占领记录终态 —— 抢到的那一次才继续发钱。
+	//    条件按 city_id（不是单条 id）：万一同城有残留的多条 status=1（历史脏数据），一次清干净，
+	//    否则玩家赎完仍显示"被占领"还能再赎一次。并发下第二个事务等锁后 RowsAffected=0 → 拒绝。
+	if res := tx.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", city.ID).
+		Update("status", 2); res.RowsAffected < 1 {
+		resp.ParamError(c, "该城市已被处理, 请刷新后重试")
+		return
+	}
+	// 3) 占领方实收 80%，系统收 20%（整数向下取整，与老 RansomHandle 同口径）
+	receive := cost - cost/5
+	fee := cost - receive
+	if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", occ.AtkUserId).
+		Update("diamond", gorm.Expr("diamond + ?", receive)).Error; err != nil {
+		resp.ServerError(c, fmt.Errorf("钻石发放失败：%w", err))
+		return
+	}
+	// 4) 城市返还（user_id 本仍属守方）+ 民心补到 20（与「同意赎城」「放弃归还」同口径）
+	if city.Feelings < 20 {
+		tx.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+			Updates(map[string]interface{}{"feelings": 20, "feel_settle_at": time.Now().UnixMilli()})
+	}
+	// 5) 流水行（status=1 = 已成交；复用老表，便于对账/审计）
+	rec := model.EzfyRansom{CityId: int64(city.ID), OccupyId: occ.ID, DefUserId: uid,
 		AtkUserId: occ.AtkUserId, CityName: city.Name, X: city.X, Y: city.Y,
-		Cost: cost, Status: 0}
-	if err := tx.Create(&r).Error; err != nil {
-		resp.ParamError(c, "创建赎城请求失败："+err.Error())
+		Cost: cost, Status: 1}
+	if err := tx.Create(&rec).Error; err != nil {
+		resp.ServerError(c, fmt.Errorf("记录赎回流水失败：%w", err))
 		return
 	}
 	if err := tx.Commit().Error; err != nil {
 		resp.ParamError(c, "提交失败："+err.Error())
 		return
 	}
-	h.logDiamond(uid, -cost, "赎城请求押金")
-	h.addReport(occ.AtkUserId, 5, "赎城请求",
-		fmt.Sprintf("原主人「%s」想花%d钻石赎回你占领的城市[%s](%d,%d)，可在[附属野地]的「赎回请求」中同意或拒绝。",
-			prof.Nickname, cost, city.Name, city.X, city.Y))
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发起赎城请求, 已扣除%d钻石押金; 占领方同意后返还城市(成交收取20%%手续费), 拒绝则自动退回。", cost)})
+	// 事务外写钻石流水 + 战报（这些失败不影响已成交结果）
+	if refunded > 0 {
+		h.logDiamond(uid, refunded, "旧赎城申请作废, 押金退回")
+	}
+	h.logDiamond(uid, -cost, fmt.Sprintf("赎回城市[%s](%d,%d), 系统手续费%d", city.Name, city.X, city.Y, fee))
+	h.logDiamond(occ.AtkUserId, receive, fmt.Sprintf("赎城收入(已扣20%%手续费) 城市[%s](%d,%d)", city.Name, city.X, city.Y))
+	h.addReport(uid, 5, "赎回成功",
+		fmt.Sprintf("你花费%d钻石赎回了城市[%s](%d,%d)! 民心已恢复。", cost, city.Name, city.X, city.Y))
+	h.addReport(occ.AtkUserId, 5, "城市被赎回",
+		fmt.Sprintf("你占领的城市[%s](%d,%d)已被原主人「%s」花费%d钻石赎回, 你收到%d钻石(已扣20%%手续费)。",
+			city.Name, city.X, city.Y, prof.Nickname, cost, receive))
+	ezfyPageCacheDel(uid)
+	ezfyPageCacheDel(occ.AtkUserId)
+	resp.OK(c, gin.H{
+		"msg":     fmt.Sprintf("赎回成功! 花费%d钻石(其中%d为系统手续费), 城市[%s]已返还, 民心已恢复", cost, fee, city.Name),
+		"cost":    cost,
+		"fee":     fee,
+		"receive": receive,
+	})
 }
 
 // RansomHandle POST /city/ransom/handle {ransom_id, op} —— 占领方处理赎城请求（op 1同意 2拒绝）
@@ -1870,9 +1979,14 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		}
 	}
 	occViews := []gin.H{}
+	nowMs := time.Now().UnixMilli()
 	for _, o := range occupies {
+		// ★ 2026-10-25 摧毁冷却（建立不卡）：前端按 can_destroy 决定是否显示 [摧毁]
+		//   （不到时间就不显示 = 零文案，符合用户「简约提示，不要冗余提示」）
+		destroyAt := o.CreatedAt.Add(ezfyOccupyDestroyCd).UnixMilli()
 		occViews = append(occViews, gin.H{"id": o.ID, "x": o.X, "y": o.Y,
-			"city_id": o.CityId, "city_name": o.CityName, "def_user": nick[o.DefUserId]})
+			"city_id": o.CityId, "city_name": o.CityName, "def_user": nick[o.DefUserId],
+			"destroy_at": destroyAt, "can_destroy": nowMs >= destroyAt})
 	}
 	ransomViews := []gin.H{}
 	for _, r := range ransoms {

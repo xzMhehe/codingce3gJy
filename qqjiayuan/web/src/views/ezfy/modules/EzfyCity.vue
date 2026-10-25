@@ -21,10 +21,13 @@
               <a href="javascript:;" @click="ezfy.doDispatchTo(ct)">[派遣]</a>
               <a class="red" href="javascript:;" @click="ezfy.doDestroyCity(ct)">[弃城]</a>
             </template>
-            <!-- ★ 2026-10-07 赎城：自己的城市被人占领后，不显示[运输][派遣][弃城]，
-                 改为 [赎城]（花钻石赎回，需占领方同意）/ [撤赎城]（撤销待处理请求） -->
+            <!-- ★ 2026-10-07 赎城：自己的城市被人占领后，不显示[运输][派遣][弃城] -->
+            <!-- ★ 2026-10-25 用户需求「改成 玩家赎回 无需 占领者同意，手续费系统收 20%」：
+                 现在是**一步成交**（扣钻 → 城市立刻返还 → 占领方实收 80%），所以主按钮改叫 [赎回]。
+                 `ct.ransoming` 只剩「老版本遗留的待处理申请」会为真（新流程不再产生），
+                 那时仍显示 [撤赎城] 让玩家把押金撤回来。 -->
             <template v-else-if="ct.id !== ezfy.city.id && ct.occupied">
-              <a v-if="!ct.ransoming" href="javascript:;" @click="ezfy.doRansom(ct)">[赎城]</a>
+              <a v-if="!ct.ransoming" href="javascript:;" @click="ezfy.doRansom(ct)">[赎回]</a>
               <a v-else class="red" href="javascript:;" @click="ezfy.doRansomCancel(ct)">[撤赎城]</a>
             </template>
           </div>
@@ -145,11 +148,13 @@
           当前民心: {{ ezfy.city.feelings }} / 民怨: {{ ezfy.city.grievance }}<br/>
           <div class="old-line">{{ ezfy.resNames.gold }}: {{ ezfy.city.gold }} | 安抚花费: {{ ezfy.placate.gold }}</div>
           <!-- ★ 冷却用 placateNow 每秒本地重算，不靠重新拉接口（沿用全站倒计时同一套做法） -->
+          <!-- ★ 2026-10-25 用户要求「安抚也去掉按钮样式」：与同行的 [返回]/[返回首页] 统一成纯文字链接
+               （button 有边框+底色，和文字链接并排很跳）。冷却时用灰色文字，仍不可点。 -->
           <template v-if="ezfy.placateCdLeft > 0">
             <span class="gray">冷却中，还需 {{ ezfy.durText(ezfy.placateCdLeft / 1000) }}</span><br/>
-            <button class="gray" disabled>[安抚]</button>
+            <span class="gray">[安抚]</span>
           </template>
-          <button v-else @click="ezfy.doPlacate">[安抚]</button>
+          <a v-else href="javascript:;" @click="ezfy.doPlacate">[安抚]</a>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>

@@ -737,10 +737,11 @@
           <div class="old-line" v-if="!ezfy.wildlands.length">(尚未占领任何野地)</div>
           <br/>
           <!-- ★ 2026-10-07 赎城审批并入「占领城市」面板：原主人申请赎回时，在此同意/拒绝 -->
+          <!-- ★ 2026-10-25 赎回已改成「原主人直接赎回、无需同意」→ 正常情况这里不会再出现待审申请，
+               面板保留只为处理老版本遗留的 status=0 请求（押金已扣，得让它能结案退款） -->
           <template v-if="ezfy.occupies.length || ezfy.ransoms.length">
             <div class="panel-title">占领城市({{ ezfy.occupies.length }})</div>
-            <!-- ★ 2026-10-15 成交收取 20% 手续费：同意赎城时实收赎金的 80% -->
-            <div class="old-line gray">同意赎城将收取20%手续费（实收赎金的80%）</div>
+            <div class="old-line gray" v-if="ezfy.ransoms.length">历史待审申请：同意后实收赎金 80%</div>
             <table>
               <tr><th>坐标</th><th>城市</th><th>原属</th><th>赎城申请</th><th>操作</th></tr>
               <tr v-for="o in ezfy.occupies" :key="'oc' + o.id">
@@ -752,8 +753,11 @@
                   <span v-else class="gray">—</span>
                 </td>
                 <td>
+                  <!-- ★ 2026-10-25 用户要求「占领满 24 小时才能摧毁，给赎回的人点时间」：
+                       未满 24 小时不显示 [摧毁]（到时间自动出现，不加任何提示文案）。
+                       建立不卡（用户明确「建立 别卡 24 小时没必要」）。 -->
                   <a href="javascript:;" @click="ezfy.doOccupy('build', o)">[建立]</a>
-                  <a class="red" href="javascript:;" @click="ezfy.doOccupy('destroy', o)">[摧毁]</a>
+                  <a v-if="o.can_destroy" class="red" href="javascript:;" @click="ezfy.doOccupy('destroy', o)">[摧毁]</a>
                   <a href="javascript:;" @click="ezfy.doOccupy('return', o)">[归还]</a>
                   <template v-if="ezfy.ransomOf(o.city_id)">
                     <a href="javascript:;" @click="ezfy.doRansomHandle(ezfy.ransomOf(o.city_id), 1)">[同意赎城]</a>

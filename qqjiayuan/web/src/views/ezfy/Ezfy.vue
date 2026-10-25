@@ -3106,7 +3106,7 @@ export default {
       //   后端 /view 一直在下发 cities（ezfy.go 的 View → h.cityViews），这里接住即可。
       //   ⚠️ 改 load() 时别再把这一行弄丢：它是 cities 的唯一数据源。
       this.cities = d.cities || []
-      // ★ 2026-10-07 赎城金额（管理端可配，默认 500）：城市列表 [赎城] 确认弹窗展示
+      // ★ 2026-10-07 赎回金额（管理端可配，默认 500）：城市列表 [赎回] 确认弹窗展示
       this.ransomCost = d.ransom_cost || 500
       this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, d.placate || {})
       this.placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
@@ -5488,7 +5488,9 @@ export default {
       this.once('occupy' + o.id, () => api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id })
         .then(r => this.alert(r, '操作已提交', () => this.loadWilds())))
     },
-    // ---- 赎城（2026-10-07）：被占城市原主人花钻石赎回，需占领方同意 ----
+    // ---- 赎回（★ 2026-10-25 改版）：被占城市原主人花钻石**立即赎回**，无需占领方同意 ----
+    // 系统收取 20% 手续费（占领方实收 80%）；下面 doRansomCancel/doRansomHandle 只为处理
+    // 老版本遗留的 status=0 待审申请（新流程不再产生），处理完就可以整块删掉。
     // 按城市ID找待处理的赎城申请（无则 null），供「占领城市」面板行内审批
     ransomOf (cityId) {
       return this.ransoms.find(r => r.city_id === cityId) || null
@@ -5499,24 +5501,19 @@ export default {
       return this.ransoms.filter(r => !occ.has(r.city_id))
     },
     async doRansom (ct) {
-      // ★ 2026-10-07 卡控连点：请求未返回前再次点击直接忽略，且成功后立即乐观置 ransoming
-      //   （按钮立刻变 [撤赎城]），配合后端事务+行锁，杜绝「赎城能一直扣」。
+      // ★★ 2026-10-25 用户需求「赎回 改成 玩家赎回 无需 占领者同意，手续费系统收 20%」：
+      //   从「发起申请 → 占领方审批」改成**一步成交**，确认框必须把「立即生效 + 20% 手续费」说清楚。
+      //   防抖三道（前端锁 / 后端 2 秒节流 / 事务内原子置终态），核心防刷钻在后端。
       if (this.ransomBusy) return
       this.ransomBusy = true
       try {
         const cost = this.ransomCost || 500
-        if (!await this.ask(`确定花费 ${cost} 钻石赎回城市[${ct.name}](${ct.x},${ct.y})吗?\n` +
-          '发起即扣押金, 占领方同意后返还城市(成交收取20%手续费, 占领方实收80%), 拒绝/撤销则自动退回。')) return
+        const fee = Math.floor(cost / 5)
+        if (!await this.ask(`确定花费 ${cost} 钻石立即赎回城市[${ct.name}](${ct.x},${ct.y})吗？\n` +
+          '无需占领方同意，确认后城市立即返还、民心恢复。\n' +
+          `其中 ${fee} 钻石为系统手续费(20%)，${cost - fee} 钻石归占领方。`)) return
         const r = await api.post('/games/ezfy/city/ransom', { city_id: ct.id })
-        // ★ 2026-10-24 修复「钻石不够 → 赎城状态异常」：失败时（钻石不足/已有待处理请求等）
-        //   后端不会创建任何请求，这里不能乐观置 ransoming，否则城市会误显示 [撤赎城]，
-        //   点了又报「该城市没有待处理的赎城请求」——状态卡死。只有成功才置位。
-        if (r && r.code === 0) {
-          ct.ransoming = true // 乐观置位 → [赎城] 立刻变 [撤赎城]，重连点击被前端和后端双重拦下
-          this.alert(r, '赎城请求已提交')
-        } else {
-          this.alert(r, '赎城请求已提交')
-        }
+        this.alert(r, r && r.code === 0 ? '赎回成功' : '赎回失败')
         this.go('cities')
       } finally {
         this.ransomBusy = false

@@ -619,15 +619,17 @@
              只有有可用属性点时才显示 [+1][+10][全]（与原来「分配」行的显隐条件一致）。
              ★ 后面的 `(+N)` = **比军官池原始属性多出来的全部加成**（加点 + 装备 + 套装），
                用 `officerAttrPlus`（有效值 − base_*）现算 —— 玩家加完属性点能立刻看到数字变化，
-               穿了装备也一并算进同一个括号里。 -->
+               穿了装备也一并算进同一个括号里。
+             ★★ 2026-10-25 用户要求「属性点 <10 就别展示 [+10]，简约」：
+               [+10] 只在 free_points >= 10 时出现（不够 10 点点了也没意义）。 -->
         <div class="old-line">
-          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerAttrPlus.mil">(+{{ ezfy.officerAttrPlus.mil }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全]</a></template>
+          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerAttrPlus.mil">(+{{ ezfy.officerAttrPlus.mil }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a v-if="ezfy.officerDetail.officer.free_points >= 10" href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全]</a></template>
         </div>
         <div class="old-line">
-          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerAttrPlus.lea">(+{{ ezfy.officerAttrPlus.lea }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全]</a></template>
+          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerAttrPlus.lea">(+{{ ezfy.officerAttrPlus.lea }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a v-if="ezfy.officerDetail.officer.free_points >= 10" href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全]</a></template>
         </div>
         <div class="old-line">
-          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerAttrPlus.log">(+{{ ezfy.officerAttrPlus.log }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全]</a></template>
+          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerAttrPlus.log">(+{{ ezfy.officerAttrPlus.log }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a v-if="ezfy.officerDetail.officer.free_points >= 10" href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全]</a></template>
         </div>
         <div class="old-line">
           属性点：<b :class="ezfy.officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ ezfy.officerDetail.officer.free_points }}</b><a href="javascript:;" @click="ezfy.doRespec">[洗点]</a>
