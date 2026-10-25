@@ -753,27 +753,29 @@
         <div v-if="ezfy.officerDetailTab === 'equip'">
         <table class="ezfy-plain-table">
           <colgroup>
-            <col style="width:34%"><col style="width:16%"><col style="width:30%"><col style="width:20%">
+            <col style="width:50%"><col style="width:20%"><col style="width:30%">
           </colgroup>
-          <tr><th colspan="4">已穿戴装备
+          <tr><th colspan="3">已穿戴装备
             <a v-if="ezfy.officerDetail.equipped.length" href="javascript:;" @click="ezfy.doUnequipAll">[一键卸下]</a>
           </th></tr>
-          <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>操作</th></tr>
+          <tr><th class="nm">名称</th><th>部位</th><th>操作</th></tr>
+          <!-- ★ 2026-10-25 用户要求「列出所有部位，没穿的显示无」：原来只渲染已穿戴的行，
+               玩家不知道有哪些部位可以穿。现在固定列出全部部位，未穿戴显示「无」。
+               ★ 2026-10-25 用户又要求「套装列别展示了」→ 去掉套装列（套装信息仍可在名称悬停里看）。 -->
           <!-- ★ 2026-10-18 简约化：加成/套装信息改悬停(title)查看，去掉撑开表格行的展开详情卡 -->
-          <template v-for="g in ezfy.officerEquipGroups">
-          <tr :key="'de' + g.key">
+          <tr v-for="row in ezfy.officerEquipSlotRows" :key="'de' + row.slot">
             <td class="nm">
-              <a href="javascript:;" :title="ezfy.equipItemTip(g.first)">{{ g.name }}</a><span v-if="g.count > 1" class="gray"> ×{{ g.count }}</span>
+              <template v-if="row.g">
+                <a href="javascript:;" :title="ezfy.equipItemTip(row.g.first)">{{ row.g.name }}</a><span v-if="row.g.count > 1" class="gray"> ×{{ row.g.count }}</span>
+              </template>
+              <span v-else class="gray">无</span>
             </td>
-            <td>{{ g.slot }}</td>
+            <td>{{ row.slot }}</td>
             <td>
-              <a v-if="g.set_id" href="javascript:;" :title="ezfy.equipSetTip(g.set_id)">{{ g.set_name || ('套装' + g.set_id) }}</a>
+              <a v-if="row.g" href="javascript:;" @click="ezfy.doUnequip(row.g.first.id)">[卸下]</a>
               <span v-else class="gray">—</span>
             </td>
-            <td><a href="javascript:;" @click="ezfy.doUnequip(g.first.id)">[卸下]</a></td>
           </tr>
-          </template>
-          <tr v-if="!ezfy.officerDetail.equipped.length"><td colspan="4" class="gray">(未穿戴装备)</td></tr>
         </table>
 
         <!-- ★ 2026-10-18 一键穿戴套装：文案精简（用户「描述还能精简继续精简」） -->

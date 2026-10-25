@@ -1723,6 +1723,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						// ---- 私聊管理 ----
 						admin.GET("/ezfy-privchats", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyPrivchats)
 						admin.DELETE("/ezfy-privchats/:id", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyPrivchatDelete)
+						// ★ 2026-10-25 批量删除（勾选框）：物理删除，一次最多 2000 条
+						admin.POST("/ezfy-privchats/batch-delete", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyPrivchatBatchDelete)
 						admin.POST("/ezfy-privchats/clear", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyPrivchatClear)
 
 						// ---- 系统邮件（★ 2026-10-13 管理端群发/单发，玩家在「邮箱 → 系统邮件」收到）----

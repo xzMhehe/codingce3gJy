@@ -2515,6 +2515,48 @@ func (h *EzfyAdmin) AdminEzfyPrivchatDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "已删除"})
 }
 
+// AdminEzfyPrivchatBatchDelete POST /admin/ezfy-privchats/batch-delete {ids:[]}
+//
+// ★ 2026-10-25 用户需求「加个批量删除勾选框 能批量删除」：
+// 私聊记录一条一条点太慢（一次几十上百条），勾选后一把删。
+//
+//	物理删除、不可恢复；ids 去重 + 上限 2000 + 分块 500（避免超长 IN 打满 SQL）。
+func (h *EzfyAdmin) AdminEzfyPrivchatBatchDelete(c *gin.Context) {
+	var in struct {
+		IDs []uint `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	seen := map[uint]bool{}
+	ids := make([]uint, 0, len(in.IDs))
+	for _, id := range in.IDs {
+		if id == 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		resp.ParamError(c, "请先勾选要删除的私聊")
+		return
+	}
+	if len(ids) > 2000 {
+		resp.ParamError(c, "一次最多删除 2000 条，请分批操作")
+		return
+	}
+	var n int64
+	for i := 0; i < len(ids); i += 500 {
+		j := i + 500
+		if j > len(ids) {
+			j = len(ids)
+		}
+		n += h.DB.Where("id IN ?", ids[i:j]).Delete(&model.PrivateMessage{}).RowsAffected
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已删除 %d 条私聊记录", n), "count": n})
+}
+
 // AdminEzfyPrivchatClear 清空某玩家的私聊（dir=from 发出的 / to 收到的 / all 全部）
 func (h *EzfyAdmin) AdminEzfyPrivchatClear(c *gin.Context) {
 	var in struct {

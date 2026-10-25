@@ -78,18 +78,22 @@
           <div class="grow" />
           <el-button type="warning" icon="el-icon-delete" @click="openClear">清空某玩家私聊</el-button>
         </div>
-        <el-table :data="priv.list" v-loading="priv.loading" stripe border max-height="640">
+        <!-- ★ 2026-10-25 加勾选框批量删除：row-key + reserve-selection = 翻页勾选不丢 -->
+        <el-table ref="privTable" :data="priv.list" row-key="id" v-loading="priv.loading" stripe border max-height="640" @selection-change="onPrivSel">
+          <el-table-column type="selection" width="46" align="center" :reserve-selection="true" />
           <el-table-column prop="id" label="ID" width="80" align="center" />
+          <!-- ★ 2026-10-25 修「发送方/接收方空白」：名字统一走 privName/privNum 兜底，
+               后端没给名字时至少显示「用户+ID」，绝不再渲染出空白或「用户undefined」 -->
           <el-table-column label="发送方" min-width="160" show-overflow-tooltip>
             <template slot-scope="{row}">
-              <span class="td-main">{{ row.sender_name || ('用户' + row.sender_id) }}</span>
-              <span class="td-muted">（{{ row.sender_num || row.sender_id }}）</span>
+              <span class="td-main">{{ privName(row, 'sender') }}</span>
+              <span class="td-muted">（{{ privNum(row, 'sender') }}）</span>
             </template>
           </el-table-column>
           <el-table-column label="接收方" min-width="160" show-overflow-tooltip>
             <template slot-scope="{row}">
-              <span class="td-main">{{ row.receiver_name || ('用户' + row.receiver_id) }}</span>
-              <span class="td-muted">（{{ row.receiver_num || row.receiver_id }}）</span>
+              <span class="td-main">{{ privName(row, 'receiver') }}</span>
+              <span class="td-muted">（{{ privNum(row, 'receiver') }}）</span>
             </template>
           </el-table-column>
           <el-table-column prop="content" label="内容" min-width="320" show-overflow-tooltip />
@@ -109,10 +113,14 @@
         </el-table>
         <div class="pager-bar">
           <div class="pager-info">共 <b>{{ priv.total }}</b> 条 · 每页 {{ priv.size }} 条</div>
-          <el-pagination v-show="priv.total > 0" small background layout="sizes, prev, pager, next, jumper" :total="priv.total" :page-size="priv.size"
-                         :current-page="priv.page" :page-sizes="[5, 10, 20, 50, 100]"
-                         @current-change="p => { priv.page = p; loadPrivs() }"
-                         @size-change="s => { priv.size = s; priv.page = 1; loadPrivs() }" />
+          <div style="display:flex;align-items:center;gap:8px">
+            <el-button size="mini" type="danger" plain icon="el-icon-delete"
+                       :disabled="!privSel.length" :loading="priv.saving" @click="delPrivSelected">删除选中（{{ privSel.length }}）</el-button>
+            <el-pagination v-show="priv.total > 0" small background layout="sizes, prev, pager, next, jumper" :total="priv.total" :page-size="priv.size"
+                           :current-page="priv.page" :page-sizes="[5, 10, 20, 50, 100]"
+                           @current-change="p => { priv.page = p; loadPrivs() }"
+                           @size-change="s => { priv.size = s; priv.page = 1; loadPrivs() }" />
+          </div>
         </div>
 
         <!-- 清空某玩家私聊 -->
@@ -315,6 +323,8 @@ export default {
       chat: { list: [], total: 0, page: 1, size: 20, word: '', start: '', end: '', loading: false },
       // 私聊记录（★ 2026-10-24 并入）
       priv: { list: [], total: 0, page: 1, size: 5, word: '', isRead: -1, loading: false, saving: false },
+      // ★ 2026-10-25 私聊批量删除：勾选集合（row-key + reserve-selection 支持跨页勾选）
+      privSel: [],
       clearDlg: false, clearForm: { user_id: 1, dir: 'all' },
       // 系统邮件（★ 2026-10-24 分页）
       mailForm: { target_id: 0, subject: '', content: '' },
@@ -392,6 +402,40 @@ export default {
           this.priv.page = r.data.page || 1
         } else this.$message.error(r.msg)
       })
+    },
+    // ★ 2026-10-25 修「发送方/接收方空白」：名字/游戏号统一在这里兜底。
+    //   后端正常会下发 sender_name/sender_num（实测有值）；万一某台旧后端没下发，
+    //   这里退回「用户+ID」，绝不再渲染出空白或「用户undefined」。
+    privName (row, who) {
+      const n = row[who + '_name']
+      if (n) return n
+      const id = row[who + '_id']
+      return (id === 0 || id) ? ('用户' + id) : '未知'
+    },
+    privNum (row, who) {
+      const num = row[who + '_num']
+      if (num) return num
+      const id = row[who + '_id']
+      return (id === 0 || id) ? id : '-'
+    },
+    onPrivSel (rows) { this.privSel = rows || [] },
+    delPrivSelected () {
+      const rows = this.privSel.slice()
+      if (!rows.length) { this.$message.warning('请先勾选要删除的私聊'); return }
+      this.$confirm(`删除选中的 ${rows.length} 条私聊记录？物理删除，不可恢复。`, '确认删除', { type: 'warning' }).then(() => {
+        this.priv.saving = true
+        api.post('/admin/ezfy-privchats/batch-delete', { ids: rows.map(r => r.id) }).then(r => {
+          this.priv.saving = false
+          if (r.code === 0) {
+            this.$message.success(r.data && r.data.msg ? r.data.msg : '已删除')
+            this.privSel = []
+            if (this.$refs.privTable) this.$refs.privTable.clearSelection()
+            // 当前页被删空 → 回退一页，避免停在空页
+            if (this.priv.list.length <= rows.length && this.priv.page > 1) this.priv.page--
+            this.loadPrivs()
+          } else this.$message.error(r.msg)
+        }).catch(() => { this.priv.saving = false })
+      }).catch(() => {})
     },
     delPriv (row) {
       this.$confirm('确认删除这条私信记录？', '提示', { type: 'warning' }).then(() => {

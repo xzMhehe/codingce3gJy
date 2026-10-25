@@ -1824,6 +1824,25 @@ export default {
       for (const g of this.officerEquipGroups) s[g.slot] = true
       return s
     },
+    // ★ 2026-10-25 用户需求：「已穿戴装备」要列出**所有部位**，没穿的显示「无」，
+    //   否则玩家不知道有哪些部位可以穿戴。
+    //   固定清单 = 游戏里实际存在的 14 个部位（按身体从上到下排），
+    //   实际穿戴里若出现清单外的部位（以后新增/老数据），自动追加到末尾，不丢信息。
+    //   一个部位正常只穿一件 → 同部位多件时只取第一件展示（正常不会发生）。
+    officerEquipSlotRows () {
+      const ORDER = ['头部', '肩部', '胸部', '腰部', '足部', '手部', '武器', '防具', '珠宝',
+        '挂件', '饰品', '勋章', '名将勋章', '名将史册']
+      const bySlot = {}
+      for (const g of this.officerEquipGroups) {
+        if (!g.slot) continue
+        if (!bySlot[g.slot]) bySlot[g.slot] = g
+      }
+      const slots = ORDER.slice()
+      for (const g of this.officerEquipGroups) {
+        if (g.slot && slots.indexOf(g.slot) < 0) slots.push(g.slot)
+      }
+      return slots.map(s => ({ slot: s, g: bySlot[s] || null }))
+    },
     // 军官详情里的装备背包：按 cfg 叠加（只算未穿戴的），带 canEquip（该部位还有空余就能穿）
     officerBagGroups () {
       const w = (this.officerBagWord || '').trim().toLowerCase()
