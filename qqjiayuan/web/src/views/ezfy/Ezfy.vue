@@ -2126,6 +2126,19 @@ export default {
         if (out[it.code] !== undefined) out[it.code] = it.count || 0
       }
       return out
+    },
+    // ★★ 2026-10-25 当前格子是否已收藏 —— **必须是 computed，不能是 methods**：
+    //   模板写的是 {{ ezfy.isCellStarred ? '已收藏' : '收藏' }}（不带括号），
+    //   定义在 methods 里时 ezfy.isCellStarred 取到的是**函数对象**（恒为真）
+    //   → ① 未收藏也显示「已收藏」；② addStar 里 if (this.isCellStarred) 恒真，
+    //   永远走「取消收藏」分支 → 点多少次都收藏不上（本次 bug 的根因）。
+    //   ★ 唯一来源 = 收藏列表（mapStars）：按钮文字必须和玩家点开「收藏列表」看到的一致。
+    //   ★ 用 Number() 比较：后端 x/y 是 bigint，万一序列化成字符串，严格 === 会漏判。
+    //   ★ 不再读 selDetail.is_starred —— 详情是异步的，切格子瞬间可能还是上一块地的快照。
+    isCellStarred () {
+      const c = this.selCell
+      if (!c) return false
+      return (this.mapStars || []).some(s => Number(s.x) === Number(c.x) && Number(s.y) === Number(c.y))
     }
   },
   mounted () {
@@ -6072,16 +6085,6 @@ export default {
       return '全队阵亡'
     },
     // ---- 地图/出征 ----
-    isCellStarred () {
-      // ★★ 2026-10-25 唯一来源 = 收藏列表（mapStars）：
-      //   「按钮文字」必须和玩家点开「收藏列表」看到的内容一致，否则玩家没法判断到底收没收藏。
-      //   ★ 用 Number() 比较：后端 x/y 是 bigint，万一序列化成字符串，严格 === 会漏判。
-      //   ★ 不再读 selDetail.is_starred —— 详情是异步的，切格子瞬间可能还是上一块地的快照，
-      //     这正是「没收藏却显示已收藏」的根源。
-      const c = this.selCell
-      if (!c) return false
-      return this.mapStars.some(s => Number(s.x) === Number(c.x) && Number(s.y) === Number(c.y))
-    },
     // ★ 军队动态里活动目标的坐标标识（打活动野地/活动寇/特殊城市的部队）
     actTag (actType) {
       if (actType === 1) return '活动'
