@@ -188,7 +188,7 @@
                   style="display:inline-block;background:linear-gradient(180deg,#ffd700,#e6a800);color:#5b3a00;font-size:12px;line-height:14px;padding:0 5px;border-radius:3px;font-weight:bold;margin-left:4px;vertical-align:1px;">名将</span>
             ({{ o.level }}级)
             <a href="javascript:;" @click="ezfy.openOfficer(o.id)">查看</a><br/>
-            状态:{{ o.status_name }}<span v-if="o.position_name !== '无'" class="blue">（{{ o.position_name }}）</span> &nbsp; 星级:{{ '☆'.repeat(o.star || 0) }}<br/>
+            状态:{{ o.status_name }}<span v-if="o.position_name !== '无'" class="blue">（{{ o.position_name }}）</span> &nbsp; 星级:{{ o.star }}☆<br/>
             后勤/军事/学识/忠诚：<br/>
             {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}
             <span class="green" v-if="ezfy.equipTip(o)">{{ ezfy.equipTip(o) }}</span><br/>
@@ -224,8 +224,7 @@
           <span class="gray">({{ ezfy.recruitTicketCount() }} 张)</span>
         </div>
         <div class="old-line">
-          军校等级决定每小时候选数量, 参谋部{{ ezfy.recruitData.staff_level }}级(已用{{ ezfy.recruitData.used }}/{{ ezfy.recruitData.capacity }}),
-          雇佣费用 = 军官等级 × 1000 {{ ezfy.resNames.gold }}
+          参谋部{{ ezfy.recruitData.staff_level }}级({{ ezfy.recruitData.used }}/{{ ezfy.recruitData.capacity }})
         </div>
         <div class="old-line" v-if="!ezfy.recruitData.academy_level">尚未建造军校, 无法招募军官</div>
         <table v-else class="ezfy-plain-table">
@@ -604,7 +603,7 @@
           </template>
         </div>
         <div class="old-line">
-          星级：<b>{{ '☆'.repeat(ezfy.officerDetail.officer.star || 0) }}</b>
+          星级：{{ ezfy.officerDetail.officer.star }}☆
           <span class="gray" v-if="ezfy.officerDetail.officer.star_max"></span>
           <a v-if="ezfy.officerDetail.officer.star_up_on && ezfy.officerDetail.officer.star < ezfy.officerDetail.officer.star_max"
              href="javascript:;" @click="ezfy.doStarUp">[升星]</a>

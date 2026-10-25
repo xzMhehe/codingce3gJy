@@ -4215,12 +4215,11 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		// ★ 用户规则（原话）：「洗点就是洗点成原来军官池子武将的属性，等级不变；
 		//   待分配的属性 = 现在属性之和 − 军官池属性之和，玩家可以重新分配加点」。
 		//
-		// ★★ 2026-10-25 用户补充（修正了上面那条的副作用）：
-		//   「洗点只能洗**等级属性点**，升星的属性点不能洗掉」。
-		//   原来重置目标 = 池属性，于是「玩家加的点 + 升星加的点」一起退成待分配点 ——
-		//   等于让玩家把升星加成重新分配到别的项上（bug）。
-		//   现在重置目标 = 池属性 + 升星逐项明细（star_military/logistics/learning），
-		//   只有玩家自己加的点会退回。
+		// ★★ 2026-10-25 反复确认后的最终口径：**洗点把三维全部洗回军官池属性，
+		//   「玩家加的点 + 升星加的点」一起退回成待分配点**。
+		//   （中途试过「只洗玩家加的点、保留升星加成」，结果玩家洗点退 0 点，
+		//     反馈「没把升星的属性洗下来、刚才还能洗下来的」→ 改回全洗。）
+		//   洗点后 star_* 明细归零（升星加成已经变成待分配点，不能再挂着）。
 		//
 		//   旧实现还曾「随机重新分配」，余数 `newLea = total - 军事 - 后勤` **全给学识**，
 		//   玩家投诉「洗点后全加到学识上了」—— 那个实现早已废弃。
@@ -4232,29 +4231,27 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			return "军官出征中, 无法重修"
 		}
 		bm, bl, be := officerBaseAttr(o)
-		// 升星加成（老数据只有总数 → 按「超出池属性的比例」反推一次，随后落库成精确值）
-		sm, sl, se := officerStarSplit(o)
-		tMil, tLog, tLea := bm+sm, bl+sl, be+se
-		refund := (o.Military - tMil) + (o.Logistics - tLog) + (o.Learning - tLea)
+		refund := (o.Military - bm) + (o.Logistics - bl) + (o.Learning - be)
 		if refund < 0 {
 			refund = 0
 		}
 		free := o.FreePoints + refund
 		// ★ 用户规则：「洗点只是属性，跟其他没关系」——
-		//   只重置三维属性 + 退回待分配点，**技能/等级/经验/忠诚/装备/升星加成一概不动**。
+		//   只重置三维属性 + 退回待分配点，**技能/等级/经验/忠诚/装备一概不动**。
 		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
-			"military": tMil, "logistics": tLog, "learning": tLea,
-			// base_* 仍是**池属性**（洗点的真正基准；升星不改 base_*）
+			"military": bm, "logistics": bl, "learning": be,
+			// base_* 一起回到洗点目标，之后「已分配点数」的显示才对得上
 			"base_military": bm, "base_logistics": bl, "base_learning": be,
-			// 老数据反推出的逐项升星明细一并落库，下次洗点就是精确值
-			"star_military": sm, "star_logistics": sl, "star_learning": se,
+			// 升星明细归零：加成已随本次洗点退回成待分配点
+			// （star_points 与三项之和保持恒等，见 model.EzfyOfficer 注释）
+			"star_points": 0, "star_military": 0, "star_logistics": 0, "star_learning": 0,
 			"free_points": free, "update_time": time.Now(),
 		})
 		h.consumeItem(uid, cfgId, "使用道具")
-		return fmt.Sprintf("使用成功: %s 洗点完成\n军事 %d→%d  后勤 %d→%d  学识 %d→%d\n"+
-			"待分配属性点 +%d（共 %d 点，去军官详情分配）\n"+
-			"（升星加成 军事+%d 后勤+%d 学识+%d 保留；等级/经验/技能不变）",
-			o.Name, o.Military, tMil, o.Logistics, tLog, o.Learning, tLea, refund, free, sm, sl, se)
+		// ★ 2026-10-25 用户要求「提示不要这么多，简约提示」→ 一行说完。
+		// ⚠️ 必须保留「使用成功」前缀：useItem 用 `strings.HasPrefix(msg, "使用成功")`
+		//   区分成功/失败，少了前缀会被当失败（返回 400，前端弹红字）。
+		return fmt.Sprintf("使用成功: 洗点完成，待分配属性点 +%d", refund)
 	case 19: // 星级徽章：按固定概率升 1 星，三维各 +N（概率/加多少/上限都走管理端配置）
 		if !ezfyStarUpOn() {
 			return "升星功能已关闭"

@@ -3,7 +3,6 @@ package ezfy
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -417,19 +416,10 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	word := strings.TrimSpace(c.Query("word"))
 
 	lim := ezfyCfg.limit
-	pow := lim.PowerTroopPow
-	if pow <= 0 {
-		pow = 0.8
-	}
+	// ★ 2026-10-25 兵种分改「占用人口 × 数量」口径，与玩家端 /rank 完全一致（唯一实现见 ezfy_power.go）
 	cp := lim.PowerCompressPow
 	if cp <= 0 {
 		cp = 0.5
-	}
-	troopQuality := func(id int) float64 {
-		if t := ezfyCfg.troop(id); t != nil {
-			return float64(t.Health+t.Defence+t.AtkDef+t.AtkGround+t.AtkAir+t.Speed+t.AttackRange) / 100
-		}
-		return 10
 	}
 	// 城市 → 归属玩家 / 城市名
 	var cities []model.EzfyCity
@@ -440,11 +430,10 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 		cityUser[int64(ct.ID)] = int64(ct.UserID)
 		cityName[int64(ct.ID)] = ct.Name
 	}
-	// 兵种战力（按玩家所有城市聚合，含城防 type=4）
+	// 兵种战力（按玩家所有城市聚合，含城防 type=4）：Σ 数量 × 占用人口
 	var troops []model.EzfyCityTroop
 	h.DB.Find(&troops)
-	userTroopScore := map[int64]float64{}
-	userTroopTypes := map[int64]map[int]bool{}
+	userTroopPop := map[int64]float64{}
 	for _, t := range troops {
 		if t.Count <= 0 {
 			continue
@@ -453,14 +442,7 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 		if uid == 0 {
 			continue
 		}
-		if userTroopTypes[uid] == nil {
-			userTroopTypes[uid] = map[int]bool{}
-		}
-		if !userTroopTypes[uid][t.TroopId] {
-			userTroopTypes[uid][t.TroopId] = true
-			userTroopScore[uid] += float64(lim.PowerTroopType)
-		}
-		userTroopScore[uid] += math.Pow(float64(t.Count), pow) * troopQuality(t.TroopId)
+		userTroopPop[uid] += float64(t.Count) * ezfyTroopPop(t.TroopId)
 	}
 	// 建筑战力
 	var builds []model.EzfyCityBuilding
@@ -522,25 +504,12 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	for uid := range userBuildScore {
 		uidSet[uid] = true
 	}
-	for uid := range userTroopScore {
+	for uid := range userTroopPop {
 		uidSet[uid] = true
 	}
 	for uid := range uidSet {
-		techRaw, buildRaw, troopRaw := userTechScore[uid], userBuildScore[uid], userTroopScore[uid]
-		raw := techRaw + buildRaw + troopRaw
-		e := &pw{uid: uid, power: math.Pow(raw, cp)}
-		if raw > 0 {
-			t2 := math.Pow(techRaw, cp)
-			b2 := math.Pow(buildRaw, cp)
-			o2 := math.Pow(troopRaw, cp)
-			sum2 := t2 + b2 + o2
-			if sum2 > 0 {
-				e.tech = e.power * t2 / sum2
-				e.build = e.power * b2 / sum2
-				e.troop = e.power * o2 / sum2
-			}
-		}
-		all[uid] = e
+		power, tech, build, troop := ezfyPowerParts(userTechScore[uid], userBuildScore[uid], userTroopPop[uid], cp)
+		all[uid] = &pw{uid: uid, power: power, tech: tech, build: build, troop: troop}
 	}
 	arr := make([]*pw, 0, len(all))
 	for _, v := range all {
@@ -613,7 +582,7 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size,
 		"excluded": pvpExcludedRows(h.DB, ezfyBoardPower),
-		"usage":    "战力 = 科技 + 建筑 + 兵种（权重在「二战系统配置」可调），与游戏内战力榜同口径"})
+		"usage":    "战力 = 科技 + 建筑 + 兵种；兵种按「数量 × 占用人口」计（封顶 5 万），与游戏内战力榜同口径"})
 }
 
 // AdminEzfyPrestigeRank 管理端军衔声望榜（GET /admin/ezfy-prestige-rank?page=&size=&word=）。

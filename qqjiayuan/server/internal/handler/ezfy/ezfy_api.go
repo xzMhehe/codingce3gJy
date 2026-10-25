@@ -2,7 +2,6 @@ package ezfy
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -2101,30 +2100,18 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname, "user_id": p.UserID,
 			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 	}
-	// 战力榜（★ 2026-10-02 兵力榜 → 战力榜，柔和科技/建筑/兵种，避免纯兵力碾压吓到新人）
+	// 战力榜（★ 2026-10-25 兵种分改为「占用人口 × 数量」口径，完整口径见 ezfy_power.go）
 	//   战力 = 科技战力(用户级, 等级全城共用) + 建筑战力 + 兵种战力；
-	//   建筑/兵种按玩家「最好城市」(综合得分最高的城)计算，展示城市名也用该城。
-	//   权重读 ezfy_cfg_limit（管理端「二战系统配置」可调）：
-	//   科技每级 power_tech_per_level、每项已研究 power_tech_per_tech、
-	//   建筑每级 power_build_per_level、每兵种类型 power_troop_type、
-	//   兵种数量按 count^power_troop_pow × 质量/100（软化新老差距）。
+	//   科技/建筑按玩家**全部城市**聚合后各自 ^power_compress_pow 压缩；
+	//   兵种分由 ezfyTroopPower 给出（饱和曲线、封顶 5 万）—— 侦察机堆量不再第一。
+	//   权重读 ezfy_cfg_limit：power_tech_per_level / power_tech_per_tech /
+	//   power_build_per_level / power_compress_pow。
+	//   ★ power_troop_pow / power_troop_type 自 2026-10-25 起**不再参与战力榜**
+	//     （兵种分改成纯人口口径：人口占用线性计入，且加任何加成都会翻转名次）。
 	lim := ezfyCfg.limit
-	pow := lim.PowerTroopPow
-	if pow <= 0 {
-		pow = 0.8
-	}
-	// 总量压缩幂次：最终战力 = 原始总和^此值（默认 0.5）。幂次<1 时只缩大数、小数几乎不缩，
-	// 且严格单调递增 → 排名顺序不变（不像除法那样把低战力压成小数）。
 	cp := lim.PowerCompressPow
 	if cp <= 0 {
 		cp = 0.5
-	}
-	// 兵种质量 = 生命+防御+攻击(防/陆/空)+速度+射程, ÷100 → 每单位战力基数
-	troopQuality := func(id int) float64 {
-		if t := ezfyCfg.troop(id); t != nil {
-			return float64(t.Health+t.Defence+t.AtkDef+t.AtkGround+t.AtkAir+t.Speed+t.AttackRange) / 100
-		}
-		return 10
 	}
 	// 城市 → 归属玩家 / 城市名
 	var cities []model.EzfyCity
@@ -2135,13 +2122,12 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		cityUser[int64(c.ID)] = int64(c.UserID)
 		cityName[int64(c.ID)] = c.Name
 	}
-	// 兵种战力按「玩家所有城市」聚合（含城防 type=4）：Σ count^pow × 质量 + 兵种类型数 × 系数。
-	// ★ 2026-10-02 只算最好城市会导致榜首建筑明细=2 的失真，量应取全城合计，
-	//   「最好城市」只用来选展示主城名。
+	// 兵种战力按「玩家所有城市」聚合（含城防 type=4）：Σ 数量 × 占用人口。
+	// ★ 2026-10-25 不再乘「兵种质量」—— 侦察机速度 5000 会让它质量最高（50.95 > 战列舰 45.88），
+	//   谁侦察机多谁第一。改成人口口径后：侦察机 1 人口 / 航母 55 人口，垃圾兵堆量无效。
 	var troops []model.EzfyCityTroop
 	h.DB.Find(&troops)
-	userTroopScore := map[int64]float64{}
-	userTroopTypes := map[int64]map[int]bool{}
+	userTroopPop := map[int64]float64{}
 	for _, t := range troops {
 		if t.Count <= 0 {
 			continue
@@ -2150,14 +2136,7 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		if uid == 0 {
 			continue
 		}
-		if userTroopTypes[uid] == nil {
-			userTroopTypes[uid] = map[int]bool{}
-		}
-		if !userTroopTypes[uid][t.TroopId] {
-			userTroopTypes[uid][t.TroopId] = true
-			userTroopScore[uid] += float64(lim.PowerTroopType)
-		}
-		userTroopScore[uid] += math.Pow(float64(t.Count), pow) * troopQuality(t.TroopId)
+		userTroopPop[uid] += float64(t.Count) * ezfyTroopPop(t.TroopId)
 	}
 	// 建筑战力按「玩家所有城市」聚合；cityBuildSum 用于选展示主城（建筑等级最高的城）
 	var builds []model.EzfyCityBuilding
@@ -2219,27 +2198,12 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	for uid := range userBuildScore {
 		uidSet[uid] = true
 	}
-	for uid := range userTroopScore {
+	for uid := range userTroopPop {
 		uidSet[uid] = true
 	}
 	for uid := range uidSet {
-		techRaw, buildRaw, troopRaw := userTechScore[uid], userBuildScore[uid], userTroopScore[uid]
-		raw := techRaw + buildRaw + troopRaw
-		e := &pw{uid: uid, power: math.Pow(raw, cp)}
-		if raw > 0 {
-			// 明细各自独立幂压缩后按比例归一化：总和 = power，且小分量不会被线性占比压成 0。
-			// （power 仍由 raw^cp 决定 → 排序与原始总和严格一致，不受明细拆分影响）
-			t2 := math.Pow(techRaw, cp)
-			b2 := math.Pow(buildRaw, cp)
-			o2 := math.Pow(troopRaw, cp)
-			sum2 := t2 + b2 + o2
-			if sum2 > 0 {
-				e.tech = e.power * t2 / sum2
-				e.build = e.power * b2 / sum2
-				e.troop = e.power * o2 / sum2
-			}
-		}
-		all[uid] = e
+		power, tech, build, troop := ezfyPowerParts(userTechScore[uid], userBuildScore[uid], userTroopPop[uid], cp)
+		all[uid] = &pw{uid: uid, power: power, tech: tech, build: build, troop: troop}
 	}
 	arr := make([]*pw, 0, len(all))
 	for _, v := range all {

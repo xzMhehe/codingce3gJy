@@ -764,23 +764,25 @@ type EzfyCfgLimit struct {
 	//   按玩家、按自然日统计（计数落在 ezfy_profile.sys_sell_*）。
 	SysSellDailyLimit int64 `gorm:"default:1000000;comment:系统回收每日每种资源上限(0=不限)" json:"sys_sell_daily_limit"`
 
-	// ============ 战力榜权重（★ 2026-10-02 兵力榜 → 战力榜）============
+	// ============ 战力榜权重（★ 2026-10-02 兵力榜 → 战力榜；★ 2026-10-25 兵种分改人口口径）============
 	//
-	// 战力 = 科技战力 + 建筑战力 + 兵种战力；科技等级存用户级(全城共用)，
-	// 建筑/兵种按玩家「最好城市」(综合得分最高)计算，管理端可调权重。
+	// 战力 = 科技战力 + 建筑战力 + 兵种战力（三项直接相加，明细三列之和 == 总战力）。
+	// 完整口径见 handler/ezfy/ezfy_power.go（唯一实现）。
 	//   · 科技每级 +power_tech_per_level（默认 120）
 	//   · 每项已研究科技 +power_tech_per_tech（默认 100）
 	//   · 建筑每级 +power_build_per_level（默认 80）
-	//   · 每拥有一种兵种类型 +power_troop_type（默认 300）
-	//   · 兵种数量按 count^power_troop_pow × 兵种质量/100 折算（默认 0.8 次方, 软化新老差距）
-	//   · 最终总战力 = 原始总和^power_compress_pow（默认 0.5 次方：只缩大数、小数几乎不缩、
-	//     严格单调保证排名不变；明细按原始占比拆分，三列之和仍等于总战力）
+	//   · 兵种分 = 5 万 × 人口占用/(人口占用+80 亿) —— **纯「数量 × 占用人口」口径**，
+	//     侦察机(1 人口)堆量打不过航母(55 人口)，且恒不超过 5 万（20 亿兵也不爆表）。
+	//   · 科技/建筑原始分各自 ^power_compress_pow（默认 0.5：只缩大数、严格单调）。
+	//   ⚠️ power_troop_type / power_troop_pow 自 2026-10-25 起**不再参与战力榜**
+	//     （加任何额外加成都会翻转名次：兵多的人反而排后面 = 用户抱怨的那类不合理）；
+	//     字段保留只为兼容旧库/旧管理端表单，改动它们不影响战力。
 	PowerTechPerLevel  int     `gorm:"default:120;comment:战力科技每级" json:"power_tech_per_level"`
 	PowerTechPerTech   int     `gorm:"default:100;comment:战力每项科技" json:"power_tech_per_tech"`
 	PowerBuildPerLevel int     `gorm:"default:80;comment:战力建筑每级" json:"power_build_per_level"`
-	PowerTroopType     int     `gorm:"default:300;comment:战力每兵种类型" json:"power_troop_type"`
-	PowerTroopPow      float64 `gorm:"default:0.8;comment:战力兵种数量幂次" json:"power_troop_pow"`
-	PowerCompressPow   float64 `gorm:"default:0.5;comment:战力总量压缩幂次(总和^此值, 默认0.5)" json:"power_compress_pow"`
+	PowerTroopType     int     `gorm:"default:300;comment:战力每兵种类型(2026-10-25 起不再参与战力)" json:"power_troop_type"`
+	PowerTroopPow      float64 `gorm:"default:0.8;comment:战力兵种数量幂次(2026-10-25 起不再参与战力)" json:"power_troop_pow"`
+	PowerCompressPow   float64 `gorm:"default:0.5;comment:战力总量压缩幂次(科技/建筑^此值, 默认0.5)" json:"power_compress_pow"`
 
 	// ★ 2026-10-14 风云榜统计开关（1 = 开：玩家对战结算写周榜；0 = 关：完全不做统计）。
 	//   管理端「排行榜 → 风云榜」页可直接开关；关闭后新战斗不再累计，
@@ -2381,15 +2383,11 @@ type EzfyOfficer struct {
 	//   升星加的是当前属性、不动 base_*，洗点时差额会自动退回 ——
 	//   这里持久记录「其中多少点是升星来的」，玩家洗点前一眼能看懂。
 	StarPoints int `gorm:"default:0;comment:升星累计加点" json:"star_points"`
-	// ★★ 2026-10-25 升星加点的**逐项**明细（军事/后勤/学识各多少）。
+	// ★★ 2026-10-25 升星加点的**逐项**明细（军事/后勤/学识各多少），恒等于 StarPoints 的拆分。
 	//
-	//	为什么必须有：用户规则「洗点只能洗等级属性点，升星的属性点不能洗掉」——
-	//	只有总数 StarPoints 的话，洗点只能把「当前属性 − 池属性」全部退回成待分配点，
-	//	等于让玩家把升星加成重新分配到别的项上（就是那个 bug）。
-	//	有了逐项明细，洗点的重置目标 = 池属性 + star_military/logistics/learning，
-	//	退回到待分配点的只有「玩家自己加的点」。
-	//	老数据（本次改动之前升的星）三项都是 0、只有 StarPoints 有值 → 洗点时按
-	//	「各项超出池属性的比例」一次性反推并写回，之后就是精确值了。
+	//	注意口径（反复确认过）：**洗点会把三维全部洗回军官池属性**，
+	//	「玩家加的点 + 升星加的点」一起退回成待分配点 —— 所以洗点时这四项一并归零。
+	//	保留它们是为了「升星加了多少」有据可查（不参与洗点计算）。
 	StarMilitary  int `gorm:"default:0;comment:升星累计加军事" json:"star_military"`
 	StarLogistics int `gorm:"default:0;comment:升星累计加后勤" json:"star_logistics"`
 	StarLearning  int `gorm:"default:0;comment:升星累计加学识" json:"star_learning"`

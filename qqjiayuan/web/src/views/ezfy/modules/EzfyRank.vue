@@ -76,7 +76,7 @@
             <colgroup>
               <col style="width: 18%"><col style="width: 40%"><col style="width: 42%">
             </colgroup>
-            <tr><th>名次</th><th>统帅</th><th>战力</th></tr>
+            <tr><th>名次</th><th>统帅</th><th title="战力 = 科技 + 建筑 + 兵种；兵种按「数量 × 占用人口」计（侦察机 1 人口 / 航母 55 人口），单兵种分最高 5 万">战力</th></tr>
             <template v-for="(r, i) in ezfy.rankData.troops">
               <tr :key="'rt' + r.rank" :class="ezfy.rankRowCls(r.rank)">
                 <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
