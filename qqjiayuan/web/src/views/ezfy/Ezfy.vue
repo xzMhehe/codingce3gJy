@@ -9540,14 +9540,16 @@ body.ezfy-ios .ezfy-page textarea {
     padding: 1px 0;
   }
 }
-/* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条）
-   ★ 2026-10-21 用户「分页不对，居中干啥，变左边去和原来位置一样」：
-     恢复左对齐；仍用固定三栏（4.5em / 10em / 4.5em）保证点上一页/下一页时按钮不跳。
-     17px 字号下，下一页起点 ≈ 4.5em + 10em = 247px，与原内联排布基本一致。 */
+/* ★ 分页条（军情三区 / 公告 / 聊天 / 邮件 / 私信 / 背包 / 商城…共用一套）
+   ★ 2026-10-21 用户「分页不对，居中干啥，变左边去和原来位置一样」→ 左对齐。
+   ★ 2026-10-25 用户「分页间隔太大了，按一个空格间隔吧，就像 上一页 1/4 下一页，位置不变」：
+     原固定三栏（4.5em / 10em / 4.5em）把「1/4」居中在 10em 里 → 两侧撑出大片空白。
+     改 flex 左对齐 + gap 0.4em（≈一个半角空格宽），条子起始位置不变，仅把间距压回单空格。 */
 .ezfy-page .ezfy-pager {
-  display: grid;
-  grid-template-columns: 4.5em 10em 4.5em;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.4em;
   margin: 8px 0 4px;
   /* ★ 2026-09-25 随全站统一：分页条 15 → var(--fs)（所有文字一样大） */
   font-size: var(--fs);
@@ -9555,7 +9557,6 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-pager > a,
 .ezfy-page .ezfy-pager > span {
   margin: 0;
-  text-align: center;
   white-space: nowrap;
 }
 .ezfy-page .ezfy-pager > a {
@@ -9565,10 +9566,9 @@ body.ezfy-ios .ezfy-page textarea {
   color: #999;
   pointer-events: none;
 }
-/* 极窄屏（≤350px）：三栏同步收窄 + 字号降 2px，保证中间页数不压到 [下一页]。 */
+/* 极窄屏（≤350px）：字号降 2px（间距由 gap 控制，不再需要三栏宽度）。 */
 @media (max-width: 350px) {
   .ezfy-page .ezfy-pager {
-    grid-template-columns: 4em 10em 4em;
     font-size: calc(var(--fs) - 2px);
   }
 }

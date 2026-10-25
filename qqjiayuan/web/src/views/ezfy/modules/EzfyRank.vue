@@ -161,7 +161,8 @@
                 </span>
                 <b :class="it.points > 0 ? 'green' : 'gray'" style="flex:none">{{ it.points > 0 ? '+' + ezfy.fmtN(it.points) : '+0' }}</b>
               </div>
-              <div style="display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13px">
+              <!-- ★ 2026-10-25 分页间隔统一按「一个空格」（gap 10 → 4px），位置仍左对齐不变 -->
+              <div style="display:flex;align-items:center;gap:4px;padding:6px 2px;font-size:13px">
                 <a href="javascript:;" @click="ezfy.pvpDetailPage(-1)">上一页</a>
                 <span class="gray">{{ ezfy.pvpDetail.page }}/{{ Math.max(1, Math.ceil(ezfy.pvpDetail.total / ezfy.pvpDetail.size)) }}</span>
                 <a href="javascript:;" @click="ezfy.pvpDetailPage(1)">下一页</a>
