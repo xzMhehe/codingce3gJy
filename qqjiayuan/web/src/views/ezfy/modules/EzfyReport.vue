@@ -98,7 +98,7 @@
                      （与首页产量同一套 fmtProd：截断取整，展示值不会大于真实值）。
                      「本期已采」→「已采」。 -->
                 <span class="green">已采：{{ ezfy.fmtProd(o._lg.food) }}粮/{{ ezfy.fmtProd(o._lg.steel) }}钢/{{ ezfy.fmtProd(o._lg.oil) }}油/{{ ezfy.fmtProd(o._lg.rare) }}稀/{{ ezfy.fmtProd(o._lg.gold) }}金</span>
-                <span class="gray">（总 {{ ezfy.fmtProd(o._lg.total) }}，负重 {{ ezfy.fmtProd(o._lg.total) }}/{{ ezfy.fmtProd(o.carry_cap) }}）</span>
+                <span class="gray">（{{ ezfy.fmtProd(o._lg.total) }}/{{ ezfy.fmtProd(o.carry_cap) }}）</span>
                 <!-- ★★ 2026-10-21 用户规则：负重满后资源不再增加，宝物仍按周期继续。 -->
                 <span v-if="o._lg.full" class="red">（负重已满）</span>
               </template>
