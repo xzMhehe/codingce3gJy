@@ -946,6 +946,7 @@ export default {
       trainSel: null,
       trainCount: 10,
       trainSplit: true,
+      trainBusy: false, // ★ 2026-10-25 训练页 [开始训练] 连点卡控：请求未返回 / 未满 1 秒时忽略再次点击
       trainMode: 'troop', // troop=训练(createTroop) / defence=建造(createDefence)
       troopViewId: 0,     // 兵种详情页当前兵种 id
       troopViewBack: 'troops', // 兵种详情页 [返回] 回到哪一页
@@ -4606,6 +4607,9 @@ export default {
     runOpenBagChest (b, n) {
       if (this.chestOpening) { this.notify('正在开箱，请稍候…'); return } // 锁：上一个还没结束
       if (n <= 0) { this.notify('请选择开箱数量'); return }
+      // ★ 2026-10-25 开箱防抖（用户要求）：1 秒账号级卡控（localStorage 多 tab 共享），
+      //   与后端 ChestBagOpen 的 1 秒卡控同口径；chestOpening 只管「请求未返回」这段。
+      if (!this.opGuard('chestOpenBag', 1000)) return
       this.chestOpening = true
       // 请求期间禁止再开（前端锁 + 后端批量抽奖都防并发重复）
       api.post('/games/ezfy/chest/open-bag', { chest_id: b.chest_id, count: n }).then(r => {
@@ -4660,7 +4664,8 @@ export default {
       if (!(n > 0)) { this.notify('请选择购买数量'); return }
       const maxN = ch.open_max || n
       n = Math.max(1, Math.min(n, maxN))
-      // 并发防抖：连点不会重复下单
+      // 并发防抖：连点不会重复下单（1 秒账号级卡控 + 请求未返回忽略，与后端 chest_buy 同口径）
+      if (!this.opGuard('chestBuy', 1000)) return
       this.once('chestBuy' + ch.id, () =>
         api.post('/games/ezfy/chest/buy', {
           chest_id: ch.id, count: n, currency: ch.price_diamond > 0 ? 'diamond' : 'gold'
@@ -4708,6 +4713,9 @@ export default {
       if (n <= 0) { this.notify('请填写开箱数量'); return }
       if (n > ch.open_max) { this.notify('单次最多开 ' + ch.open_max + ' 个'); return }
       const cur = (ch.price_diamond > 0 && ch.price_gold > 0) ? this.chestPay : (ch.price_diamond > 0 ? 'diamond' : 'gold')
+      // ★ 2026-10-25 开箱防抖（用户要求）：1 秒账号级卡控（localStorage 多 tab 共享），
+      //   与后端 ChestOpen 的 1 秒卡控同口径；下面的 once 只管「请求未返回」这段。
+      if (!this.opGuard('chestOpen', 1000)) return
       // ★ 2026-10-08 连点防抖：一次点击 = 一次开箱（后端已加条件原子扣款/扣库存）
       this.once('chestOpen' + ch.id, () => api.post('/games/ezfy/chest/open',
         { chest_id: ch.id, count: n, currency: cur }).then(r => {
@@ -5589,19 +5597,30 @@ export default {
       if (max <= 0) return
       this.trainCount = max
     },
+    // ★★ 2026-10-25 用户要求：「[开始训练] 前端防抖 + 后端多点卡控 + 1 秒延迟」。
+    //   前端两层：① trainBusy（请求未返回前忽略点击）；② 无论成败，1 秒冷却后才解锁
+    //   —— 与后端 1 秒窗口口径一致，连点只会下达一次征兵命令（不会扣两次资源）。
     doTrainPre () {
       if (!this.trainSel) return
+      if (this.trainBusy) return // 连点/请求未返回：直接忽略，不重复下达命令
       const n = parseInt(this.trainCount) || 0
       if (n <= 0) { this.notify('请填写建造数量'); return }
+      this.trainBusy = true
+      const unlock = () => {
+        setTimeout(() => { this.trainBusy = false }, 1000)
+      }
       api.post('/games/ezfy/troops/train', {
         troop_id: this.trainSel.id, count: n, split: this.trainSplit
-      }).then(r => this.alert(r, '征兵已开始', () => {
-        // ★ 2026-10-21 「用完就恢复」：征兵当下人口就转入待恢复，立刻刷一次军队数据，
-        //   让「空闲人口」这一秒就扣下去（不要等造完/下次轮询才看到变化）。
-        this.loadTroops()
-        // ★ 2026-10-05 训练完跳回军工厂页（不再停留在具体兵种训练页）；城防则回城防页
-        this.go(this.trainMode === 'defence' ? 'defence' : 'factory')
-      }))
+      }).then(r => {
+        unlock()
+        this.alert(r, '征兵已开始', () => {
+          // ★ 2026-10-21 「用完就恢复」：征兵当下人口就转入待恢复，立刻刷一次军队数据，
+          //   让「空闲人口」这一秒就扣下去（不要等造完/下次轮询才看到变化）。
+          this.loadTroops()
+          // ★ 2026-10-05 训练完跳回军工厂页（不再停留在具体兵种训练页）；城防则回城防页
+          this.go(this.trainMode === 'defence' ? 'defence' : 'factory')
+        })
+      }, unlock)
     },
     // 拆除城防设施(复刻 troopDefence.html 每行的 [拆除])
     async doDismiss (t) {
@@ -7140,7 +7159,13 @@ export default {
         body.officer_id = this.useOfficerId
       }
       // ★ 2026-10-25 技能书（item_type 11）= 随机学一个技能，不再传 skill_id（后端也会忽略）
-      api.post('/games/ezfy/bag/use', body).then(r => {
+      // ★★ 2026-10-25 连点防抖（用户反馈「部分道具 瞬间多点 能用好多次」）：
+      //   ① opGuard：1 秒账号级卡控，localStorage 让**所有 tab 共享同一把锁**
+      //      （与后端 UseItem 的 1 秒卡控同口径，加速类后端是 3 秒）；
+      //   ② once：请求还没返回时忽略后续点击（一次点击 = 一次使用）。
+      //   ⚠️ 别只留一个：opGuard 防「点完等一下再点」，once 防「同一瞬间连点」。
+      if (!this.opGuard('bagUse', 1000)) return
+      this.once('bagUse', () => api.post('/games/ezfy/bag/use', body).then(r => {
         if (r.code === 0) {
           this.notify(r.data && r.data.msg ? r.data.msg : '使用成功')
           this.useItem = null
@@ -7149,7 +7174,7 @@ export default {
           // ★ 2026-10-22 征募告示会改变当前城市队列上限，立刻刷新建筑数据
           if (it.item_type === 33) this.loadBuildings()
         } else this.notify(r.msg || '使用失败')
-      })
+      }))
     },
     doExchangeSell () {
       // ★ 2026-10-06 连点防抖：一次点击 = 一次挂单（请求未返回时忽略后续点击）
@@ -7840,12 +7865,14 @@ export default {
       const card = this.bagItems.find(x => x.item_type === 12)
       if (!card) { this.notify('背包没有「军官洗点卡」，可在商城购买'); return }
       if (!await this.ask('确认对 ' + o.name + ' 使用「军官洗点卡」×1 吗？\n属性将重置为军官池初始属性，已分配的点退回待分配点（等级/经验/技能保留）')) return
-      api.post('/games/ezfy/bag/use', { cfg_id: card.cfg_id, count: 1, city_id: this.city.id, officer_id: o.id }).then(r => {
+      // ★ 2026-10-25 连点防抖：与背包「使用」共用同一把 1 秒锁（后端 UseItem 也是 1 秒）
+      if (!this.opGuard('bagUse', 1000)) return
+      this.once('bagUse', () => api.post('/games/ezfy/bag/use', { cfg_id: card.cfg_id, count: 1, city_id: this.city.id, officer_id: o.id }).then(r => {
         if (r.code === 0) {
           this.notify(r.data && r.data.msg ? r.data.msg : '洗点完成')
           this.loadOfficerDetail(o.id)
         } else this.notify(r.msg || '洗点失败')
-      })
+      }))
     },
     doGrant () {
       const o = this.officerDetail.officer
@@ -9029,6 +9056,9 @@ body.ezfy-ios .ezfy-page textarea {
    上限为 0 时同样灰掉 —— 与出征页 [最大] 的处理保持一致，避免「点了没反应」的困惑。 */
 .ezfy-page .train-max { white-space: nowrap; margin-left: 6px; }
 .ezfy-page .train-max.train-max-off { color: #b3b3b3; cursor: default; }
+/* ★ 2026-10-25 训练页 [开始训练]：去掉按钮样式（文字链接），1 秒冷却期内灰掉提示不可点 */
+.ezfy-page .train-start { white-space: nowrap; }
+.ezfy-page .train-start.train-start-off { color: #b3b3b3; cursor: default; }
 @media (max-width: 700px) {
   /* 窄屏：名称+现有占第一行，滑块/数字/[最大] 整段换到第二行 */
   .ezfy-page .of-row { flex-wrap: wrap; row-gap: 0; }

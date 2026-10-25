@@ -2680,6 +2680,13 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	lock := ezfyTrainLock(uint(city.ID))
 	lock.Lock()
 	defer lock.Unlock()
+	// ★★ 2026-10-25 卡控②（落库级复核）：进了城市锁之后再查一次「本城最近一条训练队列」。
+	//   ① 是进程内内存锁，跨不过两台机器（线上两机共用一个 RDS）——这里读 DB 兜底，
+	//   保证「同一秒内两次征兵」在任意入口都只会成功一次（第二次连资源都不会扣）。
+	//   人机城跳过（后台 tick 驱动，不存在连点，1 秒窗口只会误伤连续造兵）。
+	if city.IsBot == 0 && h.ezfyTrainQueueTooFresh(uint(city.ID), time.Now()) {
+		return "操作过于频繁, 请 1 秒后再试"
+	}
 	return h.trainTroopLocked(city, troopId, count, split)
 }
 
@@ -3734,8 +3741,10 @@ func (h *EzfyHandler) addItemCapped(uid uint, cfgId, count, max int) bool {
 	return res.Error == nil && res.RowsAffected > 0
 }
 
-func (h *EzfyHandler) consumeItem(uid uint, cfgId int, reason ...string) {
-	h.consumeItemN(uid, cfgId, 1, reason...)
+// consumeItem 扣 1 个道具，返回是否扣成功（★ 2026-10-25 随 consumeItemN 一起带上返回值：
+// 「先扣后生效」的调用点必须知道扣没扣到；语句式调用方照旧忽略返回值即可）。
+func (h *EzfyHandler) consumeItem(uid uint, cfgId int, reason ...string) bool {
+	return h.consumeItemN(uid, cfgId, 1, reason...)
 }
 
 // ezfyBestSpeedItem 背包里某类加速道具（ezfyItemTypeBuildSpeed / TrainSpeed / TechSpeed）中
@@ -3759,29 +3768,58 @@ func (h *EzfyHandler) ezfyBestSpeedItem(uid uint, itemType int) int {
 	return best
 }
 
-// consumeItemN 一次扣掉 n 个道具（n <= 0 时什么都不做）。
+// consumeItemN 一次扣掉 n 个道具（n <= 0 时什么都不做），返回**是否扣成功**。
 //
 // ★ 批量道具（如经验书一次用几千本）必须走这个 —— 原来循环里逐本调 consumeItem，
 // 一次请求就是几千条 SELECT + UPDATE。
 // reason：消耗原因（写进「道具使用」流水，管理端可查），不传时默认「道具消耗」。
-func (h *EzfyHandler) consumeItemN(uid uint, cfgId, n int, reason ...string) {
+//
+// ★★ 2026-10-25 并发卡控（用户反馈「部分道具瞬间多点能用好多次」）：
+//
+//	原实现是「SELECT 取快照 → Update(count = it.Count - n)」的**读-改-写**：
+//	连点并发时 N 个请求读到同一个旧值（比如 1），全部通过 useItem 的 `count > have`
+//	校验 → 同一件道具的效果被结算 N 次，最后各自把数量写回 0 / 删行。
+//	现在改成**条件原子扣**（`count >= n` 才减）：并发下只有一个请求能扣到。
+//	返回 false = 道具不足，**调用方必须据此不生效**（不能再「扣不到也照样发奖」）。
+func (h *EzfyHandler) consumeItemN(uid uint, cfgId, n int, reason ...string) bool {
 	if n <= 0 {
-		return
+		return true
 	}
-	var it model.EzfyItem
-	if err := h.DB.Where("user_id = ? AND cfg_id = ?", uid, cfgId).First(&it).Error; err != nil {
-		return
+	res := h.DB.Model(&model.EzfyItem{}).
+		Where("user_id = ? AND cfg_id = ? AND count >= ?", uid, cfgId, n).
+		Update("count", gorm.Expr("count - ?", n))
+	if res.Error != nil || res.RowsAffected == 0 {
+		return false
 	}
-	if n >= it.Count {
-		h.DB.Delete(&it)
-	} else {
-		h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).Update("count", it.Count-n)
-	}
+	// 扣到 0 的行直接删掉（保持「用完即删」，背包列表不展示 0 行）
+	h.DB.Where("user_id = ? AND cfg_id = ? AND count <= 0", uid, cfgId).Delete(&model.EzfyItem{})
 	rs := "道具消耗"
 	if len(reason) > 0 && reason[0] != "" {
 		rs = reason[0]
 	}
 	h.logItemUse(uid, cfgId, n, rs)
+	return true
+}
+
+// ezfyTakeItemUse 「先扣后生效」：使用道具前先原子扣 1 个，扣不到就**不生效**。
+//
+// ★★ 2026-10-25 顺序是关键 —— 原来所有道具都是「先生效、再扣」（consumeItem 写在每个
+// case 末尾），并发连点时多个请求都能通过 useItem 的 `count > have` 校验并各自生效，
+// 于是「1 个道具生效 N 次」（资源包刷资源、加速道具白加速、经验书刷经验）。
+// 改成先扣：扣失败说明这件道具已被别的请求用掉，直接返回、绝不生效。
+// 返回 "" = 已扣成功（可以继续生效）；否则是给玩家看的错误文案。
+func (h *EzfyHandler) ezfyTakeItemUse(uid uint, cfgId int) string {
+	if !h.consumeItem(uid, cfgId, "使用道具") {
+		return "道具数量不足"
+	}
+	return ""
+}
+
+// ezfyRefundItemUse 生效失败时把刚预扣的 1 个道具退回（保持原「失败不扣」语义）。
+//
+// 只有「先扣后生效」的 case 在扣完之后才可能失败时（如条件更新被并发抢先）才需要调。
+func (h *EzfyHandler) ezfyRefundItemUse(uid uint, cfgId int) {
+	h.addItem(uid, cfgId, 1)
 }
 
 // logItemUse 记录道具消耗流水（管理端「数据管理 → 道具使用」查看，用于核实「丢道具」反馈）
@@ -3917,8 +3955,12 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 		if maxBooks := (need + per - 1) / per; maxBooks < used {
 			used = maxBooks
 		}
+		// ★ 2026-10-25 先扣后生效（并发卡控）：先原子扣书，扣到了才加经验，
+		//   否则连点并发会「同一本书加 N 次经验」。
+		if !h.consumeItemN(uid, cfgId, int(used), "使用道具") {
+			return "道具数量不足"
+		}
 		h.addOfficerExp(city, o.ID, per*used)
-		h.consumeItemN(uid, cfgId, int(used), "使用道具")
 		msg := fmt.Sprintf("使用成功: %s 获得%d经验", o.Name, per*used)
 		if used < int64(count) {
 			msg += fmt.Sprintf("（已达%d级上限，本次只消耗%d本，其余%d本留在背包）",
@@ -3968,52 +4010,72 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		//   改成 DB 原子累加 col + param，只基于库里最新值加，不丢任何存量。
 		//   ★ 2026-09-24 再修：不能套 LEAST(cap, ...)——道具是凭空发资源，截在上限会
 		//   把多出的部分丢掉（玩家反馈「用了资源又变成上限了」）。道具加资源一律无条件累加。
+		// ★★ 2026-10-25 先扣后生效（并发卡控）：扣不到道具就不发资源，
+		//   否则连点并发会「1 个资源包加 N 次资源」（玩家反馈的「瞬间多点能用好多次」）。
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 			"food":  ezfyResAddExpr("food", param),
 			"steel": ezfyResAddExpr("steel", param),
 			"oil":   ezfyResAddExpr("oil", param),
 			"rare":  ezfyResAddExpr("rare", param),
 		}).Error; err != nil {
+			h.ezfyRefundItemUse(uid, cfgId) // 没加成 → 退回道具
 			return "资源累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 粮食/钢铁/石油/稀矿各+%d", param)
 	case 2:
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("gold", ezfyResAddExpr("gold", param)).Error; err != nil {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return "黄金累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 黄金+%d", param)
 	// ★ 2026-09-28 单资源礼包（2钻礼包2~5，ItemType 27~30）：
 	//   与黄金包(ItemType 2)同款实现，各自只加一种资源，无条件累加不截上限。
 	case 27: // 粮食包
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("food", ezfyResAddExpr("food", param)).Error; err != nil {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return "粮食累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 粮食+%d", param)
 	case 28: // 钢铁包
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("steel", ezfyResAddExpr("steel", param)).Error; err != nil {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return "钢铁累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 钢铁+%d", param)
 	case 29: // 石油包
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("oil", ezfyResAddExpr("oil", param)).Error; err != nil {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return "石油累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 石油+%d", param)
 	case 30: // 稀矿包
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("rare", ezfyResAddExpr("rare", param)).Error; err != nil {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return "稀矿累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 稀矿+%d", param)
 	// ★ 2026-10-14 移民法案（ItemType 31）：钻石道具，功能同「人口召集」。
 	//
@@ -4035,6 +4097,10 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if gain <= 0 {
 			return "民居容量为0, 无法召集人口"
 		}
+		// ★★ 2026-10-25 先扣后生效：扣不到就不加人口（连点并发只有一次能生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		if !idleOnly {
 			// 条件更新：并发导致人口已变时重新提示，避免越过民居上限。
 			res := h.DB.Model(&model.EzfyCity{}).
@@ -4044,10 +4110,10 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 					"pop_max": city.PopMax,
 				})
 			if res.Error != nil || res.RowsAffected == 0 {
+				h.ezfyRefundItemUse(uid, cfgId) // 没加到人口 → 退回道具
 				return "城市状态已变化, 请刷新后重试"
 			}
 			city.Pop += gain
-			h.consumeItem(uid, cfgId, "使用道具")
 			if gain < int64(param) {
 				return fmt.Sprintf("使用成功: 人口+%d（已达民居上限, 本次只召到上限）", gain)
 			}
@@ -4083,33 +4149,43 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 				"pop_max":            city.PopMax,
 			})
 		if res.Error != nil || res.RowsAffected == 0 {
+			h.ezfyRefundItemUse(uid, cfgId) // 没加到空闲人口 → 退回道具
 			return "城市状态已变化, 请刷新后重试"
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		if extraGain > 0 {
 			return fmt.Sprintf("使用成功: 空闲人口+%d（总人口已满, 空闲人口增加）", gain)
 		}
 		return fmt.Sprintf("使用成功: 空闲人口+%d（待恢复人口已转空闲）", gain)
 	case 3:
+		// ★ 2026-10-25 先扣后生效：扣不到就不加速（连点并发只有一次生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		err = h.speedUpBuilding(city, recordId, param)
 		if err != "" {
+			h.ezfyRefundItemUse(uid, cfgId) // 没加速成功 → 退回道具
 			return err
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前建筑升级-%d分钟", param)
 	case 4:
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		err = h.speedUpTrain(city, recordId, param)
 		if err != "" {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return err
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前训练队列-%d分钟", param)
 	case 5:
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		err = h.speedUpTech(city, param)
 		if err != "" {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return err
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前科技研究-%d分钟", param)
 	// ★ 2026-09-27 百分比加速道具（ItemType 24/25/26，Param1 = 30/60/80）：
 	//   按「剩余时间」直接减 param%，每次使用都基于最新剩余时长（可叠加）。
@@ -4136,13 +4212,17 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if b.EndTime <= now {
 			return "该建筑已完工，无需加速"
 		}
+		// ★ 2026-10-25 先扣后生效：扣不到就不减时长（连点并发只有一次生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		res := h.DB.Model(&model.EzfyCityBuilding{}).
 			Where("id = ? AND status != 0", b.ID).
 			Update("end_time", pctSpeedEnd(now, b.EndTime, param))
 		if res.Error != nil || res.RowsAffected == 0 {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return "建筑状态已变化，请刷新后重试"
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前建筑升级剩余时间减少%d%%", param)
 	case 25: // 训练加速%
 		var q model.EzfyTrainQueue
@@ -4164,13 +4244,17 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if q.EndTime <= now {
 			return "该训练队列已完成，无需加速"
 		}
+		// ★ 2026-10-25 先扣后生效（同建筑加速）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		res := h.DB.Model(&model.EzfyTrainQueue{}).
 			Where("id = ? AND status = 0", q.ID).
 			Update("end_time", pctSpeedEnd(now, q.EndTime, param))
 		if res.Error != nil || res.RowsAffected == 0 {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return "训练队列状态已变化，请刷新后重试"
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前训练队列剩余时间减少%d%%", param)
 	case 26: // 科技加速%
 		var t model.EzfyCityTech
@@ -4185,18 +4269,25 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if t.EndTime <= now {
 			return "该科技已完成，无需加速"
 		}
+		// ★ 2026-10-25 先扣后生效（同建筑加速）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		res := h.DB.Model(&model.EzfyCityTech{}).Where("id = ? AND status = 1", t.ID).
 			Update("end_time", pctSpeedEnd(now, t.EndTime, param))
 		if res.Error != nil || res.RowsAffected == 0 {
+			h.ezfyRefundItemUse(uid, cfgId)
 			return "科技状态已变化，请刷新后重试"
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前科技研究剩余时间减少%d%%", param)
 	case 6:
 		return "建筑图纸将在建筑升级到10级时自动消耗"
 	case 7:
+		// ★ 2026-10-25 先扣后生效（连点并发只有一次生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		h.addCityEffect(city.ID, 1, int(param), 24)
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 资源产量+%d%%, 持续24小时", param)
 	case 8:
 		// ★ 2026-10-02 免战保护令 也要有使用冷却（按**玩家**算，存 peace_cool_until）。
@@ -4213,26 +4304,36 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			remainH := (prof.PeaceCoolUntil - now + 3599999) / 3600000
 			return fmt.Sprintf("免战保护令冷却中, 剩余%d小时", remainH)
 		}
+		// ★ 2026-10-25 先扣后生效：扣不到就不开免战（连点并发只有一次生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		h.addCityEffect(city.ID, 2, 0, param)
-		h.consumeItem(uid, cfgId, "使用道具")
 		h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Update("peace_cool_until", now+int64(ezfyPeaceCoolH)*3600000)
 		return fmt.Sprintf("使用成功: 城市免战保护%d小时(冷却%d小时)", param, ezfyPeaceCoolH)
 	case 9: // 招生简章: 立即刷新军校候选(不占每日次数)
 		if h.buildingLevel(city.ID, ezfyBuildingAcademy) < 1 {
 			return "需要先建造军校"
 		}
+		// ★ 2026-10-25 先扣后生效
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		if err := h.refreshRecruitFree(uid); err != "" {
+			h.ezfyRefundItemUse(uid, cfgId) // 没刷新成功 → 退回道具
 			return err
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return "使用成功: 军校候选名将已刷新"
 	case 10: // 经验书
 		o := h.officerOf(city.ID, officerId)
 		if o == nil {
 			return "军官不存在"
 		}
+		// ★ 2026-10-25 先扣后生效（批量经验书走 useItem 里的整体结算分支）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		h.addOfficerExp(city, o.ID, param)
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: %s 获得%d经验", o.Name, param)
 	case 11: // 军官技能书: 随机学一个技能（★ 2026-10-25 改为随机，不再自选）
 		o := h.officerOf(city.ID, officerId)
@@ -4251,8 +4352,11 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			return "没有可学习的技能了"
 		}
 		skills = append(skills, sk.Name)
+		// ★ 2026-10-25 先扣后生效：扣不到就不学（连点并发只有一次生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		h.saveOfficerSkills(o, skills)
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: %s 学会了「%s」", o.Name, sk.Name)
 	case 12: // 军官洗点卡（重修书）
 		// ★ 用户规则（原话）：「洗点就是洗点成原来军官池子武将的属性，等级不变；
@@ -4279,6 +4383,10 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			refund = 0
 		}
 		free := o.FreePoints + refund
+		// ★ 2026-10-25 先扣后生效：扣不到就不洗点（连点并发只有一次生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		// ★ 用户规则：「洗点只是属性，跟其他没关系」——
 		//   只重置三维属性 + 退回待分配点，**技能/等级/经验/忠诚/装备一概不动**。
 		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
@@ -4290,7 +4398,6 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			"star_points": 0, "star_military": 0, "star_logistics": 0, "star_learning": 0,
 			"free_points": free, "update_time": time.Now(),
 		})
-		h.consumeItem(uid, cfgId, "使用道具")
 		// ★ 2026-10-25 用户要求「提示不要这么多，简约提示」→ 一行说完。
 		// ⚠️ 必须保留「使用成功」前缀：useItem 用 `strings.HasPrefix(msg, "使用成功")`
 		//   区分成功/失败，少了前缀会被当失败（返回 400，前端弹红字）。
@@ -4307,8 +4414,11 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if o.Star >= ezfyStarMax() {
 			return fmt.Sprintf("星级已达上限(%d星)", ezfyStarMax())
 		}
+		// ★ 2026-10-25 先扣后生效：扣不到就不升星（连点并发只有一次生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		msg, ok := h.officerStarUp(city, officerId)
-		h.consumeItem(uid, cfgId, "使用道具")
 		if !ok {
 			return msg
 		}
@@ -4326,11 +4436,15 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 	case 32: // 军团联络令：创建军团时自动消耗（不在背包直接点）
 		return fmt.Sprintf("【%s】请在「军团 → 创建军团」页面使用，创建成功后自动消耗", cfg.Name)
 	case 33: // 征募告示：当前城市建造队列 +1（24 小时，最多叠加 10 层）
+		// ★ 2026-10-25 先扣后生效：扣不到就不叠层（连点并发只有一次生效）
+		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
+			return m
+		}
 		stacks, _, msg := h.ezfyAddBuildQueueEffect(city.ID)
 		if msg != "" {
+			h.ezfyRefundItemUse(uid, cfgId) // 没叠上 → 退回道具
 			return msg
 		}
-		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前城市建造队列+1（征募告示 %d/%d，有效期24小时）",
 			stacks, ezfyBuildQueueStackMax)
 	default:
@@ -4858,10 +4972,38 @@ var (
 //
 //	与前端「多 tab 共享锁」同口径的后端双保险 —— 绕过前端直接打接口 / 一个账号开多个 tab 连点，
 //	加速/采集/收获/召回的请求同样被卡死，杜绝「多 tab 刷资源刷兵」。
+//
+// ★★ 2026-10-25 升级成**通用动作节流**（用户要求「背包道具使用单次 1s 卡控、开箱也加防抖」）：
+//
+//	key 从 `uid` 改成 `"<动作>:<uid>"`，同一张 memo 同时服务「背包道具使用 / 开箱 / 购买宝箱」，
+//	动作之间互不影响（用资源包不会被开箱冷却挡住）。卡控时长由调用方传 gapMs 决定。
 var (
 	ezfyItemUseMu   sync.Mutex
-	ezfyItemUseMemo = map[uint]int64{}
+	ezfyItemUseMemo = map[string]int64{} // key = "<动作>:<uid>"
 )
+
+// ezfyActionThrottle 玩家级动作节流：距上次同一动作不足 gapMs 毫秒 → 返回 false（拦截）。
+//
+// 进程内（单机）卡控，多机部署时每台各算各的；真正的跨机防线是 DB 层的条件原子扣
+// （见 consumeItemN / ezfySpendGold / ezfySpendDiamond / ezfySpendStock）。
+func ezfyActionThrottle(uid uint, action string, gapMs int64) bool {
+	if gapMs <= 0 {
+		return true
+	}
+	now := time.Now().UnixMilli()
+	key := action + ":" + strconv.FormatUint(uint64(uid), 10)
+	ezfyItemUseMu.Lock()
+	defer ezfyItemUseMu.Unlock()
+	if last, ok := ezfyItemUseMemo[key]; ok && now-last < gapMs {
+		return false
+	}
+	if len(ezfyItemUseMemo) > 16384 {
+		// 防内存无限增长：整体重置（最坏情况漏拦一次，不会误拦）
+		ezfyItemUseMemo = map[string]int64{}
+	}
+	ezfyItemUseMemo[key] = now
+	return true
+}
 
 // ★ 2026-10-05 人口召集卡控（与训练一键加速一致）
 // ★ 2026-10-09  5 秒 → **3 秒**（前端 doConvene 同步改）

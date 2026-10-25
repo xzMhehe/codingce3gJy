@@ -28,6 +28,12 @@ import (
 // 与 ChestOpen 的区别：ChestOpen 买了即开（抽奖发奖），ChestBuy 只买不抽。
 func (h *EzfyHandler) ChestBuy(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-10-25 购买宝箱防抖：1 秒内同一玩家只受理一次（防连点买成多单）。
+	//   与开箱用不同 key —— 买完立刻去开箱不该被这条挡住。
+	if !ezfyActionThrottle(uid, "chest_buy", 1000) {
+		resp.ParamError(c, "操作过于频繁, 请 1 秒后再试")
+		return
+	}
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
@@ -186,6 +192,11 @@ func (h *EzfyHandler) ChestBag(c *gin.Context) {
 // 单次开箱上限沿用宝箱配置的 OpenMax（防误点一次全开光）。
 func (h *EzfyHandler) ChestBagOpen(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-10-25 开箱防抖（用户要求）：1 秒内同一玩家只受理一次开箱请求。
+	if !ezfyActionThrottle(uid, "chest_open", 1000) {
+		resp.ParamError(c, "操作过于频繁, 请 1 秒后再试")
+		return
+	}
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)

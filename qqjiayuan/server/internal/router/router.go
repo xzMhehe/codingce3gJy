@@ -1728,6 +1728,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						// ---- 系统邮件（★ 2026-10-13 管理端群发/单发，玩家在「邮箱 → 系统邮件」收到）----
 						admin.GET("/ezfy-mails/system", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyMailSystemList)
 						admin.POST("/ezfy-mails/system", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyMailSystemSend)
+						// ★ 2026-10-25 系统邮件删除（发错了/发错道具了要能一起删）：邮件 + 附件一起物理删除
+						admin.POST("/ezfy-mails/system/delete", permAny(db, "module:ezfyPrivchat", "module:ezfyWords"), ezfyAdminH.AdminEzfyMailSystemDelete)
 					}
 				} else {
 					// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============

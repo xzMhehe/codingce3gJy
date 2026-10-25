@@ -461,7 +461,11 @@
           </div>
           <div class="old-line">预计耗时：{{ ezfy.trainEstimateText }}</div>
           <div class="old-line">
-            <button @click="ezfy.doTrainPre()">{{ ezfy.trainMode === 'defence' ? '开始建造' : '开始训练' }}</button>
+            <!-- ★ 2026-10-25 用户要求：去掉按钮样式，与页内其它操作一致改成 [开始训练] 文字链接；
+                 点击后 1 秒内（及请求未返回前）再点无效，由 doTrainPre 内的 trainBusy 兜住。 -->
+            <a href="javascript:;" class="train-start"
+               :class="{ 'train-start-off': ezfy.trainBusy }"
+               @click="ezfy.doTrainPre()">[{{ ezfy.trainMode === 'defence' ? '开始建造' : '开始训练' }}]</a>
           </div>
           <a href="javascript:;" @click="ezfy.go(ezfy.trainMode === 'defence' ? 'defence' : 'factory')">[返回]</a>
           <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>

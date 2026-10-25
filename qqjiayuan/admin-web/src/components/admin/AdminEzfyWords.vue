@@ -157,9 +157,11 @@
               <el-button @click="mail.page = 1; loadSysMails()">刷新记录</el-button>
             </el-form-item>
           </el-form>
-          <el-table :data="sysMails" v-loading="mail.loading" stripe border max-height="360">
+          <!-- ★ 2026-10-25 支持删除：row-key + reserve-selection = 翻页后勾选不丢，可跨页一次删 -->
+          <el-table ref="mailTable" :data="sysMails" row-key="id" v-loading="mail.loading" stripe border max-height="420" @selection-change="onMailSel">
+            <el-table-column type="selection" width="46" align="center" :reserve-selection="true" />
             <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column label="收件人" min-width="140" show-overflow-tooltip>
+            <el-table-column label="收件人" min-width="130" show-overflow-tooltip>
               <template slot-scope="{row}">
                 <!-- ★ 2026-10-24 修复「收件人显示 玩家undefined」：后端返回 receiver_id/receiver_name，
                      前端原来读 row.target_id（接口没有这个字段）→ 全体邮件(0)永远不走「全体玩家」分支，
@@ -167,18 +169,53 @@
                 <span class="td-main">{{ row.receiver_id === 0 ? '全体玩家' : (row.receiver_name || ('玩家' + row.receiver_id)) }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="subject" label="主题" min-width="160" show-overflow-tooltip />
-            <el-table-column prop="content" label="内容" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="subject" label="主题" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="content" label="内容" min-width="200" show-overflow-tooltip />
+            <!-- ★ 2026-10-25 附件列：发放道具走的是「系统邮件 + 附件」，发错时要一眼看出这封带了什么 -->
+            <el-table-column label="附件" min-width="180" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="!row.has_attach" class="td-muted">—</span>
+                <span v-else class="td-main">{{ attachText(row) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="92" align="center">
+              <template slot-scope="{row}">
+                <el-tag v-if="!row.has_attach" size="mini" type="info">纯文本</el-tag>
+                <el-tag v-else-if="row.claimed === 1" size="mini" type="success">已领取</el-tag>
+                <el-tag v-else-if="isExpired(row)" size="mini" type="info">已过期</el-tag>
+                <el-tag v-else size="mini" type="warning">待领取</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="批次" width="92" align="center">
+              <template slot-scope="{row}">
+                <el-tooltip v-if="row.batch_no" :content="row.batch_no" placement="top">
+                  <span class="td-mono">{{ row.batch_total || 1 }} 封</span>
+                </el-tooltip>
+                <span v-else class="td-muted">—</span>
+              </template>
+            </el-table-column>
             <el-table-column label="时间" width="160" align="center">
               <template slot-scope="{row}">{{ fmtTimePriv(row.created_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="164" align="center" fixed="right">
+              <template slot-scope="{row}">
+                <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除这封（连同附件）" @click="delMail(row)" />
+                <!-- 群发/全员发放是每人一封、共用一个批次号：逐条勾选不现实，给一个「删本批」 -->
+                <el-button v-if="row.batch_no && row.batch_total > 1" size="mini" type="danger" icon="el-icon-delete-solid"
+                           title="删除本批次全部邮件" @click="delMailBatch(row)">本批{{ row.batch_total }}</el-button>
+              </template>
             </el-table-column>
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ mail.total }}</b> 条 · 每页 {{ mail.size }} 条</div>
-            <el-pagination v-show="mail.total > 0" small background layout="sizes, prev, pager, next, jumper" :total="mail.total" :page-size="mail.size"
-                           :current-page="mail.page" :page-sizes="[5, 10, 20, 50, 100]"
-                           @current-change="p => { mail.page = p; loadSysMails() }"
-                           @size-change="s => { mail.size = s; mail.page = 1; loadSysMails() }" />
+            <div style="display:flex;align-items:center;gap:8px">
+              <el-button size="mini" type="danger" plain icon="el-icon-delete"
+                         :disabled="!mailSel.length" @click="delMailSelected">删除选中（{{ mailSel.length }}）</el-button>
+              <el-pagination v-show="mail.total > 0" small background layout="sizes, prev, pager, next, jumper" :total="mail.total" :page-size="mail.size"
+                             :current-page="mail.page" :page-sizes="[5, 10, 20, 50, 100]"
+                             @current-change="p => { mail.page = p; loadSysMails() }"
+                             @size-change="s => { mail.size = s; mail.page = 1; loadSysMails() }" />
+            </div>
           </div>
         </div>
       </div>
@@ -283,6 +320,8 @@ export default {
       mailForm: { target_id: 0, subject: '', content: '' },
       mail: { total: 0, page: 1, size: 5, loading: false },
       sysMails: [], mailSending: false,
+      // ★ 2026-10-25 系统邮件删除：勾选集合（多选批量删）
+      mailSel: [],
       // 敏感词
       list: [], total: 0, page: 1, size: 5, word: '', loading: false,
       dlg: false, formId: 0, form: { word: '', replace: '', type: 1 }, saving: false,
@@ -391,6 +430,59 @@ export default {
           this.mail.total = r.data.total || 0
         } else this.$message.error(r.msg)
       }).catch(() => { this.mail.loading = false })
+    },
+    // ---- 系统邮件删除（★ 2026-10-25 用户需求：发错了 / 发错道具了要能一起删除） ----
+    onMailSel (rows) { this.mailSel = rows || [] },
+    attachText (row) {
+      const as = row.attaches || []
+      if (!as.length) return '—'
+      return as.map(a => a.name + '×' + a.num).join('、')
+    },
+    isExpired (row) { return row.expire_at > 0 && Date.now() >= row.expire_at },
+    // 删除确认文案：把「撤回多少 / 收不回多少」说清楚（发错道具时管理员要判断是否另行补发）
+    mailDelTip (rows) {
+      const unclaimed = rows.filter(r => r.has_attach === 1 && r.claimed !== 1).length
+      const claimed = rows.filter(r => r.has_attach === 1 && r.claimed === 1).length
+      let tip = `删除 <b>${rows.length}</b> 封系统邮件，邮件与附件一起物理删除，<b>不可恢复</b>。`
+      if (unclaimed) tip += `<br/>其中 ${unclaimed} 封的附件尚未领取，删除后玩家无法再领取（等于撤回）。`
+      if (claimed) tip += `<br/>其中 <b>${claimed}</b> 封的附件玩家已领取，删除邮件<b>不会</b>收回已到手的道具。`
+      return tip
+    },
+    postDelMail (payload, removedCount) {
+      this.mail.loading = true
+      api.post('/admin/ezfy-mails/system/delete', payload).then(r => {
+        this.mail.loading = false
+        if (r.code === 0) {
+          this.$message.success(r.data && r.data.msg ? r.data.msg : '已删除')
+          // 删除成功后清掉勾选（跨页勾选靠 reserve-selection 保留，删完必须手动清，否则「删除选中」还记着已删的行）
+          this.mailSel = []
+          if (this.$refs.mailTable) this.$refs.mailTable.clearSelection()
+          // 当前页被删空 → 回退一页，避免停在空页（列表看起来「数据没了」）
+          if (this.sysMails.length <= removedCount && this.mail.page > 1) this.mail.page--
+          this.loadSysMails()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.mail.loading = false })
+    },
+    delMail (row) {
+      this.$confirm(this.mailDelTip([row]), '确认删除系统邮件',
+        { type: 'warning', dangerouslyUseHTMLString: true }).then(() => {
+        this.postDelMail({ ids: [row.id] }, 1)
+      }).catch(() => {})
+    },
+    delMailBatch (row) {
+      const n = row.batch_total || 1
+      this.$confirm(`删除本批次全部 <b>${n}</b> 封系统邮件，邮件与附件一起物理删除，<b>不可恢复</b>。<br/>批次：${row.batch_no}`,
+        '确认删除整批', { type: 'warning', dangerouslyUseHTMLString: true }).then(() => {
+        this.postDelMail({ batch_no: row.batch_no }, n)
+      }).catch(() => {})
+    },
+    delMailSelected () {
+      const rows = this.mailSel.slice()
+      if (!rows.length) { this.$message.warning('请先勾选要删除的邮件'); return }
+      this.$confirm(this.mailDelTip(rows), '确认删除所选系统邮件',
+        { type: 'warning', dangerouslyUseHTMLString: true }).then(() => {
+        this.postDelMail({ ids: rows.map(r => r.id) }, rows.length)
+      }).catch(() => {})
     },
     sendMail () {
       const subject = (this.mailForm.subject || '').trim()

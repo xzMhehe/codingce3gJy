@@ -644,6 +644,64 @@ func ezfyNeedFactoryLevel(require string) int {
 	return n
 }
 
+// ============ 征兵防重复提交（2026-10-25）============
+//
+// 需求：「[开始训练] 去掉按钮样式 + 前端防抖 + 后端多点卡控 + 1 秒延迟」。
+// 前端防抖只挡得住手点，挡不住脚本 / 多 tab / 两台机器同时点，所以后端分三层卡：
+//
+//	① 请求级节流：同一玩家同一城市 1 秒内只接受一次征兵请求（本进程内存）→ 连点/多 tab；
+//	② 落库级复核：拿到城市分片锁后回查「本城最近一条训练队列 start_time」是否在 1 秒内
+//	   （跨进程/多机同库兜底 —— 两机共用一个 RDS，内存锁跨不过去）；
+//	③ 数据级校验：人口 / 资源 / 兵力上限 / 军工厂队列（原有逻辑，一条不少）。
+//
+// ★ 人机城（IsBot=1）跳过 ①②：人机训练由后台 tick 驱动，不存在连点，
+//   1 秒窗口只会误伤「连续造兵」。
+const ezfyTrainDupWindow = time.Second
+
+var (
+	ezfyTrainDupMu   sync.Mutex
+	ezfyTrainDupLast = map[string]int64{}
+)
+
+// ezfyTrainDupHit 请求级 1 秒去重：true = 1 秒内重复提交，应拒绝（本次不记时）。
+func ezfyTrainDupHit(uid, cityId uint, now time.Time) bool {
+	key := strconv.FormatUint(uint64(uid), 10) + ":" + strconv.FormatUint(uint64(cityId), 10)
+	ms := now.UnixMilli()
+	win := ezfyTrainDupWindow.Milliseconds()
+	ezfyTrainDupMu.Lock()
+	defer ezfyTrainDupMu.Unlock()
+	// 顺手清过期键，避免 map 无限增长（长期运行也不会撑爆内存）
+	if len(ezfyTrainDupLast) > 4096 {
+		for k, v := range ezfyTrainDupLast {
+			if ms-v >= win {
+				delete(ezfyTrainDupLast, k)
+			}
+		}
+	}
+	if last, ok := ezfyTrainDupLast[key]; ok && ms-last < win {
+		return true
+	}
+	ezfyTrainDupLast[key] = ms
+	return false
+}
+
+// ezfyTrainQueueTooFresh 落库级复核：本城最近一条训练队列是否在窗口内刚建好。
+// 读的是 DB，所以两台机器同时点也只有「先落库的那次」之后的 1 秒被拦（跨进程有效）。
+// 读失败一律放行（fail-open）：卡控不能把正常训练挡死。
+func (h *EzfyHandler) ezfyTrainQueueTooFresh(cityId uint, now time.Time) bool {
+	var row struct {
+		StartTime int64 `gorm:"column:start_time"`
+	}
+	if err := h.DB.Model(&model.EzfyTrainQueue{}).
+		Select("start_time").
+		Where("city_id = ?", cityId).
+		Order("id DESC").Limit(1).
+		Scan(&row).Error; err != nil {
+		return false
+	}
+	return row.StartTime > 0 && now.UnixMilli()-row.StartTime < ezfyTrainDupWindow.Milliseconds()
+}
+
 func (h *EzfyHandler) Train(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 征兵 → 军队页缓存失效
@@ -661,6 +719,12 @@ func (h *EzfyHandler) Train(c *gin.Context) {
 	city := h.bodyCity(uid, req.CityId)
 	if city == nil {
 		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
+	// ★★ 2026-10-25 卡控①：1 秒内同一玩家同一城市的第二次征兵请求直接拒绝
+	//   （在扣资源/建队列之前，重复请求不产生任何副作用）。
+	if city.IsBot == 0 && ezfyTrainDupHit(uid, uint(city.ID), time.Now()) {
+		resp.ParamError(c, "操作过于频繁, 请 1 秒后再试")
 		return
 	}
 	h.done(c, h.trainTroop(city, req.TroopId, req.Count, req.Split), "征兵已开始")
@@ -2935,24 +2999,20 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 	}
 	h.cfgs()
 
-	// ★★ 2026-10-15 加速类道具(建筑3/训练4/科技5/百分比24/25/26)按账号 3 秒卡控：
-	//   与前端「多 tab 共享锁」同口径的后端双保险，防绕过前端直连 / 多 tab 连点刷资源刷兵。
-	//   只拦加速类 —— 资源包(1)、经验书(10)、升星卡(19)、洗点卡(12) 等批量/常用道具不受影响。
+	// ★★ 2026-10-25 背包道具使用统一卡控（用户要求「单次使用 1s 卡控」）：
+	//   所有道具 1 秒；加速类(建筑3/训练4/科技5/百分比24/25/26)沿用 3 秒（更严）。
+	//   与前端 opGuard 同口径，防「绕过前端直连 / 一个账号多 tab 连点」重复使用同一件道具。
+	//   ⚠️ 这层只是第一道闸 —— 真正的防线是 ezfyTakeItemUse 的「先扣后生效」
+	//   （见 ezfy.go 的 consumeItemN 注释：原来的读-改-写会让 1 个道具生效 N 次）。
 	itCfg := ezfyCfg.item(req.CfgId)
+	useGap := int64(1000)
 	if itCfg != nil && (itCfg.ItemType == 3 || itCfg.ItemType == 4 || itCfg.ItemType == 5 ||
 		itCfg.ItemType == 24 || itCfg.ItemType == 25 || itCfg.ItemType == 26) {
-		nowCd := time.Now().UnixMilli()
-		ezfyItemUseMu.Lock()
-		if last, ok := ezfyItemUseMemo[uid]; ok && nowCd-last < 3000 {
-			ezfyItemUseMu.Unlock()
-			resp.ParamError(c, "操作过于频繁, 请 3 秒后再试")
-			return
-		}
-		if len(ezfyItemUseMemo) > 16384 {
-			ezfyItemUseMemo = map[uint]int64{}
-		}
-		ezfyItemUseMemo[uid] = nowCd
-		ezfyItemUseMu.Unlock()
+		useGap = 3000
+	}
+	if !ezfyActionThrottle(uid, "bag_use", useGap) {
+		resp.ParamError(c, fmt.Sprintf("操作过于频繁, 请 %d 秒后再试", (useGap+999)/1000))
+		return
 	}
 
 	city := h.bodyCity(uid, req.CityId)

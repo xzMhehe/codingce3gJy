@@ -3982,6 +3982,12 @@ func (h *EzfyHandler) ChestList(c *gin.Context) {
 // ChestOpen POST /games/ezfy/chest/open  {chest_id, count, currency: gold|diamond}
 func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-10-25 开箱防抖（用户要求）：1 秒内同一玩家只受理一次开箱请求。
+	//   前端 doOpenChest 已有 once 锁，这里是绕过前端/多 tab 连点时的后端双保险。
+	if !ezfyActionThrottle(uid, "chest_open", 1000) {
+		resp.ParamError(c, "操作过于频繁, 请 1 秒后再试")
+		return
+	}
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
