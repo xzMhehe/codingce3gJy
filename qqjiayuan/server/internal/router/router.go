@@ -698,6 +698,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					ezfyG.GET("/map/stars", ezfyH.MapStars)
 					ezfyG.POST("/map/stars", ezfyH.MapStarAdd)
 					ezfyG.POST("/map/stars/delete", ezfyH.MapStarDelete)
+					// ★ 2026-10-25 按坐标取消收藏（前端「已收藏」按钮不依赖收藏列表 id）
+					ezfyG.POST("/map/stars/delete-xy", ezfyH.MapStarDeleteXY)
 					// ★ 2026-09-28 预设编队（司令部保存的出征模板：军官+集结令+兵力）
 					ezfyG.GET("/presets", ezfyH.Presets)
 					ezfyG.POST("/presets", ezfyH.PresetAdd)

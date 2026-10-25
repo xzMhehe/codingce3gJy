@@ -971,6 +971,10 @@ export default {
       // ★ 2026-10-13 地图请求自增序号：连点方向键会堆一串在途请求，响应**谁后到谁覆盖** →
       //   画面来回跳、还白渲染好几遍。只应用「最新一次请求」的响应（见 loadMap/jumpTo）。
       mapSeq: 0,
+      // ★ 2026-10-25 详情请求序号：连点两个格子时，先发的响应可能后到，
+      //   会把**上一块地**的详情（含 is_starred）安到当前格子上 →「没收藏却显示已收藏」。
+      //   只应用最新一次 openCell 的响应。
+      detailSeq: 0,
       mapCx: 0,
       mapCy: 0,
       mapR: 2, // 视野半径 → 5×5 表格(复刻 map/index.html)
@@ -4951,19 +4955,43 @@ export default {
       this.jumpTo(x, y)
     },
     loadStars () {
-      api.get('/games/ezfy/map/stars').then(r => {
+      // ★ 2026-10-25 返回 Promise，调用方可按需等它回来
+      return api.get('/games/ezfy/map/stars').then(r => {
         if (r.code === 0) this.mapStars = r.data.stars || []
+        return this.mapStars
       })
     },
     toggleStars () {
       this.showStars = !this.showStars
       if (this.showStars) this.loadStars()
     },
+    // ★★ 2026-10-25 「收藏」按钮 = 一个状态开关，名字严格跟着收藏状态走：
+    //   · 未收藏 → 按钮「收藏」，点它弹备注名 → 收藏成功 → 变「已收藏」
+    //   · 已收藏 → 按钮「已收藏」，点它**按坐标**取消收藏 → 变回「收藏」
+    //   ★★ 状态**只认收藏列表**（/map/stars 全量返回）：这样「按钮文字」与玩家点开
+    //     「收藏列表」看到的内容**永远一致**，可以自己核对；不再读详情接口的 is_starred 快照
+    //     （快照是异步的，切换格子时容易串味 → 就是「没收藏却显示已收藏」的根源）。
     async addStar () {
       if (!this.selCell) return
-      // ★ 已收藏 → 再点一次取消收藏
-      const hit = this.mapStars.find(s => s.x === this.selCell.x && s.y === this.selCell.y)
-      if (hit) { this.delStar(hit); return }
+      const x = this.selCell.x
+      const y = this.selCell.y
+      if (this.isCellStarred) {
+        // ★ 已收藏 → 按坐标取消（不依赖收藏列表里那条记录的 id，点了必定有结果）
+        api.post('/games/ezfy/map/stars/delete-xy', { x: x, y: y }).then(r => {
+          if (r.code === 0) {
+            // 本地先摘掉 → 按钮立刻变「收藏」，随后拉列表校正
+            this.mapStars = this.mapStars.filter(s => !(Number(s.x) === Number(x) && Number(s.y) === Number(y)))
+            this.loadStars()
+            this.notify(r.msg || '已取消收藏')
+            return
+          }
+          // ★ 老后端没有 delete-xy（404/参数错误）→ 回落老的按 id 删，保证功能不哑
+          const hit = this.mapStars.find(s => Number(s.x) === Number(x) && Number(s.y) === Number(y))
+          if (hit && hit.id) { this.delStar(hit); return }
+          this.notify(r.msg || '取消收藏失败')
+        })
+        return
+      }
       // 备注名用「地形名(等级)」, 坐标由列表模板统一拼, 别在这里重复带上
       // ★ 2026-09-25：地图格子上城市统一显示「城市」，收藏备注名要用具体城市名，否则收藏列表分不清
       const def = this.selCell.area_type === 3
@@ -4971,13 +4999,27 @@ export default {
         : this.cellText(this.selCell)
       const name = await this.ask('备注名（最多16字）', { input: true, value: def })
       if (name === null) return
-      api.post('/games/ezfy/map/stars', { x: this.selCell.x, y: this.selCell.y, name: name }).then(r => {
-        if (r.code === 0) { this.showStars = true; this.loadStars() } else this.notify(r.msg || '收藏失败')
+      api.post('/games/ezfy/map/stars', { x: x, y: y, name: name }).then(r => {
+        if (r.code === 0) {
+          this.showStars = true
+          // 本地先插一条（临时 id=0）→ 按钮立刻变「已收藏」，随后拉列表换成真实 id
+          if (!this.mapStars.some(s => Number(s.x) === Number(x) && Number(s.y) === Number(y))) {
+            this.mapStars = this.mapStars.concat([{ id: 0, x: x, y: y, name: name }])
+          }
+          this.loadStars()
+        } else {
+          // 「该坐标已收藏」= 库里其实有、本地没同步 → 拉列表让它显示「已收藏」，下次点击就是取消
+          this.loadStars()
+          this.notify(r.msg || '收藏失败')
+        }
       })
     },
     delStar (s) {
       api.post('/games/ezfy/map/stars/delete', { id: s.id }).then(r => {
-        if (r.code === 0) this.loadStars()
+        if (r.code === 0) {
+          this.mapStars = this.mapStars.filter(it => it.id !== s.id)
+          this.loadStars()
+        }
       })
     },
     // ---- 城市迁移(复刻 city/cityHallMove.html) ----
@@ -6038,13 +6080,14 @@ export default {
     },
     // ---- 地图/出征 ----
     isCellStarred () {
-      // ★ 已收藏的格子显示「已收藏」(再次点击取消收藏)
-      // ★ 2026-09-30 优先用详情接口返回的 is_starred（同步、无异步时序问题），
-      //   拿不到/旧后端再回落 mapStars 判断。
-      if (this.selDetail && typeof this.selDetail.is_starred === 'boolean') {
-        return this.selDetail.is_starred
-      }
-      return this.selCell && this.mapStars.some(s => s.x === this.selCell.x && s.y === this.selCell.y)
+      // ★★ 2026-10-25 唯一来源 = 收藏列表（mapStars）：
+      //   「按钮文字」必须和玩家点开「收藏列表」看到的内容一致，否则玩家没法判断到底收没收藏。
+      //   ★ 用 Number() 比较：后端 x/y 是 bigint，万一序列化成字符串，严格 === 会漏判。
+      //   ★ 不再读 selDetail.is_starred —— 详情是异步的，切格子瞬间可能还是上一块地的快照，
+      //     这正是「没收藏却显示已收藏」的根源。
+      const c = this.selCell
+      if (!c) return false
+      return this.mapStars.some(s => Number(s.x) === Number(c.x) && Number(s.y) === Number(c.y))
     },
     // ★ 军队动态里活动目标的坐标标识（打活动野地/活动寇/特殊城市的部队）
     actTag (actType) {
@@ -6140,10 +6183,13 @@ export default {
         cell.terrain === 10 || cell.terrain === 11
       const ttype = cell.area_type === 2 ? 3 : (isSeaWild ? 2 : 1)
       // 顺带记住这块地上「我的野地记录 id」，采集/派遣下单要用
-      const mine = (this.wildlands || []).find(x => x.x === cell.x && x.y === cell.y)
+      const mine = (this.wildlands || []).find(w => w.x === cell.x && w.y === cell.y)
       if (mine) cell.wild_id = mine.id
+      // ★ 2026-10-25 只应用「最新一次 openCell」的响应：连点两个格子时先发的请求可能后到，
+      //   会把上一块地的详情（含 is_starred）盖到当前格子上 →「没收藏却显示已收藏」。
+      const seq = ++this.detailSeq
       api.get('/games/ezfy/map/wildland?x=' + cell.x + '&y=' + cell.y + '&type=' + ttype).then(r => {
-        if (r.code === 0) this.selDetail = r.data
+        if (r.code === 0 && seq === this.detailSeq) this.selDetail = r.data
       })
     },
     // 详情页里选命令 → 进出征页(复刻 mapView 的 [侦查][掠夺][征服])

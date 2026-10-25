@@ -69,3 +69,28 @@ func (h *EzfyHandler) MapStarDelete(c *gin.Context) {
 	h.DB.Where("id = ? AND user_id = ?", req.Id, uid).Delete(&model.EzfyMapStar{})
 	resp.OK(c, gin.H{"msg": "已取消收藏"})
 }
+
+// MapStarDeleteXY POST /games/ezfy/map/stars/delete-xy  {x,y}
+//
+// ★★ 2026-10-25 用户「点了[已收藏]没反应，弹正在同步收藏列表」：
+// 原来取消收藏必须先从**收藏列表**里 find 到那条记录的 id，列表还没同步时前端只能提示
+// 「请稍后再点一次」—— 玩家点了不动，体验很差。
+// 这里按**坐标**取消，前端不再依赖列表 id；删 0 行也返回成功，
+// 顺带把「按钮显示已收藏、库里其实没有」的脏状态**自愈**（再点一次就回到「收藏」）。
+func (h *EzfyHandler) MapStarDeleteXY(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		X int `json:"x"`
+		Y int `json:"y"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if req.X < 1 || req.X > 500 || req.Y < 1 || req.Y > 500 {
+		resp.ParamError(c, "坐标需在 1~500 之间")
+		return
+	}
+	h.DB.Where("user_id = ? AND x = ? AND y = ?", uid, req.X, req.Y).Delete(&model.EzfyMapStar{})
+	resp.OK(c, gin.H{"msg": "已取消收藏"})
+}
