@@ -820,36 +820,62 @@ func (h *EzfyHandler) treasureGrantOfficer(city *model.EzfyCity, officerId int64
 	return "", fmt.Sprintf("赏赐【%s】(品质%s), 忠诚 +%d", e.Name, ezfyTierName(e.Tier), gain)
 }
 
-// learnSkill 学习技能：消耗 1 本「军官技能书」（道具 15），最多 3 个，出征中不可学
-func (h *EzfyHandler) learnSkill(city *model.EzfyCity, officerId int64, skillId int) string {
+// ezfyRandomSkillToLearn 从技能池里随机挑一个「该军官还没学」的技能（nil = 没有可学的了）
+//
+// ★ 2026-10-25 用户要求「消耗军官技能书随机学一个技能，而不是指定技能学习」→ 学技能不再自选。
+//
+//	候选先按 ID 升序排好再随机取：直接 range map 每次顺序都不同，虽然概率一样，
+//	但同状态不可复现、出问题难复盘。
+func ezfyRandomSkillToLearn(skills []string) *model.EzfyCfgSkill {
+	learned := map[string]bool{}
+	for _, s := range skills {
+		learned[s] = true
+	}
+	cands := []model.EzfyCfgSkill{}
+	for _, s := range ezfyCfg.skills {
+		if learned[s.Name] {
+			continue
+		}
+		cands = append(cands, s)
+	}
+	if len(cands) == 0 {
+		return nil
+	}
+	sort.Slice(cands, func(i, j int) bool { return cands[i].ID < cands[j].ID })
+	pick := cands[rand.Intn(len(cands))]
+	return &pick
+}
+
+// learnRandomSkill 学习技能：消耗 1 本「军官技能书」，**随机**学一个未学技能（最多 3 个，出征中不可学）
+//
+// ★ 2026-10-25 返回值拆成 (错误文案, 成功文案)：成功时错误文案为空。
+//
+//	随机学习必须告诉玩家「随机到了哪个技能」，否则学完界面只多一行、玩家不知道发生了什么。
+func (h *EzfyHandler) learnRandomSkill(city *model.EzfyCity, officerId int64) (string, string) {
 	h.calcResource(city)
 	o := h.officerOf(city.ID, officerId)
 	if o == nil {
-		return "武将不存在"
+		return "武将不存在", ""
 	}
 	if o.Status == 1 {
-		return "武将出征中,无法学习"
-	}
-	cfg := ezfyCfg.skill(skillId)
-	if cfg == nil {
-		return "技能不存在"
+		return "武将出征中,无法学习", ""
 	}
 	skills := officerSkills(o)
 	if len(skills) >= ezfyOfficerMaxSkill {
-		return "技能已满(最多3个)"
+		return "技能已满(最多3个), 请先遗忘一个技能", ""
 	}
-	for _, s := range skills {
-		if s == cfg.Name {
-			return "已学习该技能"
-		}
+	sk := ezfyRandomSkillToLearn(skills)
+	if sk == nil {
+		return "没有可学习的技能了", ""
 	}
-	if h.itemCount(city.UserID, ezfySkillBookItemID()) <= 0 {
-		return "没有「军官技能书」，可在商城购买"
+	bookId := ezfySkillBookItemID()
+	if bookId <= 0 || h.itemCount(city.UserID, bookId) <= 0 {
+		return "没有「军官技能书」，可在商城购买", ""
 	}
-	h.consumeItem(city.UserID, ezfySkillBookItemID(), "军官学技能")
-	skills = append(skills, cfg.Name)
+	h.consumeItem(city.UserID, bookId, "军官学技能")
+	skills = append(skills, sk.Name)
 	h.saveOfficerSkills(o, skills)
-	return ""
+	return "", fmt.Sprintf("学会技能【%s】Lv.%d", sk.Name, h.officerSkillLevel(o))
 }
 
 // forgetSkill 遗忘技能（免费）
@@ -4100,7 +4126,9 @@ func (h *EzfyHandler) OfficerSkill(c *gin.Context) {
 		h.done(c, h.forgetSkill(&city, id, req.SkillId), "技能已遗忘")
 		return
 	}
-	h.done(c, h.learnSkill(&city, id, req.SkillId), "技能学习成功")
+	// ★ 2026-10-25 学习改为「随机学一个」：skill_id 不再生效（字段保留，兼容老前端）
+	errMsg, okMsg := h.learnRandomSkill(&city, id)
+	h.done(c, errMsg, okMsg)
 }
 
 // OfficerEquip POST /games/ezfy/officers/:id/equip  {equip_id, op: on|off}
@@ -4286,7 +4314,12 @@ func (h *EzfyHandler) OfficerPosition(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	h.done(c, h.setOfficerPosition(&city, id, req.Position), "任命成功")
+	// ★ 2026-10-25 卸任（position=0）不该回「任命成功」，按动作给文案
+	okMsg := "任命成功"
+	if req.Position == ezfyPositionNone {
+		okMsg = "已卸任"
+	}
+	h.done(c, h.setOfficerPosition(&city, id, req.Position), okMsg)
 }
 
 // OfficerCaptive POST /games/ezfy/officers/:id/captive  {op: free|recruit}

@@ -861,7 +861,9 @@ export default {
       detailMode: '',
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
-      officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备 / bag装备背包
+      // 军官详情页签: attr属性 / scheme计谋 / equip装备 / general名将背景
+      // ★ 2026-10-25 「技能」页签已去掉：学技能/遗忘挪到「属性」页的技能1~3 三行
+      officerDetailTab: 'attr',
       officerRenameInput: '',   // ★ 2026-10-24 怀旧军官详情：名称输入框（点 [改名] 用输入框里的名字）
       officerTreasureOpen: false, // ★ 2026-09-28 赏赐宝物：展开的未穿戴宝物列表
       // ★ 2026-10-10 性能（玩家反馈「军官详情非常卡」）：背包装备不再随军官详情下发，
@@ -876,7 +878,6 @@ export default {
       useItem: null,
       useCount: 1,
       useOfficerId: 0,
-      useSkillId: 0,
       inlineTip: null, // 建筑区操作的内联提示 { bid, text, type }
       buyItem: null,
       buyCount: 1,
@@ -1095,6 +1096,16 @@ export default {
         byName[k].count++
       }
       return Object.values(byName)
+    },
+    // ★ 2026-10-25 军官属性页的 3 个技能槽（固定 3 行：学了显示名字/等级，没学是空槽）
+    //   学技能已改为「消耗 1 本技能书随机学一个」，所以三行的 [学习] 完全等价。
+    //   上限按 max(3, 已学数)：老数据万一超过 3 个也不会被藏起来（否则那几条没法遗忘）。
+    officerSkillSlots () {
+      const list = (this.officerDetail && this.officerDetail.skills) || []
+      const n = Math.max(3, list.length)
+      const out = []
+      for (let i = 0; i < n; i++) out.push(list[i] || null)
+      return out
     },
     // ★ 2026-10-13 开箱结果明细：同名同品质合并成一行 ×N（几十个箱子结果不刷屏），高品质排前
     chestResultGroups () {
@@ -7012,7 +7023,6 @@ export default {
       this.useItem = it
       this.useCount = 1
       this.useOfficerId = 0
-      this.useSkillId = 0
     },
     doUse (it) {
       const body = { cfg_id: it.cfg_id, count: parseInt(this.useCount) || 1, city_id: this.city.id }
@@ -7020,10 +7030,7 @@ export default {
         if (!this.useOfficerId) { this.notify('请先选择要使用的军官'); return }
         body.officer_id = this.useOfficerId
       }
-      if (it.item_type === 11) {
-        if (!this.useSkillId) { this.notify('请选择要学习的技能'); return }
-        body.skill_id = this.useSkillId
-      }
+      // ★ 2026-10-25 技能书（item_type 11）= 随机学一个技能，不再传 skill_id（后端也会忽略）
       api.post('/games/ezfy/bag/use', body).then(r => {
         if (r.code === 0) {
           this.notify(r.data && r.data.msg ? r.data.msg : '使用成功')
@@ -7854,10 +7861,13 @@ export default {
         this.loadBag()
       })
     },
-    doLearn (s) {
+    // ★ 2026-10-25 学技能改为「随机学一个」：不再传 skill_id（后端从技能池随机挑未学的），
+    //   成功后用后端返回的文案告诉玩家随机到了哪个技能（如「学会技能【尖兵突击】Lv.6」）。
+    doLearnRandom () {
       const id = this.officerDetail.officer.id
-      api.post('/games/ezfy/officers/' + id + '/skill', { op: 'learn', skill_id: s.id }).then(r => {
+      api.post('/games/ezfy/officers/' + id + '/skill', { op: 'learn' }).then(r => {
         if (r.code !== 0) this.notify(r.msg || '学习失败')
+        else this.notify(r.msg || '学习成功')
         this.loadOfficerDetail(id)
       })
     },
@@ -7929,16 +7939,18 @@ export default {
         this.loadCityOfficers()
       })
     },
-    // ★ 2026-10-24 怀旧军官详情：[任命市长]（军校页任命逻辑的详情页入口，
-    //   任命后刷新详情让职位/状态即时更新）
-    doAppointMayor () {
+    // ★ 2026-10-24 怀旧军官详情：任命入口（军校页任命逻辑的详情页版本）
+    // ★ 2026-10-25 支持三个动作：1 市长 / 2 城守 / 0 卸任（用户要求属性页也能任命城守）
+    doAppoint (pos) {
       const o = this.officerDetail && this.officerDetail.officer
       if (!o) return
       if (o.status === 1) { this.notify('军官在外采集/出征中, 归来后才能任命'); return }
-      if (o.is_captive === 1) { this.notify('俘虏不能任命市长'); return }
-      api.post('/games/ezfy/officers/' + o.id + '/position', { position: 1 }).then(r => {
+      if (o.is_captive === 1) { this.notify('俘虏不能任命'); return }
+      const tips = { 0: '已卸任', 1: '已任命为市长', 2: '已任命为城守' }
+      api.post('/games/ezfy/officers/' + o.id + '/position', { position: pos }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '任命失败'); return }
-        this.notify('已任命为市长')
+        this.notify(tips[pos] || '操作成功')
+        // 任命后立刻重拉详情：状态行会显示「（市长）/（城守）」，玩家能直接看到生效
         this.loadOfficerDetail(o.id)
         api.get('/games/ezfy/officers').then(rr => {
           if (rr.code === 0) this.officerData = rr.data

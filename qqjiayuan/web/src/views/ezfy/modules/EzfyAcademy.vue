@@ -461,7 +461,7 @@
           <br/>--------------------
         </div>
         <!-- ★ 2026-10-06 「我的军官」表格去掉：与军官详情里的已学技能重复展示，
-             学习/遗忘统一走 军官列表 → 详情 → 技能 tab -->
+             学习/遗忘统一走 军官列表 → 详情 → 属性 tab 的技能1~3（★ 2026-10-25 起学技能=随机） -->
       </div>
 
       <!-- ★ 2026-10-19 军校页的「计谋」面板已整体搬到「军官详情 → 计谋」tab
@@ -539,9 +539,10 @@
           <span v-else class="gray">（归队改名）</span>
         </div>
 
+        <!-- ★ 2026-10-25 「技能」tab 已去掉（用户要求）：学技能/遗忘都挪到「属性」页的
+             技能1~3 三行里（学 = 消耗1本技能书随机学一个），所以这里不再有独立页签。 -->
         <div class="acade-tab">
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'attr' }" @click="ezfy.officerDetailTab = 'attr'">属性</a>|
-          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'skill' }" @click="ezfy.officerDetailTab = 'skill'">技能</a>|
           <!-- ★ 2026-10-19 计谋 tab 从军校页移到这里（属性 ↔ 装备 之间）：
                同一个列表、同一套发动逻辑，只是入口改到军官详情，为后续「军官属性加成」做准备。 -->
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'scheme' }" @click="ezfy.openOfficerDetailTab('scheme')">计谋</a>|
@@ -583,7 +584,6 @@
           名称：
           <input v-model="ezfy.officerRenameInput" type="text" maxlength="12" placeholder="2~12 个字符" style="width:120px"/>
           <a href="javascript:;" @click="ezfy.doOfficerRename">[改名]</a>
-          <span class="gray" v-if="ezfy.officerDetail.officer.is_general">（名将）</span>
         </div>
         <div class="old-line">归属统帅：<b>{{ ezfy.profile.nickname || '—' }}</b></div>
         <div class="old-line">
@@ -593,10 +593,17 @@
           <span v-if="ezfy.officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能解雇)</span>
           <span v-else-if="ezfy.officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能解雇)</span>
         </div>
+        <!-- ★ 2026-10-25 状态行加「任命城守」，并**显示当前职位**：
+             以前这里只写「在职」，任命成功后职位没地方显示 → 玩家以为「任命了不生效」
+             （后端其实已经写入 position，只是这页不展示）。 -->
         <div class="old-line">
           状态：<b :class="ezfy.officerDetail.officer.status_name === '出征中' ? 'red' : ''">{{ ezfy.officerDetail.officer.status_name }}</b>
-          <a v-if="ezfy.officerDetail.officer.status !== 1 && ezfy.officerDetail.officer.position === 0"
-             href="javascript:;" @click="ezfy.doAppointMayor">[任命市长]</a>
+          <span v-if="ezfy.officerDetail.officer.position" class="blue">（{{ ezfy.officerDetail.officer.position_name }}）</span>
+          <template v-if="ezfy.officerDetail.officer.status !== 1 && ezfy.officerDetail.officer.is_captive !== 1">
+            <a v-if="ezfy.officerDetail.officer.position !== 1" href="javascript:;" @click="ezfy.doAppoint(1)">[任命市长]</a>
+            <a v-if="ezfy.officerDetail.officer.position !== 2" href="javascript:;" @click="ezfy.doAppoint(2)">[任命城守]</a>
+            <a v-if="ezfy.officerDetail.officer.position" href="javascript:;" @click="ezfy.doAppoint(0)">[卸任]</a>
+          </template>
         </div>
         <div class="old-line">
           星级：<b class="red">{{ '★'.repeat(ezfy.officerDetail.officer.star || 0) }}</b>
@@ -625,9 +632,9 @@
         <hr/>
 
         <!-- ===== 战斗属性区 ===== -->
+        <!-- ★ 2026-10-25 用户要求合成一行：攻击/防御：505/280 -->
         <div class="old-line">
-          攻击加成：{{ ezfy.officerDetail.officer.attack }}
-          &nbsp;防御加成：{{ ezfy.officerDetail.officer.defence }}
+          攻击/防御：{{ ezfy.officerDetail.officer.attack }}/{{ ezfy.officerDetail.officer.defence }}
         </div>
         <!-- 套装与战斗加成（套装穿齐才生效；战斗加成只列**单件**的，套装加成单独一行，不重复） -->
         <template v-if="(ezfy.officerDetail.officer.set_progress && ezfy.officerDetail.officer.set_progress.length) ||
@@ -645,7 +652,7 @@
 
         <!-- ===== 养成属性区 ===== -->
         <div class="old-line">
-          可用属性点：
+          属性点：
           <b :class="ezfy.officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ ezfy.officerDetail.officer.free_points }}</b>
           <span class="gray">（已分配 {{ ezfy.officerDetail.officer.used_points }}）</span>
           <span class="gray" v-if="ezfy.officerDetail.officer.star_points > 0">（其中升星加点 {{ ezfy.officerDetail.officer.star_points }}）</span>
@@ -688,54 +695,30 @@
         <hr/>
 
         <!-- ===== 技能装备区 ===== -->
-        <div class="old-line" v-for="(s, i) in ezfy.officerDetail.skills" :key="'ds' + s.name">
-          技能{{ i + 1 }}：{{ s.name }}<span v-if="s.level" class="green"> Lv.{{ s.level }}</span>
-          <a href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
+        <!-- ★ 2026-10-25 技能不再有独立 tab：属性页固定列 3 个技能槽（学了显示名字+等级，
+             没学只显示空槽）。[学习] = 消耗 1 本「军官技能书」**随机**学一个技能，
+             所以三行的 [学习] 效果完全一样，不存在「点哪行就学哪个」。 -->
+        <div class="old-line" v-for="(s, i) in ezfy.officerSkillSlots" :key="'ds' + i">
+          技能{{ i + 1 }}：<template v-if="s">{{ s.name }}<span v-if="s.level" class="green"> Lv.{{ s.level }}</span></template><a href="javascript:;" @click="ezfy.doLearnRandom">[学习]</a><a v-if="s" href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
         </div>
-        <div class="old-line gray" v-if="!ezfy.officerDetail.skills.length">(未学技能, 可到「技能」tab 学习)</div>
         <div class="old-line">
           装备：<a href="javascript:;" @click="ezfy.openOfficerDetailTab('equip')">[查看]</a>
         </div>
         <hr/>
 
         <!-- ===== 特殊技能区（名将组合技） ===== -->
+        <!-- ★ 2026-10-25 用户要求一行说完：`特殊技能：[铁血军魂]：+攻击力180%`
+             （原来是 `+180%` 再单起一行灰色括号说明，信息重复又占行）。
+             effect_text 由后端按 kind 拼（+属性名数值%），值随军官等级成长。 -->
         <template v-if="ezfy.officerDetail.officer.combo_skills && ezfy.officerDetail.officer.combo_skills.length">
           <div class="old-line red" v-for="cs in ezfy.officerDetail.officer.combo_skills" :key="'ocs' + cs.id">
-            特殊技能：[{{ cs.name }}]：{{ cs.value_text }}
-          </div>
-          <div class="old-line gray" v-if="ezfy.officerDetail.officer.combo_skills[0] && ezfy.officerDetail.officer.combo_skills[0].des">
-            （{{ ezfy.officerDetail.officer.combo_skills[0].des }}）
+            特殊技能：[{{ cs.name }}]：{{ cs.effect_text || cs.value_text }}
           </div>
         </template>
         </div>
 
-        <!-- 技能 tab（已学 / 可学） -->
-        <div v-if="ezfy.officerDetailTab === 'skill'">
-        <!-- ★ 2026-10-06 技能随军官等级自动升级：已学技能展示当前等级 Lv.N，效果已按等级倍数返回 -->
-        <table class="ezfy-plain-table">
-          <colgroup><col style="width:22%"><col style="width:63%"><col style="width:15%"></colgroup>
-          <tr><th colspan="3">已学技能（{{ ezfy.officerDetail.skills.length }}/3）</th></tr>
-          <tr v-for="s in ezfy.officerDetail.skills" :key="'ds' + s.name">
-            <td>{{ s.name }}<span v-if="s.level" class="green"> Lv.{{ s.level }}</span></td>
-            <td>{{ s.effect }}</td>
-            <td><a href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a></td>
-          </tr>
-          <tr v-if="!ezfy.officerDetail.skills.length"><td colspan="3" class="gray">(未学任何技能)</td></tr>
-        </table>
-        <table class="ezfy-plain-table">
-          <colgroup><col style="width:22%"><col style="width:63%"><col style="width:15%"></colgroup>
-          <!-- ★ 2026-10-06 学习后按军官当前等级自动定级（每30级+1级：普通军官最高5级 / 名将最高6级） -->
-          <tr><th colspan="3">可学技能（技能书 {{ ezfy.officerDetail.officer.skill_book }} 本 / 学一个消耗1本，学成 = Lv.{{ ezfy.officerDetail.officer.skill_level }}级）</th></tr>
-          <tr v-for="s in ezfy.officerDetail.all_skills" :key="'ls' + s.id">
-            <td>{{ s.name }}</td>
-            <td>{{ s.effect }}</td>
-            <td><a href="javascript:;" @click="ezfy.doLearn(s)">[学习]</a></td>
-          </tr>
-        </table>
-        </div>
-
         <!-- 计谋 tab（★ 2026-10-19 从军校页搬来：12 条计谋，发动消耗信号弹）
-             位置按用户要求放在「属性 / 技能」之后、「装备」之前，
+             位置在「属性」之后、「装备」之前，
              后续「军官属性加成」也接在这一段（计谋 → 加成），所以独立成一个 tab 而不是塞进属性。 -->
         <div v-if="ezfy.officerDetailTab === 'scheme'">
           <div class="old-line">
@@ -865,7 +848,7 @@
         </div>
         </div>
 
-        <div class="old-line"><a href="javascript:;" @click="ezfy.go('acade')">[返回军官]</a></div>
+        <div class="old-line"><a href="javascript:;" @click="ezfy.go('acade')">[返回]</a></div>
       </div>
       <!-- ★ 2026-10-01 修复「点击军官有时候空白」：加载失败 / 武将不在当前城时
            不再静默留空，展示原因并引导返回军官列表（重新拉取后该行会消失/恢复） -->

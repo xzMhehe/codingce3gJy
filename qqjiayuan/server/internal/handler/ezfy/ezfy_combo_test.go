@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
 	"qqjiayuan/server/internal/model"
 )
 
@@ -277,5 +279,43 @@ func TestComboHeadMergedIntoOfficer(t *testing.T) {
 	}
 	if !strings.HasPrefix(st.Head[3], "战场初始相距") {
 		t.Fatalf("最后一行应仍是战场初始相距：%v", st.Head)
+	}
+}
+
+// TestComboEffectText 详情页「特殊技能：」一行的文案格式（2026-10-25 用户要求）。
+//
+//	特殊技能：[铁血军魂]：+攻击力180%
+//
+// 要点：加号在最前、属性名在数值前、百分号在最后；9 种效果类型都不能掉回裸 `+180%`
+// （否则玩家看不出加的是什么），次数型的反击用「回合」不用 `%`。
+func TestComboEffectText(t *testing.T) {
+	cases := []struct {
+		kind int
+		val  int
+		want string
+	}{
+		{ezfyComboAtk, 180, "+攻击力180%"},
+		{ezfyComboDef, 180, "+防御力180%"},
+		{ezfyComboRange, 180, "+射程180%"},
+		{ezfyComboSpeed, 180, "+速度180%"},
+		{ezfyComboReduce, 80, "+受伤减免80%"},
+		{ezfyComboBreak, 80, "+破防80%"},
+		{ezfyComboHeal, 60, "+治疗60%"},
+		{ezfyComboDouble, 180, "+连击伤害180%"},
+		{ezfyComboCounter, 5, "+反击5回合"},
+	}
+	for _, c := range cases {
+		got := ezfyComboEffectTxt(&ezfyComboSkill{Kind: c.kind, Value: c.val})
+		if got != c.want {
+			t.Errorf("kind=%d value=%d 文案应为 %q，实际 %q", c.kind, c.val, c.want, got)
+		}
+	}
+	// 详情接口必须下发 effect_text（前端用 cs.effect_text 渲染这一行）
+	b := ezfyComboBrief(&ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 40, Rounds: 1})
+	if b == nil {
+		t.Fatal("ezfyComboBrief 返回 nil")
+	}
+	if got, _ := b.(gin.H)["effect_text"].(string); got != "+攻击力180%" {
+		t.Fatalf("officerComboView 下发的 effect_text 应为 %q，实际 %q", "+攻击力180%", got)
 	}
 }

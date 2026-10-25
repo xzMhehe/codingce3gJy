@@ -3838,9 +3838,9 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 	if needOfficer && officerId <= 0 {
 		return "请先选择要使用的军官"
 	}
-	if cfg.ItemType == 11 && skillId <= 0 {
-		return "请选择要学习的技能"
-	}
+	// ★ 2026-10-25 学技能（ItemType 11）改为「随机学一个」→ 不再要求/使用 skill_id
+	//   （老前端还会传，直接忽略；入参保留只为不改 useItem/useItemOnce 的签名）
+
 	// ★ 经验书(ItemType 10)：整批一次结算，并且**只扣真正用得上**的本数。
 	//
 	//	用户两条要求：
@@ -4188,7 +4188,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.addOfficerExp(city, o.ID, param)
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: %s 获得%d经验", o.Name, param)
-	case 11: // 军官技能书: 免费学一个技能
+	case 11: // 军官技能书: 随机学一个技能（★ 2026-10-25 改为随机，不再自选）
 		o := h.officerOf(city.ID, officerId)
 		if o == nil {
 			return "军官不存在"
@@ -4196,18 +4196,13 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if o.Status == 1 {
 			return "军官出征中, 无法学习技能"
 		}
-		sk := ezfyCfg.skill(skillId)
-		if sk == nil {
-			return "技能不存在"
-		}
 		skills := officerSkills(o)
 		if len(skills) >= ezfyOfficerMaxSkill {
 			return "技能已满(最多3个)"
 		}
-		for _, s := range skills {
-			if s == sk.Name {
-				return "已学习该技能"
-			}
+		sk := ezfyRandomSkillToLearn(skills)
+		if sk == nil {
+			return "没有可学习的技能了"
 		}
 		skills = append(skills, sk.Name)
 		h.saveOfficerSkills(o, skills)

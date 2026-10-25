@@ -48,14 +48,9 @@
                   </option>
                 </select><br/>
               </template>
+              <!-- ★ 2026-10-25 技能书改为「随机学一个」→ 不再让玩家选技能，只选军官 -->
               <template v-if="it.item_type === 11">
-                技能:
-                <select v-model="ezfy.useSkillId">
-                  <option :value="0">请选择技能</option>
-                  <option v-for="s in ezfy.bagSkills" :key="'bs' + s.id" :value="s.id">
-                    {{ s.name }}({{ s.effect }})
-                  </option>
-                </select><br/>
+                <span class="gray">随机学习一个技能</span><br/>
               </template>
               <button @click="ezfy.doUse(it)">[确认使用]</button>
               <a href="javascript:;" @click="ezfy.useItem = null">[取消]</a>

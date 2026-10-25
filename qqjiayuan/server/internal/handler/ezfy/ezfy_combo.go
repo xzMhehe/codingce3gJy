@@ -251,6 +251,43 @@ func ezfyComboValueTxt(c *ezfyComboSkill) string {
 	}
 }
 
+// ezfyComboEffectTxt 玩家端「特殊技能：」一行的效果文案。
+//
+// ★ 2026-10-25 用户要求格式统一成「加号 + 属性名 + 数值」：
+//
+//	特殊技能：[铁血军魂]：+攻击力180%
+//
+// （原来是 `+180%` 再单起一行灰色括号说明「攻击力+180%（发动后…）」，信息重复又占行。）
+// 与 ezfyComboShortEffect 的区别只在前缀/单位位置，别混用：
+//   - ezfyComboShortEffect：`攻击力+180%`（战报军官行内联，句子中间读）
+//   - ezfyComboEffectTxt  ：`+攻击力180%`（详情页独立一行，视觉上以 + 开头）
+func ezfyComboEffectTxt(c *ezfyComboSkill) string {
+	if c == nil {
+		return ""
+	}
+	switch c.Kind {
+	case ezfyComboAtk:
+		return fmt.Sprintf("+攻击力%d%%", c.Value)
+	case ezfyComboDef:
+		return fmt.Sprintf("+防御力%d%%", c.Value)
+	case ezfyComboRange:
+		return fmt.Sprintf("+射程%d%%", c.Value)
+	case ezfyComboSpeed:
+		return fmt.Sprintf("+速度%d%%", c.Value)
+	case ezfyComboReduce:
+		return fmt.Sprintf("+受伤减免%d%%", c.Value)
+	case ezfyComboBreak:
+		return fmt.Sprintf("+破防%d%%", c.Value)
+	case ezfyComboHeal:
+		return fmt.Sprintf("+治疗%d%%", c.Value)
+	case ezfyComboDouble:
+		return fmt.Sprintf("+连击伤害%d%%", c.Value)
+	case ezfyComboCounter:
+		return fmt.Sprintf("+反击%d回合", c.Value)
+	}
+	return fmt.Sprintf("+%d%%", c.Value)
+}
+
 // ezfyComboShortTxt 短效果文案（准备回合「军官行」内联用，格式对齐军官技能）
 //
 //	例：尖兵突击(Lv.6 攻击力+180%) 铁血军魂(Lv.10 攻击力+180%，发动40%)
@@ -574,7 +611,9 @@ func ezfyComboBrief(c *ezfyComboSkill) interface{} {
 	return gin.H{
 		"id": c.ID, "name": c.Name, "kind": c.Kind, "kind_name": ezfyComboKindName(c.Kind),
 		"level": c.Level, "value": c.Value, "value_text": ezfyComboValueTxt(c),
-		"proc_pct": c.ProcPct, "rounds": c.Rounds, "des": des,
+		// ★ 2026-10-25 详情页「特殊技能：」一行用的 `+攻击力180%` 文案（见 ezfyComboEffectTxt）
+		"effect_text": ezfyComboEffectTxt(c),
+		"proc_pct":    c.ProcPct, "rounds": c.Rounds, "des": des,
 	}
 }
 
