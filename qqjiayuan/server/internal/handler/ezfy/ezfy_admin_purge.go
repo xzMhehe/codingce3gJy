@@ -115,6 +115,8 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	{"ezfy_bot", []string{"user_id"}},
 	{"ezfy_bot_target", []string{"bot_uid", "target_uid"}},
 	{"ezfy_bot_log", []string{"bot_uid"}},
+	// ★ 2026-10-25 活动守将「兜底被俘次数」进度（玩家 × 守将的胜场数）——纯玩家数据，删号必清
+	{"ezfy_act_capture_try", []string{"user_id"}},
 }
 
 // ezfyPurgeByCity 按**城市**归属的表（占位值 = 该玩家的城池 id 列表）。

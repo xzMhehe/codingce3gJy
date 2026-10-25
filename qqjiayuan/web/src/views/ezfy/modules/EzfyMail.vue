@@ -65,7 +65,7 @@
             </div>
             <div class="ezfy-pager" v-if="ezfy.mailTotal > ezfy.mailSize">
               <a href="javascript:;" :class="{ gray: ezfy.mailPage <= 1 }" @click="ezfy.mailPrev()">上一页</a>
-              <span class="gray">第 {{ ezfy.mailPage }}/{{ Math.ceil(ezfy.mailTotal / ezfy.mailSize) }} 页（共 {{ ezfy.mailTotal }} 条）</span>
+              <span class="gray">{{ ezfy.mailPage }}/{{ Math.ceil(ezfy.mailTotal / ezfy.mailSize) }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.mailPage * ezfy.mailSize >= ezfy.mailTotal }" @click="ezfy.mailNext()">下一页</a>
             </div>
           </template>

@@ -58,7 +58,7 @@
             <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条；切城市重新查询后同样有分页 -->
             <div class="ezfy-pager" v-if="ezfy.dynMarch.length">
               <a href="javascript:;" :class="{ gray: ezfy.dynPageCur <= 1 }" @click="ezfy.sectionPagerGo('dyn', -1)">上一页</a>
-              <span class="gray">第 {{ ezfy.dynPageCur }}/{{ ezfy.dynMarchTotalPages }} 页（共 {{ ezfy.dynMarch.length }} 条）</span>
+              <span class="gray">{{ ezfy.dynPageCur }}/{{ ezfy.dynMarchTotalPages }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.dynPageCur >= ezfy.dynMarchTotalPages }" @click="ezfy.sectionPagerGo('dyn', 1)">下一页</a>
             </div>
           </template>
@@ -111,7 +111,7 @@
             <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条 -->
             <div class="ezfy-pager" v-if="ezfy.dynStation.length">
               <a href="javascript:;" :class="{ gray: ezfy.dynStationPageCur <= 1 }" @click="ezfy.sectionPagerGo('sta', -1)">上一页</a>
-              <span class="gray">第 {{ ezfy.dynStationPageCur }}/{{ ezfy.dynStationTotalPages }} 页（共 {{ ezfy.dynStation.length }} 条）</span>
+              <span class="gray">{{ ezfy.dynStationPageCur }}/{{ ezfy.dynStationTotalPages }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.dynStationPageCur >= ezfy.dynStationTotalPages }" @click="ezfy.sectionPagerGo('sta', 1)">下一页</a>
             </div>
           </template>
@@ -138,7 +138,7 @@
             <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条 -->
             <div class="ezfy-pager" v-if="ezfy.reports.length">
               <a href="javascript:;" :class="{ gray: ezfy.repPageCur <= 1 }" @click="ezfy.sectionPagerGo('rep', -1)">上一页</a>
-              <span class="gray">第 {{ ezfy.repPageCur }}/{{ ezfy.repTotalPages }} 页（共 {{ ezfy.reports.length }} 条）</span>
+              <span class="gray">{{ ezfy.repPageCur }}/{{ ezfy.repTotalPages }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.repPageCur >= ezfy.repTotalPages }" @click="ezfy.sectionPagerGo('rep', 1)">下一页</a>
             </div>
           </template>
@@ -170,7 +170,7 @@
             <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条 -->
             <div class="ezfy-pager" v-if="ezfy.reports.length">
               <a href="javascript:;" :class="{ gray: ezfy.repPageCur <= 1 }" @click="ezfy.sectionPagerGo('rep', -1)">上一页</a>
-              <span class="gray">第 {{ ezfy.repPageCur }}/{{ ezfy.repTotalPages }} 页（共 {{ ezfy.reports.length }} 条）</span>
+              <span class="gray">{{ ezfy.repPageCur }}/{{ ezfy.repTotalPages }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.repPageCur >= ezfy.repTotalPages }" @click="ezfy.sectionPagerGo('rep', 1)">下一页</a>
             </div>
           </template>

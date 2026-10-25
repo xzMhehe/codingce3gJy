@@ -35,7 +35,7 @@
                        改成与「军情/公告」同一口径 —— **有记录就显示**（哪怕只有 1 页，也让玩家看到「第 1/1 页（共 N 条）」）。 -->
                 <div class="ezfy-pager" v-if="ezfy.pmChatTotal > 0">
                   <a href="javascript:;" :class="{ gray: ezfy.pmChatPage <= 1 }" @click="ezfy.pmChatPrev()">上一页</a>
-                  <span class="gray">第 {{ ezfy.pmChatPage }}/{{ Math.ceil(ezfy.pmChatTotal / ezfy.pmChatSize) }} 页（共 {{ ezfy.pmChatTotal }} 条）</span>
+                  <span class="gray">{{ ezfy.pmChatPage }}/{{ Math.ceil(ezfy.pmChatTotal / ezfy.pmChatSize) }}</span>
                   <a href="javascript:;" :class="{ gray: ezfy.pmChatPage * ezfy.pmChatSize >= ezfy.pmChatTotal }" @click="ezfy.pmChatNext()">下一页</a>
                 </div>
                 <div class="old-line">
@@ -55,7 +55,7 @@
                 <div class="old-line gray" v-if="!ezfy.pmConvs.length">(还没有会话，去「好友列表」找好友私聊吧)</div>
                 <div class="ezfy-pager" v-if="ezfy.pmConvTotal > ezfy.pmConvSize">
                   <a href="javascript:;" :class="ezfy.pmConvPage <= 1 ? 'gray' : ''" @click="ezfy.pmConvPrev()">[上一页]</a>
-                  <span class="gray">第 {{ ezfy.pmConvPage }}/{{ Math.ceil(ezfy.pmConvTotal / ezfy.pmConvSize) }} 页（共 {{ ezfy.pmConvTotal }} 个会话）</span>
+                  <span class="gray">{{ ezfy.pmConvPage }}/{{ Math.ceil(ezfy.pmConvTotal / ezfy.pmConvSize) }}</span>
                   <a href="javascript:;" :class="ezfy.pmConvPage * ezfy.pmConvSize >= ezfy.pmConvTotal ? 'gray' : ''" @click="ezfy.pmConvNext()">[下一页]</a>
                 </div>
               </template>

@@ -686,7 +686,7 @@
           <div class="old-line" v-if="!ezfy.queueItems.length">(暂无出征部队)</div>
           <div class="ezfy-pager" v-if="ezfy.queueItems.length > ezfy.queueSize">
             <a href="javascript:;" :class="{ gray: ezfy.queuePage <= 1 }" @click="ezfy.sectionPagerGo('queue', -1)">上一页</a>
-            <span class="gray">第 {{ ezfy.queuePage }}/{{ ezfy.queueTotalPages }} 页（共 {{ ezfy.queueItems.length }} 条）</span>
+            <span class="gray">{{ ezfy.queuePage }}/{{ ezfy.queueTotalPages }}</span>
             <a href="javascript:;" :class="{ gray: ezfy.queuePage >= ezfy.queueTotalPages }" @click="ezfy.sectionPagerGo('queue', 1)">下一页</a>
           </div>
           <div class="old-line">

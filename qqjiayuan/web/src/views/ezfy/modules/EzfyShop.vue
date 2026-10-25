@@ -61,7 +61,7 @@
           <!-- ★ 分页 -->
           <div class="ezfy-pager" v-if="ezfy.bagFiltered.length > ezfy.bagPageSize">
             <a href="javascript:;" :class="{ disabled: ezfy.bagPage <= 1 }" @click="ezfy.bagGo(-1)">[上一页]</a>
-            <span class="gray">第 {{ Math.min(ezfy.bagPage, ezfy.bagTotalPages) }}/{{ ezfy.bagTotalPages }} 页 · 共 {{ ezfy.bagFiltered.length }} 种</span>
+            <span class="gray">{{ Math.min(ezfy.bagPage, ezfy.bagTotalPages) }}/{{ ezfy.bagTotalPages }}</span>
             <a href="javascript:;" :class="{ disabled: ezfy.bagPage >= ezfy.bagTotalPages }" @click="ezfy.bagGo(1)">[下一页]</a>
           </div>
           </template>
@@ -88,7 +88,7 @@
             <!-- ★ 军官装备分页（与道具 tab 同款：有数据且超过一页才显示） -->
             <div class="ezfy-pager" v-if="ezfy.bagEquips.length > ezfy.bagEquipPageSize">
               <a href="javascript:;" :class="{ disabled: ezfy.bagEquipPage <= 1 }" @click="ezfy.bagEquipGo(-1)">[上一页]</a>
-              <span class="gray">第 {{ Math.min(ezfy.bagEquipPage, ezfy.bagEquipTotalPages) }}/{{ ezfy.bagEquipTotalPages }} 页 · 共 {{ ezfy.bagEquips.length }} 种</span>
+              <span class="gray">{{ Math.min(ezfy.bagEquipPage, ezfy.bagEquipTotalPages) }}/{{ ezfy.bagEquipTotalPages }}</span>
               <a href="javascript:;" :class="{ disabled: ezfy.bagEquipPage >= ezfy.bagEquipTotalPages }" @click="ezfy.bagEquipGo(1)">[下一页]</a>
             </div>
           </template>
@@ -215,7 +215,7 @@
           <!-- ★ 分页（每页 10 件） -->
           <div class="ezfy-pager" v-if="ezfy.mallFiltered.length > ezfy.mallPageSize">
             <a href="javascript:;" :class="{ disabled: ezfy.mallPage <= 1 }" @click="ezfy.mallGo(-1)">[上一页]</a>
-            <span class="gray">第 {{ Math.min(ezfy.mallPage, ezfy.mallTotalPages) }}/{{ ezfy.mallTotalPages }} 页 · 共 {{ ezfy.mallFiltered.length }} 件</span>
+            <span class="gray">{{ Math.min(ezfy.mallPage, ezfy.mallTotalPages) }}/{{ ezfy.mallTotalPages }}</span>
             <a href="javascript:;" :class="{ disabled: ezfy.mallPage >= ezfy.mallTotalPages }" @click="ezfy.mallGo(1)">[下一页]</a>
           </div>
           </template>
@@ -302,7 +302,7 @@
             <div class="old-line gray" v-if="!ezfy.shopAll.length">(没有匹配的装备)</div>
             <div class="ezfy-pager" v-if="ezfy.shopAll.length > ezfy.shopSize">
               <a href="javascript:;" :class="{ gray: ezfy.shopPage <= 1 }" @click="ezfy.shopPage--">上一页</a>
-              <span class="gray">第 {{ ezfy.shopPage }}/{{ ezfy.shopTotalPages }} 页（共 {{ ezfy.shopAll.length }} 件）</span>
+              <span class="gray">{{ ezfy.shopPage }}/{{ ezfy.shopTotalPages }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.shopPage >= ezfy.shopTotalPages }" @click="ezfy.shopPage++">下一页</a>
             </div>
             <div class="old-line gray">
@@ -448,7 +448,7 @@
             <div class="old-line gray" v-if="!ezfy.chestPoolAll.length">(没有匹配的奖品)</div>
             <div class="ezfy-pager" v-if="ezfy.chestPoolAll.length > ezfy.chestPoolSize">
               <a href="javascript:;" :class="{ gray: ezfy.chestPoolPage <= 1 }" @click="ezfy.chestPoolPage--">上一页</a>
-              <span class="gray">第 {{ ezfy.chestPoolPage }}/{{ ezfy.chestPoolTotalPages }} 页（共 {{ ezfy.chestPoolAll.length }} 项）</span>
+              <span class="gray">{{ ezfy.chestPoolPage }}/{{ ezfy.chestPoolTotalPages }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.chestPoolPage >= ezfy.chestPoolTotalPages }" @click="ezfy.chestPoolPage++">下一页</a>
             </div>
             <div class="old-line">
@@ -645,7 +645,7 @@
           <div class="old-line" v-if="!ezfy.exchangeOrders.length">(暂无在售订单)</div>
           <div class="ezfy-pager" v-if="ezfy.exchangeTotal > ezfy.exchangeSize">
             <a href="javascript:;" :class="{ gray: ezfy.exchangePage <= 1 }" @click="ezfy.sectionPagerGo('exo', -1)">上一页</a>
-            <span class="gray">第 {{ ezfy.exchangePage }}/{{ ezfy.exchangeTotalPages }} 页（共 {{ ezfy.exchangeTotal }} 条）</span>
+            <span class="gray">{{ ezfy.exchangePage }}/{{ ezfy.exchangeTotalPages }}</span>
             <a href="javascript:;" :class="{ gray: ezfy.exchangePage >= ezfy.exchangeTotalPages }" @click="ezfy.sectionPagerGo('exo', 1)">下一页</a>
           </div>
           <div class="panel-title">我的挂单</div>
@@ -662,7 +662,7 @@
           <div class="old-line" v-if="!ezfy.exchangeMine.length">(无在售挂单)</div>
           <div class="ezfy-pager" v-if="ezfy.exchangeMTotal > ezfy.exchangeMSize">
             <a href="javascript:;" :class="{ gray: ezfy.exchangeMPage <= 1 }" @click="ezfy.sectionPagerGo('exm', -1)">上一页</a>
-            <span class="gray">第 {{ ezfy.exchangeMPage }}/{{ ezfy.exchangeMTotalPages }} 页（共 {{ ezfy.exchangeMTotal }} 条）</span>
+            <span class="gray">{{ ezfy.exchangeMPage }}/{{ ezfy.exchangeMTotalPages }}</span>
             <a href="javascript:;" :class="{ gray: ezfy.exchangeMPage >= ezfy.exchangeMTotalPages }" @click="ezfy.sectionPagerGo('exm', 1)">下一页</a>
           </div>
           <div class="panel-title">挂单出售</div>

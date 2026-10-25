@@ -241,6 +241,8 @@
               <template slot-scope="{row}">
                 <span v-if="row.officer_id > 0" class="td-blue">{{ row.officer_name }}（{{ row.officer_star }}★）</span>
                 <span v-else class="td-sub">无</span>
+                <!-- ★ 2026-10-25 兜底被俘次数（仅管理端可见） -->
+                <div v-if="row.min_capture_wins" class="td-sub">兜底{{ row.min_capture_wins }}次</div>
               </template>
             </el-table-column>
             <el-table-column prop="des" label="备注" min-width="140" show-overflow-tooltip />
@@ -302,7 +304,7 @@
                   <span class="td-sub" v-if="row.def_level"> Lv.{{ row.def_level }}</span>
                 </div>
                 <div v-else class="td-sub">未设守将</div>
-                <div v-if="row.capture_rate" class="td-sub">被俘{{ row.capture_rate }}% · 抓{{ row.max_capture ? row.max_capture : '不限' }}次</div>
+                <div v-if="row.capture_rate" class="td-sub">被俘{{ row.capture_rate }}% · 抓{{ row.max_capture ? row.max_capture : '不限' }}次<span v-if="row.min_capture_wins"> · 兜底{{ row.min_capture_wins }}次</span></div>
                 <div v-else class="td-sub">不俘虏</div>
               </template>
             </el-table-column>
@@ -905,6 +907,12 @@
             <i class="el-icon-info cfg-tip" style="margin-left:6px" />
           </el-tooltip>
         </el-form-item>
+        <el-form-item label="兜底被俘次数">
+          <el-input-number v-model.number="aw.min_capture_wins" :min="0" controls-position="right" style="width:160px" />
+          <el-tooltip placement="top" content="至少打赢该守将多少次之后才可能被俘虏（0 = 第一次打赢就按被俘概率）。未达标时静默不俘，玩家端不显示这个门槛">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="aw.des" maxlength="200" show-word-limit />
         </el-form-item>
@@ -1046,6 +1054,12 @@
             <i class="el-icon-info cfg-tip" style="margin-left:6px" />
           </el-tooltip>
         </el-form-item>
+        <el-form-item label="兜底被俘次数">
+          <el-input-number v-model.number="al.min_capture_wins" :min="0" controls-position="right" style="width:160px" />
+          <el-tooltip placement="top" content="至少打赢该守将多少次之后才可能被俘虏（0 = 第一次打赢就按被俘概率）。未达标时静默不俘，玩家端不显示这个门槛">
+            <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+          </el-tooltip>
+        </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="al.des" type="textarea" :rows="2" maxlength="500" show-word-limit />
         </el-form-item>
@@ -1122,7 +1136,8 @@ function emptyWc () {
 function emptyActLevel () {
   return { id: 0, act_type: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0,
     treasures: '', drop_items: '', des: '',
-    officer_id: 0, capture_rate: 0, max_capture: 1, def_level: 0, captive_level: 0, def_move_dir: '' }
+    officer_id: 0, capture_rate: 0, max_capture: 1, min_capture_wins: 0,
+    def_level: 0, captive_level: 0, def_move_dir: '' }
 }
 
 export default {
@@ -1162,7 +1177,7 @@ export default {
       alTroops: [], // 可视化守军行 [{troop_id,min,max}]
       alTreasures: [], // 可视化必掉宝物行 [{treasure_id,count}]
       alDrops: [], // 可视化掉落道具行 [{cfg_id,count,pct}]
-      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, def_level: 0, captive_level: 0 },
+      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, min_capture_wins: 0, def_level: 0, captive_level: 0 },
       awOfficerKind: 1, // 活动野地守将类型：0未选 1普通 2名将（按下拉里军官的 kind 推断）
       awStarFilter: 0, // 活动野地守将星级筛选（0=全部）
       awTroops: [], // 活动野地守军可视化行 [{troop_id,count},...]（保存时序列化成 [[tid,count]]）
@@ -1460,7 +1475,7 @@ export default {
       })
     },
     openAwCreate () {
-      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, def_level: 0, captive_level: 0 }
+      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1, min_capture_wins: 0, def_level: 0, captive_level: 0 }
       this.awOfficerKind = 1 // ★ 默认守将类型 = 普通
       this.awStarFilter = 5  // ★ 默认星级筛选 = 5 星
       // ★ 默认直接选中一个「普通 5 星」守将（有就放进下拉）
@@ -1604,6 +1619,8 @@ export default {
         treasures: treasures,
         capture_rate: Number(a.capture_rate) || 0,
         max_capture: Number(a.max_capture) >= 0 ? Number(a.max_capture) : 1,
+        // ★ 2026-10-25 兜底被俘次数（至少打赢多少次才可能被俘；0 = 第一次就按概率）
+        min_capture_wins: Number(a.min_capture_wins) || 0,
         // ★ 2026-10-24 守军等级 / 被俘等级 / 守军行为（按兵种 JSON map：{兵种ID: 1前进/0停止/-1后退}）
         def_level: Number(a.def_level) || 0,
         captive_level: Number(a.captive_level) || 0,
@@ -1715,6 +1732,8 @@ export default {
         officer_id: Number(a.officer_id) || 0,
         capture_rate: Number(a.capture_rate) || 0,
         max_capture: Number(a.max_capture) >= 0 ? Number(a.max_capture) : 1,
+        // ★ 2026-10-25 兜底被俘次数（至少打赢多少次才可能被俘；0 = 第一次就按概率）
+        min_capture_wins: Number(a.min_capture_wins) || 0,
         def_level: Number(a.def_level) || 0,
         captive_level: Number(a.captive_level) || 0,
         def_move_dir: this.moveDirTxt(this.alTroops),

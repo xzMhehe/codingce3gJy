@@ -353,7 +353,7 @@
         <!-- ★ 分页 -->
         <div class="ezfy-pager" v-if="ezfy.equipGroups.length > ezfy.equipPageSize">
           <a href="javascript:;" :class="{ disabled: ezfy.equipPage <= 1 }" @click="ezfy.equipGo(-1)">[上一页]</a>
-          <span class="gray">第 {{ Math.min(ezfy.equipPage, ezfy.equipTotalPages) }}/{{ ezfy.equipTotalPages }} 页 · 共 {{ ezfy.equipGroups.length }} 种</span>
+          <span class="gray">{{ Math.min(ezfy.equipPage, ezfy.equipTotalPages) }}/{{ ezfy.equipTotalPages }}</span>
           <a href="javascript:;" :class="{ disabled: ezfy.equipPage >= ezfy.equipTotalPages }" @click="ezfy.equipGo(1)">[下一页]</a>
         </div>
         </div>
@@ -445,7 +445,7 @@
         <!-- ★ 分页 -->
         <div class="ezfy-pager" v-if="ezfy.equipAllFiltered.length > ezfy.equipAllPageSize">
           <a href="javascript:;" :class="{ disabled: ezfy.equipAllPage <= 1 }" @click="ezfy.equipAllGo(-1)">[上一页]</a>
-          <span class="gray">第 {{ Math.min(ezfy.equipAllPage, ezfy.equipAllTotalPages) }}/{{ ezfy.equipAllTotalPages }} 页 · 共 {{ ezfy.equipAllFiltered.length }} 件</span>
+          <span class="gray">{{ Math.min(ezfy.equipAllPage, ezfy.equipAllTotalPages) }}/{{ ezfy.equipAllTotalPages }}</span>
           <a href="javascript:;" :class="{ disabled: ezfy.equipAllPage >= ezfy.equipAllTotalPages }" @click="ezfy.equipAllGo(1)">[下一页]</a>
         </div>
         </div>
@@ -515,7 +515,7 @@
         </table>
         <div class="ezfy-pager" v-if="ezfy.generalData.generals.length > ezfy.generalPageSize">
           <a href="javascript:;" :class="{ disabled: ezfy.generalPage <= 1 }" @click="ezfy.generalGo(-1)">[上一页]</a>
-          <span class="gray">第 {{ Math.min(ezfy.generalPage, ezfy.generalTotalPages) }}/{{ ezfy.generalTotalPages }} 页 · 共 {{ ezfy.generalData.generals.length }} 名</span>
+          <span class="gray">{{ Math.min(ezfy.generalPage, ezfy.generalTotalPages) }}/{{ ezfy.generalTotalPages }}</span>
           <a href="javascript:;" :class="{ disabled: ezfy.generalPage >= ezfy.generalTotalPages }" @click="ezfy.generalGo(1)">[下一页]</a>
         </div>
       </div>
@@ -830,7 +830,7 @@
         </div>
         <div class="ezfy-pager" v-if="ezfy.officerBagGroups.length > ezfy.officerBagPageSize">
           <a href="javascript:;" :class="{ disabled: ezfy.officerBagPage <= 1 }" @click="ezfy.officerBagGo(-1)">[上一页]</a>
-          <span class="gray">第 {{ Math.min(ezfy.officerBagPage, ezfy.officerBagTotalPages) }}/{{ ezfy.officerBagTotalPages }} 页 · 共 {{ ezfy.officerBagGroups.length }} 种</span>
+          <span class="gray">{{ Math.min(ezfy.officerBagPage, ezfy.officerBagTotalPages) }}/{{ ezfy.officerBagTotalPages }}</span>
           <a href="javascript:;" :class="{ disabled: ezfy.officerBagPage >= ezfy.officerBagTotalPages }" @click="ezfy.officerBagGo(1)">[下一页]</a>
         </div>
         </div>

@@ -51,6 +51,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyCityTroop{}, &model.EzfyCityTech{}, &model.EzfyUserTech{}, &model.EzfyTrainQueue{},
 	&model.EzfyMapArea{}, &model.EzfyMapTile{}, &model.EzfyMapStar{}, &model.EzfyActWild{},
 	&model.EzfyActLevel{},
+	&model.EzfyActCaptureTry{}, // ★ 2026-10-25 活动守将「兜底被俘次数」进度（玩家×守将 胜场数）
 	// —— 出征 / 战斗 / 战报 ——
 	&model.EzfyOrder{}, &model.EzfyBattle{}, &model.EzfyReport{},
 	&model.EzfyWildland{}, &model.EzfyOccupy{}, &model.EzfyWounded{},

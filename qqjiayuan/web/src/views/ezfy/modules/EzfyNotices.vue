@@ -13,7 +13,7 @@
     <div class="old-line" v-if="!ezfy.notices.length">(暂无公告)</div>
     <div class="ezfy-pager" v-if="ezfy.notices.length > ezfy.noticeSize">
       <a href="javascript:;" :class="{ gray: ezfy.noticePage <= 1 }" @click="ezfy.sectionPagerGo('notice', -1)">上一页</a>
-      <span class="gray">第 {{ ezfy.noticePage }}/{{ ezfy.noticeTotalPages }} 页（共 {{ ezfy.notices.length }} 条）</span>
+      <span class="gray">{{ ezfy.noticePage }}/{{ ezfy.noticeTotalPages }}</span>
       <a href="javascript:;" :class="{ gray: ezfy.noticePage >= ezfy.noticeTotalPages }" @click="ezfy.sectionPagerGo('notice', 1)">下一页</a>
     </div>
     <template v-if="ezfy.curNotice">

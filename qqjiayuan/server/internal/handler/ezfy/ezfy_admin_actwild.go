@@ -31,6 +31,8 @@ var ezfyActWildFields = map[string]string{
 	"officer_id": "int", "treasures": "string", "capture_rate": "int", "max_capture": "int",
 	// ★ 2026-10-24 守军等级 / 被俘等级 / 守军行为（按兵种 JSON map）
 	"def_level": "int", "captive_level": "int", "def_move_dir": "string",
+	// ★ 2026-10-25 兜底被俘次数（至少打赢多少次才可能被俘；0 = 直接按概率）
+	"min_capture_wins": "int",
 }
 
 // AdminEzfyActWildList GET /admin/ezfy-act-wilds —— 活动野地配置列表（分页）
@@ -74,6 +76,8 @@ func (h *EzfyAdmin) AdminEzfyActWildList(c *gin.Context) {
 			"treasures": r.Treasures, "capture_rate": r.CaptureRate, "max_capture": r.MaxCapture,
 			// ★ 2026-10-24 守军等级 + 被俘等级 + 守军行为（按兵种 JSON map，编辑弹窗回填用）
 			"def_level": r.DefLevel, "captive_level": r.CaptiveLevel, "def_move_dir": r.DefMoveDir,
+			// ★ 2026-10-25 兜底被俘次数（**仅管理端**，用户端不下发）
+			"min_capture_wins": r.MinCaptureWins,
 			// 当前生效判定（enabled=1 才算活动目标）
 			"eff_act": (r.Enabled == 1),
 		})
@@ -142,6 +146,10 @@ func (h *EzfyAdmin) AdminEzfyActWildSave(c *gin.Context) {
 			vals[k] = 0
 		}
 	}
+	// ★ 2026-10-25 兜底被俘次数默认 0 = 第一次打赢就按概率（原行为）
+	if _, ok := vals["min_capture_wins"]; !ok {
+		vals["min_capture_wins"] = 0
+	}
 	if _, ok := vals["def_move_dir"]; !ok {
 		vals["def_move_dir"] = ""
 	}
@@ -183,7 +191,7 @@ func (h *EzfyAdmin) AdminEzfyActWildSave(c *gin.Context) {
 		DoUpdates: clause.AssignmentColumns([]string{
 			"enabled", "level", "troops", "res", "gold", "prestige", "jewel", "des", "officer_id",
 			"treasures", "capture_rate", "max_capture",
-			"def_level", "captive_level", "def_move_dir",
+			"def_level", "captive_level", "def_move_dir", "min_capture_wins",
 		}),
 	}).Model(&model.EzfyActWild{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
@@ -487,6 +495,10 @@ func checkActWildVals(vals map[string]interface{}) string {
 	// 同一玩家可抓次数：0 = 不限；否则 >= 1
 	if v, ok := vals["max_capture"].(int); ok && v < 0 {
 		return "可抓次数不能为负（0 = 不限，>=1 为上限）"
+	}
+	// ★ 2026-10-25 兜底被俘次数不能为负（0 = 第一次打赢就按概率）
+	if v, ok := vals["min_capture_wins"].(int); ok && v < 0 {
+		return "兜底被俘次数不能为负（0 = 第一次打赢就按概率）"
 	}
 	// ★ 2026-10-24 守军行为（按兵种）：JSON map {"兵种ID":方向}，方向只能 1/0/-1
 	if s, ok := vals["def_move_dir"].(string); ok && strings.TrimSpace(s) != "" && strings.TrimSpace(s) != "{}" {

@@ -427,36 +427,69 @@ func ezfyActivityDefender(actType, level, terrain int) []ezfyUnitGroup {
 // ★ 2026-10-24 活动目标等级配置（al）也支持与活动野地同款的守将配置；
 //   个别坐标想特调 → 在活动野地 tab 配 aw，启用后优先于本表。
 type ezfyActDefConfig struct {
-	OfficerId    int    // 守将军官（军官池 ID，0 = 不设）
-	DefLevel     int    // 守将战斗等级（0 = 用军官池默认）
-	DefMoveDir   string // 守军行为 JSON map {兵种ID:1前进/0停止/-1后退}
-	CaptureRate  int    // 被俘虏概率%（0 = 不俘虏）
-	MaxCapture   int    // 同一玩家可抓次数（默认 1，0 = 不限）
-	CaptiveLevel int    // 被俘虏默认等级（0 = 用军官池默认）
+	OfficerId      int    // 守将军官（军官池 ID，0 = 不设）
+	DefLevel       int    // 守将战斗等级（0 = 用军官池默认）
+	DefMoveDir     string // 守军行为 JSON map {兵种ID:1前进/0停止/-1后退}
+	CaptureRate    int    // 被俘虏概率%（0 = 不俘虏）
+	MaxCapture     int    // 同一玩家可抓次数（默认 1，0 = 不限）
+	MinCaptureWins int    // ★ 2026-10-25 兜底被俘次数：至少打赢多少次才可能被俘（0 = 第一次就按概率）
+	CaptiveLevel   int    // 被俘虏默认等级（0 = 用军官池默认）
 }
 
 func ezfyActDefConfigOf(aw *model.EzfyActWild, actType, level int) ezfyActDefConfig {
 	if aw != nil && aw.Enabled == 1 {
 		return ezfyActDefConfig{
-			OfficerId:    aw.OfficerId,
-			DefLevel:     aw.DefLevel,
-			DefMoveDir:   aw.DefMoveDir,
-			CaptureRate:  aw.CaptureRate,
-			MaxCapture:   aw.MaxCapture,
-			CaptiveLevel: aw.CaptiveLevel,
+			OfficerId:      aw.OfficerId,
+			DefLevel:       aw.DefLevel,
+			DefMoveDir:     aw.DefMoveDir,
+			CaptureRate:    aw.CaptureRate,
+			MaxCapture:     aw.MaxCapture,
+			MinCaptureWins: aw.MinCaptureWins,
+			CaptiveLevel:   aw.CaptiveLevel,
 		}
 	}
 	if cfg := ezfyActLevelCfg(actType, level); cfg != nil {
 		return ezfyActDefConfig{
-			OfficerId:    cfg.OfficerId,
-			DefLevel:     cfg.DefLevel,
-			DefMoveDir:   cfg.DefMoveDir,
-			CaptureRate:  cfg.CaptureRate,
-			MaxCapture:   cfg.MaxCapture,
-			CaptiveLevel: cfg.CaptiveLevel,
+			OfficerId:      cfg.OfficerId,
+			DefLevel:       cfg.DefLevel,
+			DefMoveDir:     cfg.DefMoveDir,
+			CaptureRate:    cfg.CaptureRate,
+			MaxCapture:     cfg.MaxCapture,
+			MinCaptureWins: cfg.MinCaptureWins,
+			CaptiveLevel:   cfg.CaptiveLevel,
 		}
 	}
 	return ezfyActDefConfig{MaxCapture: 1}
+}
+
+// ezfyActCaptureAllowed 兜底被俘次数是否已达标（★ 唯一实现，便于测试）。
+//
+//	minWins = 管理端配置的「兜底被俘次数」（0 = 不设门槛，第一次打赢就按概率）；
+//	wins    = 该玩家已打赢该守将的次数。
+//
+//	达标线只在服务端判定，**不写进战报、不下发用户端**（用户要求「不要展示到用户端」）。
+func ezfyActCaptureAllowed(minWins int, wins int64) bool {
+	return minWins <= 0 || wins >= int64(minWins)
+}
+
+// ezfyActCaptureWinAdd 记一次「打赢该守将」，返回该玩家累计胜场数（★ 兜底被俘次数进度）。
+//
+// ★ 2026-10-25：口径 = **打赢次数**（战败/平局不算）—— 俘虏只在胜利时判定，
+//   按胜场计才不会被「1 兵自杀式碰瓷刷次数」钻空子。
+//   进度按 (玩家, 守将) 存 ezfy_act_capture_try，坐标级 aw 与等级配置共用同一份。
+func (h *EzfyHandler) ezfyActCaptureWinAdd(uid uint, generalId int) int64 {
+	if uid == 0 || generalId <= 0 {
+		return 0
+	}
+	h.DB.Exec(`INSERT INTO ezfy_act_capture_try (user_id, general_id, wins, updated_at)
+VALUES (?, ?, 1, NOW())
+ON DUPLICATE KEY UPDATE wins = wins + 1, updated_at = VALUES(updated_at)`, uid, generalId)
+	var n int64
+	// ★ 与 ezfy_pvp_rank.go 同款写法：Select(单列).Scan(&标量) 取一行一列（Pluck 只吃 slice）
+	h.DB.Model(&model.EzfyActCaptureTry{}).
+		Where("user_id = ? AND general_id = ?", uid, generalId).
+		Select("wins").Scan(&n)
+	return n
 }
 
 // processActivityBattle 活动目标战斗结算（独立于普通野地/寇城流程，打赢不占领）
@@ -912,8 +945,15 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		//   已收编的也得算 —— 收编后 IsCaptive=0 但玩家已拥有，不能再抓）。
 		//   所以直接用「该玩家已拥有该守将的军官实例数」来算（含俘虏与收编，一次发放=1）。
 		// ★ 2026-10-24 配置来源 aw 启用优先，否则回退活动目标配置（同一套口径，按 general_id 统计与坐标无关）。
+		// ★ 2026-10-25 兜底被俘次数（min_capture_wins）：至少打赢该守将 N 次之后才可能被俘虏；
+		//   0 = 第一次打赢就按概率（默认）。未达标**静默不俘**，战报与用户端都不出现这个门槛。
+		//   进度只在「配了守将且被俘概率 > 0」时累计（没开俘虏就无需记进度）。
 		if defCfg.OfficerId > 0 && defCfg.CaptureRate > 0 {
 			if g := ezfyCfg.general(defCfg.OfficerId); g != nil {
+				// ★ 2026-10-25 兜底被俘次数：先记一次「打赢该守将」，再判是否达标。
+				//   达标线（min_capture_wins）**只给运营看**，未达标时静默不俘 —— 战报里不提示，
+				//   用户端任何接口也不下发这个门槛（用户要求「不要展示到用户端」）。
+				wins := h.ezfyActCaptureWinAdd(uid, g.ID)
 				captures := 0
 				if defCfg.MaxCapture > 0 {
 					var had int64
@@ -933,6 +973,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 				if defCfg.MaxCapture > 0 && captures >= defCfg.MaxCapture {
 					rate = 0 // 已达上限 → 概率 0
 					report += "\n" + g.Name + "已被你捕获达到上限，无法再次俘虏"
+				}
+				// ★ 2026-10-25 兜底被俘次数未达标 → 本场不判俘虏（静默，不写战报）
+				if rate > 0 && !ezfyActCaptureAllowed(defCfg.MinCaptureWins, wins) {
+					rate = 0
 				}
 				if rate > 0 {
 					// ★ 2026-10-24 被俘虏默认等级：配置了 CaptiveLevel 就按该等级发放俘虏（0 = 用军官池默认 1 级）

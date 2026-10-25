@@ -12,7 +12,7 @@ import (
 //
 // ⚠️ 新增 Ezfy* model 时**记得往这里加一笔**，否则它的新列在 skip 分支上补不出来。
 var ezfySchemaModels = []interface{}{
-	&model.EzfyActWild{}, &model.EzfyActLevel{}, &model.EzfyActivity{}, &model.EzfyBattle{},
+	&model.EzfyActWild{}, &model.EzfyActLevel{}, &model.EzfyActCaptureTry{}, &model.EzfyActivity{}, &model.EzfyBattle{},
 	&model.EzfyCfgBuilding{}, &model.EzfyCfgBuildingLevel{}, &model.EzfyCfgChest{},
 	&model.EzfyCfgChestItem{}, &model.EzfyCfgEquipSet{}, &model.EzfyCfgEquipment{},
 	&model.EzfyCfgGeneral{}, &model.EzfyCfgGeneralSkill{}, &model.EzfyCfgItem{}, &model.EzfyCfgLimit{},

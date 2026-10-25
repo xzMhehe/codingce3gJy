@@ -183,6 +183,10 @@ type EzfyActWild struct {
 	// ★ 2026-09-30 同一玩家可抓守将次数上限（默认 1）。玩家已抓到上限后，
 	//   再次胜利抓取概率强制 0（详见 ezfy_activity_target.go 的结算判定）。
 	MaxCapture int `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
+	// ★ 2026-10-25 兜底被俘次数：至少**打赢**该守将多少次之后才可能被俘虏。
+	//   0 = 第一次打赢就按 CaptureRate 概率判（原行为）；N>0 = 前 N-1 次打赢必定俘不到。
+	//   ⚠️ **不下发到用户端**（玩家看不到这个门槛，战报里也不提示）。
+	MinCaptureWins int `gorm:"default:0;comment:兜底被俘次数:至少打赢多少次才可能被俘(0=直接按概率)" json:"min_capture_wins"`
 	// ★ 2026-10-24 守军强度微调（0 = 用军官池默认）：
 	//   - DefLevel：守将战斗等级（影响守将技能 / 组合技等级）；0 = 跟随军官池 Level（通常 1）
 	DefLevel int `gorm:"default:0;comment:守将等级,0=用军官池默认" json:"def_level"`
@@ -228,20 +232,42 @@ type EzfyActLevel struct {
 	//   - OfficerId：守将军官（军官池 ID，0 = 不设守将）
 	//   - CaptureRate：守将被俘虏概率%（0 = 不俘虏；>0 按该百分比，100 = 必俘虏）
 	//   - MaxCapture：同一玩家可抓该守将次数（默认 1；抓满后概率归 0；0 = 不限）
+	//   - MinCaptureWins：兜底被俘次数（至少打赢多少次才可能被俘；0 = 第一次就按概率）
 	//   - DefLevel：守将战斗等级（影响守将技能 / 组合技等级）；0 = 用军官池默认
 	//   - CaptiveLevel：被俘虏默认等级（0 = 用军官池 Level，通常 1 级）
 	//   - DefMoveDir：守军行为（按兵种）JSON map {"兵种ID":1前进/0停止/-1后退}；空/{} = 全部默认前进
-	OfficerId    int    `gorm:"default:0;comment:守将军官ID，0=不设" json:"officer_id"`
-	CaptureRate  int    `gorm:"default:0;comment:守将被俘虏概率%，0=不俘虏" json:"capture_rate"`
-	MaxCapture   int    `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
-	DefLevel     int    `gorm:"default:0;comment:守将等级,0=用军官池默认" json:"def_level"`
-	CaptiveLevel int    `gorm:"default:0;comment:被俘虏默认等级,0=用军官池默认(1级)" json:"captive_level"`
-	DefMoveDir   string `gorm:"type:varchar(255);default:'';comment:守军行为JSON map{兵种ID:1前进/0停止/-1后退}" json:"def_move_dir"`
-	Des          string `gorm:"type:varchar(500);comment:说明" json:"des"`
-	UpdatedAt    time.Time
+	OfficerId   int `gorm:"default:0;comment:守将军官ID，0=不设" json:"officer_id"`
+	CaptureRate int `gorm:"default:0;comment:守将被俘虏概率%，0=不俘虏" json:"capture_rate"`
+	MaxCapture  int `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
+	// ★ 2026-10-25 兜底被俘次数：至少**打赢**该守将多少次之后才可能被俘虏
+	//   （0 = 第一次打赢就按概率；⚠️ 不下发到用户端）
+	MinCaptureWins int    `gorm:"default:0;comment:兜底被俘次数:至少打赢多少次才可能被俘(0=直接按概率)" json:"min_capture_wins"`
+	DefLevel       int    `gorm:"default:0;comment:守将等级,0=用军官池默认" json:"def_level"`
+	CaptiveLevel   int    `gorm:"default:0;comment:被俘虏默认等级,0=用军官池默认(1级)" json:"captive_level"`
+	DefMoveDir     string `gorm:"type:varchar(255);default:'';comment:守军行为JSON map{兵种ID:1前进/0停止/-1后退}" json:"def_move_dir"`
+	Des            string `gorm:"type:varchar(500);comment:说明" json:"des"`
+	UpdatedAt      time.Time
 }
 
 func (EzfyActLevel) TableName() string { return "ezfy_act_level" }
+
+// EzfyActCaptureTry 活动目标守将「兜底被俘次数」进度：玩家对某守将的累计**胜场数**。
+//
+// ★ 2026-10-25：ezfy_act_wild / ezfy_act_level 新增 min_capture_wins 后，
+// 打赢次数按 (玩家, 守将) 累计 —— 与 MaxCapture（同一玩家可抓该守将次数）同维度：
+// 坐标级配置（ezfy_act_wild）与等级配置（ezfy_act_level）**共用同一份进度**，
+// 同一个守将在哪个坐标打都算次数。
+//
+// ⚠️ 只在管理端/服务端使用，**任何用户端接口都不下发**。
+type EzfyActCaptureTry struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId    uint      `gorm:"uniqueIndex:uk_act_try_ug,priority:1;comment:玩家ID" json:"user_id"`
+	GeneralId int       `gorm:"uniqueIndex:uk_act_try_ug,priority:2;comment:守将军官池ID" json:"general_id"`
+	Wins      int64     `gorm:"default:0;comment:已打赢该守将次数" json:"wins"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (EzfyActCaptureTry) TableName() string { return "ezfy_act_capture_try" }
 
 // 地图格子标记类型
 const (

@@ -33,6 +33,8 @@ var ezfyActLevelFields = map[string]string{
 	// ★ 2026-10-24 与活动野地同款：守将 / 守军微调 / 被俘
 	"officer_id": "int", "def_level": "int", "captive_level": "int",
 	"def_move_dir": "string", "capture_rate": "int", "max_capture": "int",
+	// ★ 2026-10-25 兜底被俘次数（至少打赢多少次才可能被俘；0 = 直接按概率）
+	"min_capture_wins": "int",
 }
 
 // AdminEzfyActLevelList GET /admin/ezfy-act-levels —— 活动目标等级配置列表
@@ -70,6 +72,8 @@ func (h *EzfyAdmin) AdminEzfyActLevelList(c *gin.Context) {
 			"officer_id": r.OfficerId, "officer_name": oName, "officer_star": oStar,
 			"capture_rate": r.CaptureRate, "max_capture": r.MaxCapture,
 			"def_level": r.DefLevel, "captive_level": r.CaptiveLevel, "def_move_dir": r.DefMoveDir,
+			// ★ 2026-10-25 兜底被俘次数（**仅管理端**，用户端不下发）
+			"min_capture_wins": r.MinCaptureWins,
 			"updated_at": r.UpdatedAt,
 		})
 	}
@@ -125,6 +129,10 @@ func (h *EzfyAdmin) AdminEzfyActLevelSave(c *gin.Context) {
 			vals[k] = 0
 		}
 	}
+	// ★ 2026-10-25 兜底被俘次数默认 0 = 第一次打赢就按概率（原行为）
+	if _, ok := vals["min_capture_wins"]; !ok {
+		vals["min_capture_wins"] = 0
+	}
 	if _, ok := vals["def_move_dir"]; !ok {
 		vals["def_move_dir"] = ""
 	}
@@ -160,7 +168,7 @@ func (h *EzfyAdmin) AdminEzfyActLevelSave(c *gin.Context) {
 			"troops", "res", "gold", "prestige", "treasures", "drop_items", "des",
 			// ★ 2026-10-24 守将 / 守军微调 / 被俘
 			"officer_id", "capture_rate", "max_capture",
-			"def_level", "captive_level", "def_move_dir",
+			"def_level", "captive_level", "def_move_dir", "min_capture_wins",
 		}),
 	}).Model(&model.EzfyActLevel{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
@@ -243,6 +251,10 @@ func checkActLevelVals(vals map[string]interface{}) string {
 	}
 	if v, ok := vals["max_capture"].(int); ok && v < 0 {
 		return "可抓次数不能为负（0 = 不限，>=1 为上限）"
+	}
+	// ★ 2026-10-25 兜底被俘次数不能为负（0 = 第一次打赢就按概率）
+	if v, ok := vals["min_capture_wins"].(int); ok && v < 0 {
+		return "兜底被俘次数不能为负（0 = 第一次打赢就按概率）"
 	}
 	if s, ok := vals["def_move_dir"].(string); ok && strings.TrimSpace(s) != "" && strings.TrimSpace(s) != "{}" {
 		m := map[int]int{}

@@ -34,7 +34,7 @@
             <div class="old-line gray" v-if="!ezfy.worldChats.length">(暂无系统消息)</div>
             <div class="ezfy-pager" v-if="ezfy.chatTotalPages > 1">
               <a href="javascript:;" :class="{ gray: ezfy.chatPage <= 1 }" @click="ezfy.chatGo(-1)">上一页</a>
-              <span class="gray">第 {{ ezfy.chatPage }}/{{ ezfy.chatTotalPages }} 页（共 {{ ezfy.chatTotal }} 条）</span>
+              <span class="gray">{{ ezfy.chatPage }}/{{ ezfy.chatTotalPages }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.chatPage >= ezfy.chatTotalPages }" @click="ezfy.chatGo(1)">下一页</a>
             </div>
           </template>
@@ -63,7 +63,7 @@
             <div class="old-line" v-if="!ezfy.worldChats.length">(暂无消息, 快来说点什么吧)</div>
             <div class="ezfy-pager" v-if="ezfy.chatTotalPages > 1">
               <a href="javascript:;" :class="{ gray: ezfy.chatPage <= 1 }" @click="ezfy.chatGo(-1)">上一页</a>
-              <span class="gray">第 {{ ezfy.chatPage }}/{{ ezfy.chatTotalPages }} 页（共 {{ ezfy.chatTotal }} 条）</span>
+              <span class="gray">{{ ezfy.chatPage }}/{{ ezfy.chatTotalPages }}</span>
               <a href="javascript:;" :class="{ gray: ezfy.chatPage >= ezfy.chatTotalPages }" @click="ezfy.chatGo(1)">下一页</a>
             </div>
           </template>

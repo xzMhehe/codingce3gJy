@@ -163,7 +163,7 @@
               </div>
               <div style="display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13px">
                 <a href="javascript:;" @click="ezfy.pvpDetailPage(-1)">上一页</a>
-                <span class="gray">{{ ezfy.pvpDetail.page }}/{{ Math.max(1, Math.ceil(ezfy.pvpDetail.total / ezfy.pvpDetail.size)) }}（共 {{ ezfy.pvpDetail.total }} 场）</span>
+                <span class="gray">{{ ezfy.pvpDetail.page }}/{{ Math.max(1, Math.ceil(ezfy.pvpDetail.total / ezfy.pvpDetail.size)) }}</span>
                 <a href="javascript:;" @click="ezfy.pvpDetailPage(1)">下一页</a>
               </div>
             </template>
