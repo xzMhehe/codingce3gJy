@@ -62,8 +62,12 @@
                于是这里永远显示「陆地城市」，和城市列表的「海城」对不上 —— 用户反馈的 bug） -->
           <span :class="ezfy.cityIsSea ? 'green' : 'gray'">[{{ ezfy.cityKindLabel }}]</span><br/>
           市政厅: {{ ezfy.city.city_level }}级<br/>
+          <!-- ★ 2026-10-25 用户要求：本页显示当前城市的市长/城守是哪个军官（数据见 loadOfficerPosts） -->
+          市长: <span :class="ezfy.cityMayor ? '' : 'gray'">{{ ezfy.cityMayor || '未任命' }}</span>
+          城守: <span :class="ezfy.cityGuard ? '' : 'gray'">{{ ezfy.cityGuard || '未任命' }}</span><br/>
           <!-- ★ 2026-10-22 人口上限只由民居容量决定；★ 2026-10-23 超限人口在下一次懒结算直接夹平。 -->
-          人口: {{ ezfy.city.pop }}（空闲{{ ezfy.freePop }}） / 民居上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '无' }}<br/>
+          <!-- ★ 2026-10-25 用户要求压缩成一行：人口: 559354/553756 上限: 56万 -->
+          人口: {{ ezfy.city.pop }}/{{ ezfy.freePop }} 上限: {{ ezfy.popCap > 0 ? ezfy.fmtBig(ezfy.popCap) : '无' }}<br/>
           民心/民怨: {{ ezfy.city.feelings }}/{{ ezfy.city.grievance }} 税率: {{ ezfy.city.tax_rate }}%<br/>
           建筑: {{ ezfy.buildings.length }}座 (军事+资源区 {{ ezfy.areaCount }}/{{ ezfy.areaCap }})<br/>
           军队: {{ ezfy.totalTroops }} (城外{{ ezfy.marching }}支队伍行进, {{ ezfy.occupying }}支驻守)<br/>

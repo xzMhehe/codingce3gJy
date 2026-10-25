@@ -620,14 +620,20 @@
         <hr/>
 
         <!-- ===== 核心属性区 ===== -->
+        <!-- ★ 2026-10-25 加点按钮从下面「分配：后勤[+1][+10][全加] …」那一行**挪到三项各自后面**
+             （用户要求）；「属性点」也从养成属性区提到这里，紧跟着它控制的三项，洗点留在同一行。
+             只有有可用属性点时才显示 [+1][+10][全]（与原来「分配」行的显隐条件一致）。 -->
         <div class="old-line">
-          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_military">(+{{ ezfy.officerDetail.officer.equip_military }})</span>
+          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_military">(+{{ ezfy.officerDetail.officer.equip_military }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全]</a></template>
         </div>
         <div class="old-line">
-          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_learning">(+{{ ezfy.officerDetail.officer.equip_learning }})</span>
+          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_learning">(+{{ ezfy.officerDetail.officer.equip_learning }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全]</a></template>
         </div>
         <div class="old-line">
-          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_logistics">(+{{ ezfy.officerDetail.officer.equip_logistics }})</span>
+          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_logistics">(+{{ ezfy.officerDetail.officer.equip_logistics }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全]</a></template>
+        </div>
+        <div class="old-line">
+          属性点：<b :class="ezfy.officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ ezfy.officerDetail.officer.free_points }}</b><a href="javascript:;" @click="ezfy.doRespec">[洗点]</a>
         </div>
         <hr/>
 
@@ -651,19 +657,7 @@
         <hr/>
 
         <!-- ===== 养成属性区 ===== -->
-        <div class="old-line">
-          属性点：
-          <b :class="ezfy.officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ ezfy.officerDetail.officer.free_points }}</b>
-          <span class="gray">（已分配 {{ ezfy.officerDetail.officer.used_points }}）</span>
-          <span class="gray" v-if="ezfy.officerDetail.officer.star_points > 0">（其中升星加点 {{ ezfy.officerDetail.officer.star_points }}）</span>
-          <a href="javascript:;" @click="ezfy.doRespec">[洗点]</a>
-        </div>
-        <div class="old-line" v-if="ezfy.officerDetail.officer.free_points > 0">
-          分配：
-          后勤<a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全加]</a>
-          &nbsp;军事<a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全加]</a>
-          &nbsp;学识<a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全加]</a>
-        </div>
+        <!-- ★ 2026-10-25 「属性点」行与「分配：」行已上移到核心属性区（跟着军事/学识/后勤走） -->
         <div class="old-line">
           忠诚：<b>{{ ezfy.officerDetail.officer.loyalty }}</b>
           <a href="javascript:;" @click="ezfy.doGrant">[赏赐]</a>

@@ -97,8 +97,8 @@ func TestWildGarrison(t *testing.T) {
 	if !strings.Contains(strings.Join(strings.Fields(order), " "), `"has_defender": hasDefender`) {
 		t.Fatal("野地详情未下发 has_defender（前端无法禁用自动战斗）")
 	}
-	if !strings.Contains(order, `Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", w.ID)`) {
-		t.Fatal("has_defender 口径不对（必须含采集部队 7 与驻军 6）")
+	if !strings.Contains(order, `Where("target_id = ? AND "+ezfyWildDefenderOrderCond, w.ID)`) {
+		t.Fatal("has_defender 口径不对（必须复用 ezfyWildDefenderOrderCond，含采集部队 7 与驻军 6）")
 	}
 	//   前端：出征页「自动战斗」对这类目标强制「否」
 	main, err := os.ReadFile("../../../../web/src/views/ezfy/Ezfy.vue")

@@ -4379,8 +4379,9 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		} else if b.TargetType == 1 || b.TargetType == 2 {
 			// ★★ 2026-10-19 附属野地守军带队的军官（增援6/采集7），与战报展示同口径。
 			// ★★ 2026-10-20 攻打野地的订单 target_id 常为 0，改按坐标找守军订单。
+			// ★★ 2026-10-25 口径收进 ezfyWildDefenderOrderCond（排除已返航归队的采集队僵尸单）。
 			var gs []model.EzfyOrder
-			h.DB.Where("target_type IN (1,2) AND order_type IN (6,7) AND status IN (1,3) "+
+			h.DB.Where("target_type IN (1,2) AND "+ezfyWildDefenderOrderCond+" "+
 				"AND target_x = ? AND target_y = ?", b.TargetX, b.TargetY).
 				Find(&gs)
 			defOfficer = h.ezfyWildDefOfficersDesc(gs)

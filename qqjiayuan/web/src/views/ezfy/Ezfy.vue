@@ -992,6 +992,9 @@ export default {
       onDutyOfficers: [],
       // 本城军官全量列表（含出征中/俘虏）：出征页用它解释「为什么没有可带队军官」
       cityOfficers: [],
+      // ★ 2026-10-25 城市状态页：本城市长/城守的军官名（空 = 未任命），见 loadOfficerPosts
+      cityMayor: '',
+      cityGuard: '',
       orderOfficer: '0',
       ware: { level: 0, total: 0, next_total: 0, res: [], ratio_sum: 0 },
       wareRatio: { food: 25, steel: 25, oil: 25, rare: 25 },
@@ -1540,8 +1543,12 @@ export default {
     areaCount () {
       return this.buildings.filter(b => b.type >= 1 && b.type <= 4).length
     },
+    // ★★ 2026-10-25 修「城市状态页 建筑: 0座 (军事+资源区 0/66)」：
+    //   ① 数量恒 0 → 进页没拉 /buildings（见 go() 的 citystatus 分支，已合并修掉死代码）；
+    //   ② 上限原来**写死 66**（33+33 时代的旧值），后端 ezfy_cfg_limit 现在是 36+36=72，
+    //      管理端还能改 → 改成跟着 /view、/buildings 下发的 military_cap/resource_cap 走。
     areaCap () {
-      return 66
+      return (this.militaryCap || 0) + (this.resourceCap || 0)
     },
     // ★ 当前分区（军事区/资源区）各自的建筑数（分开统计，不再混用 areaCount）
     zoneCount () {
@@ -2835,6 +2842,9 @@ export default {
     go (t) {
       // ★ 2026-09-29 各页 [返回]：回到上一页；无有效上一页则回首页
       if (t === 'back') { this.go(this.prevCur && this.prevCur !== this.cur ? this.prevCur : 'home'); return }
+      // ★ 2026-10-25 「这次是从战报详情返回列表」：要保住原来的分页位置，
+      //   所以必须在下面 `this.cur = t` 之前记下来（之后再判断 this.cur 已经是新页了）。
+      const fromReportView = this.cur === 'reportview'
       // ★ 2026-10-04 修复「资源详情页刷新后丢了」：刷新时 URL 恢复的是 cur='res' + res=xxx，
       //   原分支只认 'res/xxx'，cur='res' 落进 default 什么都不加载 → 页面空白。
       if (t === 'res' || t.indexOf('res/') === 0) {
@@ -2872,8 +2882,22 @@ export default {
       }
       // ★ 2026-10-23 召集页/城市状态页显示人口、待恢复、临时空闲：进页先拉一次 /view，
       //   避免用首页或其他页留下的旧快照（临时空闲 5 分钟内会回落，旧值会误导玩家）。
-      else if (t === 'convene' || t === 'citystatus') {
+      else if (t === 'convene') {
         this.load()
+      }
+      // ★★ 2026-10-25 修复城市状态页「建筑: 0座 (0/66) / 军队: 0 / 附属野地: 0/level」：
+      //   原来这里和下面那条 `else if (t === 'citystatus')` **各写了一遍**，而 if/else 链
+      //   只认第一个命中的分支 → 下面那条是**死代码**，进本页只跑了 /view；
+      //   偏偏 /view 瘦身后不再下发 buildings/queues/wildlands（见 2026-10-04 瘦身注释），
+      //   于是这些计数恒为 0（从首页直接点[城市状态]时最明显）。
+      //   现在 citystatus 在**这一条**里把 4 个接口一次拉齐；convene 只关心人口，仍只拉 /view。
+      else if (t === 'citystatus') {
+        this.load()
+        this.loadBuildings()
+        this.loadTroops()
+        this.loadWilds()
+        // ★ 2026-10-25 市长/城守：/view 不下发职位 → 单独拉一次 /officers（后端有页面级缓存）
+        this.loadOfficerPosts()
       }
       else if (t === 'hq') {
         // ★ 2026-09-28 预设编队 tab 需要：本城坐标(/view)、集结令(gatherMax)、军官(onDutyOfficers)、背包(集结令数量)
@@ -2895,7 +2919,8 @@ export default {
       else if (t === 'map') { this.backToMap(); this.loadStars(); this.loadWilds() }
       // ★ 2026-09-28 军情页：分区由 reportTab 决定，且 switchReportTab 内部会 syncUrl，
       //   刷新后 reportTab 已由 restoreFromUrl 从 ?rtab= 恢复，所以不会跳回「军队动态」。
-      else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
+      // ★ 2026-10-25 从战报详情 [返回]：**保住原分页**（用户：在第 3 页点进去看，回来又跑回第 1 页）
+      else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab, fromReportView) }
       // ★ 2026-09-30 计谋页（行军计谋专用）：进页/刷新都重拉信号弹持有量
       else if (t === 'scheme') this.loadSchemes()
       else if (t === 'mail') { this.loadMail(this.mailTab, true) }
@@ -2981,10 +3006,9 @@ export default {
       else if (t === 'info') this.loadSelfInfo()
       else if (t === 'visits') this.loadVisits()
       else if (t === 'factory') { this.loadTroops(); this.loadBuildings() }
-      // 城市状态页要显示「人口/空闲人口」，/view 才带 pop_used → 进页先拉一次
-      // ★ 2026-10-04 /view 瘦身：城市状态页的建筑列表/训练队列/野地计数/城内军队
-      //   分别移到 /buildings、/troops、/city/wildfull 懒加载（/view 不再下发这些字段）
-      else if (t === 'citystatus') { this.load(); this.loadBuildings(); this.loadTroops(); this.loadWilds() }
+      // ★★ 2026-10-25 原来这里还有一条 `else if (t === 'citystatus') {...}`，
+      //   但 if/else 链上面（convene 那一段）已经命中 citystatus → **永远是死代码**，
+      //   造成「建筑: 0座 (0/66)」。已合并到上面那一条，这里删掉，别再写第二份。
     },
     // 节日活动
     loadActivity () {
@@ -3994,11 +4018,18 @@ export default {
       const max = (this.chestOpen && this.chestOpen.open_max) || n
       this.chestCount = Math.min(n, max)
     },
-    switchReportTab (t) {
+    // ★ 2026-10-25 keepPage：从「战报详情」[返回] 列表时**保住原页码**。
+    //
+    //	用户反馈：「我在第三页，点进去一条战报，再返回现在跑到第一页了，应该还是第三页」。
+    //	原实现无条件 `repPage = 1`，于是详情页那条 `go('reports')` 一回来就回到第 1 页。
+    //	★ 只在**同一个分区**时保留（换分区必须回第 1 页，否则会停在新分区的空白页）；
+    //	  军队动态/驻军的分页（dynPage/dynStationPage）不属于战报详情这条路径，照旧重置。
+    switchReportTab (t, keepPage) {
+      const sameTab = t === this.reportTab
       this.reportTab = t
       this.curReport = null
       // ★ 切换分区时回到第 1 页，避免停在上一次的分页位置看到空白
-      this.repPage = 1
+      if (!(keepPage && sameTab)) this.repPage = 1
       this.dynPage = 1
       this.dynStationPage = 1
       // ★ 2026-09-28 分区写进 URL，否则刷新后回落到默认的「军队动态」(t=1)
@@ -4048,7 +4079,9 @@ export default {
     goReportTab (t) {
       this.stopBattleTimer()
       this.cur = 'reports'
-      this.switchReportTab(t)   // 内部已 syncUrl，会把 cur=reports 与 rtab 一起写回
+      // ★ 2026-10-25 传 keepPage=true：点「当前所在分区」= 回列表，页码不该被重置；
+      //   点别的分区时 switchReportTab 内部会判定 sameTab=false，照旧回第 1 页。
+      this.switchReportTab(t, true)   // 内部已 syncUrl，会把 cur=reports 与 rtab 一起写回
     },
     doCollectAll () {
       // ★★★ 2026-10-15 多 tab 防刷：一键采集账号级 3 秒共享卡控 + 请求防抖（防连点/多tab重复下达采集）
@@ -6605,6 +6638,20 @@ export default {
         }
       })
     },
+    // ★ 2026-10-25 城市状态页：本城的市长(position=1)/城守(position=2) 是哪个军官。
+    //
+    //	/view 不下发职位，所以单独拉一次 /officers（就是军校「我的军官」那个接口，
+    //	后端有页面级缓存，重复进页不贵）。未任命 → 空串，模板显示「未任命」。
+    loadOfficerPosts () {
+      api.get('/games/ezfy/officers').then(r => {
+        if (r.code !== 0 || !r.data) return
+        const list = r.data.officers || []
+        const mayor = list.find(o => o.position === 1)
+        const guard = list.find(o => o.position === 2)
+        this.cityMayor = mayor ? mayor.name : ''
+        this.cityGuard = guard ? guard.name : ''
+      })
+    },
     // ---- 联络中心 ----
     loadLiaison () {
       api.get('/games/ezfy/liaison').then(r => {
@@ -7935,8 +7982,9 @@ export default {
         })
         // ★ 任命/卸任后同步刷新出征页的带队军官列表：若玩家随后立即出征，
         //   下拉里必须是最新的可选军官（避免「刚任命的市长/城守不出现在下拉」的观感）
+        // ★ 2026-10-25 删掉 `this.loadCityOfficers()`：**这个方法全项目不存在**（旧名残留），
+        //   调用只会抛 TypeError 并被 Promise 吞掉，什么都不做。
         this.loadOnDutyOfficers()
-        this.loadCityOfficers()
       })
     },
     // ★ 2026-10-24 怀旧军官详情：任命入口（军校页任命逻辑的详情页版本）
@@ -7955,8 +8003,8 @@ export default {
         api.get('/games/ezfy/officers').then(rr => {
           if (rr.code === 0) this.officerData = rr.data
         })
+        // ★ 2026-10-25 同上：`loadCityOfficers` 不存在（旧名残留），删掉
         this.loadOnDutyOfficers()
-        this.loadCityOfficers()
       })
     },
     async doCaptive (o, op) {

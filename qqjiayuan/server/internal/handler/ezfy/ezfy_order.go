@@ -544,13 +544,12 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	}
 	// ★★ 2026-10-19 是否有**玩家守军**（驻军 6 / 驻守采集 7，未结束）：
 	//   有 → 守方是真人部队，出征页「自动战斗」必须强制「否」（抵达后进指挥室），
-	//   与打玩家城市同口径。口径与 processArrive 构建守军时完全一致
-	//   （`order_type IN (6,7) AND status IN (1,3)`）。
+	//   与打玩家城市同口径。口径与 processArrive 构建守军时完全一致（ezfyWildDefenderOrderCond）。
 	hasDefender := false
 	if w.ID > 0 {
 		var dn int64
 		h.DB.Model(&model.EzfyOrder{}).
-			Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", w.ID).Count(&dn)
+			Where("target_id = ? AND "+ezfyWildDefenderOrderCond, w.ID).Count(&dn)
 		hasDefender = dn > 0
 	}
 	resp.OK(c, gin.H{
@@ -1986,16 +1985,34 @@ func ezfyOneWayTravel(order *model.EzfyOrder) int64 {
 	return 60000
 }
 
+// ezfyWildDefenderOrderCond 附属野地「在场守军」订单的 SQL 条件（★口径唯一实现，改这里就够）。
+//
+// ★★ 2026-10-25 用户反馈「全部召回的卡车实际没回来；野地有卡车、大号看不到、小号征服能发现」：
+//
+//	根因 = finishReturn 返航归队时**只删 order_type=6** 的订单，采集队(7) 残留 status=3；
+//	而各处守军口径写成 `order_type IN (6,7) AND status IN (1,3)`，把这支**已经回城**的
+//	采集队继续当成野地守军 → 野地永远挂着一支「打不死、召不回、驻军列表也看不到」的幽灵。
+//
+//	现在：采集队(7) 只有 status=1（真的在野地驻守/采集）才算守军；
+//	      增援野地驻军(6) 按 status 1/3 都算（宁可多算，别让真守军漏掉被打）。
+const ezfyWildDefenderOrderCond = "((order_type = 7 AND status = 1) OR (order_type = 6 AND status IN (1,3)))"
+
 // ezfyWildlandOrderCanDefend 该订单是否是「附属野地上的驻军/采集队」——
-// 只有 6(增援驻军)/7(驻守采集) 且已到达(status 1/3) 才会作为守军参战。
+// 口径必须与 ezfyWildDefenderOrderCond 完全一致：
+//
+//	6(增援驻军) 到达后常驻(status 3)，在途/异常态 1 也算；
+//	7(驻守采集) 只有 status 1（真在野地）才算 —— 3 是「已返航归队」的僵尸单，不能再当守军。
 func ezfyWildlandOrderCanDefend(order *model.EzfyOrder) bool {
 	if order == nil || (order.TargetType != 1 && order.TargetType != 2) {
 		return false
 	}
-	if order.OrderType != 6 && order.OrderType != 7 {
-		return false
+	switch order.OrderType {
+	case 7:
+		return order.Status == 1
+	case 6:
+		return order.Status == 1 || order.Status == 3
 	}
-	return order.Status == 1 || order.Status == 3
+	return false
 }
 
 // ezfyWildlandBattleCoords 一次查出当前玩家可能参与防守的野地战场坐标。
@@ -2470,7 +2487,10 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 	//   且一直占用盟友城驻军槽位, 导致新驻军无法增援。
 	// ★★ 2026-10-19 扩到**所有增援(6)**：附属野地驻军召回后同样要删，
 	//   否则残留的 status=3 订单会让 officerList 一直认为军官还在外（军官永远回不来）。
-	if order.OrderType == 6 {
+	// ★★ 2026-10-25 再扩到**驻守采集(7)**（用户反馈「召回的卡车实际没回来」）：
+	//   采集队返航归队后残留 status=3，会被野地守军口径当成守军 → 野地上永远挂着
+	//   一支「打不死、召不回、驻军列表也看不到」的幽灵部队，玩家以为召回失败。
+	if order.OrderType == 6 || order.OrderType == 7 {
 		h.DB.Delete(&model.EzfyOrder{}, order.ID)
 	}
 }
@@ -3414,7 +3434,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★★ 2026-10-19 用户澄清：**驻守部队就是驻守用的，不能采集**
 			//   （「不然野地没部队，别人一征服就拿走了」）。
 			//   所以这里保持「出站驻军」形态（order_type=6 + status=3）：
-			//   · 敌军进攻该野地时作为守军参战（战斗结算按 order_type IN (6,7) + status IN (1,3) 构建守军）；
+			//   · 敌军进攻该野地时作为守军参战（战斗结算按 ezfyWildDefenderOrderCond 构建守军）；
 			//   · 玩家可单支/一键 [召回]；
 			//   · **不提供** [采集]/[收获]（那是采集部队 order_type=7 的事）。
 			order.Status = 3
@@ -3737,7 +3757,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			//   连带军官/科技加成一起变 0（与 ReportDynamics / fetchIncoming 同口径）。
 			//   同时排除 target_type=3（城市增援），旧客户端可能把野地写成 0，
 			//   所以用 `<> 3` 而不是 `IN (1,2)`，避免漏掉历史订单。
-			h.DB.Where("target_type <> 3 AND order_type IN (6,7) AND status IN (1,3) "+
+			// ★★ 2026-10-25 口径收进 ezfyWildDefenderOrderCond：采集队返航归队(status 3)
+			//   不再算守军（否则野地永远挂着已回城的幽灵部队，见常量注释）。
+			h.DB.Where("target_type <> 3 AND "+ezfyWildDefenderOrderCond+" "+
 				"AND target_x = ? AND target_y = ?", order.TargetX, order.TargetY).
 				Order("id ASC").Find(&wildDefOrders)
 			cnt := map[int]int64{}
@@ -6482,7 +6504,11 @@ func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, now int64) {
 		return // 中立野地/寇城: 没有玩家守军
 	}
 	var orders []model.EzfyOrder
-	h.DB.Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", wl.ID).Find(&orders)
+	// ★★ 2026-10-25 改成**按坐标**找守军（与 processArrive 构建守军同口径）：
+	//   野地行会因放弃/重建换 id，只按 target_id 会漏掉守军 → 打死了也清不掉；
+	//   同时用 ezfyWildDefenderOrderCond 排除「已返航归队」的采集队僵尸单。
+	h.DB.Where("target_type <> 3 AND "+ezfyWildDefenderOrderCond+
+		" AND target_x = ? AND target_y = ?", x, y).Find(&orders)
 	if len(orders) == 0 {
 		return // 无驻军/采集部队 → 守军本来就是 0
 	}

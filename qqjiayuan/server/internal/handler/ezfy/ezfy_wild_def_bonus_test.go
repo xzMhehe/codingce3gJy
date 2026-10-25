@@ -96,8 +96,9 @@ func TestEzfyWildDefBonusWiring(t *testing.T) {
 
 	// 守军订单必须按**坐标**聚合（与 ReportDynamics / fetchIncoming 同口径）：
 	// 野地行的 id 在征服/重建后可能变化，只按 target_id 会漏掉守军 → 加成整段归零。
+	// ★★ 2026-10-25 守军口径统一走 ezfyWildDefenderOrderCond（排除已返航归队的采集队僵尸单）。
 	for _, want := range []string{
-		`target_type <> 3 AND order_type IN (6,7) AND status IN (1,3) `,
+		`target_type <> 3 AND "+ezfyWildDefenderOrderCond+" `,
 		`AND target_x = ? AND target_y = ?", order.TargetX, order.TargetY`,
 		"wildDefTech := h.techMap(wildDefCityID)",
 		"if t := h.techMap(cid); len(t) > 0 {",
