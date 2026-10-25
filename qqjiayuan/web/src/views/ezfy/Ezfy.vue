@@ -1540,21 +1540,28 @@ export default {
       for (const t of this.troopsData.troops) sum += t.count
       return sum
     },
-    // ★★ 2026-10-25 军官属性页「军事/学识/后勤」后面的 (+N)：只表示**装备+套装**加成，
-    //   而且**用 有效值 − 自身属性 现算**，不再直接信任后端下发的 equip_military/equip_learning/equip_logistics。
+    // ★★ 2026-10-25 军官属性页「军事/学识/后勤」后面的 (+N) 到底表示什么 —— 用户最终口径：
     //
-    //   事故：玩家加了 3 点属性点后显示「军事：103(+3)」，看起来像把刚加的属性点当成装备加成。
-    //   `military_total` 与 `military` 这两个字段语义稳定（有效值 / 自身值），两者相减恒等于装备+套装；
-    //   后端那个 equip_* 字段一旦口径漂移（例如老版本按 total−base 算）就会把加点也算进去。
-    //   所以这里只认 total − military，且负值按 0 处理（防御性）。
-    officerEquipPlus () {
+    //	(+N) = **比「军官池原始属性」多出来的全部加成** = 属性点加点 + 装备 + 套装
+    //
+    //	用户给的两组对照：
+    //	  · 池子 300/200/150、349 点全加军事 → `军事：649(+349)`（只有加点，没有装备）
+    //	  · 装备+套装 军事+1100+96 / 后勤+550+49 / 学识+550+49
+    //	    → `军事：1845(+1196) 学识：799(+599) 后勤：749(+599)`（加点已含在 649 里）
+    //
+    //	★ 上一版我按「只算装备」处理（total − military），结果玩家把 349 点加完看不到任何变化，
+    //	  用户反馈「穿装备能展示，属性的没展示出来」→ 改成 total − base_*。
+    //	  base_military/logistics/learning 就是池子原始属性（后端 officerBaseAttr），
+    //	  所以 total − base 恒等于「加点 + 装备 + 套装」，两处示例都对得上。
+    //	  负值按 0（老数据 base 可能缺失/为 0，防御性处理）。
+    officerAttrPlus () {
       const o = (this.officerDetail && this.officerDetail.officer) || null
-      const d = (total, own) => Math.max(0, (total || 0) - (own || 0))
+      const d = (total, base) => Math.max(0, (total || 0) - (base || 0))
       if (!o) return { mil: 0, log: 0, lea: 0 }
       return {
-        mil: d(o.military_total, o.military),
-        log: d(o.logistics_total, o.logistics),
-        lea: d(o.learning_total, o.learning)
+        mil: d(o.military_total, o.base_military),
+        log: d(o.logistics_total, o.base_logistics),
+        lea: d(o.learning_total, o.base_learning)
       }
     },
     areaCount () {

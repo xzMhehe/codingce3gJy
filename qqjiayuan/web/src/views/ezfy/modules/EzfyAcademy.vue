@@ -615,27 +615,26 @@
           经验：<span class="gray">{{ ezfy.officerDetail.officer.level >= ezfy.detailOfficerMaxLevel ? '—' : (ezfy.officerDetail.officer.exp + '/' + ezfy.officerDetail.officer.exp_need) }}</span>
         </div>
         <div class="old-line" v-if="ezfy.officerDetail.officer.salary > 0">薪水：{{ ezfy.officerDetail.officer.salary }}</div>
-        <hr/>
 
         <!-- ===== 核心属性区 ===== -->
         <!-- ★ 2026-10-25 加点按钮从下面「分配：后勤[+1][+10][全加] …」那一行**挪到三项各自后面**
              （用户要求）；「属性点」也从养成属性区提到这里，紧跟着它控制的三项，洗点留在同一行。
              只有有可用属性点时才显示 [+1][+10][全]（与原来「分配」行的显隐条件一致）。
-             ★ 后面的 `(+N)` 只表示**装备+套装**加成，用 `officerEquipPlus`（有效值−自身属性）现算，
-               不再用后端下发的 equip_* —— 那个字段口径一漂就会把玩家刚加的属性点也算成「(+3)」。 -->
+             ★ 后面的 `(+N)` = **比军官池原始属性多出来的全部加成**（加点 + 装备 + 套装），
+               用 `officerAttrPlus`（有效值 − base_*）现算 —— 玩家加完属性点能立刻看到数字变化，
+               穿了装备也一并算进同一个括号里。 -->
         <div class="old-line">
-          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerEquipPlus.mil">(+{{ ezfy.officerEquipPlus.mil }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全]</a></template>
+          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerAttrPlus.mil">(+{{ ezfy.officerAttrPlus.mil }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全]</a></template>
         </div>
         <div class="old-line">
-          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerEquipPlus.lea">(+{{ ezfy.officerEquipPlus.lea }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全]</a></template>
+          学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerAttrPlus.lea">(+{{ ezfy.officerAttrPlus.lea }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全]</a></template>
         </div>
         <div class="old-line">
-          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerEquipPlus.log">(+{{ ezfy.officerEquipPlus.log }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全]</a></template>
+          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerAttrPlus.log">(+{{ ezfy.officerAttrPlus.log }})</span><template v-if="ezfy.officerDetail.officer.free_points > 0"><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全]</a></template>
         </div>
         <div class="old-line">
           属性点：<b :class="ezfy.officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ ezfy.officerDetail.officer.free_points }}</b><a href="javascript:;" @click="ezfy.doRespec">[洗点]</a>
         </div>
-        <hr/>
 
         <!-- ===== 战斗属性区 ===== -->
         <!-- ★ 2026-10-25 用户要求合成一行：攻击/防御：505/280 -->
@@ -654,7 +653,6 @@
             <span v-if="sp.active && ezfy.equipAttrText(sp)" class="green">（{{ ezfy.equipAttrText(sp) }}）</span>
           </div>
         </template>
-        <hr/>
 
         <!-- ===== 养成属性区 ===== -->
         <!-- ★ 2026-10-25 「属性点」行与「分配：」行已上移到核心属性区（跟着军事/学识/后勤走） -->
@@ -686,7 +684,6 @@
             <tr v-if="!ezfy.officerTreasures.length"><td colspan="4" class="gray">(背包没有未穿戴的采集宝物, 可去野地采集或宝物签到获取)</td></tr>
           </table>
         </div>
-        <hr/>
 
         <!-- ===== 技能装备区 ===== -->
         <!-- ★ 2026-10-25 技能不再有独立 tab：属性页固定列 3 个技能槽（学了显示名字+等级，
@@ -698,7 +695,6 @@
         <div class="old-line">
           装备：<a href="javascript:;" @click="ezfy.openOfficerDetailTab('equip')">[查看]</a>
         </div>
-        <hr/>
 
         <!-- ===== 特殊技能区（名将组合技） ===== -->
         <!-- ★ 2026-10-25 用户要求一行说完：`特殊技能：[铁血军魂]：+攻击力180%`
