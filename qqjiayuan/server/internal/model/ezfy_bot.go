@@ -43,6 +43,11 @@ type EzfyBot struct {
 	ChatUsed string `gorm:"type:text;comment:今日已用发言句下标(逗号分隔)" json:"chat_used"`
 	// ★ 2026-10-19 自动发言开关（管理端「编辑人机-基本信息」可调）：0=不自动发言
 	ChatOn int `gorm:"default:1;comment:是否自动发言(0=关闭,1=开启)" json:"chat_on"`
+	// ★ 2026-10-25 打野地开关（管理端「编辑人机-基本信息」可调）：0=不打玩家附属野地（默认）1=打
+	//
+	//	开启后：① 宣战等待期先征服目标玩家的附属野地；② 周围没有可打的城市时兜底打玩家野地。
+	//	关闭（默认）：人机只打城市，绝不碰玩家野地（用户口径：默认不打玩家野地）。
+	AttackWild int `gorm:"default:0;comment:是否攻击玩家附属野地(0=不打,1=打)" json:"attack_wild"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`

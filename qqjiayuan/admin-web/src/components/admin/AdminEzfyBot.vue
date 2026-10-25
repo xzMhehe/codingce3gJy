@@ -223,6 +223,12 @@
                 <el-switch v-model="editForm.chat_on" :active-value="1" :inactive-value="0" />
                 <span class="td-gray" style="margin-left:6px">关闭后人机不再自动发言（玩家端无从察觉它是机器人）</span>
               </el-form-item>
+              <!-- ★ 2026-10-25 打野地开关（是否攻击真人玩家的附属野地；默认关闭） -->
+              <el-form-item label="打野地">
+                <el-switch v-model="editForm.attack_wild" :active-value="1" :inactive-value="0" />
+                <el-tooltip placement="top" :content="tips.attackWild"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
+                <span class="td-gray" style="margin-left:6px">{{ editForm.attack_wild ? '会征服真人玩家的附属野地' : '不打玩家的附属野地（只打城市）' }}</span>
+              </el-form-item>
             </el-form>
           </el-tab-pane>
           <el-tab-pane label="建筑等级" name="build">
@@ -553,8 +559,8 @@ export default {
       editDlg: false, editLoading: false, editSaving: false, editTab: 'base',
       editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0, freePop: 0,
         atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
-        atk_type: 0, atk_type_eff: 3, chat_on: 1 },
-      editSnapA: { h: 0, t: 0, ty: 0 },
+        atk_type: 0, atk_type_eff: 3, chat_on: 1, attack_wild: 0 },
+      editSnapA: { h: 0, t: 0, ty: 0, aw: 0 },
       editBuildings: [],
       editTechs: [],
       editTroops: [],
@@ -587,6 +593,7 @@ export default {
         minPrestige: '人机自动挑攻击目标时，只打声望 ≥ 此值的真人玩家（0 = 不限制）；声望越高越优先被选中。',
         train: '人机城内部队总数低于该值就执行征兵行动（默认 50 万）；填低于 1 万会自动回落到 50 万。',
         window: '人机只在指定时间段内出征（如 20:00-22:00,08:00-12:00，支持跨天 22:00-02:00）；留空 = 全天。发育/集结等其它行动不受限。',
+        attackWild: '默认关闭：人机只打城市，不碰真人玩家的附属野地。开启后 —— 宣战等待期先征服目标玩家的野地，周围没有可打的城市时也会兜底打玩家野地（一律征服，胜利后立刻放弃，不占领）。',
         boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
       }
     }
@@ -687,8 +694,10 @@ export default {
       this.editForm = { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0,
         atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
         atk_type: 0, atk_type_eff: 3,
-        chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on }
-      this.editSnapA = { h: row.atk_per_hour || 0, t: row.atk_troop || 0, ty: row.atk_type || 0 }
+        chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on,
+        attack_wild: row.attack_wild ? 1 : 0 }
+      this.editSnapA = { h: row.atk_per_hour || 0, t: row.atk_troop || 0, ty: row.atk_type || 0,
+        aw: row.attack_wild ? 1 : 0 }
       this.editDlg = true
       this.editLoading = true
       api.get('/admin/ezfy-bot/' + row.user_id + '/buildings').then(r => {
@@ -703,7 +712,8 @@ export default {
             atk_per_hour: row.atk_per_hour || 0, atk_troop: row.atk_troop || 0,
             atk_per_hour_eff: row.atk_per_hour_eff || 0, atk_troop_eff: row.atk_troop_eff || 0,
             atk_type: row.atk_type || 0, atk_type_eff: row.atk_type_eff || 3,
-            chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on
+            chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on,
+            attack_wild: row.attack_wild ? 1 : 0
           }
           // 只列已建造的建筑（level>0），未建造的坑位是噪音
           this.editBuildings = (r.data.buildings || []).filter(x => x.level > 0)
@@ -801,7 +811,10 @@ export default {
         atk_type: this.editSnapA.ty === this.editForm.atk_type ? null : this.editForm.atk_type,
         // ★ 2026-10-19 自动发言开关（基本信息 tab）
         chat_on: this.editForm.chat_on === undefined || this.editForm.chat_on === null
-          ? 1 : (this.editForm.chat_on ? 1 : 0)
+          ? 1 : (this.editForm.chat_on ? 1 : 0),
+        // ★ 2026-10-25 打野地开关（基本信息 tab）：改了才提交（null=不更新；默认 0=不打玩家野地）
+        attack_wild: (this.editSnapA.aw ? 1 : 0) === (this.editForm.attack_wild ? 1 : 0)
+          ? null : (this.editForm.attack_wild ? 1 : 0)
       }).then(r => {
         this.editSaving = false
         if (r.code === 0) {

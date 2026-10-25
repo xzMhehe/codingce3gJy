@@ -1078,11 +1078,15 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 					return a, d, ok
 				}
 			}
-			if wt, ok := h.botPickWildTargetOf(p.TargetUid, city); ok {
-				if !h.botAtkQuotaOK(b) {
-					return "", "", false
+			// ★★ 2026-10-25 打野地开关（管理端可编辑，**默认不打**）：
+			//   关掉后等待期只等宣战生效，不碰目标玩家的附属野地。
+			if b.AttackWild == 1 {
+				if wt, ok := h.botPickWildTargetOf(p.TargetUid, city); ok {
+					if !h.botAtkQuotaOK(b) {
+						return "", "", false
+					}
+					return h.botAttackWild(b, city, wt)
 				}
-				return h.botAttackWild(b, city, wt)
 			}
 			continue
 		case 2: // 可出击
@@ -1179,11 +1183,15 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 	//     · 胜利后立刻**放弃**（人机只摧毁，不占领，见 processArrive 的 bot 分支）；
 	//     · 只打有主的野地（中立野地不打，抢不到任何玩家的东西）。
 	//   原来是「25% 概率优先掠野」，会随机打中立野地，不符合用户口径。
-	if wt, ok := h.botPickWildTarget(city); ok {
-		if !h.botAtkQuotaOK(b) {
-			return "", "", false
+	// ★★ 2026-10-25 打野地开关（管理端可编辑，**默认不打**）：关闭时这里直接跳过，
+	//   人机只打城市，不碰玩家附属野地。
+	if b.AttackWild == 1 {
+		if wt, ok := h.botPickWildTarget(city); ok {
+			if !h.botAtkQuotaOK(b) {
+				return "", "", false
+			}
+			return h.botAttackWild(b, city, wt)
 		}
-		return h.botAttackWild(b, city, wt)
 	}
 	return "", "", false
 }

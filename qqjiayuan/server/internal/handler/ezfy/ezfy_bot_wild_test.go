@@ -77,4 +77,31 @@ func TestBotWildAttack(t *testing.T) {
 	if strings.Contains(order, `report += "\n(人机只摧毁野地归属`) {
 		t.Fatal("战报里仍有冗余提示「人机只摧毁野地归属, 不占领」，应删除")
 	}
+
+	// ⑥ ★ 2026-10-25 打野地开关（用户：管理端可编辑，**默认不打**玩家野地）
+	//   两处打野地分支都必须被 `b.AttackWild == 1` 守卫 —— 漏一处就等于「默认也在打野地」。
+	//   去空白后匹配，避免缩进变化误报。
+	botNorm := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, bot)
+	for _, frag := range []string{
+		"ifb.AttackWild==1{ifwt,ok:=h.botPickWildTargetOf(p.TargetUid,city);ok{",
+		"ifb.AttackWild==1{ifwt,ok:=h.botPickWildTarget(city);ok{",
+	} {
+		if !strings.Contains(botNorm, frag) {
+			t.Fatalf("打野地分支缺少 b.AttackWild == 1 守卫（默认不打玩家野地）：%s", frag)
+		}
+	}
+	// 管理端编辑接口必须能改这个开关（否则运营无处可调）
+	adm := rawFile(t, "ezfy_admin_bot.go")
+	if !strings.Contains(adm, "AttackWild *int") || !strings.Contains(adm, `ezUpd["attack_wild"]`) {
+		t.Fatal("人机编辑接口没有 attack_wild 开关（打野地不可编辑）")
+	}
+	// 列表要下发原值，编辑弹窗才能回填真实状态
+	if !strings.Contains(adm, `"attack_wild": b.AttackWild`) {
+		t.Fatal("人机列表没有下发 attack_wild（编辑弹窗回填恒为关）")
+	}
 }

@@ -144,7 +144,9 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"atk_troop": b.AtkTroop, "atk_troop_eff": ezfyBotAtkTroopOf(b.Level, b.AtkTroop),
 			"atk_type": b.AtkType, "atk_type_eff": ezfyBotOrderTypeOf(b.AtkType), // 0=默认征服，1侦查/2掠夺/3征服
 			// ★ 2026-10-19 是否自动发言（编辑人机-基本信息可调）：0=关闭 1=开启
-			"chat_on":     b.ChatOn,
+			"chat_on": b.ChatOn,
+			// ★ 2026-10-25 是否打玩家附属野地（编辑人机-基本信息可调）：0=不打（默认）1=打
+			"attack_wild": b.AttackWild,
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
 			"next_act_at":     b.NextActAt,
 			"status_text":     ezfyBotStatusText(b, now),
@@ -683,6 +685,8 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		AtkType *int `json:"atk_type"`
 		// ★ 2026-10-19 是否自动发言（基本信息）：0=关闭 1=开启（默认开）
 		ChatOn *int `json:"chat_on"`
+		// ★ 2026-10-25 是否打玩家附属野地（基本信息）：0=不打（默认）1=打
+		AttackWild *int `json:"attack_wild"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1021,6 +1025,15 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		}
 		ezUpd["chat_on"] = *in.ChatOn
 		changes = append(changes, fmt.Sprintf("自动发言→%s", map[bool]string{true: "开", false: "关"}[*in.ChatOn == 1]))
+	}
+	// ⑪ 是否打玩家附属野地（★ 2026-10-25 用户要求「可编辑，默认不打玩家野地」）
+	if in.AttackWild != nil {
+		if *in.AttackWild < 0 || *in.AttackWild > 1 {
+			resp.ParamError(c, "打野地需为 0/1（0=不打 1=打）")
+			return
+		}
+		ezUpd["attack_wild"] = *in.AttackWild
+		changes = append(changes, fmt.Sprintf("打野地→%s", map[bool]string{true: "开", false: "关"}[*in.AttackWild == 1]))
 	}
 	if len(ezUpd) > 0 {
 		h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Updates(ezUpd)

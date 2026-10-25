@@ -115,22 +115,85 @@ func TestEzfyClampPopToHouseCap(t *testing.T) {
 
 // TestTrainPopRecoverStartsAtConscription 征兵占用的人口必须**从征兵当下**开始慢恢复，
 // 不能等训练队列出厂（造完）才计入待恢复。
+//
+// ★ 2026-10-25 追加：训练消耗人口必须**先吃临时空闲（pop_extra）**，吃完还有缺口才转待恢复，
+// 否则会出现玩家反馈的「一边有临时空闲没用、一边又生出待恢复人口」的矛盾状态。
+// 分配规则唯一实现 = `ezfyConsumePopForTrain`（行为断言见 TestEzfyConsumePopForTrain）。
 func TestTrainPopRecoverStartsAtConscription(t *testing.T) {
 	train := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) trainTroopLocked("))
 	for _, want := range []string{
 		"h.ezfySettlePopRecover(city)",
-		"city.PopRecover += int64(cfg.Pop) * int64(count)",
-		"city.PopRecoverEndAt = now + ezfyPopRecoverSeconds()*1000",
+		"h.ezfySettlePopExtra(city)",
+		"ezfyConsumePopForTrain(city,",
+		`"pop_extra":`,
 	} {
 		if !strings.Contains(train, want) {
-			t.Fatalf("trainTroopLocked 未在征兵当下转入待恢复人口（缺 %s）：\n%s", want, train)
+			t.Fatalf("trainTroopLocked 未在征兵当下转入待恢复人口 / 未先消耗临时空闲（缺 %s）：\n%s", want, train)
 		}
+	}
+	// 防回退：不能再无条件把整笔人口塞进 pop_recover（绕过临时空闲池）
+	if strings.Contains(train, "city.PopRecover += int64(cfg.Pop) * int64(count)") {
+		t.Fatalf("trainTroopLocked 仍无条件累加待恢复人口（应先吃 pop_extra）：\n%s", train)
 	}
 	// 出厂时不能再累加一次，否则同一笔人口被算两次、恢复量翻倍。
 	collect := ezfyStripCommentLines(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) collectTrainQueue("))
 	if strings.Contains(collect, "PopRecover +=") {
 		t.Fatalf("collectTrainQueue 出厂时仍在累加待恢复人口（应在征兵当下算）：\n%s", collect)
 	}
+}
+
+// TestEzfyConsumePopForTrain 训练消耗人口的分配口径（★ 2026-10-25 用户反馈）：
+//
+//	有临时空闲就必须先花临时空闲，绝不额外生出待恢复人口；
+//	临时空闲吃完后的缺口才计入待恢复人口（并按恢复窗口重新起算）。
+func TestEzfyConsumePopForTrain(t *testing.T) {
+	const now = int64(1700000000000)
+	const recoverMs = int64(1200 * 1000)
+	cases := []struct {
+		name      string
+		extra     int64
+		need      int64
+		recover   int64
+		wantExtra int64
+		wantRecov int64
+		wantEndAt int64 // 0 = 不应改动恢复窗口
+		desc      string
+	}{
+		{"临时空闲足够 → 不动待恢复", 11400, 5630, 0, 5770, 0, 0, "有人口满时召集的临时空闲，训练只花它"},
+		{"临时空闲刚好用完", 5630, 5630, 0, 0, 0, 0, "池子清空后回落窗口结束"},
+		{"临时空闲不够 → 缺口转待恢复", 3000, 5000, 0, 0, 2000, now + recoverMs, "吃完临时空闲再欠 2000 待恢复"},
+		{"没有临时空闲 → 全部转待恢复", 0, 4000, 0, 0, 4000, now + recoverMs, "普通情况：人口未满时训练"},
+		{"已有待恢复再训练 → 累加并重新起算", 0, 1000, 500, 0, 1500, now + recoverMs, "新消耗重置恢复窗口"},
+		{"临时空闲足够但已有待恢复 → 待恢复不动", 9000, 1000, 500, 8000, 500, 0, "不该把旧待恢复也算进来"},
+	}
+	for _, c := range cases {
+		city := &model.EzfyCity{PopExtra: c.extra, PopRecover: c.recover, PopExtraEndAt: 123, PopRecoverEndAt: 456}
+		ezfyConsumePopForTrain(city, c.need, now, recoverMs)
+		if city.PopExtra != c.wantExtra {
+			t.Errorf("%s: PopExtra = %d, want %d（%s）", c.name, city.PopExtra, c.wantExtra, c.desc)
+		}
+		if city.PopRecover != c.wantRecov {
+			t.Errorf("%s: PopRecover = %d, want %d（%s）", c.name, city.PopRecover, c.wantRecov, c.desc)
+		}
+		if c.wantEndAt == 0 {
+			if city.PopRecoverEndAt == now+recoverMs {
+				t.Errorf("%s: 不应改动待恢复窗口（%s）", c.name, c.desc)
+			}
+		} else if city.PopRecoverEndAt != c.wantEndAt {
+			t.Errorf("%s: PopRecoverEndAt = %d, want %d（%s）", c.name, city.PopRecoverEndAt, c.wantEndAt, c.desc)
+		}
+		// 不变量：消耗完两个池子不会同时为正（正是玩家看到的矛盾状态）
+		if city.PopExtra > 0 && city.PopRecover > c.recover {
+			t.Errorf("%s: 消耗后同时出现临时空闲(%d)与新待恢复人口(%d)", c.name, city.PopExtra, city.PopRecover)
+		}
+	}
+	// 消耗 0 / nil 城市 → 不动
+	city := &model.EzfyCity{PopExtra: 100}
+	ezfyConsumePopForTrain(city, 0, now, recoverMs)
+	if city.PopExtra != 100 {
+		t.Fatalf("need=0 不应消耗临时空闲，got %d", city.PopExtra)
+	}
+	ezfyConsumePopForTrain(nil, 100, now, recoverMs) // 不 panic 即可
 }
 
 // TestSettlePopRecoverByConfiguredSeconds 「多少秒内空闲人口恢复满」：

@@ -2886,15 +2886,21 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	//   城防(type 4)不占人口、人机城(IsBot=1)不占人口、征兵开关关闭时不占人口 → 均跳过。
 	if recruitCost && cfg.Type != 4 && city.IsBot == 0 {
 		h.ezfySettlePopRecover(city)
-		now := time.Now().UnixMilli()
-		city.PopRecover += int64(cfg.Pop) * int64(count)
-		city.PopRecoverAt = now
-		city.PopRecoverEndAt = now + ezfyPopRecoverSeconds()*1000
+		// ★★ 2026-10-25 玩家反馈「怎么同时有『待恢复人口』和『临时空闲人口』」——
+		//   根因：训练消耗人口时**无条件**累加 pop_recover，从不先花掉 pop_extra（人口满时
+		//   召集来的临时空闲）→ 于是「一边有 1.14 万临时空闲没用、一边训练又生出 5630 待恢复」。
+		//   正确口径见 ezfyConsumePopForTrain：先吃临时空闲，吃完还有缺口才转待恢复人口。
+		h.ezfySettlePopExtra(city)
+		ezfyConsumePopForTrain(city, int64(cfg.Pop)*int64(count),
+			time.Now().UnixMilli(), ezfyPopRecoverSeconds()*1000)
 		// 直接落库：/troops 这类不跑 calcResource 的路径也要能存住。
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 			"pop_recover":        city.PopRecover,
 			"pop_recover_at":     city.PopRecoverAt,
 			"pop_recover_end_at": city.PopRecoverEndAt,
+			"pop_extra":          city.PopExtra,
+			"pop_extra_at":       city.PopExtraAt,
+			"pop_extra_end_at":   city.PopExtraEndAt,
 		})
 	}
 	h.taskProgress(city.UserID, "train_troop", count)
@@ -3180,6 +3186,43 @@ func ezfyPopFree(pop, buildingPop, troopPop, recover, extra int64) int64 {
 		free = 0
 	}
 	return free
+}
+
+// ezfyConsumePopForTrain 训练消耗人口的**唯一实现**（纯内存，不查库）。
+//
+// ★★ 2026-10-25 用户反馈（截图：「临时空闲 +1.14万」与「待恢复人口 5630」同时出现）：
+//
+//	玩家直觉正确 —— 有临时空闲没花掉，训练却又生出一笔待恢复人口，是自相矛盾的状态。
+//
+// 口径（与 `ezfyPopFree` 的加项对齐）：
+//   - `pop_extra`（临时空闲）= 人口达到民居上限后召集来的额外空闲，意义就是「人口满了还能征兵」；
+//   - 所以训练必须先吃它：`need` 里能由 `pop_extra` 覆盖的部分直接扣掉，
+//     扣完的缺口才计入 `pop_recover`（待恢复人口，按 ezfyPopRecoverSeconds 线性归还）。
+//   - 这样两个池子**不会同时为正**：有临时空闲时训练不再产生待恢复；临时空闲吃光后才转待恢复。
+//
+// 调用前必须先 `ezfySettlePopRecover` + `ezfySettlePopExtra`（把旧账按时间结清），
+// 否则会把已过期的临时空闲当成可用额度吃掉。
+func ezfyConsumePopForTrain(city *model.EzfyCity, need, now, recoverMs int64) {
+	if city == nil || need <= 0 {
+		return
+	}
+	if city.PopExtra > 0 {
+		use := need
+		if use > city.PopExtra {
+			use = city.PopExtra
+		}
+		city.PopExtra -= use
+		if city.PopExtra <= 0 {
+			city.PopExtra = 0
+			city.PopExtraEndAt = 0 // 池子空了 → 回落窗口结束，下次召集重新起算
+		}
+		need -= use
+	}
+	if need > 0 {
+		city.PopRecover += need
+		city.PopRecoverAt = now
+		city.PopRecoverEndAt = now + recoverMs
+	}
 }
 
 // ezfyWoundHealGoldPer 恢复 1 个该兵种伤兵需要的黄金
