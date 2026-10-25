@@ -1180,7 +1180,10 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		"terrain":   terrain,
 		// ★ 2026-10-05：活动野地本身有野地 ⇒ knownWild=true（海里的叫「海底森林」，岛屿仍是「岛屿」）
 		"terrain_name": ezfyWildTerrainDisplayName(x, y, true),
-		"continent":    ezfyContinentName(x, y),
+		// ★ 2026-10-25 用户「活动野地所属区域显示大海，应该是具体的洲」：
+		//   ezfyContinentName 只认陆地，海洋坐标一律回落「大海」；改用 ezfyRegionName
+		//   （陆地给洲名、海洋给大洋名），与 /view、地图格子、野地弹窗同口径。
+		"continent":    ezfyRegionName(x, y),
 		"jewel":        jewelName,
 		// ★ 2026-09-29 活动目标守将（配置的军官池军官；★ 2026-10-24 aw 优先，否则回退等级配置）
 		"officer_id":   ezfyActDefConfigOf(aw, actType, level).OfficerId,

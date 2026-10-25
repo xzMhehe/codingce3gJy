@@ -2,6 +2,7 @@ package ezfy
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -53,5 +54,39 @@ func TestViewUsesRegionNameAndShortCityKind(t *testing.T) {
 	}
 	if strings.Contains(src, `"continent": ezfyContinentName(city.X, city.Y)`) {
 		t.Fatal("/view 不该再用 ezfyContinentName —— 它对海洋只返回「大海」")
+	}
+}
+
+// TestNoContinentNameInUserPayload —— 全 handler 静态扫描：
+// **凡是下发给玩家端的 `"continent":`，一律不得用 `ezfyContinentName`**。
+//
+// 2026-10-25 用户第二次踩到同一个坑（活动野地详情页「所属区域: 大海」）：
+// 当时只改了 /view 与地图格子，漏了 `ezfy_activity_target.go::ezfyActWildlandView`。
+// 这个断言把「漏改」变成编译期外的显式失败，新增下发点时不用再靠人肉 grep。
+func TestNoContinentNameInUserPayload(t *testing.T) {
+	files, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("读目录失败: %v", err)
+	}
+	bad := []string{}
+	for _, f := range files {
+		n := f.Name()
+		if !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(n)
+		if err != nil {
+			t.Fatalf("读 %s 失败: %v", n, err)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			// 只挑「下发给前端」的写法：`"continent": ezfyContinentName(...)`
+			if strings.Contains(line, `"continent":`) && strings.Contains(line, "ezfyContinentName(") {
+				bad = append(bad, n+":"+strconv.Itoa(i+1)+"  "+strings.TrimSpace(line))
+			}
+		}
+	}
+	if len(bad) > 0 {
+		t.Fatalf("玩家端的「所属区域」必须用 ezfyRegionName（海洋给大洋名），发现：\n%s",
+			strings.Join(bad, "\n"))
 	}
 }
