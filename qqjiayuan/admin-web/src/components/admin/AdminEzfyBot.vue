@@ -39,6 +39,13 @@
           <el-input-number v-model.number="trainThreshold" :min="10000" :step="100000"
                            controls-position="right" style="width:130px" @change="saveConfig" />
           <span class="bot-sep" />
+          <!-- ★ 2026-10-26 目标最小兵力：只打城内兵力 ≥ 该值的玩家城（默认 10000，0 = 不限） -->
+          <span class="bot-item">目标最小兵力
+            <el-tooltip placement="top" :content="tips.targetMinTroops"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          </span>
+          <el-input-number v-model.number="targetMinTroops" :min="0" :step="10000"
+                           controls-position="right" style="width:130px" @change="saveConfig" />
+          <span class="bot-sep" />
           <span class="bot-item">出征时间段</span>
           <el-input v-model="atkWindows" placeholder="留空=全天 如 20:00-22:00,08:00-12:00"
                     style="width:230px" maxlength="120" @change="saveConfig" />
@@ -186,21 +193,21 @@
                 <el-input v-model="editForm.city_name" maxlength="20" show-word-limit style="width:220px" />
                 <span class="td-gray" style="margin-left:6px">当前主城</span>
               </el-form-item>
-              <el-form-item label="空闲人口">
-                <el-input-number v-model.number="editForm.freePop" :min="0" :step="1000"
-                                 controls-position="right" style="width:160px" />
-                <el-tooltip placement="top" content="空闲人口 = 总人口 − 建筑占用 − 训练占用 − 待恢复；保存时自动反推总人口，训练占用不受影响"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
-                <span class="td-gray" style="margin-left:6px">总人口 {{ fmtNum(editForm.pop) }}（自动反推）</span>
-              </el-form-item>
-              <el-form-item label="人口上限">
-                <el-input-number v-model.number="editForm.pop_max" :min="0" :step="1000"
-                                 controls-position="right" style="width:160px" />
-                <span class="td-gray" style="margin-left:6px">配置后当前人口同步到上限（别人侦察即显示该值）</span>
-              </el-form-item>
-              <el-form-item label="待恢复人口">
-                <el-input-number v-model.number="editForm.pop_recover" :min="0" :step="1000"
-                                 controls-position="right" style="width:160px" />
-                <span class="td-gray" style="margin-left:6px">空闲人口 = 总人口 − 建筑/训练占用 − 待恢复</span>
+              <!-- ★ 2026-10-26 编辑页精简：人口三项（空闲/上限/待恢复）合并成一行，原来占 3 行 -->
+              <el-form-item label="人口">
+                <span class="td-gray">空闲</span>
+                <el-input-number v-model.number="editForm.freePop" :min="0" :step="1000" size="small"
+                                 controls-position="right" style="width:120px;margin-left:4px" />
+                <span class="td-gray" style="margin-left:10px">上限</span>
+                <el-input-number v-model.number="editForm.pop_max" :min="0" :step="1000" size="small"
+                                 controls-position="right" style="width:120px;margin-left:4px" />
+                <span class="td-gray" style="margin-left:10px">待恢复</span>
+                <el-input-number v-model.number="editForm.pop_recover" :min="0" :step="1000" size="small"
+                                 controls-position="right" style="width:120px;margin-left:4px" />
+                <el-tooltip placement="top" content="空闲人口 = 总人口 − 建筑占用 − 训练占用 − 待恢复（保存时自动反推总人口）；上限配置后当前人口同步到上限，别人侦察即显示该值">
+                  <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+                </el-tooltip>
+                <span class="td-gray" style="margin-left:6px">总人口 {{ fmtNum(editForm.pop) }}</span>
               </el-form-item>
               <!-- ★ 2026-10-17 出征设置：攻击频率 + 单次出兵，0=按难度默认（新手6次/8h→普通8/精英10 + 30/35/40万） -->
               <el-form-item label="攻频/出兵">
@@ -545,6 +552,7 @@ export default {
     return {
       list: [], max: 50, loading: false, word: '',
       attackOn: 1, atkDailyCap: 3, foodFree: 1, minPrestige: 500000, trainThreshold: 500000,
+      targetMinTroops: 10000,
       atkWindows: '', saving: false,
       // 攻击目标
       tgtDlg: false, tgtLoading: false, tgtSaving: false, tgtInput: '', targets: [],
@@ -592,6 +600,7 @@ export default {
         foodFree: '开启后人机城内军队不扣维护粮、出征也免油耗（真人照常扣），让人机专注发育与出击。',
         minPrestige: '人机自动挑攻击目标时，只打声望 ≥ 此值的真人玩家（0 = 不限制）；声望越高越优先被选中。',
         train: '人机城内部队总数低于该值就执行征兵行动（默认 50 万）；填低于 1 万会自动回落到 50 万。',
+        targetMinTroops: '人机自动挑攻击目标时，只打城内兵力 ≥ 此值的真人玩家城（默认 10000，0 = 不限）。避免人机去啃空城 / 几千兵的小号；管理端手动指定目标不受此限。',
         window: '人机只在指定时间段内出征（如 20:00-22:00,08:00-12:00，支持跨天 22:00-02:00）；留空 = 全天。发育/集结等其它行动不受限。',
         attackWild: '默认关闭：人机只打城市，不碰真人玩家的附属野地。开启后 —— 宣战等待期先征服目标玩家的野地，周围没有可打的城市时也会兜底打玩家野地（一律征服，胜利后立刻放弃，不占领）。',
         boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
@@ -629,6 +638,10 @@ export default {
           if (r.data.train_threshold !== undefined && r.data.train_threshold !== null) {
             this.trainThreshold = r.data.train_threshold
           }
+          // ★ 2026-10-26 目标最小兵力：**0 合法 = 不限**，不能用 || 兜底（会把 0 改回默认）
+          if (r.data.target_min_troops !== undefined && r.data.target_min_troops !== null) {
+            this.targetMinTroops = Number(r.data.target_min_troops)
+          }
           this.atkWindows = r.data.atk_windows || ''
         } else this.$message.error(r.msg)
       }).catch(() => { this.loading = false })
@@ -636,7 +649,8 @@ export default {
     saveConfig () {
       api.post('/admin/ezfy-bot/config', {
         attack_on: this.attackOn, atk_daily_cap: this.atkDailyCap, food_free: this.foodFree,
-        min_prestige: this.minPrestige, train_threshold: this.trainThreshold, atk_windows: this.atkWindows
+        min_prestige: this.minPrestige, train_threshold: this.trainThreshold, atk_windows: this.atkWindows,
+        target_min_troops: this.targetMinTroops
       }).then(r => {
         if (r.code === 0) this.$message.success('已保存')
         else this.$message.error(r.msg)

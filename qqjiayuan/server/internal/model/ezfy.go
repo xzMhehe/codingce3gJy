@@ -833,6 +833,10 @@ type EzfyCfgLimit struct {
 	BotFoodFree int `gorm:"default:0;comment:人机军队免耗粮(1=不扣,真人照常)" json:"bot_food_free"`
 	// ★ 2026-10-17 人机自动挑目标的最低声望门槛（默认 500000；0 = 不限；只影响自动选目标，管理端手动指定不受限）
 	BotMinPrestige int `gorm:"default:500000;comment:人机自动攻击目标最低声望(0=不限)" json:"bot_min_prestige"`
+	// ★ 2026-10-26 人机自动挑目标时「玩家城市最小兵力」（默认 10000；**0 合法 = 不限**）：
+	//   只打城内兵力 ≥ 该值的玩家城 —— 避免人机去啃空城/几千兵的小号（打空城既没收益也不像真人）。
+	//   管理端「人机管理」顶栏可配；只影响自动选目标，管理端手动指定目标不受限。
+	BotTargetMinTroops int64 `gorm:"default:10000;comment:人机攻击玩家城最小兵力(0=不限)" json:"bot_target_min_troops"`
 	// ★ 2026-10-18 人机征兵线（默认 500000）：城内部队总数低于此值就执行征兵行动，
 	//   管理端「人机管理」可配置（0 或过小无意义 → 回落默认 50 万）。
 	BotTrainThreshold int64 `gorm:"default:500000;comment:人机征兵线(低于此值执行征兵)" json:"bot_train_threshold"`
@@ -1151,6 +1155,10 @@ type EzfyPvpDetail struct {
 	Points    int64     `gorm:"default:0;comment:本场入账积分(0 也记)" json:"points"`
 	IsWin     bool      `gorm:"comment:本场胜" json:"is_win"`
 	IsDraw    bool      `gorm:"comment:本场平局" json:"is_draw"`
+	// ★ 2026-10-26 管理端「积分明细 → 查看本场战报」：本场**我方视角**战报的 id。
+	//   结算时先写明细、后写战报，所以战报落库后回填（见 processArrive 末尾 attachPvpReport）。
+	//   0 = 没关联上（老数据 / 战报写入失败），管理端按「战报已清理」展示。
+	ReportID  uint      `gorm:"default:0;index:idx_pvp_detail_report;comment:本场战报id(ezfy_report.id)" json:"report_id"`
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }
 

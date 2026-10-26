@@ -160,6 +160,12 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 		"food_free": ezfyBotFoodFree(1),
 		// ★ 2026-10-17 自动攻击目标最低声望门槛（0=不限），供顶栏配置展示
 		"min_prestige": ezfyBotMinPrestige(),
+		// ★ 2026-10-26 顶栏还缺这两项（前端从 /list 首帧取配置，原来只从 /config 返回 →
+		//   进页面时「征兵线 / 出征时间段」永远显示默认值）。一并下发。
+		"train_threshold": ezfyBotTrainThreshold(),
+		"atk_windows":     ezfyBotAtkWindows(),
+		// ★ 2026-10-26 自动挑目标时玩家城最小兵力（默认 10000，0 = 不限）
+		"target_min_troops": ezfyBotTargetMinTroops(),
 	})
 }
 
@@ -1144,6 +1150,8 @@ func (h *EzfyAdmin) AdminEzfyBotConfig(c *gin.Context) {
 		"train_threshold": ezfyBotTrainThreshold(),
 		// ★ 2026-10-18 人机出征时间段（空 = 全天；如 "20:00-22:00,08:00-12:00"）
 		"atk_windows": ezfyBotAtkWindows(),
+		// ★ 2026-10-26 自动挑目标时玩家城的最小兵力（默认 10000，0 = 不限）
+		"target_min_troops": ezfyBotTargetMinTroops(),
 	})
 }
 
@@ -1174,6 +1182,8 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 		MinPrestige    *int    `json:"min_prestige"`
 		TrainThreshold *int64  `json:"train_threshold"`
 		AtkWindows     *string `json:"atk_windows"`
+		// ★ 2026-10-26 自动挑目标时玩家城的最小兵力（默认 10000；0 = 不限）
+		TargetMinTroops *int64 `json:"target_min_troops"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1224,6 +1234,18 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 	}
 	if in.AtkWindows != nil {
 		up["bot_atk_windows"] = strings.TrimSpace(*in.AtkWindows)
+	}
+	// ★ 2026-10-26 自动挑目标时玩家城最小兵力：**0 合法 = 不限**（所以不做「过小回落默认」），
+	//   只拦负数；上界给个防呆值（10 亿）。
+	if in.TargetMinTroops != nil {
+		v := *in.TargetMinTroops
+		if v < 0 {
+			v = 0
+		}
+		if v > 1000000000 {
+			v = 1000000000
+		}
+		up["bot_target_min_troops"] = v
 	}
 	if len(up) == 0 {
 		resp.ParamError(c, "没有要修改的配置")

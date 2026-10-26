@@ -4551,8 +4551,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//   只记打玩家城（target_type=3）的一场完整对局 —— 这里是攻守双方战果齐备、
 	//   且 processArrive 顶部 CAS 保证只结算一次的汇聚点（自动战斗/指挥室两种路径都到此）。
 	//   野地 / AI 寇城 / 活动目标（target=nil 或 target_type!=3）不算 PVP。
+	// ★★ 2026-10-26 本场风云榜「积分明细」行 id + 双方战报 id：明细在下面先写，
+	//   战报在结算末尾才写 → 拿到战报 id 后回填到明细（管理端「积分明细 → 查看战报」）。
+	var pvpAtkDetailID, pvpDefDetailID, pvpAtkReportID, pvpDefReportID uint
 	if order.TargetType == 3 && target != nil && target.UserID > 0 && target.UserID != uid {
-		h.accumPvpWeek(now, uid, target.UserID, br, win, draw)
+		pvpAtkDetailID, pvpDefDetailID = h.accumPvpWeek(now, uid, target.UserID, br, win, draw)
 	}
 
 	// ★★ 军官经验结算（2026-09-21 重做）
@@ -5395,10 +5398,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 						targetName, lootFeel, lootFeel, lootFeel, target.Feelings, lootFood, lootSteel, lootOil, lootRare, lootGold)
 				}
 				if order.OrderType == 2 {
-					h.addReport(target.UserID, 2, "被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
+					pvpDefReportID = h.addReport(target.UserID, 2, "被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
 						head+"\n\n"+defBody, detail, 0, target.ID)
 				} else {
-					h.addReport(target.UserID, repType, "被征服报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
+					pvpDefReportID = h.addReport(target.UserID, repType, "被征服报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
 						head+"\n\n"+defBody, detail, 0, target.ID)
 				}
 				// ★★ 2026-10-19 守方「军功声望」：**参战即得 100**（守住/被攻破都给，
@@ -5407,7 +5410,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 		}
 		// ★ 2026-10-08 补出发城 id（与守方战报同口径；原来 city_id=0，按当前城过滤时靠坐标反查兜底）
-		h.addReport(uid, 2, reportType+": "+targetName+
+		pvpAtkReportID = h.addReport(uid, 2, reportType+": "+targetName+
 			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
 	} else {
 		// ★ 第九轮：打败仗 → 幸存部队撤退返航（原来 status=4 是终止态，
@@ -5447,7 +5450,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		report += "\n残部正在撤退返航。"
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct, healLineAtk)
 		// ★ 2026-10-08 补出发城 id（同上）
-		h.addReport(uid, 2, reportType+": "+targetName+
+		pvpAtkReportID = h.addReport(uid, 2, reportType+": "+targetName+
 			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
 		if order.TargetType == 3 && target != nil {
 			// ★ 2026-10-06 守方成功守住也按进攻意图归「战斗报告」：
@@ -5469,7 +5472,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				AtkLabel: atkLabel, DefLabel: defLabel,
 			})
 			head := fmt.Sprintf("你的城市%s遭到「%s」的军队进攻, 我方守军击退了敌军!", targetName, atkLabel)
-			h.addReport(target.UserID, repType, defTitle+": "+targetName+
+			pvpDefReportID = h.addReport(target.UserID, repType, defTitle+": "+targetName+
 				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
 				head+"\n\n"+defReport, detail, 0, target.ID)
 			h.addPrestige(target.UserID, 100)
@@ -5482,6 +5485,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, win, detail, now,
 			br, atkTag, defTag, atkBefore, atkAfter, defBefore, defAfter, leadOfficer, wildDefOfficerDesc, wildDefExp)
 	}
+	// ★ 2026-10-26 把「本场战报」回填到风云榜积分明细（管理端「积分明细 → 查看本场战报」）：
+	//   明细在战斗判定后先写、战报在结算末尾才写，所以这里补 UPDATE（攻守各 1 条，最多 2 条）。
+	h.ezfyPvpAttachReport(pvpAtkDetailID, pvpAtkReportID)
+	h.ezfyPvpAttachReport(pvpDefDetailID, pvpDefReportID)
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 }
@@ -6908,7 +6915,7 @@ func ezfyHealPctLine(repaired int64, losses []ezfyUnitGroup) string {
 
 // ★ 2026-10-13 性能：拆成「构造(newReport) + 落库(addReport)」两半，
 // 批量结算（一键收获）可以把整批战报攒起来一次 CreateInBatches，省 N 次跨库往返。
-func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) {
+func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) uint {
 	// ★ 2026-10-13 修复：原来写成 `h.DB.Create(h.newReport(...))` —— **传的是值不是指针**，
 	//   GORM 在 ConvertToCreateValues 里对主键 SetInt 会 panic
 	//   `reflect: reflect.Value.SetInt using unaddressable value`，
@@ -6916,6 +6923,9 @@ func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string,
 	//   必须先落到变量再取地址（与 ezfy_settle_env.go 的 flush 同款写法）。
 	r := h.newReport(uid, reportType, title, content, detailAndOrder...)
 	h.DB.Create(&r)
+	// ★ 2026-10-26 返回新战报 id：风云榜积分明细要回填「本场战报」，
+	//   供管理端「积分明细 → 查看战报」。老调用方忽略返回值即可。
+	return r.ID
 }
 
 // newReport 构造一条战报（不落库）。

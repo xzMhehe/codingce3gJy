@@ -216,9 +216,12 @@ func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win,
 //     记的是**实际入账分**（封顶/门槛/同对手上限之后），0 分也记——玩家每场加没加、加了多少一目了然。
 //
 // 昵称/军团随写榜时刻刷新（玩家改名/换军团后历史周保留当时名字）。
-func (h *EzfyHandler) accumPvpWeekOnce(week string, uid, foeID uint, nick, foeNick, corps string, ts int64, wins, kills, losses, points int64, draw bool) {
+//
+// ★ 2026-10-26 返回**明细行 id**：结算流程末尾要把「本场战报 id」回填到这条明细
+// （管理端「积分明细 → 查看战报」），战报是在明细之后才写的，所以只能先拿 id 后补。
+func (h *EzfyHandler) accumPvpWeekOnce(week string, uid, foeID uint, nick, foeNick, corps string, ts int64, wins, kills, losses, points int64, draw bool) uint {
 	if uid == 0 || week == "" {
-		return
+		return 0
 	}
 	// 本场实际入账分（同对手封顶截断后），先保存再写明细
 	credited := points
@@ -256,9 +259,15 @@ ON DUPLICATE KEY UPDATE
   updated_at = VALUES(updated_at)`,
 		week, uid, nick, corps, wins, kills, losses, points)
 	// ★ 2026-10-16 「我的战绩」场次明细：独立表，战报清理不影响
-	h.DB.Exec(`INSERT INTO ezfy_pvp_detail (week, user_id, foe_id, foe_nick, ts, kills, losses, points, is_win, is_draw, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-		week, uid, foeID, foeNick, ts, kills, losses, credited, wins > 0, draw)
+	//   ★ 2026-10-26 改走 GORM Create（原来 raw INSERT）→ 拿到明细 id 供回填战报 id。
+	d := model.EzfyPvpDetail{
+		Week: week, UserID: uid, FoeID: foeID, FoeNick: foeNick, Ts: ts,
+		Kills: kills, Losses: losses, Points: credited, IsWin: wins > 0, IsDraw: draw,
+	}
+	if err := h.DB.Create(&d).Error; err != nil {
+		return 0
+	}
+	return d.ID
 }
 
 // ezfyPvpRankOn 风云榜统计开关（读 ezfy_cfg_limit.pvp_rank_on，管理端「排行榜 → 风云榜」可开关）。
@@ -289,11 +298,19 @@ func ezfyPvpRankLocked(week string) bool {
 }
 
 // ezfyPvpRankLockWeek 当前锁定的周（空 = 未锁定），管理端展示用。
+//
+// ★ 2026-10-26 用户规则「锁分操作只锁当期」：只有存的周**就是本周**才算锁定；
+// 跨周后库里仍留着上周的串，但这里返回空 → 管理端不再显示「已锁分」，
+// 本周战绩照常累计（等价于「锁分只锁当期、过周自动失效」）。
 func ezfyPvpRankLockWeek() string {
 	if !ezfyCfg.ready() {
 		return ""
 	}
-	return ezfyCfg.limit.PvpRankLockWeek
+	w := ezfyCfg.limit.PvpRankLockWeek
+	if w == "" || w != ezfyPvpWeekOf(time.Now()) {
+		return ""
+	}
+	return w
 }
 
 // ★ 2026-10-16 榜单「不参与排名」名单按榜单维度隔离（用户需求：
@@ -349,18 +366,21 @@ func pvpIsExcluded(db *gorm.DB, uid uint, board string) bool {
 
 // accumPvpWeek 一次玩家对战结算 → 攻守双方各写一条风云榜战绩。
 // br 为已定局的战斗结果，win=攻方是否获胜，draw=是否平局。
-func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattleResult, win, draw bool) {
+//
+// ★ 2026-10-26 返回 (攻方明细id, 守方明细id)：调用方在战报落库后把战报 id 回填进去
+// （管理端「积分风云榜 → 积分明细 → 查看本场战报」）。0 = 没写/被门槛拦下。
+func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattleResult, win, draw bool) (uint, uint) {
 	// ★ 2026-10-14 风云榜统计开关关闭 → 完全不做统计（不写榜、不记对手封顶）
 	if !ezfyPvpRankOn() {
-		return
+		return 0, 0
 	}
 	if atkUID == 0 || defUID == 0 || atkUID == defUID {
-		return
+		return 0, 0
 	}
 	week := ezfyPvpWeekOf(time.UnixMilli(now))
 	// ★ 2026-10-18 锁分：该周已被锁定 → 终止当周竞争，不再累计积分（榜单冻结在锁定前）
 	if ezfyPvpRankLocked(week) {
-		return
+		return 0, 0
 	}
 	// ★ 2026-10-16 积分口径（加权）：灭敌/战损/兵力都按「兵种分权重」算（侦察机/卡车不计）——
 	//   同数量下高级兵种(航母/战列舰)分远高于步兵，堵「无差别刷步兵」。
@@ -398,9 +418,21 @@ func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattle
 	atkP := h.ensureProfile(atkUID)
 	defP := h.ensureProfile(defUID)
 	// 攻方
-	h.accumPvpWeekOnce(week, atkUID, defUID, atkP.Nickname, defP.Nickname, h.pvpCorpsNameOf(atkUID), now, boolInt64(win), atkKills, atkLosses, atkPts, draw)
+	atkDetailID := h.accumPvpWeekOnce(week, atkUID, defUID, atkP.Nickname, defP.Nickname, h.pvpCorpsNameOf(atkUID), now, boolInt64(win), atkKills, atkLosses, atkPts, draw)
 	// 守方：攻方败且非平局 = 守方胜；平局双方都不算胜
-	h.accumPvpWeekOnce(week, defUID, atkUID, defP.Nickname, atkP.Nickname, h.pvpCorpsNameOf(defUID), now, boolInt64(!win && !draw), defKills, defLosses, defPts, draw)
+	defDetailID := h.accumPvpWeekOnce(week, defUID, atkUID, defP.Nickname, atkP.Nickname, h.pvpCorpsNameOf(defUID), now, boolInt64(!win && !draw), defKills, defLosses, defPts, draw)
+	return atkDetailID, defDetailID
+}
+
+// ezfyPvpAttachReport 把「本场战报 id」回填到风云榜积分明细行。
+//
+// ★ 2026-10-26 管理端「积分明细 → 查看本场战报」用：明细先写、战报后写，
+// 所以结算末尾补一次 UPDATE；detailID / reportID 任一为 0 直接跳过（老数据 / 写战报失败）。
+func (h *EzfyHandler) ezfyPvpAttachReport(detailID, reportID uint) {
+	if detailID == 0 || reportID == 0 {
+		return
+	}
+	h.DB.Model(&model.EzfyPvpDetail{}).Where("id = ?", detailID).Update("report_id", reportID)
 }
 
 func boolInt64(b bool) int64 {

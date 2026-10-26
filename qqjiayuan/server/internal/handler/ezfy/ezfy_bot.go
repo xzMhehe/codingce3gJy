@@ -747,6 +747,15 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 		}
 	}
 
+	// 1½) 城守 / 军官技能（★ 2026-10-26 修复两个 bug）：
+	//   原来这两件事都塞在 3½) botOfficer 里，而 botOfficer 开头就要求「军校 + 参谋部都 ≥1 级」
+	//   才往下走 —— 人机前期没建这两个建筑 → 城守永远不任命、技能永远不配；
+	//   就算建了，3½ 排在 2)建筑 / 3)征兵 之后，征兵一有动作就轮不到它。
+	//   现在提到这里：**不依赖任何建筑**，也不被征兵/建筑抢占轮次。
+	if a, d, ok := h.botOfficerPost(city); ok {
+		return a, d, ok
+	}
+
 	// 2) 建筑（有施工中的就等，一次只升一个）
 	buildWhy := ""
 	if !busy {
@@ -1372,6 +1381,7 @@ type ezfyBotTargetRow struct {
 //   - 非人机（is_bot = 0）、不是自己
 //   - 坐标在自己 ±25 格内（走 idx_xy / is_bot 索引）
 //   - ★ 2026-10-17 声望 ≥ 配置门槛 bot_min_prestige（管理端可配，默认 500000，0 = 不限）
+//   - ★ 2026-10-26 城内兵力 ≥ 配置门槛 bot_target_min_troops（管理端可配，默认 10000，0 = 不限）
 //   - 目标兵力 < 自己兵力 × 0.6（打得过才打）
 //   - 无生效中的免战保护（ezfy_city_effect effect_type=2）
 //   - 城建时间 > 3 天（新手保护）
@@ -1383,6 +1393,12 @@ func (h *EzfyHandler) botPickTarget(city *model.EzfyCity, myTroops int64, cfg ez
 	limit := myTroops * 60 / 100
 	if limit < 50 {
 		return r, false
+	}
+	// ★ 2026-10-26 「玩家城市最小兵力」（默认 10000，0 = 不限）：低于该值的城不自动打
+	//   （空城 / 小号没收益，也不像真人行为）。管理端手动指定目标不走这里，不受限。
+	minTroops := ezfyBotTargetMinTroops()
+	if minTroops > limit {
+		return r, false // 门槛比「打得过」的线还高 → 本轮没有合适目标
 	}
 	now := time.Now().UnixMilli()
 	newbieBefore := time.Now().AddDate(0, 0, -3)
@@ -1397,7 +1413,8 @@ WHERE c.is_bot = 0
   AND c.x BETWEEN ? AND ? AND c.y BETWEEN ? AND ?
   AND c.created_at < ?
   AND p.prestige >= ?
-  AND COALESCE(t.troops, 0) BETWEEN 1 AND ?
+  AND COALESCE(t.troops, 0) >= ?
+  AND COALESCE(t.troops, 0) <= ?
   AND NOT EXISTS (SELECT 1 FROM ezfy_city_effect e
                   WHERE e.city_id = c.id AND e.effect_type = 2 AND e.until_time > ?)
   AND NOT EXISTS (SELECT 1 FROM ezfy_bot_target bt
@@ -1405,11 +1422,66 @@ WHERE c.is_bot = 0
 ORDER BY p.prestige DESC, COALESCE(t.troops, 0) ASC
 LIMIT 1`,
 		city.UserID, city.X-25, city.X+25, city.Y-25, city.Y+25,
-		newbieBefore, ezfyBotMinPrestige(), limit, now, city.UserID, now).Scan(&r).Error
+		newbieBefore, ezfyBotMinPrestige(), minTroops, limit, now, city.UserID, now).Scan(&r).Error
 	if err != nil || r.CityID == 0 {
 		return r, false
 	}
 	return r, true
+}
+
+// botOfficerPost 城守任命 + 无技能军官配技能（★ 2026-10-26 两个 bug 的修复）。
+//
+// 为什么单独拆出来（原来塞在 botOfficer 里）：
+//   - botOfficer 开头就要求「军校 ≥1 且参谋部 ≥1」，人机前期没这两个建筑 →
+//     城守永远不任命、技能永远不配（用户实测「人机不会自己上城守」「军官不会学技能」）；
+//   - 即使建了，botOfficer 排在 tick 的 3½（建筑 / 征兵之后），征兵一有动作就轮不到它。
+//   现在这两件事**不依赖任何建筑**，并在 tick 里提到 1½（建筑 / 征兵之前）。
+//
+// 都直接落库（城守走 setOfficerPosition、技能直接写 skill JSON）：
+//   - 城守：真人任命接口只校验「军官属于本城」，不卡参谋部；人机内部任命更不该绕 HTTP。
+//   - 技能：不消耗技能书（人机没有道具生产回路），与「编辑人机 → 军官 → 随机」同口径。
+//
+// 返回 (动作, 详情, 是否已执行)；什么都没做返回 false，让 tick 继续往下走。
+func (h *EzfyHandler) botOfficerPost(city *model.EzfyCity) (string, string, bool) {
+	// ① 城守：当前城没有城守 → 从「在职 + 非俘虏 + 未任职」里挑
+	//   ★ 优先带技能的（用户 2026-10-19 规则），再按军事/等级。
+	//   ★ 只挑 position=0 的：市长有产量加成，不能为了城守把市长顶掉；
+	//   ★ 且必须**还剩至少一个能出征的军官**（城守 position≠0 不带队），否则人机从此不会打人。
+	if h.positionOfficer(city.ID, ezfyPositionGuard) == nil {
+		var freeCnt int64
+		h.DB.Model(&model.EzfyOfficer{}).
+			Where("city_id = ? AND status = 0 AND is_captive = 0 AND position = 0", city.ID).
+			Count(&freeCnt)
+		if freeCnt >= 2 {
+			var best model.EzfyOfficer
+			if err := h.DB.Where("city_id = ? AND status = 0 AND is_captive = 0 AND position = 0", city.ID).
+				Order("CASE WHEN skill IS NULL OR skill = '' OR skill = '[]' THEN 1 ELSE 0 END ASC, military DESC, level DESC").
+				First(&best).Error; err == nil && best.ID > 0 {
+				if msg := h.setOfficerPosition(city, int64(best.ID), ezfyPositionGuard); msg == "" {
+					return "任命城守", fmt.Sprintf("%s 就任城守", best.Name), true
+				}
+			}
+		}
+	}
+	// ② 技能：带技能的军官 < 3 → 给一个没技能的配 3 个随机技能
+	//   ★ 2026-10-19 用户规则「人机带技能的军官只能有三个」。
+	var skillCnt int64
+	h.DB.Model(&model.EzfyOfficer{}).
+		Where("city_id = ? AND status = 0 AND skill IS NOT NULL AND skill <> '' AND skill <> '[]'", city.ID).
+		Count(&skillCnt)
+	if skillCnt < 3 {
+		var noSkill model.EzfyOfficer
+		if err := h.DB.Where("city_id = ? AND status = 0 AND is_captive = 0 AND (skill IS NULL OR skill = '' OR skill = '[]')",
+			city.ID).Order("military DESC, level DESC").First(&noSkill).Error; err == nil && noSkill.ID > 0 {
+			names := h.ezfyRandomSkills(3)
+			if len(names) > 0 {
+				h.saveOfficerSkills(&noSkill, names)
+				return "配置技能", fmt.Sprintf("%s 学会 %d 个技能（%s）", noSkill.Name, len(names),
+					strings.Join(names, "/")), true
+			}
+		}
+	}
+	return "", "", false
 }
 
 // botOfficer 人机军官养成（★ 2026-10-17 人机军官编辑修复）。
@@ -1430,25 +1502,8 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 	if academy < 1 || staff < 1 {
 		return "", "", false
 	}
-	// ①½ 任命城守（★ 2026-10-17 用户规则「人机自己设置城守」）：当前城没有城守 →
-	//   把军事最高的在职军官任命为城守（position=2，走真人任命接口）。
-	//   城守给守军加防御还领被动经验，人机被打飞后新城市也立刻有守将。
-	//   ★★ 2026-10-19 用户规则「设置城守优先设置有技能的军官」：技能优先于军事。
-	if h.positionOfficer(city.ID, ezfyPositionGuard) == nil {
-		var best model.EzfyOfficer
-		if err := h.DB.Where("city_id = ? AND status = 0", city.ID).
-			Order("CASE WHEN skill IS NULL OR skill = '' OR skill = '[]' THEN 1 ELSE 0 END ASC, military DESC, level DESC").First(&best).Error; err == nil && best.ID > 0 &&
-			best.Position != ezfyPositionGuard {
-			code, errMsg := h.botCall(uid, "", "POST",
-				fmt.Sprintf("/games/ezfy/officers/%d/position", best.ID),
-				map[string]interface{}{"position": 2})
-			if code == 0 {
-				return "任命城守", fmt.Sprintf("%s 就任城守", best.Name), true
-			}
-			// 任命失败（无参谋部等）不拦截，继续其余军官动作
-			_ = errMsg
-		}
-	}
+	// ①½ 任命城守 / ②½ 配置技能：★ 2026-10-26 已移到 botOfficerPost()（不依赖军校/参谋部，
+	//   且提到 tick 更前面），这里不再处理 —— 否则没建军校的人机永远轮不到这两件事。
 	// ② 优先「点属性」：本城在职军官里有待分配点的 → 一次全点当前**最高**属性
 	//   （★ 2026-10-18 用户规则「哪个属性高就给哪个属性加点」：专精人机将领的长板，
 	//   比固定点军事更贴合将领定位）。
@@ -1472,26 +1527,7 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 		}
 		return "军官加点", fmt.Sprintf("%s 加点失败: %s", o.Name, msg), false
 	}
-	// ②½ 无技能军官自动配技能（★ 2026-10-18 用户规则「人机会给没有技能的军官配置
-	//   技能 随机的三个技能，不消耗技能书」）：直接写 skill JSON（不走道具接口，
-	//   不打技能书消耗 —— 人机没有道具生产回路，不该卡在这）。
-	//   ★★ 2026-10-19 用户规则「人机带技能的军官只能有三个」：已有技能军官 ≥ 3 就不再配。
-	var skillCnt int64
-	h.DB.Model(&model.EzfyOfficer{}).
-		Where("city_id = ? AND status = 0 AND skill IS NOT NULL AND skill <> '' AND skill <> '[]'", city.ID).
-		Count(&skillCnt)
-	if skillCnt < 3 {
-		var noSkill model.EzfyOfficer
-		if err := h.DB.Where("city_id = ? AND status = 0 AND (skill IS NULL OR skill = '' OR skill = '[]')",
-			city.ID).Order("military DESC, level DESC").First(&noSkill).Error; err == nil {
-			names := h.ezfyRandomSkills(3)
-			if len(names) > 0 {
-				h.saveOfficerSkills(&noSkill, names)
-				return "配置技能", fmt.Sprintf("%s 学会 %d 个技能（%s）", noSkill.Name, len(names),
-					strings.Join(names, "/")), true
-			}
-		}
-	}
+	// ②½ 无技能军官自动配技能：★ 2026-10-26 已移到 botOfficerPost()（不依赖建筑、优先于加点）。
 	// ③ 待分配点都点完了 → 「招募」：军官没满员就招。
 	//   ★ 2026-10-18 用户规则「人机军官不够用就自己招募5星普通军官」：优先从军官池
 	//   取一条**5 星普通军官**（黄金够才招，5 星 3% 概率随机摇等不起）；
@@ -1871,6 +1907,21 @@ func ezfyBotMinPrestige() int {
 		return 500000
 	}
 	if n := ezfyCfg.limit.BotMinPrestige; n > 0 {
+		return n
+	}
+	return 0
+}
+
+// ezfyBotTargetMinTroops 人机自动挑目标时「玩家城市最小兵力」（默认 10000；**0 合法 = 不限**）。
+//
+// ★ 2026-10-26 用户规则：「人机可以编辑配置 玩家城市最小兵力 配置 默认 10000 个单位」。
+// 只影响**自动**选目标；管理端手动指定目标（AdminEzfyBotTargetSet）不走这个门槛。
+// ⚠️ 0 是合法值（= 不限），所以不能走 ezfyLimitOr 兜底（那会把 0 改回默认）。
+func ezfyBotTargetMinTroops() int64 {
+	if !ezfyCfg.ready() {
+		return 10000 // 配置没加载过 → 按默认 10000
+	}
+	if n := ezfyCfg.limit.BotTargetMinTroops; n > 0 {
 		return n
 	}
 	return 0

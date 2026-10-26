@@ -24,10 +24,10 @@
             {{ enabled ? '按自然周统计玩家对战战绩' : '已关闭：不再统计新的玩家对战战绩（历史周榜保留）' }}
           </span>
           <div class="grow" />
-          <!-- ★ 2026-10-18 锁分：锁住 = 该周终止竞争（战绩不再累计积分，榜单冻结在锁定前） -->
-          <el-button v-if="!lockWeek" type="danger" plain icon="el-icon-lock" :loading="locking" @click="onLock(true)">锁分</el-button>
-          <el-button v-else type="success" plain icon="el-icon-unlock" :loading="locking" @click="onLock(false)">已锁分({{ lockWeek }})，点击解锁</el-button>
-          <span class="td-sub" style="margin-left:6px" v-if="lockWeek">该周风云榜已冻结，不再累计积分</span>
+          <!-- ★ 2026-10-26 锁分只锁当期：按钮固定锁「本周」，跨周自动失效 -->
+          <el-button v-if="!lockWeek" type="danger" plain icon="el-icon-lock" :loading="locking" @click="onLock(true)">锁分（本周）</el-button>
+          <el-button v-else type="success" plain icon="el-icon-unlock" :loading="locking" @click="onLock(false)">已锁分（本周），点击解锁</el-button>
+          <span class="td-sub" style="margin-left:6px" v-if="lockWeek">本周风云榜已冻结，下周一自动失效</span>
           <!-- ★ 2026-10-15 风云榜查询：按游戏ID(user_id)精确查找玩家（清空 = 全量榜单） -->
           <el-input v-model="pvpWord" placeholder="游戏ID" clearable style="width:160px"
                     @keyup.enter.native="doPvpSearch()" />
@@ -35,6 +35,8 @@
           <el-select v-model="week" placeholder="选择统计周" style="width:200px" @change="loadPvp(true)">
             <el-option v-for="w in weeks" :key="w" :label="w" :value="w" />
           </el-select>
+          <!-- ★ 2026-10-26 积分明细：分页 + 按游戏ID/游戏名检索 + 关联查看本场战报 -->
+          <el-button type="primary" plain icon="el-icon-tickets" @click="openDetail()">积分明细</el-button>
           <!-- ★ 2026-10-18 风云榜奖励发放：给前三名 / 参与者发宝箱·道具·钻石，走系统邮件领取 -->
           <el-button type="warning" icon="el-icon-present" @click="openReward()">发放奖励</el-button>
         </div>
@@ -248,6 +250,78 @@
       </el-table>
     </el-card>
 
+    <!-- ★ 2026-10-26 风云榜「积分明细」：分页看全服每一场的入账明细（0 分也记），
+         可按游戏ID / 游戏名检索，并能关联查看本场战报 -->
+    <el-dialog title="风云榜积分明细" :visible.sync="detail.on" width="980px" append-to-body>
+      <div class="toolbar" style="margin-bottom:8px">
+        <el-select v-model="detail.week" style="width:180px" @change="loadDetail(1)">
+          <el-option v-for="w in weeks" :key="'dt' + w" :label="w" :value="w" />
+        </el-select>
+        <el-input v-model="detail.word" placeholder="游戏ID 或 游戏名" clearable style="width:200px;margin-left:8px"
+                  @keyup.enter.native="loadDetail(1)" @clear="loadDetail(1)" />
+        <el-button type="primary" icon="el-icon-search" style="margin-left:8px" @click="loadDetail(1)">查询</el-button>
+        <div class="grow" />
+        <span class="td-sub">每场玩家对战攻守双方各一条（0 分也记）；点「战报」看本场完整战报</span>
+      </div>
+      <el-table :data="detail.list" v-loading="detail.loading" size="mini" border stripe max-height="440">
+        <el-table-column label="时间" width="110" align="center">
+          <template slot-scope="{row}">{{ row.ts_fmt }}</template>
+        </el-table-column>
+        <el-table-column label="玩家" min-width="160" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            {{ row.name || '—' }}<span class="td-sub">（ID {{ row.user_id }}）</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="对手" min-width="150" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            {{ row.foe_nick || '—' }}<span class="td-sub" v-if="row.foe_id">（ID {{ row.foe_id }}）</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="结果" width="70" align="center">
+          <template slot-scope="{row}">
+            <el-tag size="mini" :type="row.is_win ? 'success' : (row.is_draw ? 'info' : 'danger')">
+              {{ row.is_win ? '胜' : (row.is_draw ? '平' : '负') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="灭敌" width="100" align="right">
+          <template slot-scope="{row}">{{ (row.kills || 0).toLocaleString() }}</template>
+        </el-table-column>
+        <el-table-column label="战损" width="100" align="right">
+          <template slot-scope="{row}">{{ (row.losses || 0).toLocaleString() }}</template>
+        </el-table-column>
+        <el-table-column label="积分" width="90" align="right">
+          <template slot-scope="{row}"><b>{{ row.points }}</b></template>
+        </el-table-column>
+        <el-table-column label="战报" width="88" align="center">
+          <template slot-scope="{row}">
+            <el-button size="mini" plain icon="el-icon-document" @click="openDetailReport(row)">战报</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ detail.total }}</b> 条 · 每页 {{ detail.size }} 条</div>
+        <el-pagination v-show="detail.total > 0" small background layout="sizes, prev, pager, next, jumper"
+                       :total="detail.total" :page-size="detail.size" :current-page="detail.page"
+                       :page-sizes="[10, 20, 50, 100]"
+                       @current-change="p => { detail.page = p; loadDetail() }"
+                       @size-change="s => { detail.size = s; detail.page = 1; loadDetail() }" />
+      </div>
+      <div slot="footer"><el-button @click="detail.on = false">关 闭</el-button></div>
+    </el-dialog>
+
+    <!-- ★ 2026-10-26 本场战报（从积分明细点开；战报被清理时明确提示） -->
+    <el-dialog :title="detailReport.title || '本场战报'" :visible.sync="detailReport.on" width="720px" append-to-body>
+      <div v-loading="detailReport.loading" style="min-height:80px">
+        <pre v-if="detailReport.content" class="report-pre">{{ detailReport.content }}</pre>
+        <pre v-if="detailReport.detail" class="report-pre report-pre-detail">{{ detailReport.detail }}</pre>
+        <div v-if="!detailReport.loading && !detailReport.content && !detailReport.detail" class="td-gray">
+          {{ detailReport.err || '（战报内容为空）' }}
+        </div>
+      </div>
+      <div slot="footer"><el-button @click="detailReport.on = false">关 闭</el-button></div>
+    </el-dialog>
+
     <!-- ★★ 2026-10-18 风云榜奖励发放（用户需求）：
          给第 1/2/3 名和参与者分别发 宝箱 / 道具 / 钻石；奖励**不直接进背包**，
          以系统邮件发给玩家，玩家在邮箱点 [领取] 才到账，超过领取期限作废。
@@ -420,6 +494,9 @@ export default {
       pvpPage: 1,
       pvpSize: 10,
       pvpWord: '', // ★ 2026-10-15 风云榜查询：按游戏ID(user_id)精确查找玩家
+      // ★ 2026-10-26 积分明细（分页 + 按游戏ID/游戏名检索 + 关联本场战报）
+      detail: { on: false, loading: false, week: '', word: '', list: [], total: 0, page: 1, size: 20 },
+      detailReport: { on: false, loading: false, title: '', content: '', detail: '', err: '' },
       // ★ 2026-10-16 三榜各自的「不参与排名」名单（互不影响）
       excluded: { pvp: [], power: [], prestige: [] },
       // ---- 战力榜 ----
@@ -617,26 +694,59 @@ export default {
       }).catch(() => { this.enabled = val ? 0 : 1 })
         .finally(() => { this.toggling = false })
     },
-    // ★ 2026-10-18 锁分 / 解锁：锁住当前查看的周 = 终止该周竞争（战绩不再累计积分）
+    // ★ 2026-10-26 锁分 / 解锁：只锁**当期（本周）**，跨周自动失效
     onLock (lock) {
-      const wk = this.week || this.weeks[0] || ''
       if (lock) {
-        this.$confirm('锁分【' + wk + '】后，该周风云榜终止竞争：战绩不再累计积分，榜单冻结在锁定前。确定锁分？',
+        this.$confirm('锁分后本周风云榜终止竞争：战绩不再累计积分，榜单冻结在锁定前（下周一自动失效）。确定锁分？',
           '风云榜锁分', { type: 'warning' }).then(() => {
-          this.doLock(lock, wk)
+          this.doLock(1, '')
         }).catch(() => {})
       } else {
-        this.doLock(lock, wk)
+        this.doLock(0, '')
       }
     },
     doLock (lock, week) {
       this.locking = true
-      api.post('/admin/ezfy-pvp-rank/lock', { week, lock: lock ? 1 : 0 }).then(r => {
+      api.post('/admin/ezfy-pvp-rank/lock', { week, lock }).then(r => {
         if (r.code === 0) {
           this.$message.success(r.data.msg || '已保存')
-          this.lockWeek = lock ? week : ''
+          this.lockWeek = lock ? (r.data.week || '本周') : ''
         } else this.$message.error(r.msg)
       }).catch(() => {}).finally(() => { this.locking = false })
+    },
+    // ★ 2026-10-26 积分明细：分页 + 检索（游戏ID 精确 / 游戏名模糊）
+    openDetail () {
+      this.detail.on = true
+      this.detail.week = this.week || this.weeks[0] || ''
+      this.detail.page = 1
+      this.loadDetail()
+    },
+    loadDetail (resetPage) {
+      if (resetPage === 1) this.detail.page = 1
+      this.detail.loading = true
+      const params = { week: this.detail.week, page: this.detail.page, size: this.detail.size }
+      if (this.detail.word) params.word = this.detail.word
+      api.get('/admin/ezfy-pvp-detail', { params }).then(r => {
+        if (r.code === 0) {
+          this.detail.list = r.data.list || []
+          this.detail.total = r.data.total || 0
+        } else this.$message.error(r.msg || '加载积分明细失败')
+      }).catch(() => { this.detail.list = []; this.detail.total = 0 })
+        .finally(() => { this.detail.loading = false })
+    },
+    // 关联查看本场战报（战报被定期清理时后端会明确提示）
+    openDetailReport (row) {
+      this.detailReport = { on: true, loading: true, title: '本场战报', content: '', detail: '', err: '' }
+      api.get('/admin/ezfy-pvp-detail/report', { params: { id: row.id } }).then(r => {
+        if (r.code === 0) {
+          this.detailReport.title = r.data.title || '本场战报'
+          this.detailReport.content = r.data.content || ''
+          this.detailReport.detail = r.data.detail || ''
+        } else {
+          this.detailReport.err = r.msg || '本场战报已被清理'
+        }
+      }).catch(() => { this.detailReport.err = '加载战报失败' })
+        .finally(() => { this.detailReport.loading = false })
     },
     // ★ 2026-10-18 「本期已发放奖励」明细（随查看的周切换自动刷新；分页局部刷新，只刷这一块）
     loadRewardRecords () {
@@ -766,4 +876,13 @@ export default {
   .rw-warn i { font-size: 16px; margin-top: 2px; }
   /* ★ 2026-10-18 发放明细：奖励摘要显眼 */
   .rw-detail { color: #b8860b; font-size: 13px; }
+  /* ★ 2026-10-26 积分明细 → 本场战报：等宽字体保留战报原始换行 */
+  .report-pre {
+    margin: 0; padding: 10px 12px; max-height: 420px; overflow: auto;
+    font-family: Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.7;
+    color: #303133; background: #fafbfc; border: 1px solid #ebeef5; border-radius: 4px;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .report-pre + .report-pre { margin-top: 10px; }
+  .report-pre-detail { background: #f8f9fb; color: #606266; }
 </style>

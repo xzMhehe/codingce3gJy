@@ -269,7 +269,11 @@ func (h *EzfyAdmin) AdminEzfyPvpRank(c *gin.Context) {
 // ★ 2026-10-18 用户需求「风云榜能锁分，锁住了就相当于终止了不会再加」：
 //
 //	锁住某周 = 该周风云榜终止竞争，战绩不再累计积分（榜单冻结在锁定前）。
-//	lock=1 且带 week → 锁定该周；lock=0 → 解除锁定。解锁后该周恢复累计。
+//
+// ★★ 2026-10-26 用户规则「锁分操作只锁当期」：
+//
+//	锁分**只作用于当前自然周**（跨周自动失效），不再接受历史周。
+//	传了非本周的 week → 直接拒绝（避免把往期榜误冻/误解），前端也不再按历史周锁。
 func (h *EzfyAdmin) AdminEzfyPvpRankLock(c *gin.Context) {
 	var in struct {
 		Week string `json:"week"`
@@ -279,12 +283,14 @@ func (h *EzfyAdmin) AdminEzfyPvpRankLock(c *gin.Context) {
 		resp.ParamError(c, "参数错误（lock 只能是 0 或 1）")
 		return
 	}
+	curWeek := ezfyPvpWeekOf(time.Now())
 	lockWeek := ""
 	if in.Lock == 1 {
-		lockWeek = strings.TrimSpace(in.Week)
-		if lockWeek == "" {
-			lockWeek = ezfyPvpWeekOf(time.Now())
+		if w := strings.TrimSpace(in.Week); w != "" && w != curWeek {
+			resp.ParamError(c, "锁分只能锁当期（本周 "+curWeek+"），历史周不可锁")
+			return
 		}
+		lockWeek = curWeek
 	}
 	if err := h.DB.Model(&model.EzfyCfgLimit{}).Where("id = 1").Update("pvp_rank_lock_week", lockWeek).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
@@ -292,10 +298,130 @@ func (h *EzfyAdmin) AdminEzfyPvpRankLock(c *gin.Context) {
 	}
 	h.ezfyReload()
 	if in.Lock == 1 {
-		resp.OK(c, gin.H{"msg": "已锁分【" + lockWeek + "】：该周战绩不再累计积分，榜单冻结在锁定前", "week": lockWeek})
+		resp.OK(c, gin.H{"msg": "已锁分【" + lockWeek + "】：本周战绩不再累计积分，榜单冻结在锁定前（下周一自动失效）", "week": lockWeek})
 		return
 	}
-	resp.OK(c, gin.H{"msg": "已解除锁分，该周恢复累计积分", "week": ""})
+	resp.OK(c, gin.H{"msg": "已解除锁分，本周恢复累计积分", "week": ""})
+}
+
+// AdminEzfyPvpDetail GET /admin/ezfy-pvp-detail?week=&page=&size=&word=
+//
+// ★ 2026-10-26 用户需求「排行榜 风云榜 加个 积分明细 分页查询，管理端能看所有人的积分明细
+// （并且能关联查看本场战报），并且可以通过游戏ID、游戏名检索」。
+//
+// 数据源 ezfy_pvp_detail（每场玩家对战、攻守双方各一条，0 分也记），返回：
+//
+//	id / user_id / name(实时昵称) / foe_id / foe_nick / ts / kills / losses / points /
+//	is_win / is_draw / report_id / has_report
+//
+// 检索（word）：
+//   - 纯数字 → 按**游戏ID**（user_id）精确匹配；
+//   - 其它   → 按**游戏名**（ezfy_profile.nickname）模糊匹配。
+func (h *EzfyAdmin) AdminEzfyPvpDetail(c *gin.Context) {
+	page, offset, size := pageOf(c, 20)
+	week := strings.TrimSpace(c.Query("week"))
+	if week == "" {
+		week = ezfyPvpWeekOf(time.Now())
+	}
+	word := strings.TrimSpace(c.Query("word"))
+	q := h.DB.Model(&model.EzfyPvpDetail{}).Where("week = ?", week)
+	if word != "" {
+		if uid, err := strconv.Atoi(word); err == nil && uid > 0 {
+			q = q.Where("user_id = ?", uint(uid))
+		} else {
+			// 游戏名：同库子查询拿 uid（不跨库 JOIN，家园库只存账号昵称）
+			q = q.Where("user_id IN (SELECT user_id FROM ezfy_profile WHERE nickname LIKE ?)", "%"+word+"%")
+		}
+	}
+	var total int64
+	q.Count(&total)
+	var rows []model.EzfyPvpDetail
+	q.Order("ts DESC, id DESC").Offset(offset).Limit(size).Find(&rows)
+
+	// 昵称（实时）+ 战报是否还在：各一次批量查询
+	uids := make([]uint, 0, len(rows))
+	rpIDs := make([]uint, 0, len(rows))
+	for _, r := range rows {
+		uids = append(uids, r.UserID)
+		if r.ReportID > 0 {
+			rpIDs = append(rpIDs, r.ReportID)
+		}
+	}
+	names := map[uint]string{}
+	if len(uids) > 0 {
+		var profs []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ?", uids).Find(&profs)
+		for _, p := range profs {
+			names[p.UserID] = p.Nickname
+		}
+	}
+	alive := map[uint]bool{}
+	if len(rpIDs) > 0 {
+		var ids []uint
+		h.DB.Model(&model.EzfyReport{}).Where("id IN ?", rpIDs).Pluck("id", &ids)
+		for _, id := range ids {
+			alive[id] = true
+		}
+	}
+	list := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		list = append(list, gin.H{
+			"id": r.ID, "week": r.Week,
+			"user_id": r.UserID, "name": names[r.UserID],
+			"foe_id": r.FoeID, "foe_nick": r.FoeNick,
+			"ts": r.Ts, "ts_fmt": time.UnixMilli(r.Ts).Format("01-02 15:04"),
+			"kills": r.Kills, "losses": r.Losses, "points": r.Points,
+			"is_win": r.IsWin, "is_draw": r.IsDraw,
+			"report_id": r.ReportID, "has_report": alive[r.ReportID],
+		})
+	}
+	resp.OK(c, gin.H{"list": list, "total": total, "page": page, "size": size, "week": week})
+}
+
+// AdminEzfyPvpDetailReport GET /admin/ezfy-pvp-detail/report?id=<明细id>
+//
+// ★ 2026-10-26 「积分明细 → 查看本场战报」：按明细行取**我方视角**那一场战报全文。
+//
+//	优先用回填的 report_id；老数据（report_id=0，本功能上线前）按「同一玩家 + 结算时间 ±3 分钟
+//	+ 战斗类报告」兜底找一条 —— 找不到就明确告诉运营「战报已清理」，不装死。
+func (h *EzfyAdmin) AdminEzfyPvpDetailReport(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Query("id"))
+	if id <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var d model.EzfyPvpDetail
+	if err := h.DB.First(&d, id).Error; err != nil {
+		resp.NotFound(c, "明细不存在")
+		return
+	}
+	var rep model.EzfyReport
+	found := false
+	if d.ReportID > 0 {
+		if err := h.DB.First(&rep, d.ReportID).Error; err == nil {
+			found = true
+		}
+	}
+	if !found {
+		// 兜底：同玩家、结算时间 ±3 分钟内的战斗类报告（取时间最近的一条）
+		from := time.UnixMilli(d.Ts).Add(-3 * time.Minute)
+		to := time.UnixMilli(d.Ts).Add(3 * time.Minute)
+		if err := h.DB.Where("user_id = ? AND report_type IN ? AND created_at BETWEEN ? AND ?",
+			d.UserID, []int{2, 4}, from, to).
+			Order("created_at DESC").First(&rep).Error; err == nil {
+			found = true
+			// 顺手补回填，下次直接命中
+			h.DB.Model(&model.EzfyPvpDetail{}).Where("id = ?", d.ID).Update("report_id", rep.ID)
+		}
+	}
+	if !found {
+		resp.NotFound(c, "本场战报已被清理（战报只保留一段时间），明细数据仍保留")
+		return
+	}
+	resp.OK(c, gin.H{
+		"id": rep.ID, "title": rep.Title, "content": rep.Content, "detail": rep.Detail,
+		"type_name": rep.TypeName, "created_at": rep.CreatedAt.Format("2006-01-02 15:04:05"),
+	})
 }
 
 // AdminEzfyPvpRankToggle 开关风云榜统计（POST /admin/ezfy-pvp-rank/toggle，body: {on: 0|1}）。

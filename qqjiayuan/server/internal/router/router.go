@@ -1556,6 +1556,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.GET("/ezfy-pvp-rank/reward/records", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRewardRecords)
 						// ★ 2026-10-18 风云榜锁分：锁定某周 = 终止当周竞争（战绩不再累计积分）
 						admin.POST("/ezfy-pvp-rank/lock", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankLock)
+						// ★ 2026-10-26 风云榜「积分明细」：分页 + 按游戏ID/游戏名检索 + 关联本场战报
+						admin.GET("/ezfy-pvp-detail", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpDetail)
+						admin.GET("/ezfy-pvp-detail/report", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpDetailReport)
 						admin.POST("/ezfy-pvp-rank/toggle", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankToggle)
 						admin.POST("/ezfy-pvp-rank/exclude", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExclude)
 						admin.DELETE("/ezfy-pvp-rank/exclude/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExcludeRemove)
