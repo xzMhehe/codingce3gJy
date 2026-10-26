@@ -6287,7 +6287,9 @@ func (h *EzfyHandler) ezfyDefenderReportBody(s ezfyDefReportSpec) string {
 	b += troopChangeText(s.AtkBefore, s.AtkAfter)
 	b += fmt.Sprintf("--------------------\n[%s]守方:%s\n", s.DefTag, defLabel)
 	if s.DefFeelShow {
-		b += fmt.Sprintf("\n民心 - %d\n当前民心 %d", s.DefFeelDrop, s.DefFeelCur)
+		// ★ 2026-10-26 末尾补 "\n"：否则「当前民心 0」会和下一行「军官:xxx」/兵种行黏在一起
+		//   （用户反馈「当前民心 0军官:罗伯特·霍尔(150级)」需要换行）。
+		b += fmt.Sprintf("\n民心 - %d\n当前民心 %d\n", s.DefFeelDrop, s.DefFeelCur)
 	}
 	if s.DefOfficerDesc != "" {
 		b += "军官:" + s.DefOfficerDesc + "\n"
