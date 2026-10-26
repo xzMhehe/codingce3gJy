@@ -2698,6 +2698,11 @@ func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 	if b == nil || len(b.loot) == 0 {
 		return
 	}
+	// ★ 2026-10-26 二战系统配置「采集宝物播报」开关（默认关）：
+	//   关 = 不播报、也不写播报库（ezfy_chat 系统频道），这里直接返回，连昵称查询都省掉。
+	if !ezfyLootBroadcastOn() {
+		return
+	}
 	if b.name == "" {
 		b.name = h.ezfyProfileName(uid)
 	}
@@ -2856,18 +2861,23 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 		// ★ 2026-10-13 采集宝物播报防刷屏：批量结算（一键收获/轮询）传入 lootBatch 时，
 		//   宝物并入批次由调用方合并成**一条**播报；单条结算（停止采集/召回）立即播报。
 		// ★ 2026-10-22 并入批次的只有「最近一期」的 lastLoot，并累计结算期数。
-		if len(lootBatch) > 0 && lootBatch[0] != nil {
-			if lootBatch[0].name == "" {
-				lootBatch[0].name = h.ezfyProfileName(uid)
+		// ★ 2026-10-26 二战系统配置「采集宝物播报」开关（默认关）：
+		//   关 = 不播报、也不写播报库（ezfy_chat），批次也不攒（省掉昵称查询）。
+		//   战报里的「获得宝物」照常写 —— 只是世界频道不播。
+		if ezfyLootBroadcastOn() {
+			if len(lootBatch) > 0 && lootBatch[0] != nil {
+				if lootBatch[0].name == "" {
+					lootBatch[0].name = h.ezfyProfileName(uid)
+				}
+				lootBatch[0].periods += int(periods)
+				for _, tn := range lastLoot {
+					lootBatch[0].add(tn)
+				}
+			} else if len(lastLoot) > 0 {
+				h.ezfySysChat("恭喜玩家 %s 采集收获宝物 %d 件: %s%s",
+					h.ezfyProfileName(uid), len(lastLoot), strings.Join(lastLoot, "、"),
+					ezfyLootPeriodSuffix(periods))
 			}
-			lootBatch[0].periods += int(periods)
-			for _, tn := range lastLoot {
-				lootBatch[0].add(tn)
-			}
-		} else if len(lastLoot) > 0 {
-			h.ezfySysChat("恭喜玩家 %s 采集收获宝物 %d 件: %s%s",
-				h.ezfyProfileName(uid), len(lastLoot), strings.Join(lastLoot, "、"),
-				ezfyLootPeriodSuffix(periods))
 		}
 	} else if !treasureFull {
 		desc += "本期无宝物(该地形不出珠宝)。\n"

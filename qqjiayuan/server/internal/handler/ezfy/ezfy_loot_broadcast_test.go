@@ -3,6 +3,8 @@ package ezfy
 import (
 	"strings"
 	"testing"
+
+	"qqjiayuan/server/internal/model"
 )
 
 // TestEzfyLootPeriodSuffix 采集宝物播报的期数后缀：1 期不写，多期注明「共结算N期」。
@@ -65,5 +67,64 @@ func TestGatherLootBroadcastPerPeriod(t *testing.T) {
 	}
 	if !strings.Contains(flush, "periods int") && !strings.Contains(flush, "b.periods") {
 		t.Fatalf("ezfyLootBatch 没有累计结算期数：\n%s", flush)
+	}
+}
+
+// TestGatherLootBroadcastSwitch 采集宝物播报开关（二战系统配置，**默认关**）。
+//
+// ★ 2026-10-26 用户规则：「采集珠宝播报在二战系统配置加个开关吧，默认关，
+// 采集不播报也不入播报的库」→ 两个播报出口（单条结算 / 批量合并）都必须先判开关；
+// 关掉时既不播报，也不写 ezfy_chat（不调 ezfySysChat 就不会落库）。
+func TestGatherLootBroadcastSwitch(t *testing.T) {
+	// ① 单条结算：批次/播报整段都在开关里
+	body := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) settleDispatch(")
+	if !strings.Contains(body, "if ezfyLootBroadcastOn() {") {
+		t.Fatalf("settleDispatch 采集宝物播报没有判开关（关掉仍会播报/入播报库）：\n%s", body)
+	}
+	// ② 批量合并播报：入口先判开关并直接 return（连昵称查询都省掉）
+	flush := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyLootBatchFlush(")
+	iSw := strings.Index(flush, "if !ezfyLootBroadcastOn() {")
+	iChat := strings.Index(flush, "ezfySysChat(")
+	if iSw < 0 {
+		t.Fatalf("ezfyLootBatchFlush 入口没有判开关：\n%s", flush)
+	}
+	if iChat < 0 || iSw > iChat {
+		t.Fatalf("ezfyLootBatchFlush 的开关判断必须在播报之前：\n%s", flush)
+	}
+	// ③ 开关默认关：配置缓存没加载时也按「关」处理
+	acc := ezfyFuncBody(t, "ezfy_geo.go", "func ezfyLootBroadcastOn() bool {")
+	if !strings.Contains(acc, "ezfyLootBroadcastDef == 1") {
+		t.Fatalf("ezfyLootBroadcastOn 未加载配置时没有按默认值（关）处理：\n%s", acc)
+	}
+	// ④ 默认值必须是 0（关）——用户要求「默认关」
+	if !strings.Contains(rawFile(t, "ezfy_geo.go"), "ezfyLootBroadcastDef = 0") {
+		t.Fatal("采集宝物播报开关默认值不是 0（用户要求默认关）")
+	}
+	// ⑤ 管理端必须能改（入参 + 落库显式写），否则开关等于没有
+	admin := rawFile(t, "ezfy_admin_round9.go")
+	for _, want := range []string{
+		"`json:\"loot_broadcast_on\"`",
+		"lim.LootBroadcastOn = *in.LootBroadcastOn",
+		"\"loot_broadcast_on\": lim.LootBroadcastOn",
+	} {
+		if !strings.Contains(admin, want) {
+			t.Fatalf("管理端系统配置没有接通采集宝物播报开关：缺少 %q", want)
+		}
+	}
+	// ⑥ 运行时行为：0 = 关（不播报）、1 = 开；配置未加载也按「关」
+	oldLoaded, oldLimit := ezfyCfg.loaded, ezfyCfg.limit
+	defer func() { ezfyCfg.loaded, ezfyCfg.limit = oldLoaded, oldLimit }()
+	ezfyCfg.loaded = true
+	ezfyCfg.limit = model.EzfyCfgLimit{LootBroadcastOn: 0}
+	if ezfyLootBroadcastOn() {
+		t.Fatal("开关配 0（关）时 ezfyLootBroadcastOn 仍返回 true")
+	}
+	ezfyCfg.limit = model.EzfyCfgLimit{LootBroadcastOn: 1}
+	if !ezfyLootBroadcastOn() {
+		t.Fatal("开关配 1（开）时 ezfyLootBroadcastOn 返回 false")
+	}
+	ezfyCfg.loaded = false
+	if ezfyLootBroadcastOn() {
+		t.Fatal("配置未加载时采集宝物播报应默认关闭")
 	}
 }

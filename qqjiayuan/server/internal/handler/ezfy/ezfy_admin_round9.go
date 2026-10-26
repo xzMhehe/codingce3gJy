@@ -27,6 +27,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		BuildQueueMax:     ezfyBuildQueueDefaultMax,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef, BagItemMax: ezfyBagItemMaxDef,
 		TreasureMax: ezfyTreasureMaxDef,
+		// ★ 2026-10-26 采集宝物播报开关（**默认关**；0 合法 = 不播报也不入播报库，故不参与 <=0 兜底）
+		LootBroadcastOn: ezfyLootBroadcastDef,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
 		WildTreasureCooldownH: ezfyWildTreasureCooldownDef,
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**，同样不参与 <=0 兜底）
@@ -362,6 +364,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		BagItemMax *int `json:"bag_item_max"`
 		// ★ 2026-10-11 宝物库存上限（默认 5000；>= 1 才合法）
 		TreasureMax *int `json:"treasure_max"`
+		// ★ 2026-10-26 采集宝物播报开关（0 = 关 = 不播报也不入播报库；1 = 开；**默认 0 关**）
+		LootBroadcastOn *int `json:"loot_broadcast_on"`
 		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，只拦负数/越界）
 		WildTreasureCooldownH *int `json:"wild_treasure_cooldown_h"`
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**，只拦负数/越界）
@@ -495,6 +499,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		BuildQueueMax:     ezfyBuildQueueDefaultMax,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef, BagItemMax: ezfyBagItemMaxDef,
 		TreasureMax: ezfyTreasureMaxDef,
+		// ★ 2026-10-26 采集宝物播报开关（**默认关**；0 合法 = 不播报也不入播报库）
+		LootBroadcastOn: ezfyLootBroadcastDef,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
 		WildTreasureCooldownH: ezfyWildTreasureCooldownDef,
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
@@ -669,6 +675,15 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.TreasureMax = *in.TreasureMax
+	}
+	// ★ 2026-10-26 采集宝物播报开关：0 = 关（不播报、也不写播报库）、1 = 开。**0 是合法值**，
+	//   所以只拦非法枚举，不做 <=0 兜底（兜底会把「关」改回「开」）。
+	if in.LootBroadcastOn != nil {
+		if *in.LootBroadcastOn != 0 && *in.LootBroadcastOn != 1 {
+			resp.ParamError(c, "采集宝物播报开关只能是 0（关）或 1（开）")
+			return
+		}
+		lim.LootBroadcastOn = *in.LootBroadcastOn
 	}
 	// ★ 2026-10-11 打野地掉宝冷却小时数：可配置，默认 2。**0 合法 = 关闭冷却**（所以只拦负数）；
 	//   上限 720 防呆（30 天），避免误填天文数字。
@@ -1561,6 +1576,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		{"convene_cap_cooldown_seconds", "int DEFAULT 300", "300"},
 		{"bot_train_threshold", "bigint DEFAULT 500000", "500000"},
 		{"bot_atk_windows", "varchar(120) DEFAULT ''", "''"},
+		// ★ 2026-10-26 采集宝物播报开关（**默认关**；0 合法，只回填 NULL）
+		{"loot_broadcast_on", "int DEFAULT 0", "0"},
 	} {
 		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
 			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " " + c.ddl)
@@ -1655,6 +1672,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-10-21 造兵时间市长军事加成 / 装备套装计入（0 合法，必须显式写）
 		"train_mayor_military_on": lim.TrainMayorMilitaryOn,
 		"train_mayor_equip_on":    lim.TrainMayorEquipOn,
+		// ★ 2026-10-26 采集宝物播报开关（**0 合法 = 关**，必须显式写否则 0 会被 GORM 吞掉）
+		"loot_broadcast_on": lim.LootBroadcastOn,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()

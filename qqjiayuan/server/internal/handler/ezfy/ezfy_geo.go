@@ -920,6 +920,10 @@ const (
 	// ★ 宝物库存上限（默认 5000）：未穿戴的采集宝物持有上限。
 	//   采集结算 / 打地掉落宝物时卡控；0 无意义 → 读取端回落该默认值。
 	ezfyTreasureMaxDef = 5000
+	// ★ 2026-10-26 采集宝物世界播报开关默认值：0 = 关。
+	//   用户规则「采集珠宝播报在二战系统配置加个开关，默认关，采集不播报也不入播报的库」。
+	//   0 是合法值（= 关），读取端**不能**走 ezfyLimitOr 兜底。
+	ezfyLootBroadcastDef = 0
 	// ★ 打野地掉落宝物的冷却小时数（默认 2）。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
 	ezfyWildTreasureCooldownDef = 2
 	// ★ 2026-10-13 打野地掉落**商城道具**的冷却小时数（默认 1）：有人用脚本刷野地 →
@@ -1238,6 +1242,20 @@ func ezfyBagItemMax() int {
 // 打地掉落宝物超上限也提示」。口径 = 该玩家**未穿戴**的采集宝物件数（与「宝物」页展示一致）。
 func ezfyTreasureMax() int {
 	return ezfyLimitOr(ezfyCfg.limit.TreasureMax, ezfyTreasureMaxDef)
+}
+
+// ezfyLootBroadcastOn 采集宝物世界播报开关（1 = 播报，0 = 不播报也不写播报库）。
+//
+// ★ 2026-10-26 用户规则：「采集珠宝播报在二战系统配置加个开关吧，默认关，
+// 采集不播报也不入播报的库」。
+// ★ 0 是**合法值**（= 关），所以**不能**用 ezfyLimitOr（它把 0 当「未配置」回落默认）。
+//
+//	配置缓存没加载过时也按「关」处理（默认关，宁可少播一条也不要误播）。
+func ezfyLootBroadcastOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyLootBroadcastDef == 1
+	}
+	return ezfyCfg.limit.LootBroadcastOn == 1
 }
 
 // ezfyWildTreasureCooldownH 打野地掉落宝物的冷却小时数（默认 2，二战系统配置可配）。

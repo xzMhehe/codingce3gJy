@@ -442,6 +442,12 @@
               <el-input-number v-model.number="form.pop_extra_decay_seconds" :min="1" :max="1000000000" :step="10" controls-position="right" style="width: 200px" />
               <span class="unit-hint">秒 · 默认 300 秒（5 分钟）</span>
             </el-form-item>
+            <!-- ★ 2026-10-26 采集宝物播报开关：默认关 = 采集掉宝不播世界频道、也不写播报库（ezfy_chat） -->
+            <el-form-item>
+              <template slot="label">采集宝物播报<el-tooltip placement="top" :content="tips.loot_broadcast_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.loot_broadcast_on" :active-value="1" :inactive-value="0" active-text="播报" inactive-text="不播报" />
+              <span class="unit-hint">默认关闭 · 关闭时采集掉宝既不播报、也不写入播报库</span>
+            </el-form-item>
             <!-- ★ 2026-10-14 风云榜统计开关（与「排行榜 → 风云榜」页的开关同一项，两处都能改） -->
             <el-form-item>
               <template slot="label">风云榜统计<el-tooltip placement="top" :content="tips.pvp_rank_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -658,6 +664,8 @@ export default {
         pop_extra_decay_seconds: 300,
         // ★ 2026-10-14 风云榜统计开关（1 = 开：战斗结算写周榜；0 = 关：完全不统计）
         pvp_rank_on: 1,
+        // ★ 2026-10-26 采集宝物播报开关（1 = 播报；0 = 不播报也不入播报库，**默认 0 关**）
+        loot_broadcast_on: 0,
         officer_star_up_on: 1,
         officer_star_chance: 20,
         officer_star_attr_gain: 10, officer_star_max: 5,
@@ -710,7 +718,7 @@ export default {
           'train_mayor_equip_on', 'food_upkeep_on', 'march_oil_on',
           'convene_food_cost', 'convene_pop_pct', 'convene_cooldown_seconds',
           'convene_cap_cooldown_seconds', 'pop_recover_seconds', 'pop_extra_decay_seconds',
-          'pvp_rank_on', 'garrison_batch_scope'],
+          'pvp_rank_on', 'garrison_batch_scope', 'loot_broadcast_on'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
           'recruit_five_star_rate'],
       },
@@ -877,6 +885,9 @@ export default {
           '每次新召集会重新起算；改大后临时空闲可保留更久，方便测试或活动期放宽。',
         pvp_rank_on: '开 = 玩家对战结算按自然周写入风云榜（现行为）；关 = 完全不统计（榜单为空，历史周榜保留，重新开启即继续累计）。' +
           '与「排行榜 → 风云榜」页顶部的开关是同一项配置',
+        loot_broadcast_on: '采集（驻守结算 / 一键收获）掉宝物时，是否往世界频道（系统频道）播「恭喜玩家 xx 采集收获宝物」。' +
+          '默认关闭：关闭后**既不播报，也不写入播报库**（系统频道聊天记录里查不到）；' +
+          '开启则恢复播报，且仍按「只播最近一期」合并成一条。战报里的「获得宝物」不受此开关影响。',
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
         officer_star_chance: '每次升星的成功概率，失败同样消耗 1 枚星级徽章，默认 20',
         officer_star_attr_gain: '每升 1 星，军官三维（军事/后勤/学识）各自独立随机 +1~N，默认 10。' +
@@ -1070,6 +1081,9 @@ export default {
             // ★ 2026-10-14 风云榜统计开关：**0 合法 = 关闭统计**，不能用 pos()（会把 0 改回 1）
             pvp_rank_on: (r.data.pvp_rank_on === undefined || r.data.pvp_rank_on === null)
               ? 1 : Number(r.data.pvp_rank_on),
+            // ★ 2026-10-26 采集宝物播报开关：**0 合法 = 关**（默认关），不能用 pos()（会把 0 改回 1）
+            loot_broadcast_on: (r.data.loot_broadcast_on === undefined || r.data.loot_broadcast_on === null)
+              ? 0 : Number(r.data.loot_broadcast_on),
             officer_star_up_on: sw(r.data.officer_star_up_on),
             officer_star_chance: pos(r.data.officer_star_chance, 20),
             officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),
