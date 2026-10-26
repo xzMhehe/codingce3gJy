@@ -290,8 +290,10 @@ func TestSysSellFeeBlocksMallPackArbitrage(t *testing.T) {
 	if net >= packPrice {
 		t.Fatalf("默认手续费 %d%% 仍有套利空间：卖得 %d >= 买价 %d", ezfySysSellFeeDefault, net, packPrice)
 	}
-	if ezfySysSellDailyLimitDef <= 0 {
-		t.Fatalf("每日回收上限默认值必须为正数，当前 %d", ezfySysSellDailyLimitDef)
+	// ★ 2026-10-26 用户规则「系统回收每日上限 默认 0」：0 = 不限，是**合法默认值**，
+	//   所以这里只断言「不为负数」（原来断言必须 > 0 的护栏已随需求反转）。
+	if ezfySysSellDailyLimitDef < 0 {
+		t.Fatalf("每日回收上限默认值不能为负数，当前 %d", ezfySysSellDailyLimitDef)
 	}
 }
 

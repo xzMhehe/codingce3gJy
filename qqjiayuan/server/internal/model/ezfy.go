@@ -503,11 +503,15 @@ type EzfyCfgLimit struct {
 	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyWildTreasureCooldownH。
 	WildTreasureCooldownH int `gorm:"default:2;comment:打野地掉宝冷却小时(0=关闭)" json:"wild_treasure_cooldown_h"`
 
-	// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制，有人用脚本刷野地，暂时卡控 1 小时内
-	//   掉落过了就不能再次掉落，二战系统配置可配置间隔时间」：
-	//   打野地（野地/寇城战斗掉落）掉**商城道具**的冷却小时数，默认 1。
-	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyWildItemCooldownH。
-	WildItemCooldownH int `gorm:"default:1;comment:打野地掉道具冷却小时(0=关闭)" json:"wild_item_cooldown_h"`
+	// ⚠️ 2026-10-26 **已废弃**（口径由「小时」改成「秒」）：
+	//   管理端不再展示本项，读取端改读 WildItemCooldownSec；列保留只为不动历史数据。
+	//   老值（1 小时）不再参与任何计算。
+	WildItemCooldownH int `gorm:"default:1;comment:已废弃(2026-10-26)：打野地掉道具冷却小时" json:"wild_item_cooldown_h"`
+
+	// ★ 2026-10-26 用户规则「打野地掉道具冷却(小时) 调整为秒，默认 1800 秒冷却」：
+	//   打野地（野地/寇城战斗掉落）掉**商城道具**的冷却**秒数**，默认 1800（30 分钟）。
+	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyWildItemCooldownSec。
+	WildItemCooldownSec int `gorm:"default:1800;comment:打野地掉道具冷却秒(0=关闭)" json:"wild_item_cooldown_sec"`
 
 	// ★ 2026-10-24 活动目标掉落冷却（秒级，默认 7200 = 2 小时）：
 	//   必掉宝物 / 掉落道具 各自独立，按**玩家**维度：打活动目标（活动野地/活动寇城/特殊城市）
@@ -638,8 +642,9 @@ type EzfyCfgLimit struct {
 	RecruitCycleMode int `gorm:"default:2;comment:军校刷新周期(1=按天 2=按小时)" json:"recruit_cycle_mode"`
 	// ★ 2026-10-08 「新玩家落地洲」做成可配置：新玩家首次建城/落地默认落到哪个洲
 	//   （大洲 ID：1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲，默认欧洲）。
-	//   0 / 越界读取端回落默认欧洲，见 ezfyDefaultContinent()。
-	DefaultContinent int `gorm:"default:1;comment:新玩家落地洲(1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲)" json:"default_continent"`
+	//   ★ 2026-10-26 新增 **0 = 随机洲落**（每次新建城在 1~7 里随机挑一个洲）。
+	//   负数 / >7 读取端回落默认欧洲，见 ezfyDefaultContinent / ezfyNewPlayerContinent。
+	DefaultContinent int `gorm:"default:1;comment:新玩家落地洲(0=随机 1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲)" json:"default_continent"`
 
 	// ★ 2026-10-22 用户规则「驻军 [一键采集]/[一键收获]/[一键召回] 默认本城市，
 	//   二战系统配置可以改成全部城市」：
@@ -790,10 +795,11 @@ type EzfyCfgLimit struct {
 	//   65,000 × (1 − 30%) = 45,500 < 50,000，低买高卖套利直接变亏。
 	//   ⚠️ 0 / 越界（>90）无意义 → 读取端回落默认 30（见 ezfySysSellFeePct）。
 	SysSellFee int `gorm:"default:30;comment:系统回收手续费%" json:"sys_sell_fee"`
-	// ★ 2026-10-22 每日每种资源向系统出售的数量上限（默认 100 万；0 = 不限）。
+	// ★ 2026-10-22 每日每种资源向系统出售的数量上限（**默认 0 = 不限**；> 0 才卡控）。
 	//   在手续费之外再加一层数量卡控，防止脚本无限刷/一次性倾泻资源。
 	//   按玩家、按自然日统计（计数落在 ezfy_profile.sys_sell_*）。
-	SysSellDailyLimit int64 `gorm:"default:1000000;comment:系统回收每日每种资源上限(0=不限)" json:"sys_sell_daily_limit"`
+	//   ★ 2026-10-26 用户规则「系统回收每日上限 默认 0」：默认值由 100 万改成 0（不限）。
+	SysSellDailyLimit int64 `gorm:"default:0;comment:系统回收每日每种资源上限(0=不限)" json:"sys_sell_daily_limit"`
 
 	// ============ 战力榜权重（★ 2026-10-02 兵力榜 → 战力榜；★ 2026-10-25 兵种分改人口口径）============
 	//
@@ -981,7 +987,7 @@ type EzfyProfile struct {
 
 	// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制，1 小时内掉落过了就不能再次掉落」→
 	//   记录该玩家**上一次打野地掉到商城道具**的时间戳(ms)，0 = 从未掉过。
-	//   距上次不足 ezfy_cfg_limit.wild_item_cooldown_h 小时（默认 1）则本次不掉道具。
+	//   距上次不足 ezfy_cfg_limit.wild_item_cooldown_sec 秒（★ 2026-10-26 单位改秒，默认 1800）则本次不掉道具。
 	//   （与宝物冷却 wild_treasure_at 各自独立：两条掉落互不影响。）
 	WildItemAt int64 `gorm:"default:0;comment:打野地掉道具冷却(上次掉道具时间戳ms,0=从未)" json:"wild_item_at"`
 

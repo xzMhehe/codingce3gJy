@@ -393,7 +393,9 @@ func (h *EzfyHandler) createMainCity(uid uint) model.EzfyCity {
 // 补给场景由征服结算判定「自由城已清零」后才调用，直接建一座新城即可。
 // 落点 / 初始资源 / 基础建筑 / 当前城市指向 均与 createMainCity 一致。
 func (h *EzfyHandler) replenishCity(uid uint) model.EzfyCity {
-	pos := h.findFreePos()
+	// ★ 2026-10-26 补给重建不是「新玩家落地」：固定按默认洲（配置 0 = 随机时回落欧洲），
+	//   避免老玩家城被打光后被随机扔到别的洲去。
+	pos := h.findFreePosFrom(ezfyDefaultContinent())
 	// ★ 2026-10-17 人机被打飞也走补给重建：新城保持 is_bot=1、直接铺 9 级建筑底盘、
 	//   固定初始兵力（10 万侦察机 + 1 亿火箭），被打飞后立刻恢复战力继续进犯玩家。
 	var botCnt int64
@@ -540,8 +542,21 @@ func (h *EzfyHandler) seedBotOfficers(uid uint, cityID uint) {
 //	内测玩家互相离得近才打得起仗（用户规则：「新玩家 默认 建城市也是默认欧洲城市」）。
 //	欧洲满员时按「亚洲 → 非洲 → 北美洲 → 南美洲 → 大洋洲 → 南极洲」依次兜底，
 //	最后再退回全世界随机（保证永远建得出城，不会卡住新玩家）。
+//
+// ★ 2026-10-26 用户规则「新玩家落地洲 新增随机选项 就是随机洲落」：
+//
+//	首选的洲改走 ezfyNewPlayerContinent()（配置 0 = 每次随机挑一个洲）；
+//	后面「按顺序兜底」的逻辑不变 —— 随机到的洲满了照样顺着往后找。
 func (h *EzfyHandler) findFreePos() [2]int {
-	dc := ezfyDefaultContinent()
+	return h.findFreePosFrom(ezfyNewPlayerContinent())
+}
+
+// findFreePosFrom 从指定洲开始找空位（该洲满员后按其余洲顺序兜底，最后全世界随机）。
+//
+// ★ 2026-10-26 拆出来给「非新玩家」场景用：玩家城被占光后的补给重建（replenishCity）
+// 仍按 ezfyDefaultContinent()（0 = 随机时回落欧洲）落点 —— 那不是在选新服，
+// 不该把老玩家随机扔到别的洲去。
+func (h *EzfyHandler) findFreePosFrom(dc int) [2]int {
 	order := []int{dc}
 	for _, a := range ezfyMoveAreas {
 		if a.ID != dc {
@@ -3439,7 +3454,12 @@ func (h *EzfyHandler) recoverAllWoundedByDiamond(city *model.EzfyCity, wtype int
 	if !h.ezfySpendDiamond(prof.ID, cost) {
 		return fmt.Sprintf("钻石不足: 需要%d钻石, 当前余额%d", cost, prof.Diamond)
 	}
-	h.logDiamond(city.UserID, -cost, "伤兵全部恢复(钻石)")
+	// ★ 2026-10-26 逃兵营（type=1）与伤兵营共用本函数，流水文案按类型区分
+	if wtype == 1 {
+		h.logDiamond(city.UserID, -cost, "逃兵全部召回(钻石)")
+	} else {
+		h.logDiamond(city.UserID, -cost, "伤兵全部恢复(钻石)")
+	}
 	for _, w := range list {
 		if w.Count <= 0 {
 			continue

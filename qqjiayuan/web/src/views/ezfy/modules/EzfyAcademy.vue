@@ -752,8 +752,10 @@
         <!-- 装备 tab（已穿戴 + 一键卸下 + 一键穿套装） -->
         <div v-if="ezfy.officerDetailTab === 'equip'">
         <table class="ezfy-plain-table">
+          <!-- ★ 2026-10-26 列宽修正（用户「列宽太不美观」）：三列 50/25/25 均衡，
+               原来 50/20/30 让只有「—」的操作列最宽、部位列最窄，视觉上很散。 -->
           <colgroup>
-            <col style="width:50%"><col style="width:20%"><col style="width:30%">
+            <col style="width:50%"><col style="width:25%"><col style="width:25%">
           </colgroup>
           <tr><th colspan="3">已穿戴装备
             <a v-if="ezfy.officerDetail.equipped.length" href="javascript:;" @click="ezfy.doUnequipAll">[一键卸下]</a>

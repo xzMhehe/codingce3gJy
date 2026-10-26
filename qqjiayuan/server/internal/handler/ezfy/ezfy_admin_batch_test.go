@@ -109,7 +109,8 @@ func TestAdminEzfyCitiesNoNPlusOne(t *testing.T) {
 		`"deleted_at IS NULL"`,             // ★ 军官软删除口径必须显式带上
 		`"level > 0"`,                      // 建筑口径
 		`"count > 0"`,                      // 部队口径
-		`Select("user_id, camp")`,          // 阵营：一次 IN
+		// ★ 2026-10-26 多取了 game_uid（城市管理「家园号 → 游戏ID」展示），仍是**一次 IN**、不是 N+1
+		`Select("user_id, camp, game_uid")`, // 阵营 + 游戏号：一次 IN
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("城市管理的批量取数缺失（缺 %s）", want)

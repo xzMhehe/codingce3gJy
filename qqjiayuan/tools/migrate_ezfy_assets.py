@@ -16,7 +16,11 @@
     python migrate_ezfy_assets.py 35806386 --only-equipment
     python migrate_ezfy_assets.py 35806386 --only-equipment --execute
 
-    # 4) 线上库（RDS）示例
+    # 4) 只同步道具（钻石/装备/发电卡一律不迁；本次 35806386 用这个）
+    python migrate_ezfy_assets.py 35806386 --only-items
+    python migrate_ezfy_assets.py 35806386 --only-items --execute
+
+    # 5) 线上库（RDS）示例
     python migrate_ezfy_assets.py 35806360 \
         --host rm-xxx.mysql.rds.aliyuncs.com --user root --password 'xxx' --execute
 
@@ -28,6 +32,7 @@
     --host/--port/--user/--password   MySQL 连接，默认 127.0.0.1:3306 root/1234567890
     --execute        真正写入；不加只预览
     --only-equipment 只迁非采集装备；钻石/道具/发电卡不迁（写一条 0 钻石流水作迁移标记）
+    --only-items     只同步道具；钻石/装备/发电卡不迁（写一条 0 钻石流水作同步标记）
     --force          忽略「已迁移过」检查强制再迁（会重复累加钻石/道具，慎用）
     --no-backup      不导出备份 JSON
 
@@ -141,6 +146,8 @@ def main():
     ap.add_argument("--execute", action="store_true", help="真正写入（不加只预览）")
     ap.add_argument("--only-equipment", action="store_true",
                     help="只迁非采集装备；钻石/道具/发电卡不迁")
+    ap.add_argument("--only-items", action="store_true",
+                    help="只同步道具；钻石/装备/发电卡不迁")
     ap.add_argument("--force", action="store_true", help="忽略已迁移检查（会重复累加，慎用）")
     ap.add_argument("--no-backup", action="store_true", help="不导出备份 JSON")
     args = ap.parse_args()
@@ -148,11 +155,20 @@ def main():
     uid = args.game_id
     SRC, DST = args.from_db, args.to_db
     only_eq = args.only_equipment
+    only_it = args.only_items
+    if only_eq and only_it:
+        print("[中止] --only-equipment 和 --only-items 不能同时使用。")
+        return 2
     print("=" * 68)
     print("二战资产迁移  game_id=%d" % uid)
     print("  源库(一区) = %s" % SRC)
     print("  目标库(二区) = %s" % DST)
-    print("  范围 = %s" % ("只迁非采集装备（钻石/道具/发电卡不迁）" if only_eq else "钻石 + 装备 + 道具 + 发电卡"))
+    if only_it:
+        print("  范围 = 只同步道具（钻石/装备/发电卡不迁）")
+    elif only_eq:
+        print("  范围 = 只迁非采集装备（钻石/道具/发电卡不迁）")
+    else:
+        print("  范围 = 钻石 + 装备 + 道具 + 发电卡")
     print("  模式 = %s" % ("执行（会写库）" if args.execute else "预览（只读，不写）"))
     print("=" * 68)
 
@@ -183,7 +199,14 @@ def main():
             # ---------- 2. 防重复 ----------
             # 全量模式看「一区资产迁移」；只迁装备模式额外把「一区资产迁移」也算已迁
             #（全量迁移本来就已经把装备一起搬过了，再跑会重复复制装备）。
-            reasons = ["一区装备迁移", "一区资产迁移"] if only_eq else ["一区资产迁移"]
+            # 只同步道具模式看「一区道具迁移」：此前迁移过装备/全量不拦，
+            #   玩家在一区后来新攒的道具可再次同步；同一次道具同步只跑一次。
+            if only_it:
+                reasons = ["一区道具迁移"]
+            elif only_eq:
+                reasons = ["一区装备迁移", "一区资产迁移"]
+            else:
+                reasons = ["一区资产迁移"]
             dup = q1(
                 cur,
                 "SELECT id, reason, created_at FROM `%s`.ezfy_diamond_logs "
@@ -201,11 +224,12 @@ def main():
             if not prof1:
                 print("\n[中止] 一区(%s) 没有该玩家档案（没在一区玩过）。" % SRC)
                 return 2
-            diamond1 = 0 if only_eq else int(prof1["diamond"] or 0)
+            diamond1 = 0 if (only_eq or only_it) else int(prof1["diamond"] or 0)
 
             # ★ 装备/道具/发电卡三张表老库可能缺（尤其二区新开服）→ 缺表就按空处理，不整段崩
+            # 只同步道具模式不读装备（动辄几千件，读了也没用）
             eq_all = (qall(cur, "SELECT * FROM `%s`.ezfy_equipment WHERE user_id=%%s" % SRC, (uid,))
-                      if table_exists(cur, SRC, "ezfy_equipment") else [])
+                      if (not only_it) and table_exists(cur, SRC, "ezfy_equipment") else [])
             # ★★ 2026-10-18 用户规则：**采集宝物不迁移**（二区从零开始采集）。
             #   采集宝物 = 装备表里那 9 种珠宝（cfg 27~35，与后端 ezfyCollectibleTreasureNames 同一名单）。
             #   按**名字**过滤而不是按 id 段 —— 与后端口径一致，id 段变了也不受影响。
@@ -217,7 +241,7 @@ def main():
             # ★ 为爱发电卡：独立表 ezfy_love_card（不在道具体系）。迁移口径 = **剩余未领天数**累加：
             #   已领的天数对应钻石玩家早就拿到了，不能再给；只把 (total_days - claimed_days) 搬过去。
             #   同 cfg_id 有多张历史卡 → 剩余天数合并后按类型处理一次。
-            cards = [] if only_eq else (
+            cards = [] if (only_eq or only_it) else (
                 qall(cur, "SELECT * FROM `%s`.ezfy_love_card WHERE user_id=%%s ORDER BY id" % SRC, (uid,))
                 if table_exists(cur, SRC, "ezfy_love_card") else [])
             love_plan = {}
@@ -232,7 +256,11 @@ def main():
                 })
                 p["remain"] += remain
             love_days = sum(p["remain"] for p in love_plan.values())
-            if only_eq:
+            if only_it:
+                print("\n[2/6] 一区数据 ✅  道具=%d 种 / %d 个  "
+                      "（钻石/装备/发电卡按只同步道具模式**不迁移**）"
+                      % (len(items), sum(int(i["count"] or 0) for i in items)))
+            elif only_eq:
                 print("\n[2/6] 一区数据 ✅  装备=%d 件（另有采集宝物 %d 件**不迁移**）  "
                       "钻石/道具/发电卡按只迁装备模式**不迁移**"
                       % (len(eqs), treasure_cnt))
@@ -241,10 +269,13 @@ def main():
                       "道具=%d 种  为爱发电卡=%d 种/剩 %d 天"
                       % (diamond1, len(eqs), treasure_cnt, len(items), len(love_plan), love_days))
 
+            if only_it and not items:
+                print("\n[跳过] 一区没有可同步的道具。")
+                return 0
             if only_eq and not eqs:
                 print("\n[跳过] 一区没有可迁移的非采集装备。")
                 return 0
-            if not only_eq and diamond1 == 0 and not eqs and not items and not love_plan:
+            if not (only_eq or only_it) and diamond1 == 0 and not eqs and not items and not love_plan:
                 print("\n[跳过] 一区这几样都是空的，没有可迁移的内容。")
                 return 0
 
@@ -262,6 +293,9 @@ def main():
             if it_skip:
                 print("  [告警] %d 种道具的 cfg_id 在二区配置表里不存在，将跳过：%s"
                       % (len(it_skip), [i["cfg_id"] for i in it_skip][:12]))
+            if only_it and not it_use:
+                print("\n[中止] 一区道具在二区配置表里都不存在，没有可同步的道具。")
+                return 2
             if only_eq and not eq_use:
                 print("\n[中止] 一区非采集装备在二区配置表里都不存在，没有可迁移的装备。")
                 return 2
@@ -271,25 +305,27 @@ def main():
             eq2_now = q1(cur, "SELECT COUNT(*) AS n FROM `%s`.ezfy_equipment WHERE user_id=%%s" % DST, (uid,)) \
                 if table_exists(cur, DST, "ezfy_equipment") else {"n": 0}
             print("\n[3/6] 迁移计划")
-            if only_eq:
+            if only_eq or only_it:
                 print("  钻石 : 不迁移（二区保持 %d）" % int(prof2["diamond"] or 0))
             else:
                 print("  钻石 : %d + %d = %d" % (prof2["diamond"], diamond1, new_diamond))
-            # ★ city_id 一律写 0：装备是玩家背包资产，不挂城市（详见文件头 2026-10-18 说明）
-            print("  装备 : %d 件 → 二区（city_id=0，officer_id/original_user_id 归零，穿戴状态不保留）"
-                  % len(eq_use))
-            if len(eq_use) > 4000:
-                print("        ⚠️ 装备较多（%d 件）：宝物库存上限 treasure_max 默认 5000，"
-                      "迁完若未穿戴宝物超过上限，**采集会暂停**（已有资产不受影响，消耗后自动恢复）" % len(eq_use))
-            if int(eq2_now["n"] or 0) > 0:
-                print("        ⚠️ 二区该玩家**已有 %d 件装备**：本次是全量复制、不去重，"
-                      "迁完会变成 %d 件（若之前迁过又加了 --force，请先确认要不要先清二区装备）"
-                      % (int(eq2_now["n"]), int(eq2_now["n"]) + len(eq_use)))
+            if not only_it:
+                # ★ city_id 一律写 0：装备是玩家背包资产，不挂城市（详见文件头 2026-10-18 说明）
+                print("  装备 : %d 件 → 二区（city_id=0，officer_id/original_user_id 归零，穿戴状态不保留）"
+                      % len(eq_use))
+                if len(eq_use) > 4000:
+                    print("        ⚠️ 装备较多（%d 件）：宝物库存上限 treasure_max 默认 5000，"
+                          "迁完若未穿戴宝物超过上限，**采集会暂停**（已有资产不受影响，消耗后自动恢复）" % len(eq_use))
+                if int(eq2_now["n"] or 0) > 0:
+                    print("        ⚠️ 二区该玩家**已有 %d 件装备**：本次是全量复制、不去重，"
+                          "迁完会变成 %d 件（若之前迁过又加了 --force，请先确认要不要先清二区装备）"
+                          % (int(eq2_now["n"]), int(eq2_now["n"]) + len(eq_use)))
             if not only_eq:
                 print("  道具 : %d 种（同名道具在二区已有则数量累加）" % len(it_use))
-                for cid, p in sorted(love_plan.items()):
-                    print("  发电卡: cfg_id=%d %s 剩 %d 天（%d 钻石/天，二区已有同类型未领完则续天数）"
-                          % (cid, p["name"], p["remain"], p["daily"]))
+                if not only_it:
+                    for cid, p in sorted(love_plan.items()):
+                        print("  发电卡: cfg_id=%d %s 剩 %d 天（%d 钻石/天，二区已有同类型未领完则续天数）"
+                              % (cid, p["name"], p["remain"], p["daily"]))
 
             if not args.execute:
                 print("\n[预览结束] 没有写任何数据。确认无误后加 --execute 执行。")
@@ -307,6 +343,7 @@ def main():
                             "from_db": SRC,
                             "to_db": DST,
                             "only_equipment": only_eq,
+                            "only_items": only_it,
                             "taken_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                             "src_diamond": diamond1,
                             "dst_diamond_before": int(prof2["diamond"] or 0),
@@ -325,8 +362,8 @@ def main():
             try:
                 conn.begin()
 
-                # 6.1 钻石累加（只迁装备模式跳过：钻石原样不动）
-                if not only_eq:
+                # 6.1 钻石累加（只迁装备 / 只同步道具模式跳过：钻石原样不动）
+                if not (only_eq or only_it):
                     cur.execute(
                         "UPDATE `%s`.ezfy_profile SET diamond = diamond + %%s WHERE user_id=%%s" % DST,
                         (diamond1, uid),
@@ -402,10 +439,20 @@ def main():
                             )
 
                 # 6.5 流水（同时作为「已迁移」标记）
-                #     只迁装备模式写 change=0 的标记流水，不改钻石余额，也不会让玩家白拿钻石。
-                log_reason = "一区装备迁移" if only_eq else "一区资产迁移"
-                log_change = 0 if only_eq else diamond1
-                log_extra = ("装备%d件" % len(eq_use)) if only_eq else ""
+                #     只迁装备 / 只同步道具模式写 change=0 的标记流水，不改钻石余额，也不会让玩家白拿钻石。
+                if only_it:
+                    log_reason = "一区道具迁移"
+                elif only_eq:
+                    log_reason = "一区装备迁移"
+                else:
+                    log_reason = "一区资产迁移"
+                log_change = 0 if (only_eq or only_it) else diamond1
+                if only_it:
+                    log_extra = "道具%d种/%d个" % (len(it_use), sum(int(i["count"] or 0) for i in it_use))
+                elif only_eq:
+                    log_extra = "装备%d件" % len(eq_use)
+                else:
+                    log_extra = ""
                 cur.execute(
                     "INSERT INTO `%s`.ezfy_diamond_logs (user_id, `change`, extra, balance, reason, created_at) "
                     "VALUES (%%s,%%s,%%s,%%s,%%s,NOW())" % DST,
@@ -430,7 +477,10 @@ def main():
             )
             love_txt = "、".join("%s剩%d天" % (r["name"], int(r["total_days"]) - int(r["claimed_days"]))
                                 for r in love_after) or "无"
-            if only_eq:
+            if only_it:
+                print("\n[6/6] 完成 ✅  二区当前：钻石=%d（未变）  道具=%d 种/%d 个"
+                      % (prof_after["diamond"], it_after["n"], it_after["s"]))
+            elif only_eq:
                 print("\n[6/6] 完成 ✅  二区当前：钻石=%d（未变）  装备=%d 件"
                       % (prof_after["diamond"], eq_after["n"]))
             else:

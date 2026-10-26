@@ -1747,16 +1747,15 @@ func normalizeEzfyNewCols(db *gorm.DB) {
 	//   老库里还是旧名字，这里做一次幂等改名（改过之后条件不再命中）。
 	db.Exec("UPDATE ezfy_cfg_equipment SET type = '军官装备' WHERE type = '英雄装备'")
 	db.Exec("UPDATE ezfy_equipment SET type = '军官装备' WHERE type = '英雄装备'")
-	// ★ 用户规则「军官最多 5 星」：早期默认值灌成了 10，这里改回 5。
-	//   条件写 `= 10`（而不是 `> 5`）是为了**只修这一次**——
-	//   管理端后来自己调过的值（比如 8）不会在每次启动被打回去。
-	db.Exec("UPDATE ezfy_cfg_limit SET officer_star_max = 5 WHERE id = 1 AND officer_star_max = 10")
-	// ★ 2026-09-23 「星级徽章每枚固定 20% 概率升 1 星」：早期默认灌成 80/5，
-	//   这里对**没被后台手动改过**的值做一次幂等迁移（条件写旧默认值，改过的不动）。
-	db.Exec("UPDATE ezfy_cfg_limit SET officer_star_chance = 20 WHERE id = 1 AND officer_star_chance = 80")
-	db.Exec("UPDATE ezfy_cfg_limit SET officer_star_chance_step = 0 WHERE id = 1 AND officer_star_chance_step = 5")
-	// 超过 5 星的存量军官夹回 5 星（幂等：夹过之后没有行再匹配）
-	db.Exec("UPDATE ezfy_officer SET star = 5 WHERE star > 5")
+	// ★★ 2026-10-26 用户规则「军官升星 tab 改了重启不要变」——下面这批 2026-09-22/23 的
+	//   「旧默认值纠正」**已整体删除**，原因（线上踩过）：
+	//     ① `officer_star_max = 5 WHERE = 10`、`officer_star_chance = 20 WHERE = 80` 是按旧默认值
+	//        命中的，管理员在后台把星级上限改成 10、或把成功率改成 80，**每次重启都会被打回 5 / 20**；
+	//     ② 更严重的是 `UPDATE ezfy_officer SET star = 5 WHERE star > 5` ——
+	//        星级上限一旦调高到 5 以上，重启会把玩家所有升到 6 星以上的军官**直接降回 5 星**（数据丢失）。
+	//   这两条迁移的历史使命（2026-09-22 上线当天纠默认值）早已完成，且会与「管理端可配」冲突，
+	//   故永久移除。若确需再纠一次历史数据，走一次性运维 SQL + 人工确认，切勿挂回启动路径。
+	//   （同批的 `officer_star_chance_step = 5 → 0` 也一并删除：该字段已废弃、管理端不再展示。）
 	db.Exec("UPDATE ezfy_cfg_equipment SET slot = COALESCE(slot,''), set_id = COALESCE(set_id,0), " +
 		"price_gold = COALESCE(price_gold,0), price_diamond = COALESCE(price_diamond,0), " +
 		"stock = COALESCE(stock,-1), effect = COALESCE(effect,''), " +

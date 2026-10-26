@@ -1,0 +1,42 @@
+{
+ "game_id": 35806386,
+ "from_db": "qq_ezzt",
+ "to_db": "qq_ezzt2",
+ "only_equipment": false,
+ "only_items": true,
+ "taken_at": "2026-10-26 20:16:11",
+ "src_diamond": 0,
+ "dst_diamond_before": 18,
+ "equipment": [],
+ "items": [
+  {
+   "cfg_id": 1001,
+   "count": 100
+  },
+  {
+   "cfg_id": 1002,
+   "count": 60
+  },
+  {
+   "cfg_id": 1010,
+   "count": 22
+  },
+  {
+   "cfg_id": 1011,
+   "count": 5
+  },
+  {
+   "cfg_id": 1019,
+   "count": 150
+  },
+  {
+   "cfg_id": 1020,
+   "count": 1
+  },
+  {
+   "cfg_id": 1022,
+   "count": 1
+  }
+ ],
+ "love_cards": []
+}

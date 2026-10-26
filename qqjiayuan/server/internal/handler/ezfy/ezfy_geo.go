@@ -2,6 +2,7 @@ package ezfy
 
 import (
 	"log"
+	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -741,12 +742,29 @@ func ezfyLimit() model.EzfyCfgLimit {
 	return l
 }
 
-// ezfyDefaultContinent 新玩家落地洲（读 ezfy_cfg_limit.default_continent，可在二战系统配置调整）
+// ezfyDefaultContinent 默认落地洲（读 ezfy_cfg_limit.default_continent，可在二战系统配置调整）
 //
 // ★ 2026-10-08 原来写死欧洲(1)，现在做成管理端可配。大洲 ID：1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲。
-// 0 / 越界 / 未加载时回落默认欧洲（保证老玩家与新玩家行为不回退）。
+// ★ 2026-10-26 新增 **0 = 随机洲落**：本函数是「迁城/指定洲」的兜底口径，
+// 遇到 0（随机）时仍回落欧洲；**新玩家落地请用 ezfyNewPlayerContinent()**（那里才真随机）。
 func ezfyDefaultContinent() int {
 	if n := ezfyCfg.limit.DefaultContinent; n >= 1 && n <= 7 {
+		return n
+	}
+	return ezfyDefaultMoveContinent
+}
+
+// ezfyNewPlayerContinent 新玩家首次建城落地的洲（二战系统配置 → 新玩家落地洲）。
+//
+// ★ 2026-10-26 用户规则「新玩家落地洲 新增随机选项 就是随机洲落」：
+// 配置 0 = 每次新建城在 1~7 里随机挑一个洲；1~7 = 固定洲；负数/越界 = 回落欧洲。
+// 只影响**新玩家建城**，玩家主动迁城仍走 ezfyDefaultContinent（0 按欧洲处理）。
+func ezfyNewPlayerContinent() int {
+	n := ezfyCfg.limit.DefaultContinent
+	if n == ezfyContinentRandom {
+		return 1 + rand.Intn(len(ezfyContinentNames)-1) // 1..7
+	}
+	if n >= 1 && n <= 7 {
 		return n
 	}
 	return ezfyDefaultMoveContinent
@@ -830,9 +848,10 @@ func ezfySysSellRatio(esType int) int {
 //	手续费提到 30% 后实得 45,500 < 50,000，套利变成亏损。
 const ezfySysSellFeeDefault = 30
 
-// ezfySysSellDailyLimitDef 每日每种资源向系统出售的默认上限（0 = 不限）。
-// 默认 100 万：足够正常玩家处理富余资源，又能卡住脚本无限刷/一次性倾泻。
-const ezfySysSellDailyLimitDef int64 = 1000000
+// ezfySysSellDailyLimitDef 每日每种资源向系统出售的默认上限（**0 = 不限**）。
+// ★ 2026-10-26 用户规则「系统回收每日上限 默认 0」：默认值由 100 万改成 0（不限）。
+// 需要卡控脚本时，管理端把它调成 > 0 即可（按玩家、按自然日、按资源统计）。
+const ezfySysSellDailyLimitDef int64 = 0
 
 // ezfySysSellFeePct 向系统出售资源的手续费百分比（0~90，默认 30）。
 //
@@ -846,7 +865,8 @@ func ezfySysSellFeePct() int {
 	return ezfySysSellFeeDefault
 }
 
-// ezfySysSellDailyLimit 每日每种资源向系统出售的数量上限（0 = 不限）。
+// ezfySysSellDailyLimit 每日每种资源向系统出售的数量上限（**0 = 不限**）。
+// ★ 2026-10-26 默认值改成 0（不限）：读不到 / 未配置时同样按「不限」处理。
 func ezfySysSellDailyLimit() int64 {
 	if !ezfyCfg.ready() {
 		return ezfySysSellDailyLimitDef
@@ -926,9 +946,10 @@ const (
 	ezfyLootBroadcastDef = 0
 	// ★ 打野地掉落宝物的冷却小时数（默认 2）。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
 	ezfyWildTreasureCooldownDef = 2
-	// ★ 2026-10-13 打野地掉落**商城道具**的冷却小时数（默认 1）：有人用脚本刷野地 →
-	//   1 小时内掉过道具就不再掉。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
-	ezfyWildItemCooldownDef = 1
+	// ★ 2026-10-26 打野地掉落**商城道具**的冷却**秒数**（默认 1800 = 30 分钟）：
+	//   用户规则「打野地掉道具冷却调整为秒，默认 1800 秒」。
+	//   0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
+	ezfyWildItemCooldownSecDef = 1800
 	// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时）：
 	//   必掉宝物 / 掉落道具 各自独立，按玩家维度：打活动目标胜利掉到该类后，
 	//   冷却期内不再掉该类。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
@@ -1272,19 +1293,20 @@ func ezfyWildTreasureCooldownH() int {
 	return ezfyCfg.limit.WildTreasureCooldownH
 }
 
-// ezfyWildItemCooldownH 打野地掉落**商城道具**的冷却小时数（默认 1，二战系统配置可配）。
+// ezfyWildItemCooldownSec 打野地掉落**商城道具**的冷却秒数（默认 1800 = 30 分钟，二战系统配置可配）。
 //
 // ★ 2026-10-13 用户规则：「野地商城道具掉落也加个限制吧，有人用脚本刷野地暂时卡控，
-// 1 小时内掉落过了就不能再次掉落，二战系统配置可配置间隔时间」→ 按**玩家**维度冷却
+// 掉落过了就不能再次掉落，二战系统配置可配置间隔时间」→ 按**玩家**维度冷却
 // （上次掉道具时间存 ezfy_profile.wild_item_at），与宝物冷却各自独立。
+// ★ 2026-10-26 用户规则：「打野地掉道具冷却(小时) 调整为秒，默认 1800 秒冷却」→ 单位改秒。
 // ★ 0 是**合法值**（= 关闭冷却），所以**不能**用 ezfyLimitOr（它把 0 当「未配置」回落默认）。
 //
-//	配置缓存没加载过时才回落默认 1，避免把「还没加载」误判成「关闭」。
-func ezfyWildItemCooldownH() int {
+//	配置缓存没加载过时才回落默认 1800，避免把「还没加载」误判成「关闭」。
+func ezfyWildItemCooldownSec() int {
 	if !ezfyCfg.ready() {
-		return ezfyWildItemCooldownDef
+		return ezfyWildItemCooldownSecDef
 	}
-	return ezfyCfg.limit.WildItemCooldownH
+	return ezfyCfg.limit.WildItemCooldownSec
 }
 
 // ezfyActTreasureCooldownSec 活动目标「必掉宝物」冷却秒数（默认 7200 = 2 小时）。

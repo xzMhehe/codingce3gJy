@@ -12,7 +12,10 @@
            原来是一张长表单 + el-divider 分段，滚起来很长、找一项要翻半天。
             现在按**类别**分成多个 tab；★ 2026-10-18 改为**分 tab 独立保存**：
            每个 tab 底部有自己的「保存本类」按钮，只提交该分类字段（整体保存太慢）。 -->
-      <el-form label-width="180px" size="small" :style="{ maxWidth: activeTab === 'formula' ? '1600px' : '660px' }">
+      <!-- ★ 2026-10-26 用户反馈「活动目标掉道具冷却(秒) 和 i 的位置不美观」：
+           标签宽度 180 → 210px，并配合下方 CSS 的 `white-space: nowrap`，
+           让最长的标签（活动目标掉道具冷却(秒)）与 i 图标**始终同一行**，不再折行。 -->
+      <el-form label-width="210px" size="small" :style="{ maxWidth: activeTab === 'formula' ? '1600px' : '680px' }">
         <el-tabs v-model="activeTab">
           <!-- ① 建筑与上限 -->
           <el-tab-pane label="建筑与上限" name="build">
@@ -89,10 +92,11 @@
                 <el-option :value="1" label="按天" />
               </el-select>
             </el-form-item>
-            <!-- ★ 2026-10-08 新玩家落地洲：默认欧洲，可切换 -->
+            <!-- ★ 2026-10-08 新玩家落地洲：默认欧洲，可切换；★ 2026-10-26 新增「随机洲落」(0) -->
             <el-form-item>
               <template slot="label">新玩家落地洲<el-tooltip placement="top" :content="tips.default_continent"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-select v-model="form.default_continent" style="width:180px">
+                <el-option :value="0" label="随机洲落" />
                 <el-option :value="1" label="欧洲" />
                 <el-option :value="2" label="亚洲" />
                 <el-option :value="3" label="非洲" />
@@ -191,10 +195,10 @@
               <template slot="label">打野地掉宝冷却(小时)<el-tooltip placement="top" :content="tips.wild_treasure_cooldown_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.wild_treasure_cooldown_h" :min="0" :max="720" controls-position="right" style="width:180px" />
             </el-form-item>
-            <!-- ★ 2026-10-13 打野地掉商城道具冷却（小时）：默认 1，**0 合法 = 关闭冷却** → :min="0" -->
+            <!-- ★ 2026-10-26 打野地掉商城道具冷却（秒）：默认 1800，**0 合法 = 关闭冷却** → :min="0" -->
             <el-form-item>
-              <template slot="label">打野地掉道具冷却(小时)<el-tooltip placement="top" :content="tips.wild_item_cooldown_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model.number="form.wild_item_cooldown_h" :min="0" :max="720" controls-position="right" style="width:180px" />
+              <template slot="label">打野地掉道具冷却(秒)<el-tooltip placement="top" :content="tips.wild_item_cooldown_sec"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.wild_item_cooldown_sec" :min="0" :max="2592000" :step="60" controls-position="right" style="width:180px" />
             </el-form-item>
             <!-- ★ 2026-10-24 活动目标掉落冷却（秒）：默认 7200 = 2 小时，**0 合法 = 关闭冷却** → :min="0" -->
             <el-form-item>
@@ -374,7 +378,6 @@
                 <el-option label="当前城市（默认）" :value="1" />
                 <el-option label="全部城市" :value="2" />
               </el-select>
-              <span class="unit-hint">[一键采集] / [一键收获] / [一键召回]</span>
             </el-form-item>
             <el-form-item>
               <template slot="label">宣战功能<el-tooltip placement="top" :content="tips.war_require_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -392,7 +395,6 @@
             <el-form-item>
               <template slot="label">造兵市长军事加成<el-tooltip placement="top" :content="tips.train_mayor_military_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.train_mayor_military_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-              <span class="unit-hint">面板×250/(250+军事)×10/(10+军训)，向下取整</span>
             </el-form-item>
             <el-form-item>
               <template slot="label">装备/套装军事计入<el-tooltip placement="top" :content="tips.train_mayor_equip_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -417,36 +419,30 @@
             <el-form-item>
               <template slot="label">召集人口比例<el-tooltip placement="top" :content="tips.convene_pop_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.convene_pop_pct" :min="1" :max="1000000000" :step="1" controls-position="right" style="width: 200px" />
-              <span class="unit-hint">% · 当前民居上限</span>
             </el-form-item>
             <!-- ★ 2026-10-23 召集间隔可配：方便调整节奏；测试时可临时改小 -->
             <el-form-item>
               <template slot="label">普通召集间隔<el-tooltip placement="top" :content="tips.convene_cooldown_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.convene_cooldown_seconds" :min="1" :max="1000000000" :step="1" controls-position="right" style="width: 200px" />
-              <span class="unit-hint">秒 · 默认 3 秒</span>
             </el-form-item>
             <el-form-item>
               <template slot="label">人口满时召集间隔<el-tooltip placement="top" :content="tips.convene_cap_cooldown_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.convene_cap_cooldown_seconds" :min="1" :max="1000000000" :step="10" controls-position="right" style="width: 200px" />
-              <span class="unit-hint">秒 · 默认 300 秒（5 分钟）</span>
             </el-form-item>
             <!-- ★ 2026-10-22 「空闲人口恢复满时间」：训练消耗人口后按配置秒数线性恢复满 -->
             <el-form-item>
               <template slot="label">空闲人口恢复满时间<el-tooltip placement="top" :content="tips.pop_recover_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.pop_recover_seconds" :min="1" :max="1000000000" :step="10" controls-position="right" style="width: 200px" />
-              <span class="unit-hint">秒 · 默认 1200 秒（20 分钟）</span>
             </el-form-item>
             <!-- ★ 2026-10-23 临时空闲人口回落窗口：人口满后召集/移民法案产生的临时空闲，按此时间线性回落 -->
             <el-form-item>
               <template slot="label">临时空闲回落时间<el-tooltip placement="top" :content="tips.pop_extra_decay_seconds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.pop_extra_decay_seconds" :min="1" :max="1000000000" :step="10" controls-position="right" style="width: 200px" />
-              <span class="unit-hint">秒 · 默认 300 秒（5 分钟）</span>
             </el-form-item>
             <!-- ★ 2026-10-26 采集宝物播报开关：默认关 = 采集掉宝不播世界频道、也不写播报库（ezfy_chat） -->
             <el-form-item>
               <template slot="label">采集宝物播报<el-tooltip placement="top" :content="tips.loot_broadcast_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.loot_broadcast_on" :active-value="1" :inactive-value="0" active-text="播报" inactive-text="不播报" />
-              <span class="unit-hint">默认关闭 · 关闭时采集掉宝既不播报、也不写入播报库</span>
             </el-form-item>
             <!-- ★ 2026-10-14 风云榜统计开关（与「排行榜 → 风云榜」页的开关同一项，两处都能改） -->
             <el-form-item>
@@ -600,8 +596,8 @@ export default {
         // ★ 2026-10-22 每城建造队列基础上限（默认 5）
         build_queue_max: 5,
         notice_home_count: 1, gather_max_per_order: 50, sell_price_max: 100, mall_buy_max: 999,
-        // ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（默认 100 万，0 = 不限）
-        sys_sell_fee: 30, sys_sell_daily_limit: 1000000,
+        // ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（★ 2026-10-26 默认 0 = 不限）
+        sys_sell_fee: 30, sys_sell_daily_limit: 0,
         bag_item_max: 5000,
         treasure_max: 5000,
         officer_cap_per_military: 2000, officer_speed_per_military: 0.1,
@@ -633,15 +629,15 @@ export default {
         gather_sea_bonus_mult: 3,
         // ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**）
         wild_treasure_cooldown_h: 2,
-        // ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**）
-        wild_item_cooldown_h: 1,
+        // ★ 2026-10-26 打野地掉商城道具冷却**秒数**（默认 1800 = 30 分钟；**0 合法 = 关闭冷却**）
+        wild_item_cooldown_sec: 1800,
         // ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时；**0 合法 = 关闭冷却**）
         act_treasure_cooldown_sec: 7200, act_item_cooldown_sec: 7200,
         // ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭迁城冷却**）
         move_cool_h: 24,
         // ★ 2026-09-28 军校刷新周期（1=按天 2=按小时，默认按小时）
         recruit_cycle_mode: 2,
-        // ★ 2026-10-08 新玩家落地洲（默认欧洲）
+        // ★ 2026-10-08 新玩家落地洲（默认欧洲；★ 2026-10-26 新增 0 = 随机洲落）
         default_continent: 1,
         // ★ 2026-10-22 驻军批量操作范围（1=当前城市 默认，2=全部城市）
         garrison_batch_scope: 1,
@@ -707,7 +703,7 @@ export default {
         troop: ['troop_max', 'wound_expire_days', 'wound_heal_divisor', 'wound_heal_rate', 'heal_all_diamond'],
         wild: ['wild_troop_mult', 'wild_res_mult', 'gather_wild_bonus_pct',
           'gather_formula_divisor', 'gather_sea_bonus_mult', 'res_prod_mult', 'gold_prod_mult', 'mayor_gain_mult', 'dispatch_period_h',
-          'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_h', 'act_treasure_cooldown_sec', 'act_item_cooldown_sec', 'move_cool_h'],
+          'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_sec', 'act_treasure_cooldown_sec', 'act_item_cooldown_sec', 'move_cool_h'],
         battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
           'garrison_break_pct', 'battle_round_ms', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base',
           'min_dmg_coeff', 'conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'placate_gold',
@@ -725,176 +721,127 @@ export default {
       // ★ 各配置项的悬停说明（鼠标移到标题后的 i 图标上显示）
       //   文案口径以后端 model/ezfy.go 的 EzfyCfgLimit 注释为准，改逻辑时同步改这里
       tips: {
-        military_max: '军事区建筑（司令部、参谋部、军工厂、围墙等）最多可建数量，默认 36',
-        resource_max: '资源区建筑（农田、炼钢厂、石油基地、稀矿厂）最多可建数量，默认 36',
-        house_max: '民居最多可建数量，默认 33',
-        factory_max: '军工厂最多可建数量，填 0 = 不限（当前线上值 20）',
-        build_queue_max: '每座城市同时进行的建造/升级数量上限（军事区+资源区共用），默认 5；玩家可用「征募告示」道具临时 +1 个（24 小时，最多叠加 10 个）',
-        notice_home_count: '游戏首页公告栏展示的公告条数，填 0 = 首页不展示，默认 1',
-        gather_max_per_order: '单次出征最多可使用几个集结令，默认 99',
-        sell_price_max: '玩家挂单出售资源的单价上限（黄金/单位）：1:100 = 卖 1 粮食价格不能超过 100，数量随意；默认 100，0 = 回落默认',
-        sys_sell_fee: '玩家把资源直接卖给系统时扣除的手续费百分比，默认 30%。' +
-          '低于约 24% 时，商城「大资源包」低买高卖仍有利润（5 万买入整套卖系统毛收入 6.5 万），建议保持 30%。',
-        sys_sell_daily_limit: '每个玩家每天每种资源最多可卖给系统的数量，默认 100 万；填 0 = 不限。' +
-          '按自然日重置（服务器本地时间），出售前校验，超限会提示已售/剩余额度。',
-        officer_cap_per_military: '出征军官每 1 点军事属性累加的出征上限，默认 2000（与司令部/科技/集结令叠加），0 = 回落默认',
-        officer_speed_per_military: '出征军官每 1 点军事属性加成的行军速度（%）：0.1 = 每点 +0.1%，1000 军事约 2 倍速；0 = 回落默认',
-        mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 999',
-        bag_item_max: '【单个道具】的持有上限（不是整个背包的总量）：同一种道具最多能持有多少个；购买/掉落超过就不再入包，默认 5000',
-        treasure_max: '【宝物总库存】上限（所有采集宝物合计，不是每种各 5000）：采集/掉落/开箱/签到超过就不再入包，默认 5000',
-        troop_max: '单座城市的兵力上限（含训练队列中尚未出厂的新兵），超出将拒绝训练或恢复，默认 50 亿',
-        wound_expire_days: '伤兵在营超过该天数自动消失；按最后一次入营时间计算，期间有新伤兵入营会顺延，默认 3 天',
-        dispatch_period_h: '驻守采集每满该小时数结算一期（宝物+资源），默认 1 小时',
-        march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
-        conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 5',
-        loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 3',
-        feelings_recover_seconds: '民心被掠夺/征服扣掉后，平滑回归到上限所需的秒数，默认 3600 秒（1 小时）。' +
-          '恢复上限受「民心 + 民怨 + 税率 = 100」约束：民怨没清掉时民心最多只能回到 100 − 税率 − 民怨，' +
-          '用安抚把民怨清到 0 后民心才会继续往上涨（例：民心50 民怨40 税率10 → 民心只能回 50，清民怨后可回 90）。',
-        feelings_drop_seconds: '民心高于上限（上调税率 / 民怨上升）时，平滑回归降到上限所需的秒数，默认 3600 秒（1 小时）。' +
-          '例如民怨 0 时把税率调到 90%，民心会在一小时内从 80 平滑降到 10，不再瞬间暴跌。',
+        military_max: '军事区建筑（司令部、参谋部、军工厂、围墙等）可建造数量上限，默认 36。',
+        resource_max: '资源区建筑（农田、炼钢厂、石油基地、稀矿厂）可建造数量上限，默认 36。',
+        house_max: '民居可建造数量上限，默认 33。',
+        factory_max: '军工厂可建造数量上限，0 = 不限。',
+        build_queue_max: '每座城市同时建造或升级的数量上限（军事区、资源区共用），默认 5；「征募告示」可临时增加，最多叠加 10 个。',
+        notice_home_count: '首页公告栏展示条数，0 = 不展示，默认 1。',
+        gather_max_per_order: '单次出征最多可使用的集结令数量，默认 99。',
+        sell_price_max: '挂单出售资源的单价上限（黄金/单位）：100 = 每单位最多卖 100 黄金，默认 100。',
+        sys_sell_fee: '资源直接卖给系统时收取的手续费百分比，默认 30%。' +
+          '低于 24% 时商城资源包可低买高卖套利，建议保持 30%。',
+        sys_sell_daily_limit: '每个玩家每日每种资源可卖给系统的数量上限，默认 0 = 不限；' +
+          '填大于 0 时按自然日重置，超出后当日不可再卖。',
+        officer_cap_per_military: '出征军官每 1 点军事属性增加的出征上限，默认 2000。',
+        officer_speed_per_military: '出征军官每 1 点军事属性增加的行军速度百分比，默认 0.1（1000 点军事约提升 1 倍速度）。',
+        mall_buy_max: '商城单次可购买数量上限，默认 999。',
+        bag_item_max: '单个道具的持有上限（同种道具合计），超出后购买与掉落不再入包，默认 5000。',
+        treasure_max: '宝物总库存上限（所有采集宝物合计），超出后停止采集、掉落不入包，默认 5000。',
+        troop_max: '单座城市兵力上限（含训练队列中未出厂的新兵），默认 50 亿。',
+        wound_expire_days: '伤兵在营存活天数，超时自动消失；有新伤兵入营则重新计时，默认 3 天。',
+        dispatch_period_h: '驻守采集每满该小时数结算一期（资源与宝物），默认 4 小时。',
+        march_speed_bonus: '出征行军速度加成百分比：100 = 行军时间减半，默认 0（无加成）。',
+        conquer_feelings_max: '征服成功时最多扣除目标多少民心，默认 5。',
+        loot_feelings: '掠夺成功时固定扣除目标多少民心，默认 3。',
+        feelings_recover_seconds: '民心低于上限时，按该秒数平滑回升至上限，默认 3600 秒。' +
+          '上限受「民心 + 民怨 + 税率 = 100」限制：民怨未清除时民心无法回满。',
+        feelings_drop_seconds: '民心高于上限（上调税率或民怨上升）时，按该秒数平滑下降至上限，默认 3600 秒。',
         // ★ 2026-10-23 战斗公式来源（按套维护）
-        battle_formula_id: '选择本服生效的战斗公式：内置配置 = 使用本页下方 11 项数值；选某个公式套 = 整套覆盖下方数值，立即生效。' +
-          '公式套在「战斗公式」页新建/编辑/复制，可维护多套随时切换',
-        damage_formula: '内置配置固定使用原版公式，公式套可随时在原版/家园版之间切换，切换后立即生效。' +
-          '原版 = (攻击×攻击系数+加值)÷(防御×(1+防御%)×防御系数+加值)×数量，再乘攻击加成；' +
-          '家园版 = 数量×基础伤害²×(1+攻击%)÷[基础防御×(1+防御%)]（图片公式）。' +
-          '家园版不使用暴击基础伤害加成/攻击系数/攻击加值/防御系数/防御加值/最小伤害系数这 6 项，选中家园版时表单会自动隐藏。' +
-          '城墙耐久只有征服战会扣，掠夺战忽略城墙。',
-        show_battle_bonus_detail: '回合行动日志是否展示加成来源明细「(军官·名+% 科技·+% 装备+%…)」：' +
-          '默认展示；关闭后只显示加成总百分比（如「攻击加成+79%」）。' +
-          '明细原始数据仍完整存进战场快照，关闭展示不影响事后对账。',
+        battle_formula_id: '本服生效的战斗公式：内置配置 = 使用下方各项数值；选公式套 = 整套覆盖下方数值，立即生效。' +
+          '公式套在「战斗公式」页新建、编辑、复制。',
+        damage_formula: '伤害算法。原版 = (攻击×攻击系数+加值) ÷ (防御×(1+防御%)×防御系数+加值) × 数量，再乘攻击加成；' +
+          '家园版 = 数量×基础伤害²×(1+攻击%) ÷ [基础防御×(1+防御%)]，不使用暴击加成、攻防系数与最小伤害系数（选中后自动隐藏）。' +
+          '城墙耐久仅征服战扣除。',
+        show_battle_bonus_detail: '回合行动日志是否展示加成来源明细（军官、科技、装备各占多少）。' +
+          '关闭后只显示加成总百分比，原始数据仍完整存档。',
         // ★ 2026-10-13 回合战斗公式（可调，默认 = 移植前的硬编码值）
-        battle_max_rounds: '单场战斗最多打多少回合：打满仍未分胜负则按平局处理（守方视为守住，攻方无胜果），默认 40，可调 1~200',
-        battle_start_dist: '战场初始距离：攻方从 0 出发、守方站在该距离处（两者相距该值），默认 6000，可调 1000~50000。' +
-          '调小 → 双方更快接火，战斗总回合数变少；调大 → 需要更多回合才够得着',
-        battle_retreat_max: '双方「后退」指令的最远退距：攻方最低 -该值、守方最高「初始距离+该值」，超出夹回，默认 10000，可调 1000~100000',
-        crit_base_bonus_pct: '暴击基础伤害加成(%)：装备只配了暴击几率、没配暴击伤害（crit_dmg = 0）时按该值算暴击伤害，' +
-          '默认 50 = 暴击伤害 ×1.5，可调 1~500。例：黑色幽灵[徽章] crit=125 / crit_dmg=0，按老公式伤害不变、' +
-          '「出了暴击但跟没暴一样」；本配置兜底让这类装备也有暴击加成',
-        garrison_break_pct: '盟军驻军战「溃败撤退」阈值(%)：守方剩余兵力跌破初始兵力的该百分比即判定战败、战斗提前结束，' +
-          '剩余部队自动返航回出发城市（不再死战到全灭），默认 50 = 剩一半就撤，可调 1~100。调 100 = 一挨打就撤、调 1 = 基本打到底',
+        battle_max_rounds: '单场战斗最多回合数，打满仍未分胜负按平局处理，默认 40。',
+        battle_start_dist: '战场初始距离：攻方从 0 出发、守方站在该距离处，默认 6000。调小接火更快、回合更少。',
+        battle_retreat_max: '双方「后退」指令的最远退距，超出后夹回，默认 10000。',
+        crit_base_bonus_pct: '装备仅配置暴击几率、未配置暴击伤害时使用的暴击伤害加成，默认 50（暴击伤害 ×1.5）。',
+        garrison_break_pct: '盟军驻军战的溃败撤退阈值：守方剩余兵力跌破初始兵力的该百分比即判负并返航，默认 50。',
         // ★ 2026-10-13 伤害公式系数 + 每回合时长
-        battle_round_ms: '指挥室实时战斗每回合时长（毫秒，默认 30000 = 30 秒）：前 25 秒可下指令、最后 5 秒锁定。' +
-          '可调 25000~120000（≥ 25 秒的指令窗口，调小了指挥室会一直处于锁定态）',
-        atk_coeff: '伤害公式分子系数：伤害 = (攻×攻系数+攻加值) ÷ (防×(100+防加成%)×防系数+防加值) × 数量，再乘攻加成。' +
-          '本项是「攻系数」，默认 5，可调 1~100。调大 → 攻击方伤害整体变高',
-        atk_base: '伤害公式分子加值（默认 1000，可调 1~100000）：攻击很低时靠它保底打出基础伤害，调大 → 小兵力也能打出可观伤害',
-        def_coeff: '伤害公式分母系数（默认 3，可调 1~100）：防系数越大，防御属性对伤害的削减越明显 → 战斗更持久',
-        def_base: '伤害公式分母加值（默认 10，可调 1~100000）：防止防御为 0 时公式除零爆炸，调大 → 整体伤害被压低',
-        min_dmg_coeff: '最小伤害系数（默认 5，可调 1~1000）：单支部队最小伤害 = 兵力数量 × 系数。调大 → 再弱的部队也打得动',
-        ransom_cost: '被占城市原主人发起赎城需先支付的钻石押金（发起即扣，拒绝/撤销自动退回，同意返还后归占领方），默认 500',
+        battle_round_ms: '指挥室实时战斗每回合时长（毫秒），默认 30000（前 25 秒可下指令、后 5 秒锁定）；最小 25000。',
+        atk_coeff: '伤害公式的攻击系数，默认 5。调大则攻击方伤害整体提高。',
+        atk_base: '伤害公式的攻击加值，默认 1000。攻击力很低时靠它保底打出伤害。',
+        def_coeff: '伤害公式的防御系数，默认 3。调大则防御属性削减伤害更明显，战斗更持久。',
+        def_base: '伤害公式的防御加值，默认 10。防止防御为 0 时公式异常。',
+        min_dmg_coeff: '最小伤害系数，默认 5：单支部队最小伤害 = 兵力数量 × 该值。',
+        ransom_cost: '被占城市原主人赎城需先支付的钻石押金（拒绝或撤销自动退回，同意后归占领方），默认 500。',
         // ★ 2026-09-28 安抚：民心 + 税率 = 100 为基准，安抚只是临时顶一下民心、压一压民怨
-        placate_gold: '每次安抚消耗的黄金，默认 5 万',
-        placate_grievance: '每次安抚降低多少民怨（民怨 > 0 会持续掉人口），默认 2',
-        placate_feelings: '每次安抚提升多少民心（之后会以每分钟 1 点的速度回归到「100 − 税率」基准），默认 1',
-        placate_cooldown_min: '同一城市两次安抚之间的冷却分钟数，默认 15',
-        officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算一并扣除，默认 20',
-        wound_heal_divisor: '恢复 1 个伤兵消耗「该兵种总造价 ÷ 该值」黄金（最低 1 黄金），默认 50',
-        wound_heal_rate: '在上一条算出的恢复费用上再打折：100 = 原价、50 = 半价，默认 100',
-        heal_all_diamond: '伤兵营「一键恢复全部伤兵」的钻石单价（不按伤兵数量计，一次固定扣该数值），默认 100',
-        wild_troop_mult: '野地 / 海野 / 寇城守军兵力 = 配置值 × 该倍数（可填小数，2 = 翻倍），默认 10',
-        wild_res_mult: '野地 / 海野 / 寇城战斗胜利后的战利品资源 × 该倍数（可填小数，2 = 翻倍，5 = 五倍），默认 10。' +
-          '只影响「打赢的战利品」，不含驻守采集的产出；地图上选中野地时的「胜利奖励」会同步显示放大后的数值。',
+        placate_gold: '每次安抚消耗的黄金，默认 5 万。',
+        placate_grievance: '每次安抚降低的民怨值，默认 2。',
+        placate_feelings: '每次安抚提升的民心值，默认 1。',
+        placate_cooldown_min: '同一城市两次安抚的最短间隔（分钟），默认 15。',
+        officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算扣除，默认 20。',
+        wound_heal_divisor: '恢复 1 个伤兵消耗「该兵种总造价 ÷ 该值」黄金（最低 1），默认 50。',
+        wound_heal_rate: '伤兵恢复费用的折扣率：100 = 原价，50 = 半价，默认 100。',
+        heal_all_diamond: '伤兵营「一键恢复全部伤兵」的钻石单价（每次固定收取，与数量无关），默认 100。',
+        wild_troop_mult: '野地、海野、寇城守军的兵力倍率，默认 10；支持小数（0.5 = 减半）。',
+        wild_res_mult: '野地、海野、寇城战斗胜利的战利品资源倍率，默认 10；不含驻守采集产出。',
         // ★★ 2026-10-21 采集新公式：F = 部队总兵力 × 整点小时 × 野地加成% × 后勤 ÷ 除数
         //   （M = 出征部队所有兵种数量之和，兵种差异只体现在负重；卡片兵种 ID 配置已废弃，不再展示）
-        gather_wild_bonus_pct: '野地加成 R 的每级百分比，默认 3（即每 1 级 3%）。' +
-          'R = 出发城市名下「与该野地同资源」的所有野地总等级 × 本值。' +
-          '例：10 级森林 + 4 级森林 = 14 级 → 粮食野地加成 14 × 3% = 42%。',
-        gather_formula_divisor: '采集公式的除数，默认 2：F = 部队兵力总数 × 整点小时 × 野地加成% × 军官后勤 ÷ 该值。' +
-          '线上原版为 2；调小 = 产量提高，调大 = 产量降低。',
+        gather_wild_bonus_pct: '每 1 级同资源野地提供的采集加成百分比，默认 3。' +
+          '例：名下共 14 级粮食野地 → 粮食野地加成 14 × 3% = 42%。',
+        gather_formula_divisor: '采集公式的除数，默认 2；数值越大产量越低。',
         // ★ 2026-10-21 海野采集倍率（简约提示：玩家端不展示倍率细节）
-        gather_sea_bonus_mult: '海野（海底森林/岛屿/渔场/矿礁）采集产量比陆地野地高 3 倍：海野产出 = 公式结果 × 该倍率，陆地野地不乘。' +
-          '默认 3 倍，二战系统配置可调整；允许小数，填 1 表示与陆地同权。',
+        gather_sea_bonus_mult: '海野采集产量倍率：海野产出 = 公式结果 × 该值，默认 3；陆地野地不生效。',
         // ★ 2026-09-26 城市资源产量倍率
         // ★ 2026-10-05 拆开：只作用于粮/钢/油/稀矿（黄金走 gold_prod_mult）
-        res_prod_mult: '城市每小时产出的粮/钢/油/稀矿 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
-          '★ 填 0 表示资源产量归零（合法值）。资源详情页的「基础/加成/总产量」会同步按倍率显示。黄金产量请调「黄金产量加成倍率」。',
+        res_prod_mult: '城市每小时粮、钢、油、稀矿的产量倍率，默认 1；0 = 停产。',
         // ★ 2026-10-05 黄金产量加成倍率（与资源倍率拆开）
-        gold_prod_mult: '城市每小时产出的黄金 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
-          '★ 填 0 表示黄金产量归零（合法值）。只影响黄金，粮/钢/油/稀矿走「资源产量加成倍率」。',
+        gold_prod_mult: '城市每小时黄金产量倍率，默认 1；0 = 停产。',
         // ★ 2026-09-28 市长加成倍率
-        mayor_gain_mult: '市长产生的城市产量加成% 整体 × 该倍数（可填小数，默认 1 现状）。' +
-          '★ 填 0 表示关闭市长加成（合法值）。',
+        mayor_gain_mult: '市长产量加成倍率，默认 1；0 = 关闭市长加成。',
         // ★ 2026-09-28 军校刷新周期
-        recruit_cycle_mode: '军校免费刷新次数的重置周期。按小时（默认）= 每小时重置；按天 = 每天 0 点重置。',
+        recruit_cycle_mode: '军校免费刷新次数的重置周期：按小时（默认）每小时重置；按天每日 0 点重置。',
         // ★ 2026-10-11 打野地掉宝冷却
-        wild_treasure_cooldown_h: '打野地/寇城胜利掉落宝物的玩家级冷却（小时，默认 2）：同一玩家在冷却期内再次打地，本场不掉宝物（商城道具掉落不受影响）。' +
-          '用来压制「即使概率配得很低、打得多了照样出宝」的情况。★ 填 0 = 关闭冷却（合法值）。掉到宝物后才开始计冷却，没掉到不占冷却。',
-        // ★ 2026-10-13 打野地掉道具冷却
-        wild_item_cooldown_h: '打野地/寇城胜利掉落**商城道具**的玩家级冷却（小时，默认 1）：同一玩家在冷却期内再次打地，本场不掉商城道具（宝物掉落不受影响）。' +
-          '用来卡控「有人用脚本刷野地」的情况。★ 填 0 = 关闭冷却（合法值）。掉到道具后才开始计冷却，没掉到不占冷却。',
+        wild_treasure_cooldown_h: '打野地、寇城掉落宝物的玩家冷却（小时），默认 2；' +
+          '冷却期内再次打地不掉宝物，0 = 关闭冷却。',
+        // ★ 2026-10-26 打野地掉道具冷却（单位由小时改为秒）
+        wild_item_cooldown_sec: '打野地、寇城掉落商城道具的玩家冷却（秒），默认 1800；' +
+          '冷却期内再次打地不掉道具，0 = 关闭冷却。',
         // ★ 2026-10-24 活动目标掉落冷却（秒）
-        act_treasure_cooldown_sec: '活动目标（活动野地/活动寇城/特殊城市）胜利掉落**必掉宝物**的玩家级冷却（秒，默认 7200 = 2 小时）：' +
-          '同一玩家在冷却期内再次打赢活动目标，本场不掉必掉宝物（掉落道具不受影响）。' +
-          '★ 填 0 = 关闭冷却（合法值）。掉到宝物后才开始计冷却，没掉到不占冷却。',
-        act_item_cooldown_sec: '活动目标胜利掉落**商城道具**的玩家级冷却（秒，默认 7200 = 2 小时）：' +
-          '同一玩家在冷却期内再次打赢活动目标，本场不掉掉落道具（必掉宝物不受影响）。' +
-          '★ 填 0 = 关闭冷却（合法值）。掉到道具后才开始计冷却，没掉到不占冷却。',
+        act_treasure_cooldown_sec: '活动目标（活动野地、活动寇城、特殊城市）掉落必掉宝物的玩家冷却（秒），默认 7200；0 = 关闭冷却。',
+        act_item_cooldown_sec: '活动目标掉落商城道具的玩家冷却（秒），默认 7200；0 = 关闭冷却。',
         // ★ 2026-10-12 迁城冷却
-        move_cool_h: '迁城冷却（小时，默认 24）：**按城市算** —— 用迁城计划/高级迁城计划/沿海迁城计划迁过的**这座城**，' +
-          '要等冷却结束才能再次迁城；同一个账号的其他城市不受影响。★ 填 0 = 关闭迁城冷却（合法值）。' +
-          '冷却中玩家点迁城会提示「该城市迁城冷却中, 剩余N小时」。',
-        // ★ 2026-10-08 新玩家落地洲
-        default_continent: '新玩家首次建城、以及没有指定洲时默认落到的洲（默认欧洲）。选哪个洲，内测玩家就聚在哪个洲，方便互相征服/侦查/掠夺。',
+        move_cool_h: '迁城后该城市再次迁城需等待的小时数，默认 24；其他城市不受影响，0 = 关闭冷却。',
+        // ★ 2026-10-08 新玩家落地洲（★ 2026-10-26 新增「随机洲落」）
+        default_continent: '新玩家首次建城的落地洲，默认欧洲；选「随机洲落」则每次在七大洲中随机选择。',
         // ★ 2026-10-22 驻军批量操作范围
-        garrison_batch_scope: '「一键采集 / 一键收获 / 一键召回」的处理范围。当前城市（默认）= 只处理当前城市出发的驻军，' +
-          '与「军情 → 驻军」列表口径一致；全部城市 = 一次处理账号下所有城市的驻军，适合多城玩家。' +
-          '全部城市会读取/结算更多部队，但后端已按批预取野地、城市与科技数据（查询次数不随部队数增长），前端仍保留 3 秒防连点。',
-        speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
-        speed_train_on: '训练一键加速开关：开 = 训练页展示并使用「训练一键加速 / 所有城市训练一键加速」；关 = 按钮隐藏、接口也拒绝（默认开）',
+        garrison_batch_scope: '「一键采集、一键收获、一键召回」的处理范围：当前城市（默认）只处理本城出发的驻军；' +
+          '全部城市一次处理账号下所有城市的驻军。',
+        speed_train_rate: '训练一键加速费用倍率：费用 = 剩余秒数 × 10 × 该值 ÷ 100，默认 0.1；100 = 原价，50 = 半价。',
+        speed_train_on: '训练一键加速开关：开 = 展示并使用加速按钮；关 = 按钮隐藏且接口拒绝。',
         // ★ 2026-09-27：资源最大值 = **每项资源唯一硬上限**，产量/获取统一累加到该值为止（不再看仓储）
-        res_max_food: '粮食的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
-          '自动产量（农田等产出）同样累加，都到该值后不再增加。换算参考：1 亿 = 100000000、21 亿 = 2100000000；' +
-          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
-        res_max_steel: '钢铁的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的钢铁会无条件累加，' +
-          '自动产量（炼钢厂等产出）同样累加，都到该值后不再增加。换算参考：1 亿 = 100000000、21 亿 = 2100000000；' +
-          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
-        res_max_oil: '石油的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的石油会无条件累加，' +
-          '自动产量（石油基地等产出）同样累加，都到该值后不再增加。换算参考：1 亿 = 100000000、21 亿 = 2100000000；' +
-          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
-        res_max_rare: '稀有矿的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的稀有矿会无条件累加，' +
-          '自动产量（稀矿厂等产出）同样累加，都到该值后不再增加。换算参考：1 亿 = 100000000、21 亿 = 2100000000；' +
-          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
-        res_max_gold: '黄金的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的黄金会无条件累加，' +
-          '自动产出同样累加，都到该值后不再增加。换算参考：1 亿 = 100000000、21 亿 = 2100000000；' +
-          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
-        war_require_on: '开 = 必须向对方宣战才能掠夺 / 征服其城市；关 = 无需宣战即可直接进攻',
-        march_cap_on: '开 = 出征兵力受司令部等级上限限制；关 = 不限兵力，随便带多少',
-        recruit_cost_on: '开 = 征兵消耗资源并占用空闲人口；关 = 不消耗资源、也不占人口',
-        train_mayor_military_on: '开 = 新建训练队列的单个兵耗时按 floor(兵种面板时间 × 250/(250+市长军事) × 10/(10+军训艺术等级)) 计算；' +
-          '关 = 市长军事按 0 处理，仍吃军训艺术等级。默认开。' +
-          '已有训练队列的结束时间在创建时就固定，改开关不会重算。',
-        train_mayor_equip_on: '开 = 市长军事取「军官自身 + 装备 + 套装」；关 = 只取军官自身军事（装备/套装不计入）。' +
-          '仅在「造兵市长军事加成」开启时有效。默认开。',
-        food_upkeep_on: '开 = 城内军队每小时扣除粮食；关 = 不扣',
-        march_oil_on: '开 = 出征消耗石油；关 = 不消耗',
-        convene_food_cost: '玩家点一次「召集」消耗的粮食数，默认 10 万（=100000）',
-        convene_pop_pct: '玩家点一次「召集」获得的人口 = 当前民居上限 × 该百分比，默认 10%。' +
-          '人口未满时加到民居上限为止；人口已满时总人口不变，本次召集量转为临时空闲人口。' +
-          '例如民居上限 5 万 → 召集一次 +5000 人口；向下取整，至少 1 人。' +
-          '允许超过 100%：填 250 = 召集一次获得民居上限的 2.5 倍人口。',
-        convene_cooldown_seconds: '普通状态下两次召集的最短间隔，默认 3 秒。' +
-          '改小可加快测试；保存后立即生效，前端按钮冷却和后端校验同时跟随。',
-        convene_cap_cooldown_seconds: '人口达到/超过民居上限后，两次召集的最短间隔，默认 300 秒（5 分钟）。' +
-          '人口已满时召集仍可用，总人口不变，只增加临时空闲人口。' +
-          '测试时可临时改成 5 秒，保存后立即生效。',
-        pop_recover_seconds: '训练消耗人口后，这部分空闲人口不会瞬间归还，而是在该时间内线性恢复满（默认 1200 秒 = 20 分钟）。' +
-          '有新训练消耗人口时会重新起算；玩家可用「移民法案」道具（2 钻石）瞬间恢复 1 万空闲人口',
-        pop_extra_decay_seconds: '人口达到民居上限后，召集/移民法案产生的临时空闲人口会在这个时间内线性回落到 0（默认 300 秒 = 5 分钟）。' +
-          '每次新召集会重新起算；改大后临时空闲可保留更久，方便测试或活动期放宽。',
-        pvp_rank_on: '开 = 玩家对战结算按自然周写入风云榜（现行为）；关 = 完全不统计（榜单为空，历史周榜保留，重新开启即继续累计）。' +
-          '与「排行榜 → 风云榜」页顶部的开关是同一项配置',
-        loot_broadcast_on: '采集（驻守结算 / 一键收获）掉宝物时，是否往世界频道（系统频道）播「恭喜玩家 xx 采集收获宝物」。' +
-          '默认关闭：关闭后**既不播报，也不写入播报库**（系统频道聊天记录里查不到）；' +
-          '开启则恢复播报，且仍按「只播最近一期」合并成一条。战报里的「获得宝物」不受此开关影响。',
-        officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
-        officer_star_chance: '每次升星的成功概率，失败同样消耗 1 枚星级徽章，默认 20',
-        officer_star_attr_gain: '每升 1 星，军官三维（军事/后勤/学识）各自独立随机 +1~N，默认 10。' +
-          '例：配 10 → 军事随机 1~10、后勤随机 1~10、学识随机 1~10，三项互不相等也没关系。',
-        officer_star_max: '军官最高可升到的星级，默认 5',
+        res_max_food: '粮食的唯一硬上限，默认 21 亿（2100000000）；产量与一切获取方式累加至此为止，范围 1 ~ 1 万亿。',
+        res_max_steel: '钢铁的唯一硬上限，默认 21 亿（2100000000）；产量与一切获取方式累加至此为止，范围 1 ~ 1 万亿。',
+        res_max_oil: '石油的唯一硬上限，默认 21 亿（2100000000）；产量与一切获取方式累加至此为止，范围 1 ~ 1 万亿。',
+        res_max_rare: '稀有矿的唯一硬上限，默认 21 亿（2100000000）；产量与一切获取方式累加至此为止，范围 1 ~ 1 万亿。',
+        res_max_gold: '黄金的唯一硬上限，默认 21 亿（2100000000）；产量与一切获取方式累加至此为止，范围 1 ~ 1 万亿。',
+        war_require_on: '开 = 掠夺、征服他城需先宣战；关 = 无需宣战。',
+        march_cap_on: '开 = 出征兵力受司令部等级上限限制；关 = 不限兵力。',
+        recruit_cost_on: '开 = 征兵消耗资源并占用空闲人口；关 = 均不消耗。',
+        train_mayor_military_on: '开 = 造兵时间按「面板时间 × 250/(250+市长军事) × 10/(10+军训艺术等级)」向下取整计算；' +
+          '关 = 市长军事按 0 计。已开始的训练队列不受影响。',
+        train_mayor_equip_on: '开 = 市长军事含装备与套装加成；关 = 只计军官自身军事。仅在「造兵市长军事加成」开启时生效。',
+        food_upkeep_on: '开 = 城内军队每小时扣除粮食；关 = 不扣。',
+        march_oil_on: '开 = 出征消耗石油；关 = 不消耗。',
+        convene_food_cost: '每次召集消耗的粮食数量，默认 10 万（100000）。',
+        convene_pop_pct: '每次召集获得的人口 = 当前民居上限 × 该百分比，默认 10%；人口已满时转为临时空闲人口，可超过 100。',
+        convene_cooldown_seconds: '普通状态下两次召集的最短间隔（秒），默认 3。',
+        convene_cap_cooldown_seconds: '人口达到民居上限后，两次召集的最短间隔（秒），默认 300。',
+        pop_recover_seconds: '训练占用的空闲人口恢复满所需时间（秒），默认 1200；有新训练时重新计时。',
+        pop_extra_decay_seconds: '临时空闲人口回落到 0 所需时间（秒），默认 300；每次新召集重新计时。',
+        pvp_rank_on: '开 = 玩家对战结算计入风云榜；关 = 不统计（历史周榜保留）。与「排行榜 → 风云榜」页顶部开关为同一项配置。',
+        loot_broadcast_on: '开 = 采集获得宝物时在世界频道播报；关 = 不播报，也不写入播报记录（默认关）。',
+        officer_star_up_on: '开 = 可用星级徽章为军官升星；关 = 关闭该功能。',
+        officer_star_chance: '每次升星的成功概率（%），失败同样消耗 1 枚星级徽章，默认 20。',
+        officer_star_attr_gain: '每升 1 星，军事、后勤、学识各自随机 +1 ~ 该值，默认 10。',
+        officer_star_max: '军官可达到的最高星级，默认 5。',
         // ★ 2026-09-30 招生简章出五星军官概率
-        recruit_five_star_rate: '使用「招生简章」刷新军校候选时出 5 星军官的概率（百分比）：1 = 1%，100 = 100% 必刷出 5 星军官',
+        recruit_five_star_rate: '使用招生简章刷新军校时出现 5 星军官的概率（%），默认 1；100 = 必出。',
       }
     }
   },
@@ -906,10 +853,9 @@ export default {
     },
     formulaSourceTip () {
       const extra = this.activeFormulaIsHome
-        ? '当前生效的是家园版，原版专用的暴击加成/攻击系数/攻击加值/防御系数/防御加值/最小伤害系数 6 项不生效，已自动隐藏。'
-        : '内置配置/原版公式会使用下方全部数值。'
-      return '内置配置 = 使用下方 11 项数值；选择公式套后下方 11 项不生效，以所选套为准。' +
-        '当前生效：' + this.activeFormulaName + '。' + extra + '公式套可在「战斗公式」页新建/编辑。'
+        ? '当前为家园版，原版专用的 6 项数值不生效并已隐藏。'
+        : '内置配置与所选公式套均使用下方全部数值。'
+      return '当前生效：' + this.activeFormulaName + '。选择公式套后，下方各项数值不再生效，以所选套为准。' + extra
     },
     // ★ 2026-10-24 当前生效公式是否为家园版：是则隐藏原版专用的 6 项配置
     activeFormulaIsHome () {
@@ -918,12 +864,10 @@ export default {
       return !!(f && Number(f.damage_formula) === 1)
     },
     formulaTabTip () {
-      return '战斗公式按套维护，本服选择其中一套生效；「内置配置」= 使用「战斗与经济」页里的 11 项数值。' +
-        '使用/保存后立即生效。'
+      return '战斗公式按套维护，本服选择其中一套生效；「内置配置」使用「战斗与经济」页的各项数值。切换后立即生效。'
     },
     formulaToolbarTip () {
-      return '共 ' + this.formulas.length + ' 套，当前生效：' + this.activeFormulaName + '。' +
-        '公式套的「使用 / 保存」都会立即生效，本页不需要再点保存。'
+      return '共 ' + this.formulas.length + ' 套，当前生效：' + this.activeFormulaName + '。使用或保存后立即生效。'
     },
     visibleFormulaFields () {
       if (Number(this.formulaForm.damage_formula) !== 1) return this.formulaFields
@@ -973,10 +917,11 @@ export default {
             sell_price_max: pos(r.data.sell_price_max, 100),
             // ★ 2026-10-22 系统回收手续费（0/越界无意义 → 默认 30）
             sys_sell_fee: pos(r.data.sys_sell_fee, 30),
-            // ★ 2026-10-22 每日每种资源上限：**0 合法 = 不限**，不能用 pos()（会把 0 改回 100 万）
+            // ★ 2026-10-22 每日每种资源上限：**0 合法 = 不限**（★ 2026-10-26 起默认就是 0），
+            //   不能用 pos()（会把 0 改回 100 万）
             sys_sell_daily_limit: (r.data.sys_sell_daily_limit === undefined || r.data.sys_sell_daily_limit === null ||
               isNaN(Number(r.data.sys_sell_daily_limit)))
-              ? 1000000 : Math.max(0, Number(r.data.sys_sell_daily_limit)),
+              ? 0 : Math.max(0, Number(r.data.sys_sell_daily_limit)),
             officer_cap_per_military: pos(r.data.officer_cap_per_military, 2000),
             officer_speed_per_military: (r.data.officer_speed_per_military === undefined || r.data.officer_speed_per_military === null)
               ? 0.1 : r.data.officer_speed_per_military,
@@ -1025,9 +970,9 @@ export default {
             // ★ 2026-10-11 打野地掉宝冷却：**0 合法 = 关闭冷却**，不能用 pos()（会把 0 改回 2）
             wild_treasure_cooldown_h: (r.data.wild_treasure_cooldown_h === undefined || r.data.wild_treasure_cooldown_h === null)
               ? 2 : Number(r.data.wild_treasure_cooldown_h),
-            // ★ 2026-10-13 打野地掉道具冷却：**0 合法 = 关闭冷却**，不能用 pos()（会把 0 改回 1）
-            wild_item_cooldown_h: (r.data.wild_item_cooldown_h === undefined || r.data.wild_item_cooldown_h === null)
-              ? 1 : Number(r.data.wild_item_cooldown_h),
+            // ★ 2026-10-26 打野地掉道具冷却（秒）：**0 合法 = 关闭冷却**，不能用 pos()（会把 0 改回 1800）
+            wild_item_cooldown_sec: (r.data.wild_item_cooldown_sec === undefined || r.data.wild_item_cooldown_sec === null)
+              ? 1800 : Number(r.data.wild_item_cooldown_sec),
             // ★ 2026-10-24 活动目标掉落冷却：**0 合法 = 关闭冷却**，不能用 pos()（会把 0 改回 7200）
             act_treasure_cooldown_sec: (r.data.act_treasure_cooldown_sec === undefined || r.data.act_treasure_cooldown_sec === null)
               ? 7200 : Number(r.data.act_treasure_cooldown_sec),
@@ -1038,8 +983,9 @@ export default {
               ? 24 : Number(r.data.move_cool_h),
             // ★ 2026-09-28 军校刷新周期：1=按天 2=按小时，非法回落按小时
             recruit_cycle_mode: (r.data.recruit_cycle_mode === 1) ? 1 : 2,
-            // ★ 2026-10-08 新玩家落地洲：1~7，非法回落欧洲
-            default_continent: (r.data.default_continent >= 1 && r.data.default_continent <= 7) ? r.data.default_continent : 1,
+            // ★ 2026-10-08 新玩家落地洲：0~7（★ 0 = 随机洲落），非法回落欧洲
+            default_continent: (Number(r.data.default_continent) >= 0 && Number(r.data.default_continent) <= 7)
+              ? Number(r.data.default_continent) : 1,
             // ★ 2026-10-22 驻军批量操作范围：只有明确 2 才是全部城市，老库 0 / 非法值都回落当前城市
             garrison_batch_scope: Number(r.data.garrison_batch_scope) === 2 ? 2 : 1,
             // ★ 2026-09-28 市长加成倍率：**0 合法 = 关闭**, 不能用 pos()（会把 0 改回 1）
@@ -1198,13 +1144,16 @@ export default {
 /* 配置标题后的说明图标：悬停显示提示，不占版面 */
 .cfg-tip { margin-left: 3px; padding: 1px 3px; color: #909399; font-size: 13px; cursor: help; vertical-align: -1px; }
 .cfg-tip:hover { color: #409eff; }
+/* ★ 2026-10-26 用户反馈「活动目标掉道具冷却(秒) 和 i 的位置不美观」：
+   标签文字强制单行，i 图标永远跟在标题后面同一行（配合 label-width 210px，不再折到第二行）。 */
+.farm-admin ::v-deep .el-form-item__label { white-space: nowrap; }
 .unit-hint { margin-left: 8px; font-size: 12px; color: #909399; }
 /* ★ 2026-09-25 改成 tab 后新增的两个小样式 */
 .head-hint { font-size: 12px; color: #909399; margin-right: 10px; }
 /* ★ 2026-10-18 分 tab 保存条：放在每个 tab 底部，只保存当前分类 */
 .tab-save-bar {
   display: flex; align-items: center; justify-content: space-between;
-  max-width: 660px; margin-top: 4px; padding-top: 8px;
+  max-width: 680px; margin-top: 4px; padding-top: 8px;
   border-top: 1px dashed #dcdfe6;
 }
 .save-hint { font-size: 12px; color: #909399; }

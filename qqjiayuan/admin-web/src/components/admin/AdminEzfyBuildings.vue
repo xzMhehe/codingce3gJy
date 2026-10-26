@@ -115,6 +115,64 @@
                            @size-change="s => { cfgSize = s; cfgPage = 1 }" />
           </div>
         </el-tab-pane>
+
+        <!-- ============ 建筑队列（★ 2026-10-26 由独立菜单「建筑队列管理」合并进来） ============ -->
+        <el-tab-pane label="建筑队列" name="queue">
+          <div class="toolbar">
+            <el-input v-model="qWord" placeholder="城名 / 城池ID" clearable style="width:200px"
+                      @keyup.enter.native="qPage = 1; loadQueue()" />
+            <el-button type="primary" icon="el-icon-search" @click="qPage = 1; loadQueue()">查询</el-button>
+            <div class="grow" />
+            <el-tag size="mini" type="warning">共 {{ qTotal }} 项在队列</el-tag>
+            <el-button type="warning" plain icon="el-icon-s-claim" @click="qFinishReady">完成可完成的</el-button>
+            <el-button type="success" icon="el-icon-s-claim" @click="qFinishAll">一键完成全部</el-button>
+          </div>
+          <!-- ★ 列宽按实测内容宽度定：「模式」原 95px 装不下「一键满级连锁」标签（需 113px） -->
+          <el-table :data="qList" v-loading="qLoading" stripe border max-height="620">
+            <el-table-column prop="id" label="ID" width="65" align="center" />
+            <el-table-column prop="cfg_name" label="建筑" min-width="140" show-overflow-tooltip>
+              <template slot-scope="{row}"><span class="td-main">{{ row.cfg_name || ('#' + row.building_id) }}</span></template>
+            </el-table-column>
+            <el-table-column label="等级" width="105" align="center">
+              <template slot-scope="{row}">
+                <span class="lv">Lv.</span>{{ row.level }} <span class="td-muted">→ {{ row.level + 1 }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="90" align="center">
+              <template slot-scope="{row}">
+                <el-tag size="mini" type="warning">{{ row.status_txt }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="剩余时间" width="110" align="center">
+              <template slot-scope="{row}">
+                <span :class="row.remain_sec <= 0 ? 'td-blue' : ''">{{ fmtRemain(row.remain_sec) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="模式" width="120" align="center">
+              <template slot-scope="{row}">
+                <el-tag v-if="row.chain_build === 1" size="mini" type="danger">一键满级连锁</el-tag>
+                <span v-else class="td-sub">单次</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="city_name" label="所属城池" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="owner_name" label="归属玩家" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="home_num" label="家园号" width="90" align="center" />
+            <el-table-column label="操作" width="190" align="center" fixed="right">
+              <template slot-scope="{row}">
+                <el-button size="mini" type="success" plain @click="qFinish(row)">完成</el-button>
+                <el-button size="mini" type="primary" plain @click="openSpeed(row)">加速</el-button>
+                <el-button size="mini" type="warning" plain @click="qCancel(row)">取消</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="pager-bar">
+            <div class="pager-info">共 <b>{{ qTotal }}</b> 条 · 每页 {{ qSize }} 条</div>
+            <el-pagination v-show="qTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="qTotal" :page-size="qSize"
+                           :current-page="qPage" :page-sizes="[5, 10, 20, 50, 100]"
+                           @current-change="p => { qPage = p; loadQueue() }"
+                           @size-change="s => { qSize = s; qPage = 1; loadQueue() }" />
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -274,6 +332,28 @@
         <el-button type="primary" :loading="saving" @click="doLvSave">保 存</el-button>
       </div>
     </el-dialog>
+
+    <!-- 建筑队列·加速建造（★ 2026-10-26 由独立菜单合并进来） -->
+    <el-dialog title="加速建造" :visible.sync="speedDlg" width="420px" :close-on-click-modal="false">
+      <el-form label-width="110px" size="small">
+        <el-form-item label="建筑">
+          <span class="td-main">{{ speedRow.cfg_name }}（{{ speedRow.city_name }}）</span>
+        </el-form-item>
+        <el-form-item label="加速分钟">
+          <el-input-number v-model.number="speedMinutes" :min="1" :max="1440" controls-position="right" />
+        </el-form-item>
+        <el-form-item>
+          <el-button size="mini" plain @click="speedMinutes = 10">10 分钟</el-button>
+          <el-button size="mini" plain @click="speedMinutes = 60">1 小时</el-button>
+          <el-button size="mini" plain @click="speedMinutes = 360">6 小时</el-button>
+          <el-button size="mini" plain @click="speedMinutes = 1440">24 小时</el-button>
+        </el-form-item>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="speedDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="saving" @click="doSpeed">加 速</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -299,6 +379,9 @@ export default {
       // 等级配置
       lvDlg: false, lvBuilding: {}, lvRows: [], loadingLv: false,
       lvEditDlg: false, lvForm: {},
+      // ★ 2026-10-26 建筑队列（原独立菜单「建筑队列管理」合并成这里的 tab）
+      qList: [], qTotal: 0, qPage: 1, qSize: 5, qLoading: false, qWord: '',
+      speedDlg: false, speedRow: {}, speedMinutes: 10,
       saving: false
     }
   },
@@ -327,6 +410,69 @@ export default {
     },
     onTab () {
       if (this.tab === 'cfg') this.loadCfgs()
+      else if (this.tab === 'queue') this.loadQueue()
+    },
+    // ---- 建筑队列（★ 2026-10-26 从独立页面合并进来） ----
+    fmtRemain (sec) {
+      if (sec <= 0) return '可完成'
+      const h = Math.floor(sec / 3600)
+      const m = Math.floor((sec % 3600) / 60)
+      const s = sec % 60
+      if (h > 0) return h + ' 时 ' + m + ' 分'
+      if (m > 0) return m + ' 分 ' + s + ' 秒'
+      return s + ' 秒'
+    },
+    loadQueue () {
+      this.qLoading = true
+      api.get('/admin/ezfy-build-queue', { params: { page: this.qPage, size: this.qSize, word: this.qWord } }).then(r => {
+        this.qLoading = false
+        if (r.code === 0) {
+          this.qList = r.data.list || []
+          this.qTotal = r.data.total || 0
+          this.qPage = r.data.page || 1
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.qLoading = false })
+    },
+    qFinish (row) {
+      api.post('/admin/ezfy-build-queue/' + row.id + '/finish').then(r => {
+        if (r.code === 0) { this.$message.success(r.data.msg || '已完成'); this.loadQueue() } else this.$message.error(r.msg)
+      })
+    },
+    openSpeed (row) {
+      this.speedRow = row
+      this.speedMinutes = 10
+      this.speedDlg = true
+    },
+    doSpeed () {
+      this.saving = true
+      api.post('/admin/ezfy-build-queue/' + this.speedRow.id + '/speed', { minutes: this.speedMinutes }).then(r => {
+        this.saving = false
+        if (r.code === 0) { this.speedDlg = false; this.$message.success(r.data.msg || '已加速'); this.loadQueue() }
+        else this.$message.error(r.msg)
+      }).catch(() => { this.saving = false })
+    },
+    qCancel (row) {
+      this.$confirm('取消后该建筑的建造/升级进度将丢失（等级不变），确认取消？', '提示', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-build-queue/' + row.id + '/cancel').then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已取消'); this.loadQueue() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    qFinishAll () {
+      if (!this.qTotal) { this.$message.info('当前没有建造中的建筑'); return }
+      this.$confirm('将立即完成队列中全部 ' + this.qTotal + ' 个建筑（每个完成一步），确认继续？', '一键完成', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-build-queue/finish-all').then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已全部完成'); this.loadQueue() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ★ 完成所有「剩余时间已到」的建筑 —— 定期手动点，替代自动协程
+    qFinishReady () {
+      this.$confirm('将立即完成所有「剩余时间已到」的建筑（未到时间的不动），确认继续？', '完成可完成的', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-build-queue/finish-ready').then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已完工'); this.loadQueue() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
     },
     // ---- 玩家建筑 ----
     load () {

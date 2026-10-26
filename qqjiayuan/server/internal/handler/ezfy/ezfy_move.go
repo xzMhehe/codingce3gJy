@@ -121,6 +121,10 @@ var ezfyMoveAreas = []ezfyMoveArea{
 // 都迁移到欧洲坐标 …… 尽量都在附近（内测玩家之间征服、侦查、掠夺）」。
 const ezfyDefaultMoveContinent = 1 // 欧洲
 
+// ezfyContinentRandom 新玩家落地洲配置的「随机」取值（★ 2026-10-26）：
+// 填 0 = 每次新建城在 1~7 里随机挑一个洲（见 ezfyNewPlayerContinent）。
+const ezfyContinentRandom = 0
+
 func ezfyMoveAreaOf(id int) *ezfyMoveArea {
 	for i := range ezfyMoveAreas {
 		if ezfyMoveAreas[i].ID == id {

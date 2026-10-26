@@ -31,8 +31,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		LootBroadcastOn: ezfyLootBroadcastDef,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
 		WildTreasureCooldownH: ezfyWildTreasureCooldownDef,
-		// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**，同样不参与 <=0 兜底）
-		WildItemCooldownH: ezfyWildItemCooldownDef,
+		// ★ 2026-10-26 打野地掉商城道具冷却**秒数**（默认 1800 = 30 分钟；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
+		WildItemCooldownSec: ezfyWildItemCooldownSecDef,
 		// ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭冷却**，同样不参与 <=0 兜底）
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
@@ -229,8 +229,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
 		lim.RecruitCycleMode = ezfyRecruitCycleHourlyDef
 	}
-	// ★ 2026-10-08 新玩家落地洲兜底（老行 0 / 越界 → 回落默认欧洲）
-	if lim.DefaultContinent < 1 || lim.DefaultContinent > 7 {
+	// ★ 2026-10-08 新玩家落地洲兜底（越界 → 回落默认欧洲）
+	//   ★ 2026-10-26 起 **0 = 随机洲落**，是合法值，不能兜底成欧洲。
+	if lim.DefaultContinent < 0 || lim.DefaultContinent > 7 {
 		lim.DefaultContinent = ezfyDefaultMoveContinent
 	}
 	// ★ 2026-10-22 驻军批量操作范围兜底（老行 0 / 非法值 → 默认当前城市）
@@ -368,8 +369,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		LootBroadcastOn *int `json:"loot_broadcast_on"`
 		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，只拦负数/越界）
 		WildTreasureCooldownH *int `json:"wild_treasure_cooldown_h"`
-		// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**，只拦负数/越界）
-		WildItemCooldownH *int `json:"wild_item_cooldown_h"`
+		// ★ 2026-10-26 打野地掉商城道具冷却秒数（默认 1800；**0 合法 = 关闭冷却**，只拦负数/越界）
+		WildItemCooldownSec *int `json:"wild_item_cooldown_sec"`
 		// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时；**0 合法 = 关闭冷却**，只拦负数/越界）
 		ActTreasureCooldownSec *int `json:"act_treasure_cooldown_sec"`
 		ActItemCooldownSec     *int `json:"act_item_cooldown_sec"`
@@ -503,8 +504,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		LootBroadcastOn: ezfyLootBroadcastDef,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
 		WildTreasureCooldownH: ezfyWildTreasureCooldownDef,
-		// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
-		WildItemCooldownH: ezfyWildItemCooldownDef,
+		// ★ 2026-10-26 打野地掉商城道具冷却**秒数**（默认 1800 = 30 分钟；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
+		WildItemCooldownSec: ezfyWildItemCooldownSecDef,
 		// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
 		ActTreasureCooldownSec: ezfyActTreasureCooldownSecDef,
 		ActItemCooldownSec:     ezfyActItemCooldownSecDef,
@@ -695,15 +696,15 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.WildTreasureCooldownH = *in.WildTreasureCooldownH
 	}
-	// ★ 2026-10-13 打野地掉商城道具冷却小时数：可配置，默认 1。**0 合法 = 关闭冷却**（所以只拦负数）；
-	//   上限 720 防呆（30 天），避免误填天文数字。
-	//   ⚠️ 不做 <=0 兜底 —— 0 是管理员「关掉冷却」的合法表达，兜底会把它改回 1。
-	if in.WildItemCooldownH != nil {
-		if *in.WildItemCooldownH < 0 || *in.WildItemCooldownH > 720 {
-			resp.ParamError(c, "打野地掉道具冷却需要在 0~720 小时之间（0 = 关闭冷却）")
+	// ★ 2026-10-26 打野地掉商城道具冷却**秒数**：默认 1800（30 分钟）。**0 合法 = 关闭冷却**（所以只拦负数）；
+	//   上限 2592000 防呆（30 天），避免误填天文数字。
+	//   ⚠️ 不做 <=0 兜底 —— 0 是管理员「关掉冷却」的合法表达，兜底会把它改回 1800。
+	if in.WildItemCooldownSec != nil {
+		if *in.WildItemCooldownSec < 0 || *in.WildItemCooldownSec > 2592000 {
+			resp.ParamError(c, "打野地掉道具冷却需要在 0~2592000 秒之间（0 = 关闭冷却）")
 			return
 		}
-		lim.WildItemCooldownH = *in.WildItemCooldownH
+		lim.WildItemCooldownSec = *in.WildItemCooldownSec
 	}
 	// ★ 2026-10-24 活动目标掉落冷却秒数：可配置，默认 7200 = 2 小时。**0 合法 = 关闭冷却**（所以只拦负数）；
 	//   上限 86400 防呆（24 小时），避免误填天文数字。
@@ -1004,11 +1005,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.RecruitCycleMode = m
 	}
-	// ★ 2026-10-08 新玩家落地洲：大洲 ID 1~7（1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）
+	// ★ 2026-10-08 新玩家落地洲：大洲 ID 0~7（★ 2026-10-26 新增 0 = 随机洲落；
+	//   1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）
 	if in.DefaultContinent != nil {
 		m := *in.DefaultContinent
-		if m < 1 || m > 7 {
-			resp.ParamError(c, "新玩家落地洲只能是 1~7（1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）")
+		if m < 0 || m > 7 {
+			resp.ParamError(c, "新玩家落地洲只能是 0~7（0 = 随机；1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）")
 			return
 		}
 		lim.DefaultContinent = m
@@ -1400,8 +1402,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
 		lim.RecruitCycleMode = ezfyRecruitCycleHourlyDef
 	}
-	// ★ 2026-10-08 新玩家落地洲兜底（老行 0 / 越界 → 回落默认欧洲）
-	if lim.DefaultContinent < 1 || lim.DefaultContinent > 7 {
+	// ★ 2026-10-08 新玩家落地洲兜底（越界 → 回落默认欧洲）
+	//   ★ 2026-10-26 起 **0 = 随机洲落**，是合法值，不能兜底成欧洲。
+	if lim.DefaultContinent < 0 || lim.DefaultContinent > 7 {
 		lim.DefaultContinent = ezfyDefaultMoveContinent
 	}
 	// ★ 2026-10-22 驻军批量操作范围兜底（老行 0 / 非法值 → 默认当前城市）
@@ -1504,10 +1507,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}{
 		// ★ 2026-10-07 赎城金额：老库补列 + NULL/<=0 兜底 500（0 无意义 = 禁止赎城）
 		{"ransom_cost", ezfyRansomCostDefault},
-		// ★ 2026-10-08 新玩家落地洲：老库补列 + NULL/越界(含0) 兜底欧洲
-		{"default_continent", ezfyDefaultMoveContinent},
 		// ★ 2026-10-22 驻军批量操作范围：老库补列 + NULL/0 兜底当前城市
 		{"garrison_batch_scope", ezfyGarrisonBatchScopeCurrent},
+		// ⚠️ default_continent 已移出本循环（2026-10-26）：0 现在是**合法值**（随机洲落），
+		//   这里 `WHERE <= 0` 会把管理员设的「随机」每次保存都打回欧洲。见下方单独处理。
 	} {
 		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
 			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
@@ -1515,18 +1518,25 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		h.DB.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) +
 			" WHERE " + c.col + " IS NULL OR " + c.col + " <= 0")
 	}
+	// ★ 2026-10-08 新玩家落地洲：老库补列 + 只回填 NULL / 越界（**0 = 随机洲落，合法，不能兜底**）
+	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "default_continent") {
+		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN default_continent int DEFAULT " + strconv.Itoa(ezfyDefaultMoveContinent))
+	}
+	h.DB.Exec("UPDATE ezfy_cfg_limit SET default_continent = " + strconv.Itoa(ezfyDefaultMoveContinent) +
+		" WHERE default_continent IS NULL OR default_continent < 0 OR default_continent > 7")
 	// ★ 2026-10-12 迁城冷却小时数（默认 24）：⚠️ 0 合法（= 关闭迁城冷却）→ 只补列 + 只回填 NULL，
 	//   不能走上面那个 `WHERE IS NULL OR <= 0` 的循环（会把管理员关掉的冷却又打开）。
 	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "move_cool_h") {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT " + strconv.Itoa(ezfyMoveCoolDef))
 	}
 	h.DB.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = " + strconv.Itoa(ezfyMoveCoolDef) + " WHERE move_cool_h IS NULL")
-	// ★ 2026-10-13 打野地掉商城道具冷却小时数（默认 1）：⚠️ 0 合法（= 关闭冷却）→ 只补列 + 只回填 NULL，
-	//   不能走上面那个 `WHERE IS NULL OR <= 0` 的循环（会把管理员关掉的冷却又打开）。
-	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "wild_item_cooldown_h") {
-		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT " + strconv.Itoa(ezfyWildItemCooldownDef))
+	// ★ 2026-10-26 打野地掉商城道具冷却**秒数**（默认 1800）：⚠️ 0 合法（= 关闭冷却）→
+	//   只补列 + 只回填 NULL，不能走上面那个 `WHERE IS NULL OR <= 0` 的循环（会把管理员关掉的冷却又打开）。
+	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "wild_item_cooldown_sec") {
+		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_sec int DEFAULT " + strconv.Itoa(ezfyWildItemCooldownSecDef))
 	}
-	h.DB.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = " + strconv.Itoa(ezfyWildItemCooldownDef) + " WHERE wild_item_cooldown_h IS NULL")
+	h.DB.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_sec = " + strconv.Itoa(ezfyWildItemCooldownSecDef) +
+		" WHERE wild_item_cooldown_sec IS NULL")
 	// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200）：⚠️ 0 合法（= 关闭冷却）→ 只补列 + 只回填 NULL，
 	//   不能走上面那个 `WHERE IS NULL OR <= 0` 的循环（会把管理员关掉的冷却又打开）。
 	for _, c := range []struct {
@@ -1660,8 +1670,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"pop_extra_decay_seconds": lim.PopExtraDecaySeconds,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
 		"wild_treasure_cooldown_h": lim.WildTreasureCooldownH,
-		// ★ 2026-10-13 打野地掉商城道具冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）
-		"wild_item_cooldown_h": lim.WildItemCooldownH,
+		// ★ 2026-10-26 打野地掉商城道具冷却秒数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
+		"wild_item_cooldown_sec": lim.WildItemCooldownSec,
 		// ★ 2026-10-24 活动目标掉落冷却秒数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
 		"act_treasure_cooldown_sec": lim.ActTreasureCooldownSec,
 		"act_item_cooldown_sec":     lim.ActItemCooldownSec,

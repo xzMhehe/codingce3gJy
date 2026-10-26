@@ -20,10 +20,11 @@
             <div class="td-sub">{{ row.terrain_name }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="归属玩家（家园号）" min-width="150" show-overflow-tooltip>
+        <!-- ★ 2026-10-26 用户要求「展示部分 变家园号展示为 游戏ID」：游戏号才是玩家报给客服的号 -->
+        <el-table-column label="归属玩家（游戏ID）" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span class="td-main">{{ row.player_name || '—' }}</span>
-            <span class="td-muted">（{{ row.home_num || '—' }}）</span>
+            <span class="td-muted">（{{ row.game_uid || row.user_id || '—' }}）</span>
           </template>
         </el-table-column>
         <!-- ★ 新增「所在州」，去掉「阵营」列 -->
@@ -32,17 +33,9 @@
         </el-table-column>
         <el-table-column prop="city_level" label="市政厅" width="70" align="center" />
         <el-table-column prop="pop" label="人口" width="135" align="center" />
-        <!-- ★ 资源、建筑/部队 不在列表里罗列，改为点击弹模态框查看 -->
-        <el-table-column label="资源" width="85" align="center">
-          <template slot-scope="{row}">
-            <el-button size="mini" type="text" @click="openRes(row)">[查看]</el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="建筑 / 部队" width="115" align="center">
-          <template slot-scope="{row}">
-            <el-button size="mini" type="text" @click="openBT(row)">[查看]</el-button>
-          </template>
-        </el-table-column>
+        <!-- ★ 2026-10-26 用户要求「分页去除资源列、建筑/部队列」：
+             这两列只有一个「[查看]」按钮，占宽还挡视线；详情里本来就有建筑/部队，
+             资源要看得进详情/编辑。列表只留关键列。 -->
         <el-table-column label="军官/野地" width="85" align="center">
           <template slot-scope="{row}">
             <span class="td-mono">{{ row.officer_num }}/{{ row.wild_num }}</span>
@@ -66,44 +59,9 @@
       </div>
     </el-card>
 
-    <!-- 资源明细（点击列表「资源 → 查看」展开） -->
-    <el-dialog :title="'资源明细 · ' + (resRow ? resRow.name : '')" :visible.sync="resDlg" width="520px">
-      <el-descriptions v-if="resRow" :column="2" size="medium" border>
-        <el-descriptions-item label="黄金">{{ fmtN(resRow.gold) }}</el-descriptions-item>
-        <el-descriptions-item label="黄金上限">{{ fmtN(resRow.gold_cap) }}</el-descriptions-item>
-        <el-descriptions-item label="粮食">{{ fmtN(resRow.food) }}</el-descriptions-item>
-        <el-descriptions-item label="粮食上限">{{ fmtN(resRow.food_cap) }}</el-descriptions-item>
-        <el-descriptions-item label="钢铁">{{ fmtN(resRow.steel) }}</el-descriptions-item>
-        <el-descriptions-item label="钢铁上限">{{ fmtN(resRow.steel_cap) }}</el-descriptions-item>
-        <el-descriptions-item label="石油">{{ fmtN(resRow.oil) }}</el-descriptions-item>
-        <el-descriptions-item label="石油上限">{{ fmtN(resRow.oil_cap) }}</el-descriptions-item>
-        <el-descriptions-item label="稀矿">{{ fmtN(resRow.rare) }}</el-descriptions-item>
-        <el-descriptions-item label="稀矿上限">{{ fmtN(resRow.rare_cap) }}</el-descriptions-item>
-      </el-descriptions>
-      <div slot="footer"><el-button @click="resDlg = false">关 闭</el-button></div>
-    </el-dialog>
-
-    <!-- 建筑 / 部队（点击列表「建筑/部队 → 查看」展开） -->
-    <el-dialog :title="'建筑 / 部队 · ' + (btRow ? btRow.name : '')" :visible.sync="btDlg" width="720px" v-loading="btLoading">
-      <template v-if="btDetail">
-        <div class="sub-title">建筑（{{ btDetail.buildings.length }}）</div>
-        <el-table :data="btDetail.buildings" size="mini" border max-height="240">
-          <el-table-column prop="id" label="ID" width="70" align="center" />
-          <el-table-column prop="cfg_name" label="建筑" min-width="120" />
-          <el-table-column prop="level" label="等级" width="70" align="center" />
-          <el-table-column label="状态" width="90" align="center">
-            <template slot-scope="{row}">{{ buildStatus[row.status] }}</template>
-          </el-table-column>
-        </el-table>
-        <div class="sub-title">部队（{{ btDetail.troops.length }}）</div>
-        <el-table :data="btDetail.troops" size="mini" border max-height="240">
-          <el-table-column prop="id" label="ID" width="70" align="center" />
-          <el-table-column prop="cfg_name" label="兵种" min-width="120" />
-          <el-table-column prop="count" label="数量" width="120" align="center" />
-        </el-table>
-      </template>
-      <div slot="footer"><el-button @click="btDlg = false">关 闭</el-button></div>
-    </el-dialog>
+    <!-- ★ 2026-10-26 用户要求「分页去除资源列、建筑/部队列」：
+         列表里这两个「[查看]」按钮已去掉，配套的「资源明细 / 建筑部队」弹窗一并删除
+         （建筑/部队在下面的「城池详情」里本来就有；资源可在「编辑城池」里看/改）。 -->
 
     <!-- 详情 -->
     <el-dialog title="城池详情" :visible.sync="detailDlg" width="860px" :close-on-click-modal="false">
@@ -113,7 +71,8 @@
           <el-descriptions-item label="城名">{{ detail.city.name }}</el-descriptions-item>
           <el-descriptions-item label="坐标">{{ detail.city.x }},{{ detail.city.y }}（{{ detail.terrain_name }}）</el-descriptions-item>
           <el-descriptions-item label="归属玩家">{{ detail.player_name || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="家园号">{{ detail.home_num || '—' }}</el-descriptions-item>
+          <!-- ★ 2026-10-26 家园号 → 游戏ID -->
+          <el-descriptions-item label="游戏ID">{{ detail.game_uid || detail.city.user_id || '—' }}</el-descriptions-item>
           <el-descriptions-item label="市政厅等级">Lv.{{ detail.city.city_level }}</el-descriptions-item>
           <el-descriptions-item label="民心/民怨">{{ detail.city.feelings }} / {{ detail.city.grievance }}</el-descriptions-item>
           <el-descriptions-item label="税率">{{ detail.city.tax_rate }}%</el-descriptions-item>
@@ -135,16 +94,6 @@
           <el-table-column prop="id" label="ID" width="70" align="center" />
           <el-table-column prop="cfg_name" label="兵种" min-width="110" />
           <el-table-column prop="count" label="数量" width="100" align="center" />
-        </el-table>
-
-        <div class="sub-title">科技（{{ detail.techs.length }}）</div>
-        <el-table :data="detail.techs" size="mini" border max-height="200">
-          <el-table-column prop="id" label="ID" width="70" align="center" />
-          <el-table-column prop="cfg_name" label="科技" min-width="110" />
-          <el-table-column prop="level" label="等级" width="70" align="center" />
-          <el-table-column label="状态" width="90" align="center">
-            <template slot-scope="{row}">{{ row.status === 1 ? '研究中' : '已掌握' }}</template>
-          </el-table-column>
         </el-table>
 
         <div class="sub-title">军官（{{ detail.officers.length }}）</div>
@@ -233,9 +182,6 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '',
       detailDlg: false, detail: null,
-      // ★ 资源 / 建筑·部队 的点击展开模态框
-      resDlg: false, resRow: null,
-      btDlg: false, btRow: null, btDetail: null, btLoading: false,
       editDlg: false, saving: false, editId: 0, form: {},
       buildStatus: { 0: '空闲', 1: '建造中', 2: '升级中' },
       orderTypes: { 1: '侦查', 2: '掠夺', 3: '征服', 4: '采集', 5: '运输', 6: '增援', 7: '派遣' },
@@ -275,8 +221,7 @@ export default {
       if (v === null || v === undefined) return '—'
       return Number(v).toLocaleString()
     },
-    load () {
-      this.loading = true
+    load () {      this.loading = true
       api.get('/admin/ezfy-cities', { params: { page: this.page, size: this.size, word: this.word } }).then(r => {
         this.loading = false
         if (r.code === 0) {
@@ -292,23 +237,6 @@ export default {
       api.get('/admin/ezfy-cities/' + row.id).then(r => {
         if (r.code === 0) this.detail = r.data
         else { this.detailDlg = false; this.$message.error(r.msg) }
-      })
-    },
-    // ★ 资源：直接弹框展示（数据已在列表行里）
-    openRes (row) {
-      this.resRow = row
-      this.resDlg = true
-    },
-    // ★ 建筑 / 部队：点击后才拉详情并弹框，避免列表里罗列一长串
-    openBT (row) {
-      this.btRow = row
-      this.btDetail = null
-      this.btDlg = true
-      this.btLoading = true
-      api.get('/admin/ezfy-cities/' + row.id).then(r => {
-        this.btLoading = false
-        if (r.code === 0) this.btDetail = r.data
-        else { this.btDlg = false; this.$message.error(r.msg) }
       })
     },
     openEdit (row) {

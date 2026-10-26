@@ -5662,18 +5662,18 @@ func parseWildTreasureDrops(raw string) []wildTreasureDrop {
 	return out
 }
 
-// ezfyWildDropReady 打野地掉落冷却是否已过：距该玩家上次掉落 >= cooldownH 小时（或从未掉过）→ true。
+// ezfyWildDropReadyMs 打野地掉落冷却是否已过：距该玩家上次掉落 >= cooldownMs 毫秒（或从未掉过）→ true。
 //
 // ★ 冷却按**玩家**维度算（不分地图/野地等级）。上次掉落时间戳(ms)存在 ezfy_profile 的 col 列
 // （宝物=wild_treasure_at / 商城道具=wild_item_at），0 = 从未掉过。
-// cooldownH <= 0 由调用方直接放行（= 关闭冷却），这里只处理 > 0 的判定。
-func (h *EzfyHandler) ezfyWildDropReady(uid uint, col string, cooldownH int) bool {
+// cooldownMs <= 0 由调用方直接放行（= 关闭冷却），这里只处理 > 0 的判定。
+func (h *EzfyHandler) ezfyWildDropReadyMs(uid uint, col string, cooldownMs int64) bool {
 	var last []int64
 	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Pluck(col, &last)
 	if len(last) == 0 || last[0] <= 0 {
 		return true // 从未掉过 / 列尚未补出（老库）→ 放行，避免误伤
 	}
-	return time.Now().UnixMilli()-last[0] >= int64(cooldownH)*3600000
+	return time.Now().UnixMilli()-last[0] >= cooldownMs
 }
 
 // ezfyWildTreasureReady 打野地掉**宝物**冷却是否已过（读 wild_treasure_at）。
@@ -5682,15 +5682,16 @@ func (h *EzfyHandler) ezfyWildDropReady(uid uint, col string, cooldownH int) boo
 // 按**玩家**维度冷却（不分地图/野地等级）。上次掉宝时间戳(ms)存 ezfy_profile.wild_treasure_at，0 = 从未掉过。
 // cooldownH <= 0 由调用方直接放行（= 关闭冷却），这里只处理 > 0 的判定。
 func (h *EzfyHandler) ezfyWildTreasureReady(uid uint, cooldownH int) bool {
-	return h.ezfyWildDropReady(uid, "wild_treasure_at", cooldownH)
+	return h.ezfyWildDropReadyMs(uid, "wild_treasure_at", int64(cooldownH)*3600000)
 }
 
 // ezfyWildItemReady 打野地掉**商城道具**冷却是否已过（读 wild_item_at）。
 //
-// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制，有人用脚本刷野地，1 小时内掉落过了就不能再次掉落」：
+// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制，有人用脚本刷野地，掉落过了就不能再次掉落」：
 // 与宝物冷却同款按**玩家**维度算，但时间戳字段独立（wild_item_at），两条掉落互不影响。
-func (h *EzfyHandler) ezfyWildItemReady(uid uint, cooldownH int) bool {
-	return h.ezfyWildDropReady(uid, "wild_item_at", cooldownH)
+// ★ 2026-10-26 冷却单位由**小时**改成**秒**（默认 1800 秒），见 ezfyWildItemCooldownSec。
+func (h *EzfyHandler) ezfyWildItemReady(uid uint, cooldownSec int) bool {
+	return h.ezfyWildDropReadyMs(uid, "wild_item_at", int64(cooldownSec)*1000)
 }
 
 // wildlandConfigLoot 野地/寇城战斗**胜利**掉落：完全按「地图管理 → 野地类型」的手动配置走。
@@ -5741,13 +5742,13 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 	// ① 商城道具掉落：[[cfg_id, 数量, 概率%],...]
 	//
 	// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制吧，有人用脚本刷野地暂时卡控，
-	//   1 小时内掉落过了就不能再次掉落，二战系统配置可配置间隔时间」→ 按**玩家**维度冷却：
-	//   距上次掉商城道具不足 ezfy_cfg_limit.wild_item_cooldown_h 小时（默认 1）则本场**不掉道具**。
-	//   冷却时长 0 = 关闭冷却（合法值）；**只卡商城道具，宝物掉落不受影响**（两条冷却各自独立）。
+	//   掉落过了就不能再次掉落，二战系统配置可配置间隔时间」→ 按**玩家**维度冷却：
+	//   距上次掉商城道具不足 ezfy_cfg_limit.wild_item_cooldown_sec 秒（★ 2026-10-26 单位改秒，默认 1800）
+	//   则本场**不掉道具**。冷却时长 0 = 关闭冷却（合法值）；**只卡商城道具，宝物掉落不受影响**（两条冷却各自独立）。
 	//   掉到道具后才刷新冷却时间戳（没掉到不占冷却）。
-	itemCooldownH := ezfyWildItemCooldownH()
+	itemCooldownSec := ezfyWildItemCooldownSec()
 	itemDropped := false
-	if itemCooldownH <= 0 || h.ezfyWildItemReady(uid, itemCooldownH) {
+	if itemCooldownSec <= 0 || h.ezfyWildItemReady(uid, itemCooldownSec) {
 		for _, d := range parseWildlandItemDrops(wcfg.DropItems) {
 			if rand.Intn(100) >= d[2] {
 				continue // 未命中概率，不掉

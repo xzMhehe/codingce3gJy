@@ -5809,15 +5809,17 @@ export default {
         })
     },
     // ★ 2026-10-14 钻石一键恢复全部伤兵（单价由二战系统配置下发 heal_all_diamond，默认 100 钻）
+    // ★ 2026-10-26 逃兵营（type=1）也走这里：同样 100 钻、同样 3 秒卡控，文案按类型区分。
     doRecoverAllDiamond (t) {
       // ★ 2026-10-15 3 秒卡控：放在 confirm 之前，连点不会重复弹确认框（与后端双保险）
       if (Date.now() - (this.lastRecoverAt || 0) < 3000) { this.notify('操作过于频繁, 请 3 秒后再试'); return }
       const cost = this.healAllDiamond || 100
-      if (!window.confirm('花费 ' + cost + ' 钻石恢复全部伤兵？')) return
+      const label = Number(t) === 1 ? '逃兵' : '伤兵'
+      if (!window.confirm('花费 ' + cost + ' 钻石恢复全部' + label + '？')) return
       api.post('/games/ezfy/troops/recover', { all: true, type: t, use_diamond: true })
         .then(r => {
           if (r.code === 0) { this.mallDiamond = null; this.lastRecoverAt = Date.now() }
-          this.alert(r, '伤兵已全部恢复', () => { this.loadTroops() })
+          this.alert(r, label + '已全部恢复', () => { this.loadTroops() })
         })
     },
     // ---- 科技 ----

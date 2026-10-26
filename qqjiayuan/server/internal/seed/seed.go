@@ -205,13 +205,15 @@ func Run(db *gorm.DB, staticDir string) {
 		addLimitCol("wound_heal_divisor", 50)
 		// ★ 2026-10-22 系统回收手续费（默认 30%）：0 无意义 → 回填 30。
 		addLimitCol("sys_sell_fee", 30)
-		// ★ 2026-10-22 每日每种资源回收上限（默认 100 万）：**0 合法 = 不限**，
-		//   所以不能走 addLimitCol（它带 `WHERE col <= 0` 回填，会把管理员设的 0 改回 100 万）
+		// ★ 2026-10-22 每日每种资源回收上限：**0 合法 = 不限**，
+		//   所以不能走 addLimitCol（它带 `WHERE col <= 0` 回填，会把管理员设的 0 改回默认）
 		//   → 只补列 + 只回填 NULL。
+		// ★ 2026-10-26 用户规则「系统回收每日上限 默认 0」：默认由 100 万改成 0（= 不限）。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "sys_sell_daily_limit") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN sys_sell_daily_limit bigint DEFAULT 1000000")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN sys_sell_daily_limit bigint DEFAULT 0")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET sys_sell_daily_limit = 1000000 WHERE sys_sell_daily_limit IS NULL")
+		db.Exec("UPDATE ezfy_cfg_limit SET sys_sell_daily_limit = 0 WHERE sys_sell_daily_limit IS NULL")
+		ezfySysSellDailyLimitDefault0(db)
 		// ★ 商城单次购买上限（★ 2026-10-22 用户规则：集结令等消耗道具单次购买上限统一 999）
 		addLimitCol("mall_buy_max", 999)
 		// ★ 2026-10-11 「玩家背包道具上限卡控，默认 5000，超过就不能再买」：
@@ -226,11 +228,13 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_treasure_cooldown_h int DEFAULT 2")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_treasure_cooldown_h = 2 WHERE wild_treasure_cooldown_h IS NULL")
-		// ★ 2026-10-13 打野地掉**商城道具**冷却小时数（默认 1）。⚠️ 0 合法（= 关闭冷却）→ 同样只补列 + 只回填 NULL。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_item_cooldown_h") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT 1")
+		// ★ 2026-10-26 打野地掉**商城道具**冷却**秒数**（默认 1800 = 30 分钟）。
+		//   ⚠️ 0 合法（= 关闭冷却）→ 只补列 + 只回填 NULL。
+		//   ★ 单位由「小时」改成「秒」：老列 wild_item_cooldown_h 保留不读，新列新口径。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_item_cooldown_sec") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_sec int DEFAULT 1800")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = 1 WHERE wild_item_cooldown_h IS NULL")
+		db.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_sec = 1800 WHERE wild_item_cooldown_sec IS NULL")
 		// ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时）。⚠️ 0 合法（= 关闭冷却）→ 同样只补列 + 只回填 NULL。
 		for _, c := range []struct{ col string }{
 			{"act_treasure_cooldown_sec"},
@@ -487,16 +491,19 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 0.1 WHERE speed_train_rate IS NULL OR speed_train_rate <= 0")
 		// ★ 2026-09-24 迁移：把旧口径的默认值 1 一次性升级为 100（语义从「倍率」改为「百分比」）。
-		//   注意副作用：以后想把倍率故意设成 1（=1%）会在重启时被改回 100 —— 运营不会用到 1% 这么极端的值。
-		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 100 WHERE speed_train_rate = 1")
+		//   ★ 2026-10-26 用户规则「二战系统配置改了重启不要变」：改成 settings 打标**只跑一次**，
+		//   否则管理员把倍率故意设成 1（=1%）会在每次重启被打回 100。
+		ezfyOneTimeLimitFix(db, "ezfy_speed_train_rate_pct_100",
+			"UPDATE ezfy_cfg_limit SET speed_train_rate = 100 WHERE speed_train_rate = 1")
 
 		// 伤兵恢复黄金折扣率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 100）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_heal_rate") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_heal_rate double DEFAULT 100")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 100 WHERE wound_heal_rate IS NULL OR wound_heal_rate <= 0")
-		// ★ 2026-09-24 迁移：同上，旧默认值 1 → 100
-		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 100 WHERE wound_heal_rate = 1")
+		// ★ 2026-09-24 迁移：同上，旧默认值 1 → 100（★ 2026-10-26 改为 settings 打标只跑一次）
+		ezfyOneTimeLimitFix(db, "ezfy_wound_heal_rate_pct_100",
+			"UPDATE ezfy_cfg_limit SET wound_heal_rate = 100 WHERE wound_heal_rate = 1")
 
 		// ★ 数值安全卡控（2026-09-23 线上「负数兵力」事故）：
 		//   troop_max 单城兵力上限（默认 50 亿）+ wound_expire_days 伤兵存活天数（默认 3）。
@@ -3276,16 +3283,19 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gold_prod_mult double DEFAULT 1")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
-	// ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（默认 100 万；0 = 不限）。
-	//   手续费 0 无意义 → 回填 30；每日上限 0 合法 → 只回填 NULL，避免把「不限」改回 100 万。
+	// ★ 2026-10-22 系统回收手续费（默认 30%）+ 每日每种资源上限（**默认 0 = 不限**）。
+	//   手续费 0 无意义 → 回填 30；每日上限 0 合法 → 只回填 NULL，避免把「不限」改回旧默认。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "sys_sell_fee") {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN sys_sell_fee int DEFAULT 30")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET sys_sell_fee = 30 WHERE sys_sell_fee IS NULL OR sys_sell_fee <= 0")
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "sys_sell_daily_limit") {
-		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN sys_sell_daily_limit bigint DEFAULT 1000000")
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN sys_sell_daily_limit bigint DEFAULT 0")
 	}
-	db.Exec("UPDATE ezfy_cfg_limit SET sys_sell_daily_limit = 1000000 WHERE sys_sell_daily_limit IS NULL")
+	db.Exec("UPDATE ezfy_cfg_limit SET sys_sell_daily_limit = 0 WHERE sys_sell_daily_limit IS NULL")
+	// ★ 2026-10-26 用户规则「系统回收每日上限 默认 0」：把仍停在旧默认 100 万的行一次性改成 0
+	//   （用 settings 打标只跑一次，之后管理员自己调的值不会被顶回）。
+	ezfySysSellDailyLimitDefault0(db)
 	// ★ 2026-10-22 每城建造队列基础上限（默认 5）：
 	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
 	//   0 无意义（等于全城不能建造），所以统一回落 5；征募告示的临时层数另存 ezfy_city_effect。
@@ -3316,11 +3326,12 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN heal_all_diamond int DEFAULT 100")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET heal_all_diamond = 100 WHERE heal_all_diamond IS NULL OR heal_all_diamond <= 0")
-	// ★ 2026-10-08 新玩家落地洲可配置：存量库补 default_continent 列（默认欧洲=1，0/越界 → 回落欧洲）
+	// ★ 2026-10-08 新玩家落地洲可配置：存量库补 default_continent 列。
+	//   ★ 2026-10-26 起 **0 = 随机洲落**（合法值），所以只回填 NULL / 越界，不能再把 0 打回欧洲。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "default_continent") {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN default_continent int DEFAULT 1")
 	}
-	db.Exec("UPDATE ezfy_cfg_limit SET default_continent = 1 WHERE default_continent IS NULL OR default_continent <= 0 OR default_continent > 7")
+	db.Exec("UPDATE ezfy_cfg_limit SET default_continent = 1 WHERE default_continent IS NULL OR default_continent < 0 OR default_continent > 7")
 	// ★ 2026-10-11 背包单件道具上限（默认 5000）+ 宝物库存上限（默认 5000）：
 	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
 	for _, c := range []struct {
@@ -3350,11 +3361,12 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_treasure_cooldown_h int DEFAULT 2")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET wild_treasure_cooldown_h = 2 WHERE wild_treasure_cooldown_h IS NULL")
-	// ★ 2026-10-13 打野地掉**商城道具**冷却小时数（默认 1）：⚠️ 0 合法（= 关闭）→ 只补列 + 只回填 NULL。
-	if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_item_cooldown_h") {
-		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT 1")
+	// ★ 2026-10-26 打野地掉**商城道具**冷却**秒数**（默认 1800 = 30 分钟）：⚠️ 0 合法（= 关闭）
+	//   → 只补列 + 只回填 NULL。单位由「小时」改成「秒」，老列 wild_item_cooldown_h 保留不读。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_item_cooldown_sec") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_sec int DEFAULT 1800")
 	}
-	db.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = 1 WHERE wild_item_cooldown_h IS NULL")
+	db.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_sec = 1800 WHERE wild_item_cooldown_sec IS NULL")
 	// ★ 2026-10-12 迁城冷却小时数（默认 24）：⚠️ 0 合法（= 关闭迁城冷却）→ 同样只补列 + 只回填 NULL。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "move_cool_h") {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")
@@ -3445,6 +3457,39 @@ func ezfyBumpBagItemMaxDefault(db *gorm.DB) {
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET bag_item_max = 5000 WHERE bag_item_max = 1000")
 	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", "ezfy_bag_item_max_bump_5000", "1")
+}
+
+// ezfyOneTimeLimitFix 执行一条「只跑一次」的 ezfy_cfg_limit 修正 SQL。
+//
+// ★ 2026-10-26 用户规则「二战系统配置改了重启不要变」：
+//
+//	凡按「旧默认值」纠正的 UPDATE，只要不带标记就会**每次重启重跑** ——
+//	管理员恰好把值设成旧默认值（如升星成功率 80、星级上限 10、倍率 1），
+//	就会被静默改掉，看起来像「改了重启就丢」。统一改成 settings 打标，跑过一次永不再跑。
+//
+// 幂等：settings 有标记直接返回；表不存在直接跳过。
+func ezfyOneTimeLimitFix(db *gorm.DB, key, sql string) {
+	if !db.Migrator().HasTable("ezfy_cfg_limit") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", key).Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	db.Exec(sql)
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
+}
+
+// ezfySysSellDailyLimitDefault0 一次性把「系统回收每日上限」从旧默认 100 万改成 0（= 不限）。
+//
+// ★ 2026-10-26 用户规则：「系统回收每日上限 默认 0」。
+// 旧默认 100 万对这款游戏几乎等于「随手就超」（资源动辄上亿），线上一直卡着玩家卖资源，
+// 所以把**仍停在旧默认 100 万**的行一次性改成 0；管理员后来自己调的值（比如 500 万）不会被动。
+// 用 settings 打标**只跑一次** —— 之后即使管理员又填 100 万，下次重启也不会再被改成 0。
+func ezfySysSellDailyLimitDefault0(db *gorm.DB) {
+	ezfyOneTimeLimitFix(db, "ezfy_sys_sell_daily_limit_0",
+		"UPDATE ezfy_cfg_limit SET sys_sell_daily_limit = 0 WHERE sys_sell_daily_limit = 1000000")
 }
 
 // ezfyBumpMallBuyMax999Default 一次性把商城单次购买上限提升到 999。

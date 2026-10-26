@@ -228,7 +228,9 @@
               <!-- ★ 2026-10-19 自动发言开关（人机是否像真人一样在世界/城市频道自动发言） -->
               <el-form-item label="自动发言">
                 <el-switch v-model="editForm.chat_on" :active-value="1" :inactive-value="0" />
-                <span class="td-gray" style="margin-left:6px">关闭后人机不再自动发言（玩家端无从察觉它是机器人）</span>
+                <el-tooltip placement="top" content="关闭后人机不再自动发言（玩家端无从察觉它是机器人）">
+                  <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+                </el-tooltip>
               </el-form-item>
               <!-- ★ 2026-10-25 打野地开关（是否攻击真人玩家的附属野地；默认关闭） -->
               <el-form-item label="打野地">
@@ -359,13 +361,17 @@
               </div>
               <el-form-item>
                 <el-button type="primary" size="mini" :loading="grantSaving" @click="doGrant">发 放</el-button>
-                <span class="td-gray" style="font-size:12px;margin-left:8px">可填负数扣除；发完人机会立刻行动消化资源；不发钻石。</span>
+                <el-tooltip placement="top" content="可填负数扣除；发完人机会立刻行动消化资源；不发钻石">
+                  <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+                </el-tooltip>
               </el-form-item>
             </el-form>
             <el-divider style="margin:8px 0" />
             <div class="toolbar" style="margin-bottom:8px">
               <span class="td-main">占领城市</span>
-              <span class="td-gray" style="font-size:12px;margin-left:8px">出征胜利→直接征服；可归还 / 摧毁 / 同意赎回（人机收 80% 押金，20% 系统收）</span>
+              <el-tooltip placement="top" content="出征胜利→直接征服；可归还 / 摧毁 / 同意赎回（人机收 80% 押金，20% 系统收）">
+                <i class="el-icon-info cfg-tip" style="margin-left:6px" />
+              </el-tooltip>
               <div class="grow" />
               <el-button size="mini" type="warning" plain icon="el-icon-refresh" :loading="occRedeemAllLoading"
                          @click="redeemAllOccupy">统一赎回全部</el-button>

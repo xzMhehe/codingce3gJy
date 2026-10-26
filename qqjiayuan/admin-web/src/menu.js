@@ -182,7 +182,6 @@ export const menu = [
           { key: 'ezfyBot', name: '人机管理', icon: 'el-icon-cpu', component: () => import(/* webpackChunkName: "admin-AdminEzfyBot" */ './components/admin/AdminEzfyBot.vue'), perm: 'module:ezfyBot' },
           { key: 'ezfyCities', name: '城市管理', icon: 'el-icon-office-building', component: () => import(/* webpackChunkName: "admin-AdminEzfyCities" */ './components/admin/AdminEzfyCities.vue'), perm: 'module:ezfyCities' },
           { key: 'ezfyBuildings', name: '建筑管理', icon: 'el-icon-s-home', component: () => import(/* webpackChunkName: "admin-AdminEzfyBuildings" */ './components/admin/AdminEzfyBuildings.vue'), perm: 'module:ezfyBuildings' },
-          { key: 'ezfyBuildQueue', name: '建筑队列管理', icon: 'el-icon-time', component: () => import(/* webpackChunkName: "admin-AdminEzfyBuildQueue" */ './components/admin/AdminEzfyBuildQueue.vue'), perm: 'module:ezfyBuildQueue' },
           { key: 'ezfyTroops', name: '兵种管理', icon: 'el-icon-s-flag', component: () => import(/* webpackChunkName: "admin-AdminEzfyTroops" */ './components/admin/AdminEzfyTroops.vue'), perm: 'module:ezfyTroops' },
           { key: 'ezfyRecruit', name: '队伍征兵', icon: 'el-icon-s-promotion', component: () => import(/* webpackChunkName: "admin-AdminEzfyRecruit" */ './components/admin/AdminEzfyRecruit.vue'), perm: 'module:ezfyRecruit' },
           { key: 'ezfyOfficers', name: '军官管理', icon: 'el-icon-medal', component: () => import(/* webpackChunkName: "admin-AdminEzfyOfficers" */ './components/admin/AdminEzfyOfficers.vue'), perm: 'module:ezfyOfficers' },

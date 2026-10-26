@@ -340,7 +340,10 @@ func TestPopExtraDecayCfg(t *testing.T) {
 		}
 	}
 	adminVue := ezfyStripCommentLines(readFrontFile(t, "../../../../admin-web/src/components/admin/AdminEzfyBuildLimit.vue"))
-	for _, want := range []string{"pop_extra_decay_seconds", "临时空闲回落时间", "默认 300 秒（5 分钟）"} {
+	// ★ 2026-10-26 用户规则「玩法开关下面的提示都收进 i 图标，页面要简约」：
+	//   原来断言页面上的可见提示「默认 300 秒（5 分钟）」，现已移入 i 悬浮说明，
+	//   改为断言说明文案里的默认值（同一条口径，只是位置变了）。
+	for _, want := range []string{"pop_extra_decay_seconds", "临时空闲回落时间", "默认 300"} {
 		if !strings.Contains(adminVue, want) {
 			t.Fatalf("管理端 UI 未提供临时空闲回落配置（缺 %s）", want)
 		}

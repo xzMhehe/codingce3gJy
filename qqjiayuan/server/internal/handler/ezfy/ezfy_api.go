@@ -1005,12 +1005,17 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 		return
 	}
 	if req.All {
+		// ★ 2026-10-26 逃兵营（type=1）与伤兵营（type=0）共用本接口，成功文案按类型区分。
+		okMsg := "伤兵已全部恢复"
+		if req.Type == 1 {
+			okMsg = "逃兵已全部召回"
+		}
 		if req.UseDiamond {
 			// ★ 2026-10-14 「伤兵营 500 钻石恢复全部伤兵」：钻石=账号级货币，校验口径与黄金版一致
-			h.done(c, h.recoverAllWoundedByDiamond(city, req.Type), "伤兵已全部恢复")
+			h.done(c, h.recoverAllWoundedByDiamond(city, req.Type), okMsg)
 			return
 		}
-		h.done(c, h.recoverAllWounded(city, req.Type), "伤兵已全部恢复")
+		h.done(c, h.recoverAllWounded(city, req.Type), okMsg)
 		return
 	}
 	h.done(c, h.recoverWounded(city, req.TroopId, req.Type, req.Count), "伤兵已恢复")

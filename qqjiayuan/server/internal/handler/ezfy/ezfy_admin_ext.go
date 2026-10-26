@@ -71,6 +71,9 @@ func (h *EzfyAdmin) AdminEzfyCities(c *gin.Context) {
 		model.EzfyCity
 		PlayerName  string `json:"player_name"`
 		HomeNum     string `json:"home_num"`
+		// ★ 2026-10-26 用户要求「展示部分 变家园号展示为 游戏ID」：
+		//   游戏号(game_uid)才是玩家报给客服的号，家园号对玩家没意义。
+		GameUID     int64  `json:"game_uid"`
 		CampName    string `json:"camp_name"`
 		BuildingNum int64  `json:"building_num"`
 		TroopNum    int64  `json:"troop_num"`
@@ -127,18 +130,21 @@ func (h *EzfyAdmin) AdminEzfyCities(c *gin.Context) {
 	wildNum := countByCity(&model.EzfyWildland{}, "")
 	// 玩家昵称 / 家园号：一次 IN 批量（替代每行 2 条）
 	nickOf, numOf := h.ezfyAdminNamesBatch(uids)
-	// 阵营：一次 IN 批量（替代每行 1 条 profile）
+	// 阵营 + 游戏号：一次 IN 批量（替代每行 1 条 profile）
 	campOf := map[uint]string{}
+	gameUIDOf := map[uint]int64{}
 	if len(uids) > 0 {
 		var ps []model.EzfyProfile
-		h.DB.Select("user_id, camp").Where("user_id IN ?", uids).Find(&ps)
+		h.DB.Select("user_id, camp, game_uid").Where("user_id IN ?", uids).Find(&ps)
 		for _, p := range ps {
 			campOf[p.UserID] = ezfyCampName(p.Camp)
+			gameUIDOf[p.UserID] = p.GameUID
 		}
 	}
 	out := []rowOut{}
 	for _, ct := range rows {
 		out = append(out, rowOut{EzfyCity: ct, PlayerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID],
+			GameUID: gameUIDOf[ct.UserID],
 			CampName: campOf[ct.UserID], BuildingNum: buildNum[ct.ID], TroopNum: troopNum[ct.ID],
 			OfficerNum: officerNum[ct.ID], WildNum: wildNum[ct.ID],
 			TerrainName: ezfyTerrainNameEx(ct.X, ct.Y),
@@ -156,6 +162,9 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 		return
 	}
 	pn, hn := h.ezfyAdminName(ct.UserID)
+	// ★ 2026-10-26 城池详情同样按「游戏ID」展示（家园号对玩家没意义）
+	var gameUID int64
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", ct.UserID).Pluck("game_uid", &gameUID)
 	// ★★ 2026-10-05 性能（用户反馈「城市管理 → 城池详情 严重查询超时」）：
 	//   原来**每一栋建筑 / 每个兵种 / 每项科技**都各查一次配置表
 	//   （`First(&cfg, id)`）—— 满建筑的城市有 100+ 行建筑、20 个兵种、15 项科技，
@@ -193,21 +202,9 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 		}
 		tViews = append(tViews, tOut{EzfyCityTroop: t, CfgName: name})
 	}
-	// ★ 2026-09-28 科技等级用户级共用：展示该玩家(所有城共用)的科技等级
-	var techs []model.EzfyUserTech
-	h.DB.Where("user_id = ?", ct.UserID).Find(&techs)
-	type cOut struct {
-		model.EzfyUserTech
-		CfgName string `json:"cfg_name"`
-	}
-	cViews := []cOut{}
-	for _, t := range techs {
-		name := ""
-		if cfg := ezfyCfg.tech(t.TechId); cfg != nil {
-			name = cfg.Name
-		}
-		cViews = append(cViews, cOut{EzfyUserTech: t, CfgName: name})
-	}
+	// ★ 2026-10-26 用户要求「城池详情 科技不属于城市，科技属于这个服玩家，所以不用关联城市展示科技去掉」：
+	//   原来这里按 ct.UserID 查 ezfy_user_tech 并塞进「城池详情」，但科技是**玩家维度**（所有城共用），
+	//   挂在某座城下会让人误以为是这座城的科技。已整体去掉（要看科技去「玩家信息管理」）。
 	var officers []model.EzfyOfficer
 	h.DB.Where("city_id = ?", ct.ID).Order("id").Find(&officers)
 	var wilds []model.EzfyWildland
@@ -215,9 +212,9 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 	var orders []model.EzfyOrder
 	h.DB.Where("city_id = ?", ct.ID).Order("id DESC").Limit(20).Find(&orders)
 	resp.OK(c, gin.H{
-		"city": ct, "player_name": pn, "home_num": hn,
+		"city": ct, "player_name": pn, "home_num": hn, "game_uid": gameUID,
 		"terrain_name": ezfyTerrainNameEx(ct.X, ct.Y),
-		"buildings":    bViews, "troops": tViews, "techs": cViews,
+		"buildings":    bViews, "troops": tViews,
 		"officers": officers, "wildlands": wilds, "orders": orders,
 	})
 }
@@ -364,20 +361,41 @@ func (h *EzfyAdmin) AdminEzfyBuildings(c *gin.Context) {
 		StatusTxt string `json:"status_txt"`
 	}
 	out := []rowOut{}
+	// ★★ 2026-10-26 性能（用户反馈「玩家建筑 分页卡顿」）：
+	//   原来**每一行 4 条库**：建筑配置 `First(&cfg)` + 城市 `First(&ct)` + `ezfyAdminName`（内部 2 条）
+	//   → size=15 就是 60 条、size=100 就是 **400 条跨 WAN 往返**，线上 1核1G + RDS 必然卡。
+	//   现在整页固定 3 条、与 size 无关：
+	//     ① 建筑配置走进程内缓存 ezfyCfg（0 条 SQL，配置表很小且本来就在缓存里）
+	//     ② 城市名一次 `IN ?`
+	//     ③ 昵称/家园号一次批量（ezfyAdminNamesBatch 内部 2 条）
+	ezfyCfg.load(h.DB) // 管理端 handler 不一定走过 h.cfgs()，先确保配置缓存已加载
+	cityIDs := make([]int64, 0, len(rows))
+	for _, b := range rows {
+		cityIDs = append(cityIDs, b.CityId)
+	}
+	cityOf := map[int64]model.EzfyCity{}
+	if len(cityIDs) > 0 {
+		var cs []model.EzfyCity
+		h.DB.Select("id, name, user_id").Where("id IN ?", cityIDs).Find(&cs)
+		for _, c := range cs {
+			cityOf[int64(c.ID)] = c
+		}
+	}
+	uids := make([]uint, 0, len(cityOf))
+	for _, c := range cityOf {
+		if c.UserID > 0 {
+			uids = append(uids, c.UserID)
+		}
+	}
+	nickOf, numOf := h.ezfyAdminNamesBatch(uids)
 	for _, b := range rows {
 		name, typ, maxLv := "", 0, 0
-		var cfg model.EzfyCfgBuilding
-		if err := h.DB.First(&cfg, b.BuildingId).Error; err == nil {
+		if cfg := ezfyCfg.building(b.BuildingId); cfg != nil {
 			name, typ, maxLv = cfg.Name, cfg.Type, cfg.MaxLevel
 		}
-		cityName, owner, home := "", "", ""
-		var ct model.EzfyCity
-		if err := h.DB.First(&ct, b.CityId).Error; err == nil {
-			cityName = ct.Name
-			owner, home = h.ezfyAdminName(ct.UserID)
-		}
+		ct := cityOf[b.CityId]
 		out = append(out, rowOut{EzfyCityBuilding: b, CfgName: name, CfgType: typ, MaxLevel: maxLv,
-			CityName: cityName, OwnerName: owner, HomeNum: home,
+			CityName: ct.Name, OwnerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID],
 			StatusTxt: ezfyBuildStatusName(b.Status)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -571,18 +589,35 @@ func (h *EzfyAdmin) AdminEzfyBuildQueue(c *gin.Context) {
 		ChainBuild int    `json:"chain_build"` // 1=一键满级连锁
 	}
 	out := []rowOut{}
+	// ★★ 2026-10-26 性能（用户反馈「建筑队列 分页卡顿」）：与「玩家建筑」同款问题 ——
+	//   原来每行 4 条库（建筑配置 First + 城市 First + ezfyAdminName 2 条）。
+	//   现在整页固定 3 条：配置走内存缓存、城市一次 IN、昵称/家园号一次批量。
+	ezfyCfg.load(h.DB)
+	cityIDs := make([]int64, 0, len(rows))
+	for _, b := range rows {
+		cityIDs = append(cityIDs, b.CityId)
+	}
+	cityOf := map[int64]model.EzfyCity{}
+	if len(cityIDs) > 0 {
+		var cs []model.EzfyCity
+		h.DB.Select("id, name, user_id").Where("id IN ?", cityIDs).Find(&cs)
+		for _, c := range cs {
+			cityOf[int64(c.ID)] = c
+		}
+	}
+	uids := make([]uint, 0, len(cityOf))
+	for _, c := range cityOf {
+		if c.UserID > 0 {
+			uids = append(uids, c.UserID)
+		}
+	}
+	nickOf, numOf := h.ezfyAdminNamesBatch(uids)
 	for _, b := range rows {
 		name, maxLv := "", 0
-		var cfg model.EzfyCfgBuilding
-		if err := h.DB.First(&cfg, b.BuildingId).Error; err == nil {
+		if cfg := ezfyCfg.building(b.BuildingId); cfg != nil {
 			name, maxLv = cfg.Name, cfg.MaxLevel
 		}
-		cityName, owner, home := "", "", ""
-		var ct model.EzfyCity
-		if err := h.DB.First(&ct, b.CityId).Error; err == nil {
-			cityName = ct.Name
-			owner, home = h.ezfyAdminName(ct.UserID)
-		}
+		ct := cityOf[b.CityId]
 		remain := (b.EndTime - now) / 1000
 		if remain < 0 {
 			remain = 0
@@ -592,7 +627,7 @@ func (h *EzfyAdmin) AdminEzfyBuildQueue(c *gin.Context) {
 			chain = 1
 		}
 		out = append(out, rowOut{EzfyCityBuilding: b, CfgName: name, MaxLevel: maxLv,
-			CityName: cityName, OwnerName: owner, HomeNum: home,
+			CityName: ct.Name, OwnerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID],
 			StatusTxt: ezfyBuildStatusName(b.Status), RemainSec: remain, ChainBuild: chain})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})

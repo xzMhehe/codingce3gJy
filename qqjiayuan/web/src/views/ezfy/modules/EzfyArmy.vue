@@ -213,7 +213,14 @@
           <div class="old-line" v-if="!ezfy.woundedList(1).length">(逃兵营无逃兵)</div>
           <div class="old-line" v-if="ezfy.woundedList(1).length">
             合计 <b>{{ ezfy.fmtN(ezfy.woundedHealCost(1)) }}</b> {{ ezfy.resNames.gold }}
-            <button @click="ezfy.doRecoverAll(1)">[全部召回]</button>
+            <!-- ★ 2026-10-26 「[全部召回] 去除按钮样式」：与全站一致的 [链接] 写法（3 秒卡控由后端 + doRecoverAll 双保险）。 -->
+            <a href="javascript:;" @click="ezfy.doRecoverAll(1)">[全部召回]</a>
+          </div>
+          <!-- ★ 2026-10-26 逃兵营也支持「钻石一键全部召回」：
+               单价走二战系统配置 heal_all_diamond（默认 100 钻，与伤兵营同一项），账号级钻石余额，
+               防抖由前端 3 秒卡控 + 后端 /troops/recover 3 秒卡控双保险。 -->
+          <div class="old-line" v-if="ezfy.woundedList(1).length">
+            合计 <b>{{ ezfy.healAllDiamond || 100 }}</b> 钻石 <a href="javascript:;" @click="ezfy.doRecoverAllDiamond(1)">[全部召回]</a>
           </div>
           </div><!-- /逃兵营 tab -->
           <div v-show="ezfy.hqTab === 4">
