@@ -49,6 +49,12 @@ type EzfyBot struct {
 	//	关闭（默认）：人机只打城市，绝不碰玩家野地（用户口径：默认不打玩家野地）。
 	AttackWild int `gorm:"default:0;comment:是否攻击玩家附属野地(0=不打,1=打)" json:"attack_wild"`
 
+	// ★ 2026-10-26 用户规则「目标最小兵力 配置按人机分而不是总的，优化到具体人机，默认最少 100000 兵力」：
+	//   自动挑攻击目标时，只打城内兵力 ≥ 该值的玩家城。**每台人机各自一份**（原来只有全局一份）。
+	//   ★ 0 是合法值（= 不限，愿意啃空城）；默认 100000。
+	//   只影响自动选目标，管理端手动指定目标不受限。
+	TargetMinTroops int64 `gorm:"default:100000;comment:自动挑目标时玩家城最小兵力(0=不限)" json:"target_min_troops"`
+
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }

@@ -147,6 +147,8 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"chat_on": b.ChatOn,
 			// ★ 2026-10-25 是否打玩家附属野地（编辑人机-基本信息可调）：0=不打（默认）1=打
 			"attack_wild": b.AttackWild,
+			// ★ 2026-10-26 目标最小兵力（按人机分，编辑人机-基本信息可调，默认 100000，0=不限）
+			"target_min_troops": b.TargetMinTroops,
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
 			"next_act_at":     b.NextActAt,
 			"status_text":     ezfyBotStatusText(b, now),
@@ -693,6 +695,9 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		ChatOn *int `json:"chat_on"`
 		// ★ 2026-10-25 是否打玩家附属野地（基本信息）：0=不打（默认）1=打
 		AttackWild *int `json:"attack_wild"`
+		// ★ 2026-10-26 目标最小兵力（基本信息，按人机分）：自动挑目标时玩家城的最小兵力，
+		//   默认 100000；**0 合法 = 不限**，所以用指针接收（nil=不修改）
+		TargetMinTroops *int64 `json:"target_min_troops"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1041,6 +1046,16 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		ezUpd["attack_wild"] = *in.AttackWild
 		changes = append(changes, fmt.Sprintf("打野地→%s", map[bool]string{true: "开", false: "关"}[*in.AttackWild == 1]))
 	}
+	// ⑫ 目标最小兵力（★ 2026-10-26 用户要求「配置按人机分，默认最少 100000 兵力」）
+	//   **0 合法 = 不限**；负值无意义直接拒。
+	if in.TargetMinTroops != nil {
+		if *in.TargetMinTroops < 0 || *in.TargetMinTroops > 1000000000000 {
+			resp.ParamError(c, "目标最小兵力不能为负数（0 = 不限）")
+			return
+		}
+		ezUpd["target_min_troops"] = *in.TargetMinTroops
+		changes = append(changes, fmt.Sprintf("目标最小兵力→%d", *in.TargetMinTroops))
+	}
 	if len(ezUpd) > 0 {
 		h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Updates(ezUpd)
 		changes = append(changes, "出征设置")
@@ -1148,19 +1163,28 @@ func (h *EzfyAdmin) AdminEzfyBotConfig(c *gin.Context) {
 		"batch_size":    ezfyBotBatchSize,
 		// ★ 2026-10-18 征兵线（低于此值人机执行征兵；0/负 = 未配置，回落默认 50 万）
 		"train_threshold": ezfyBotTrainThreshold(),
-		// ★ 2026-10-18 人机出征时间段（空 = 全天；如 "20:00-22:00,08:00-12:00"）
+		// ★ 2026-10-18 人机出征时间段（空 = 默认 08:00-23:00；如 "20:00-22:00,08:00-12:00"）
 		"atk_windows": ezfyBotAtkWindows(),
-		// ★ 2026-10-26 自动挑目标时玩家城的最小兵力（默认 10000，0 = 不限）
+		// ★ 2026-10-26 「目标最小兵力」已改为**按人机分**（EzfyBot.TargetMinTroops，编辑人机里改），
+		//   这里只保留全局兜底值给老版管理端显示，**不再参与目标筛选**。
 		"target_min_troops": ezfyBotTargetMinTroops(),
 	})
 }
 
-// ezfyBotAtkWindows 人机出征时间段（空 = 全天）
+// ezfyBotAtkWindowsDef 人机出征时间段默认值。
+//
+// ★ 2026-10-26 用户规则「出征时间段 默认早上 8 点到晚上 11 点」：
+// 空值**不再等于全天**，一律按 08:00-23:00 生效（要全天请显式填 00:00-23:59）。
+const ezfyBotAtkWindowsDef = "08:00-23:00"
+
+// ezfyBotAtkWindows 人机出征时间段（空 = 默认 08:00-23:00）
 func ezfyBotAtkWindows() string {
 	if ezfyCfg.ready() {
-		return ezfyCfg.limit.BotAtkWindows
+		if v := strings.TrimSpace(ezfyCfg.limit.BotAtkWindows); v != "" {
+			return v
+		}
 	}
-	return ""
+	return ezfyBotAtkWindowsDef
 }
 
 // ezfyBotTrainThreshold 人机征兵线（0/负值回落默认 50 万）
@@ -1182,7 +1206,8 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 		MinPrestige    *int    `json:"min_prestige"`
 		TrainThreshold *int64  `json:"train_threshold"`
 		AtkWindows     *string `json:"atk_windows"`
-		// ★ 2026-10-26 自动挑目标时玩家城的最小兵力（默认 10000；0 = 不限）
+		// ★ 2026-10-26 自动挑目标时玩家城的最小兵力（已按人机分，见 EzfyBot.TargetMinTroops；
+		//   这里只为兼容老版管理端提交，新前端不再传）
 		TargetMinTroops *int64 `json:"target_min_troops"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {

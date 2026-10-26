@@ -223,6 +223,7 @@
             </el-table>
           </el-tab-pane>
           <!-- 最近出征 -->
+          <!-- ★ 2026-10-26 加「战报」按钮：按订单反查战报（order_id），点开看全文（与城池详情同一套） -->
           <el-tab-pane :label="'最近出征 (' + detail.orders.length + ')'" name="orders">
             <el-table :data="detail.orders" size="mini" border max-height="360">
               <el-table-column prop="id" label="订单ID" width="90" align="center" />
@@ -238,6 +239,13 @@
               <el-table-column label="时间" width="150" align="center">
                 <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
               </el-table-column>
+              <el-table-column label="战报" width="70" align="center">
+                <template slot-scope="{row}">
+                  <el-button v-if="row.report_id" size="mini" plain icon="el-icon-view" title="查看战报详情"
+                             @click="openOrderReport(row)" />
+                  <span v-else class="td-gray">—</span>
+                </template>
+              </el-table-column>
             </el-table>
           </el-tab-pane>
         </el-tabs>
@@ -246,6 +254,16 @@
       <div slot="footer">
         <el-button @click="detailDlg = false">关 闭</el-button>
       </div>
+    </el-dialog>
+
+    <!-- 战报详情（★ 2026-10-26 最近出征 → 看战报全文，与城池详情同一套展示） -->
+    <el-dialog :title="orderReport.title || '战报详情'" :visible.sync="orderReportDlg" width="720px" append-to-body>
+      <div v-if="orderReport">
+        <pre v-if="orderReport.content" class="report-pre">{{ orderReport.content }}</pre>
+        <pre v-if="orderReport.detail" class="report-pre report-pre-detail">{{ orderReport.detail }}</pre>
+        <div v-if="!orderReport.content && !orderReport.detail" class="td-gray">（战报内容为空）</div>
+      </div>
+      <div slot="footer"><el-button @click="orderReportDlg = false">关 闭</el-button></div>
     </el-dialog>
 
     <!-- 编辑玩家（★ 2026-10-09 优化：每项显示「当前值」、保存前二次确认、昵称必填校验） -->
@@ -382,6 +400,8 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '',
       detailDlg: false, detail: null, detailTab: 'officers', detailLoading: false,
+      // ★ 2026-10-26 最近出征 → 战报详情弹窗
+      orderReportDlg: false, orderReport: { title: '', content: '', detail: '' },
       editDlg: false, saving: false, editId: 0, form: {}, editCur: {},
       grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 },
       grantDiamond: 0,
@@ -410,6 +430,23 @@ export default {
   mounted () { this.load() },
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
+    // ★ 2026-10-26 最近出征 → 看战报详情（按订单反查最新一条战报，与城池详情同一套）
+    openOrderReport (row) {
+      this.orderReport = { title: '战报详情（出征 #' + row.id + '）', content: '', detail: '' }
+      this.orderReportDlg = true
+      api.get('/admin/ezfy-order-report', { params: { order_id: row.id } }).then(r => {
+        if (r.code === 0 && r.data && r.data.report) {
+          const rp = r.data.report
+          this.orderReport = {
+            title: rp.title || rp.type_name || ('战报详情（出征 #' + row.id + '）'),
+            content: rp.content || '', detail: rp.detail || ''
+          }
+        } else {
+          this.orderReport = { title: '战报详情', content: '', detail: '' }
+          if (r.code !== 0) this.$message.error(r.msg)
+        }
+      }).catch(() => { this.orderReport = { title: '战报详情', content: '', detail: '' } })
+    },
     fmtNum (n) { return n == null ? 0 : Number(n).toLocaleString() },
     // 城市资源缩写：<1万原样；≥1万 万；万单位的整数位超过5位（即≥10亿）转亿
     fmtWan (n) {
@@ -697,4 +734,9 @@ export default {
 /* ★ 2026-10-17 背包 tab 工具条（添加道具 + 说明） */
 .bag-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .bag-bar .grow { flex: 1; }
+/* ★ 2026-10-26 战报全文样式（与城池详情同一套） */
+.report-pre { margin: 0 0 10px; padding: 10px; background: #fff; border: 1px solid #ebeef5;
+  border-radius: 4px; font-size: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-all;
+  max-height: 420px; overflow: auto; font-family: inherit; }
+.report-pre-detail { margin-top: 10px; }
 </style>

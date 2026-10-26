@@ -1279,7 +1279,13 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					{
 						// ============ 二战风云管理 ezfy/（玩家/数据/流水/系统） ============
 						admin.GET("/ezfy-players", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayers)
-						admin.GET("/ezfy-players/:id/detail", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerDetail)
+						// ★ 2026-10-26 放行 module:ezfyBot：人机管理「编辑人机 → 发放/占领」tab
+						//   就是靠这个接口读「当前资源 / 当前集结令」，只给 ezfyBot 权限的角色
+						//   原来会被 403 → 「当前」恒显示 0（用户反馈的集结令数量不对）。
+						admin.GET("/ezfy-players/:id/detail", permAny(db, "module:ezfyPlayers", "module:ezfyBot"), ezfyAdminH.AdminEzfyPlayerDetail)
+						// ★ 2026-10-26 「最近出征 → 看战报详情」：城池详情 / 玩家详情 / 人机管理共用，
+						//   权限点放行三个模块（任一即可），避免只有 ezfyLogs 权限的管理员看不到。
+						admin.GET("/ezfy-order-report", permAny(db, "module:ezfyCities", "module:ezfyPlayers", "module:ezfyBot", "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrderReport)
 						admin.PUT("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerUpdate)
 						admin.POST("/ezfy-players/:id/grant", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrant)
 						admin.POST("/ezfy-players/:id/grant-officer", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrantOfficer)

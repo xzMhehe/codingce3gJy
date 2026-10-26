@@ -211,12 +211,72 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 	h.DB.Where("city_id = ?", ct.ID).Find(&wilds)
 	var orders []model.EzfyOrder
 	h.DB.Where("city_id = ?", ct.ID).Order("id DESC").Limit(20).Find(&orders)
+	// ★ 2026-10-26 「最近出征 → 战报详情」：订单行附带 report_id（最新战报），前端据此出按钮
+	ordIDs := make([]int64, 0, len(orders))
+	for _, o := range orders {
+		ordIDs = append(ordIDs, int64(o.ID))
+	}
+	repOf := h.ezfyOrderReportIDOf(ordIDs)
+	type ordOut struct {
+		model.EzfyOrder
+		ReportId uint `json:"report_id"`
+	}
+	ordersViews := make([]ordOut, 0, len(orders))
+	for _, o := range orders {
+		ordersViews = append(ordersViews, ordOut{EzfyOrder: o, ReportId: repOf[int64(o.ID)]})
+	}
 	resp.OK(c, gin.H{
 		"city": ct, "player_name": pn, "home_num": hn, "game_uid": gameUID,
 		"terrain_name": ezfyTerrainNameEx(ct.X, ct.Y),
 		"buildings":    bViews, "troops": tViews,
-		"officers": officers, "wildlands": wilds, "orders": orders,
+		"officers": officers, "wildlands": wilds, "orders": ordersViews,
 	})
+}
+
+// ezfyOrderReportIDOf 批量反查出征订单的战报 ID（每单取最新一条）。
+//
+// ★ 2026-10-26 「最近出征 → 能看战报详情」：给订单行附带 report_id，
+//   前端据此显示/启用「战报」按钮（没有战报的订单不出按钮，点开也不会空）。
+//   一条 SQL GROUP BY 反查，避免逐单 N+1。
+func (h *EzfyAdmin) ezfyOrderReportIDOf(orderIDs []int64) map[int64]uint {
+	m := map[int64]uint{}
+	if len(orderIDs) == 0 {
+		return m
+	}
+	var rows []struct {
+		OrderId int64
+		Id      uint
+	}
+	h.DB.Model(&model.EzfyReport{}).
+		Select("order_id, MAX(id) AS id").
+		Where("order_id IN ?", orderIDs).
+		Group("order_id").Scan(&rows)
+	for _, r := range rows {
+		if r.OrderId > 0 {
+			m[r.OrderId] = r.Id
+		}
+	}
+	return m
+}
+
+// AdminEzfyOrderReport GET /admin/ezfy-order-report?order_id=123
+//
+// ★ 2026-10-26 用户要求「城市管理→城池详情 / 玩家信息管理→玩家详情 的最近出征也能看战报详情」：
+// 按出征订单 ID 反查该单的战报（一场出征可能落多条战报，取最新一条给管理端看全文）。
+// 战报只读，不做已读/删除等玩家端操作。
+func (h *EzfyAdmin) AdminEzfyOrderReport(c *gin.Context) {
+	oid, _ := strconv.ParseInt(strings.TrimSpace(c.Query("order_id")), 10, 64)
+	if oid <= 0 {
+		resp.ParamError(c, "order_id 错误")
+		return
+	}
+	var rows []model.EzfyReport
+	h.DB.Where("order_id = ?", oid).Order("id DESC").Limit(5).Find(&rows)
+	if len(rows) == 0 {
+		resp.OK(c, gin.H{"report": nil, "count": 0, "msg": "该出征没有战报"})
+		return
+	}
+	resp.OK(c, gin.H{"report": rows[0], "count": len(rows)})
 }
 
 // AdminEzfyCityUpdate 修改城池（城名/坐标/民心/民怨/税率/人口/资源）
@@ -2526,6 +2586,9 @@ func (h *EzfyAdmin) AdminEzfyPrivchats(c *gin.Context) {
 		nums[uid] = num
 		return n, num
 	}
+	// ★ 2026-10-26 用户反馈「私聊 发送方 展示空」修复：**后端保证非空**——
+	//   名字解析不到（玩家已删号 / 老数据 id 失联）时一律兜底「用户{id}」，
+	//   游戏号解析不到时兜底 id 本身。旧管理端构建只读 sender_name/sender_num 也不会再渲染出空白。
 	type rowOut struct {
 		model.PrivateMessage
 		SenderName   string `json:"sender_name"`
@@ -2537,6 +2600,22 @@ func (h *EzfyAdmin) AdminEzfyPrivchats(c *gin.Context) {
 	for _, m := range rows {
 		sn, snum := nameOf(m.SenderID)
 		rn, rnum := nameOf(m.ReceiverID)
+		// 发送方 id=0 = 系统/官方私信（不是玩家）→ 显示「系统」，别渲染成「用户0」
+		if m.SenderID == 0 {
+			sn, snum = "系统", "-"
+		}
+		if sn == "" {
+			sn = fmt.Sprintf("用户%d", m.SenderID)
+		}
+		if rn == "" {
+			rn = fmt.Sprintf("用户%d", m.ReceiverID)
+		}
+		if snum == "" {
+			snum = strconv.FormatUint(uint64(m.SenderID), 10)
+		}
+		if rnum == "" {
+			rnum = strconv.FormatUint(uint64(m.ReceiverID), 10)
+		}
 		out = append(out, rowOut{PrivateMessage: m, SenderName: sn, SenderNum: snum,
 			ReceiverName: rn, ReceiverNum: rnum})
 	}

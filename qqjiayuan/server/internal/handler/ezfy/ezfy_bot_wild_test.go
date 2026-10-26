@@ -23,7 +23,8 @@ func TestBotWildAttack(t *testing.T) {
 	//   · **宣战等待期（status=1）**→ 打该目标玩家的附属野地（botPickWildTargetOf，
 	//     野地不需要宣战；在 botPickTarget 之前，计划推进优先）；
 	//   · 找玩家城失败 → 兜底打野地（botPickWildTarget，在 botPickTarget 之后）。
-	iCity := strings.Index(bot, "if tgt, ok := h.botPickTarget(city, troopTotal, cfg); ok {")
+	//   ★ 2026-10-26 botPickTarget 多一个参数：该人机自己的「目标最小兵力」
+	iCity := strings.Index(bot, "if tgt, ok := h.botPickTarget(city, troopTotal, cfg, b.TargetMinTroops); ok {")
 	if iCity < 0 {
 		t.Fatal("botMilitary 里找不到 botPickTarget")
 	}

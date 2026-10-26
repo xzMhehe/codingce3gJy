@@ -419,8 +419,23 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 		}
 	}
 
+	// ★ 2026-10-26 「最近出征 → 战报详情」：订单行附带 report_id（最新战报），前端据此出按钮
+	ordIDs := make([]int64, 0, len(orders))
+	for _, o := range orders {
+		ordIDs = append(ordIDs, int64(o.ID))
+	}
+	repOf := h.ezfyOrderReportIDOf(ordIDs)
+	type ordOut struct {
+		model.EzfyOrder
+		ReportId uint `json:"report_id"`
+	}
+	ordersViews := make([]ordOut, 0, len(orders))
+	for _, o := range orders {
+		ordersViews = append(ordersViews, ordOut{EzfyOrder: o, ReportId: repOf[int64(o.ID)]})
+	}
+
 	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "home_num": homeNum,
-		"cities": citiesViews, "bag": bagViews, "chests": chestsViews, "corps": corpsViews, "orders": orders,
+		"cities": citiesViews, "bag": bagViews, "chests": chestsViews, "corps": corpsViews, "orders": ordersViews,
 		"officers":  officersViews,
 		"camp_name": ezfyCampName(p.Camp), "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 }

@@ -400,6 +400,10 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 		UserID: uid, Level: level, Enabled: 1,
 		Persona:   ezfyBotPersona(level),
 		NextActAt: now + int64(mathrand.Intn(120))*1000,
+		// ★ 2026-10-26 目标最小兵力按人机分：**显式落 100000**。
+		//   不能靠列默认值 —— GORM 对带 default tag 的零值字段虽然会跳过写入，
+		//   但一旦有人改成显式 0 就变成「不限」，口径会悄悄漂移。
+		TargetMinTroops: ezfyBotTargetMinTroopsDef,
 	}).Error; err != nil {
 		return rollback(fmt.Errorf("建人机档案失败: %w", err))
 	}
@@ -1177,7 +1181,8 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 	}
 
 	// ② 没有计划 → 先找**玩家城市**（坐标区间走索引，绝不遍历全图）
-	if tgt, ok := h.botPickTarget(city, troopTotal, cfg); ok {
+	//   ★ 2026-10-26 「目标最小兵力」按**该人机**自己的配置（默认 100000，0 = 不限）
+	if tgt, ok := h.botPickTarget(city, troopTotal, cfg, b.TargetMinTroops); ok {
 		if err := h.DB.Create(&model.EzfyBotTarget{
 			BotUid: b.UserID, TargetUid: tgt.UserID, TargetCityId: int64(tgt.CityID),
 			Status: 0, Note: fmt.Sprintf("%s(%d,%d) 兵力%d", tgt.Name, tgt.X, tgt.Y, tgt.Troops),
@@ -1381,22 +1386,21 @@ type ezfyBotTargetRow struct {
 //   - 非人机（is_bot = 0）、不是自己
 //   - 坐标在自己 ±25 格内（走 idx_xy / is_bot 索引）
 //   - ★ 2026-10-17 声望 ≥ 配置门槛 bot_min_prestige（管理端可配，默认 500000，0 = 不限）
-//   - ★ 2026-10-26 城内兵力 ≥ 配置门槛 bot_target_min_troops（管理端可配，默认 10000，0 = 不限）
+//   - ★ 2026-10-26 城内兵力 ≥ **该人机自己的** target_min_troops（编辑人机可配，默认 100000，0 = 不限）
 //   - 目标兵力 < 自己兵力 × 0.6（打得过才打）
 //   - 无生效中的免战保护（ezfy_city_effect effect_type=2）
 //   - 城建时间 > 3 天（新手保护）
 //   - 不在已放弃的冷却名单里
 //
 // 排序：声望高优先（人机专挑高声望的大号打），同声望挑兵力少的软柿子。
-func (h *EzfyHandler) botPickTarget(city *model.EzfyCity, myTroops int64, cfg ezfyBotLevelCfg) (ezfyBotTargetRow, bool) {
+func (h *EzfyHandler) botPickTarget(city *model.EzfyCity, myTroops int64, cfg ezfyBotLevelCfg, minTroops int64) (ezfyBotTargetRow, bool) {
 	var r ezfyBotTargetRow
 	limit := myTroops * 60 / 100
 	if limit < 50 {
 		return r, false
 	}
-	// ★ 2026-10-26 「玩家城市最小兵力」（默认 10000，0 = 不限）：低于该值的城不自动打
+	// ★ 2026-10-26 「玩家城市最小兵力」按**人机**配置（0 = 不限）：低于该值的城不自动打
 	//   （空城 / 小号没收益，也不像真人行为）。管理端手动指定目标不走这里，不受限。
-	minTroops := ezfyBotTargetMinTroops()
 	if minTroops > limit {
 		return r, false // 门槛比「打得过」的线还高 → 本轮没有合适目标
 	}
@@ -1912,14 +1916,22 @@ func ezfyBotMinPrestige() int {
 	return 0
 }
 
-// ezfyBotTargetMinTroops 人机自动挑目标时「玩家城市最小兵力」（默认 10000；**0 合法 = 不限**）。
+// ezfyBotTargetMinTroopsDef 人机自动挑目标时「玩家城市最小兵力」的**兜底默认值**。
 //
-// ★ 2026-10-26 用户规则：「人机可以编辑配置 玩家城市最小兵力 配置 默认 10000 个单位」。
-// 只影响**自动**选目标；管理端手动指定目标（AdminEzfyBotTargetSet）不走这个门槛。
+// ★ 2026-10-26 用户规则：「目标最小兵力 配置按人机分而不是总的，优化到具体人机，
+// 默认最少 100000 兵力」→ 真正的口径在 EzfyBot.TargetMinTroops（每台人机各自一份）；
+// 本全局值只在「人机行读不到 / 列为空」时兜底。
+const ezfyBotTargetMinTroopsDef int64 = 100000
+
+// ezfyBotTargetMinTroops 全局兜底：人机自动挑目标时「玩家城市最小兵力」（默认 100000；**0 合法 = 不限**）。
+//
 // ⚠️ 0 是合法值（= 不限），所以不能走 ezfyLimitOr 兜底（那会把 0 改回默认）。
+// ★ 2026-10-26 真正生效的口径是**每台人机自己的** EzfyBot.TargetMinTroops
+// （botMilitary 直接把 b.TargetMinTroops 传给 botPickTarget）；本函数只剩
+// 「管理端展示全局兜底默认」这一个用途，**不再参与任何目标筛选**。
 func ezfyBotTargetMinTroops() int64 {
 	if !ezfyCfg.ready() {
-		return 10000 // 配置没加载过 → 按默认 10000
+		return ezfyBotTargetMinTroopsDef
 	}
 	if n := ezfyCfg.limit.BotTargetMinTroops; n > 0 {
 		return n
@@ -1950,7 +1962,8 @@ func ezfyBotFoodFree(isBot int) bool {
 //	管理端可在人机编辑里单独覆盖（atk_per_hour>0）。时间窗 = 1小时 / 频率；
 //	距上次出征不足时间窗 → 本小时额度用光，等下一轮再试。
 func (h *EzfyHandler) botAtkQuotaOK(b *model.EzfyBot) bool {
-	// ★ 2026-10-18 出征时间段：配置了时间段（如 20:00-22:00）就只在段内出击，空 = 全天不限
+	// ★ 2026-10-18 出征时间段：只在段内出击；★ 2026-10-26 空值不再等于全天，
+	//   一律按默认 08:00-23:00（见 ezfyBotAtkWindowsDef）
 	if !ezfyBotAtkWindowOK() {
 		return false
 	}
@@ -1998,13 +2011,14 @@ func ezfyBotAtkDailyOf(level int) int {
 
 // ezfyBotAtkWindowOK 出征时间段是否放行（ezfy_cfg_limit.bot_atk_windows，管理端可配）。
 //
-// 格式：逗号分隔多个时间段，如 "20:00-22:00,08:00-12:00"；空 = 全天不限。
-// 支持跨天时段（如 22:00-02:00 = 晚上十点到凌晨两点）。0 是合法值，不能用 ezfyLimitOr。
+// 格式：逗号分隔多个时间段，如 "20:00-22:00,08:00-12:00"；支持跨天时段（如 22:00-02:00）。
+// ★ 2026-10-26 用户规则「出征时间段 默认早上 8 点到晚上 11 点」：空值不再等于全天，
+// 统一走 ezfyBotAtkWindows() 的默认值 08:00-23:00（要全天请显式填 00:00-23:59）。
 func ezfyBotAtkWindowOK() bool {
 	if !ezfyCfg.ready() {
 		return true
 	}
-	raw := strings.TrimSpace(ezfyCfg.limit.BotAtkWindows)
+	raw := strings.TrimSpace(ezfyBotAtkWindows())
 	if raw == "" {
 		return true
 	}

@@ -124,22 +124,34 @@ func TestBotOfficerPostNotGatedByBuildings(t *testing.T) {
 }
 
 // TestBotTargetMinTroops 人机自动挑目标必须吃「玩家城市最小兵力」配置。
+//
+// ★ 2026-10-26 用户规则「配置按人机分而不是总的，默认最少 100000」：
+//   - 默认值 100000（原全局 10000 已废弃为兜底）；
+//   - 实际门槛读 EzfyBot.TargetMinTroops（每台人机各自一份，0 = 不限）；
+//   - botPickTarget 的 SQL 下界断言保持不变。
 func TestBotTargetMinTroops(t *testing.T) {
 	src := rawFile(t, "ezfy_bot.go")
-	if !strings.Contains(src, "func ezfyBotTargetMinTroops() int64") {
-		t.Fatal("缺少 ezfyBotTargetMinTroops 访问器")
+	if !strings.Contains(src, "const ezfyBotTargetMinTroopsDef int64 = 100000") {
+		t.Fatal("最小兵力默认值必须是 100000")
 	}
-	acc := ezfyFuncBody(t, "ezfy_bot.go", "func ezfyBotTargetMinTroops() int64 {")
-	if !strings.Contains(acc, "return 10000") {
-		t.Fatalf("最小兵力默认值不是 10000：\n%s", acc)
+	// 真正生效的口径：botMilitary 把**该人机自己的**字段传进 botPickTarget
+	if !strings.Contains(src, "h.botPickTarget(city, troopTotal, cfg, b.TargetMinTroops)") {
+		t.Fatal("botMilitary 没有把人机自己的 target_min_troops 传给 botPickTarget（会退回全局口径）")
 	}
 	pick := ezfyFuncBody(t, "ezfy_bot.go", "func (h *EzfyHandler) botPickTarget(")
+	if !strings.Contains(pick, "minTroops int64") {
+		t.Fatalf("botPickTarget 没有接收按人机的最小兵力参数：\n%s", pick)
+	}
 	if !strings.Contains(pick, "AND COALESCE(t.troops, 0) >= ?") {
 		t.Fatalf("botPickTarget 没有最小兵力下界：\n%s", pick)
 	}
-	// 管理端可配
+	// 新建人机必须显式落默认 100000（不靠列默认，避免口径漂移）
+	if !strings.Contains(src, "TargetMinTroops: ezfyBotTargetMinTroopsDef") {
+		t.Fatal("ezfyBotProvision 没有显式落默认目标最小兵力 100000")
+	}
+	// 管理端可配（按人机）
 	adm := rawFile(t, "ezfy_admin_bot.go")
-	for _, want := range []string{"target_min_troops", "bot_target_min_troops"} {
+	for _, want := range []string{"target_min_troops", "TargetMinTroops"} {
 		if !strings.Contains(adm, want) {
 			t.Fatalf("管理端人机配置没有接通 %q", want)
 		}

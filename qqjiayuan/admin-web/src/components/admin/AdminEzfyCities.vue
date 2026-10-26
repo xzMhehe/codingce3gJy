@@ -118,6 +118,7 @@
         </el-table>
 
         <div class="sub-title">最近出征（{{ detail.orders.length }}）</div>
+        <!-- ★ 2026-10-26 加「战报」按钮：按订单反查战报（order_id），点开看全文（与玩家详情同一套） -->
         <el-table :data="detail.orders" size="mini" border max-height="180">
           <el-table-column prop="id" label="ID" width="70" align="center" />
           <el-table-column label="类型" width="80" align="center">
@@ -132,11 +133,28 @@
           <el-table-column label="时间" width="150" align="center">
             <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
           </el-table-column>
+          <el-table-column label="战报" width="70" align="center">
+            <template slot-scope="{row}">
+              <el-button v-if="row.report_id" size="mini" plain icon="el-icon-view" title="查看战报详情"
+                         @click="openOrderReport(row)" />
+              <span v-else class="td-gray">—</span>
+            </template>
+          </el-table-column>
         </el-table>
       </template>
       <div slot="footer">
         <el-button @click="detailDlg = false">关 闭</el-button>
       </div>
+    </el-dialog>
+
+    <!-- 战报详情（★ 2026-10-26 最近出征 → 看战报全文，与人机出征战报同一套展示） -->
+    <el-dialog :title="orderReport.title || '战报详情'" :visible.sync="orderReportDlg" width="720px" append-to-body>
+      <div v-if="orderReport">
+        <pre v-if="orderReport.content" class="report-pre">{{ orderReport.content }}</pre>
+        <pre v-if="orderReport.detail" class="report-pre report-pre-detail">{{ orderReport.detail }}</pre>
+        <div v-if="!orderReport.content && !orderReport.detail" class="td-gray">（战报内容为空）</div>
+      </div>
+      <div slot="footer"><el-button @click="orderReportDlg = false">关 闭</el-button></div>
     </el-dialog>
 
     <!-- 编辑 -->
@@ -182,6 +200,8 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '',
       detailDlg: false, detail: null,
+      // ★ 2026-10-26 最近出征 → 战报详情弹窗
+      orderReportDlg: false, orderReport: { title: '', content: '', detail: '' },
       editDlg: false, saving: false, editId: 0, form: {},
       buildStatus: { 0: '空闲', 1: '建造中', 2: '升级中' },
       orderTypes: { 1: '侦查', 2: '掠夺', 3: '征服', 4: '采集', 5: '运输', 6: '增援', 7: '派遣' },
@@ -191,6 +211,23 @@ export default {
   mounted () { this.load() },
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
+    // ★ 2026-10-26 最近出征 → 看战报详情（按订单反查最新一条战报）
+    openOrderReport (row) {
+      this.orderReport = { title: '战报详情（出征 #' + row.id + '）', content: '', detail: '' }
+      this.orderReportDlg = true
+      api.get('/admin/ezfy-order-report', { params: { order_id: row.id } }).then(r => {
+        if (r.code === 0 && r.data && r.data.report) {
+          const rp = r.data.report
+          this.orderReport = {
+            title: rp.title || rp.type_name || ('战报详情（出征 #' + row.id + '）'),
+            content: rp.content || '', detail: rp.detail || ''
+          }
+        } else {
+          this.orderReport = { title: '战报详情', content: '', detail: '' }
+          if (r.code !== 0) this.$message.error(r.msg)
+        }
+      }).catch(() => { this.orderReport = { title: '战报详情', content: '', detail: '' } })
+    },
     // 紧凑大数：不带宽分隔符，保留 1 位小数（表格里用，省宽度）
     fmtCompact (v) {
       if (v === null || v === undefined || v === '') return '—'
@@ -237,7 +274,8 @@ export default {
       api.get('/admin/ezfy-cities/' + row.id).then(r => {
         if (r.code === 0) this.detail = r.data
         else { this.detailDlg = false; this.$message.error(r.msg) }
-      })
+      // ★ 2026-10-26 请求失败时原来弹窗停在空白（detail 恒 null）→ 关掉并提示
+      }).catch(() => { this.detailDlg = false })
     },
     openEdit (row) {
       this.editId = row.id
@@ -280,4 +318,9 @@ export default {
 <style scoped>
 @import './farm-admin.css';
 .sub-title { font-size: 13px; font-weight: 600; color: #1f2d3d; margin: 14px 0 8px; padding-left: 6px; border-left: 3px solid #409eff; }
+/* ★ 2026-10-26 战报全文样式（与人机出征战报同一套） */
+.report-pre { margin: 0 0 10px; padding: 10px; background: #fff; border: 1px solid #ebeef5;
+  border-radius: 4px; font-size: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-all;
+  max-height: 420px; overflow: auto; font-family: inherit; }
+.report-pre-detail { margin-top: 10px; }
 </style>

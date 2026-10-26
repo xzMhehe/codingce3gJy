@@ -842,13 +842,18 @@ type EzfyCfgLimit struct {
 	// ★ 2026-10-26 人机自动挑目标时「玩家城市最小兵力」（默认 10000；**0 合法 = 不限**）：
 	//   只打城内兵力 ≥ 该值的玩家城 —— 避免人机去啃空城/几千兵的小号（打空城既没收益也不像真人）。
 	//   管理端「人机管理」顶栏可配；只影响自动选目标，管理端手动指定目标不受限。
-	BotTargetMinTroops int64 `gorm:"default:10000;comment:人机攻击玩家城最小兵力(0=不限)" json:"bot_target_min_troops"`
+	// ★ 2026-10-26 用户规则「目标最小兵力 配置按人机分而不是总的」：
+	//   本全局项**已降级为兜底默认**（新加列/未配置时用），实际按每台人机的
+	//   EzfyBot.TargetMinTroops 生效。管理端「人机管理」顶栏不再展示这一项。
+	BotTargetMinTroops int64 `gorm:"default:100000;comment:人机攻击玩家城最小兵力兜底默认(按人机配置优先)" json:"bot_target_min_troops"`
 	// ★ 2026-10-18 人机征兵线（默认 500000）：城内部队总数低于此值就执行征兵行动，
 	//   管理端「人机管理」可配置（0 或过小无意义 → 回落默认 50 万）。
 	BotTrainThreshold int64 `gorm:"default:500000;comment:人机征兵线(低于此值执行征兵)" json:"bot_train_threshold"`
 	// ★ 2026-10-18 人机出征时间段（管理端可配）：逗号分隔多个时段，如 "20:00-22:00,08:00-12:00"，
-	//   空 = 全天不限；支持跨天时段（22:00-02:00）。只影响人机主动出击，发育不受限。
-	BotAtkWindows string `gorm:"type:varchar(120);default:'';comment:人机出征时间段(空=全天)" json:"bot_atk_windows"`
+	//   支持跨天时段（22:00-02:00）。只影响人机主动出击，发育不受限。
+	//   ★ 2026-10-26 用户规则「出征时间段 默认早上 8 点到晚上 11 点」：空值不再等于全天，
+	//   读取端回落 08:00-23:00（见 ezfyBotAtkWindowsDef）；要全天请显式填 00:00-23:59。
+	BotAtkWindows string `gorm:"type:varchar(120);default:'08:00-23:00';comment:人机出征时间段(空=默认08:00-23:00)" json:"bot_atk_windows"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

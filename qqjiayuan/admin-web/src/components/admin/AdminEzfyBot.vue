@@ -39,16 +39,13 @@
           <el-input-number v-model.number="trainThreshold" :min="10000" :step="100000"
                            controls-position="right" style="width:130px" @change="saveConfig" />
           <span class="bot-sep" />
-          <!-- ★ 2026-10-26 目标最小兵力：只打城内兵力 ≥ 该值的玩家城（默认 10000，0 = 不限） -->
-          <span class="bot-item">目标最小兵力
-            <el-tooltip placement="top" :content="tips.targetMinTroops"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          <!-- ★ 2026-10-26 「目标最小兵力」收进编辑人机-基本信息（按人机分，用户要求）；
+               顶栏只留全局生效的出征时间段 -->
+          <span class="bot-item">出征时间段
+            <el-tooltip placement="top" :content="tips.window"><i class="el-icon-info cfg-tip" /></el-tooltip>
           </span>
-          <el-input-number v-model.number="targetMinTroops" :min="0" :step="10000"
-                           controls-position="right" style="width:130px" @change="saveConfig" />
-          <span class="bot-sep" />
-          <span class="bot-item">出征时间段</span>
-          <el-input v-model="atkWindows" placeholder="留空=全天 如 20:00-22:00,08:00-12:00"
-                    style="width:230px" maxlength="120" @change="saveConfig" />
+          <el-input v-model="atkWindows" placeholder="留空=默认 08:00-23:00（全天填 00:00-23:59）"
+                    style="width:250px" maxlength="120" @change="saveConfig" />
         </div>
       </div>
     </el-card>
@@ -237,6 +234,13 @@
                 <el-switch v-model="editForm.attack_wild" :active-value="1" :inactive-value="0" />
                 <el-tooltip placement="top" :content="tips.attackWild"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
                 <span class="td-gray" style="margin-left:6px">{{ editForm.attack_wild ? '会征服真人玩家的附属野地' : '不打玩家的附属野地（只打城市）' }}</span>
+              </el-form-item>
+              <!-- ★ 2026-10-26 目标最小兵力（按人机分，用户要求从顶栏挪到这里，默认 100000） -->
+              <el-form-item label="目标最小兵力">
+                <el-input-number v-model.number="editForm.target_min_troops" :min="0" :step="10000"
+                                 controls-position="right" style="width:150px" />
+                <el-tooltip placement="top" :content="tips.targetMinTroops"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
+                <span class="td-gray" style="margin-left:6px">只自动打城内兵力 ≥ 此值的玩家城（0 = 不限）</span>
               </el-form-item>
             </el-form>
           </el-tab-pane>
@@ -517,7 +521,7 @@
         <el-table-column label="被攻击方" width="120" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.target_name || '—' }}</template>
         </el-table-column>
-        <el-table-column prop="preview" label="内容" min-width="300" show-overflow-tooltip />
+        <!-- ★ 2026-10-26 用户要求「内容列去掉，多余展示，直接看详情」 -->
         <el-table-column label="操作" width="80" align="center">
           <template slot-scope="s">
             <el-button size="mini" plain icon="el-icon-view" @click="openReportDetail(s.row)">详情</el-button>
@@ -558,7 +562,7 @@ export default {
     return {
       list: [], max: 50, loading: false, word: '',
       attackOn: 1, atkDailyCap: 3, foodFree: 1, minPrestige: 500000, trainThreshold: 500000,
-      targetMinTroops: 10000,
+      // ★ 2026-10-26 「目标最小兵力」改按人机分（编辑人机-基本信息），顶栏不再有全局输入
       atkWindows: '', saving: false,
       // 攻击目标
       tgtDlg: false, tgtLoading: false, tgtSaving: false, tgtInput: '', targets: [],
@@ -606,8 +610,8 @@ export default {
         foodFree: '开启后人机城内军队不扣维护粮、出征也免油耗（真人照常扣），让人机专注发育与出击。',
         minPrestige: '人机自动挑攻击目标时，只打声望 ≥ 此值的真人玩家（0 = 不限制）；声望越高越优先被选中。',
         train: '人机城内部队总数低于该值就执行征兵行动（默认 50 万）；填低于 1 万会自动回落到 50 万。',
-        targetMinTroops: '人机自动挑攻击目标时，只打城内兵力 ≥ 此值的真人玩家城（默认 10000，0 = 不限）。避免人机去啃空城 / 几千兵的小号；管理端手动指定目标不受此限。',
-        window: '人机只在指定时间段内出征（如 20:00-22:00,08:00-12:00，支持跨天 22:00-02:00）；留空 = 全天。发育/集结等其它行动不受限。',
+        targetMinTroops: '自动挑攻击目标时，只打城内兵力 ≥ 此值的真人玩家城。★ 按**每台人机**单独配置（编辑人机 → 基本信息），默认 100000；0 = 不限（愿意啃空城）。管理端手动指定目标不受此限。',
+        window: '人机只在指定时间段内出征（如 20:00-22:00,08:00-12:00，支持跨天 22:00-02:00）。★ 默认 08:00-23:00（早上 8 点到晚上 11 点）；要全天请填 00:00-23:59。发育/集结等其它行动不受限。',
         attackWild: '默认关闭：人机只打城市，不碰真人玩家的附属野地。开启后 —— 宣战等待期先征服目标玩家的野地，周围没有可打的城市时也会兜底打玩家野地（一律征服，胜利后立刻放弃，不占领）。',
         boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
       }
@@ -644,10 +648,6 @@ export default {
           if (r.data.train_threshold !== undefined && r.data.train_threshold !== null) {
             this.trainThreshold = r.data.train_threshold
           }
-          // ★ 2026-10-26 目标最小兵力：**0 合法 = 不限**，不能用 || 兜底（会把 0 改回默认）
-          if (r.data.target_min_troops !== undefined && r.data.target_min_troops !== null) {
-            this.targetMinTroops = Number(r.data.target_min_troops)
-          }
           this.atkWindows = r.data.atk_windows || ''
         } else this.$message.error(r.msg)
       }).catch(() => { this.loading = false })
@@ -655,8 +655,7 @@ export default {
     saveConfig () {
       api.post('/admin/ezfy-bot/config', {
         attack_on: this.attackOn, atk_daily_cap: this.atkDailyCap, food_free: this.foodFree,
-        min_prestige: this.minPrestige, train_threshold: this.trainThreshold, atk_windows: this.atkWindows,
-        target_min_troops: this.targetMinTroops
+        min_prestige: this.minPrestige, train_threshold: this.trainThreshold, atk_windows: this.atkWindows
       }).then(r => {
         if (r.code === 0) this.$message.success('已保存')
         else this.$message.error(r.msg)
@@ -715,9 +714,14 @@ export default {
         atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
         atk_type: 0, atk_type_eff: 3,
         chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on,
-        attack_wild: row.attack_wild ? 1 : 0 }
+        attack_wild: row.attack_wild ? 1 : 0,
+        // ★ 2026-10-26 目标最小兵力（按人机分，默认 100000；老行 0/空 = 不限）
+        target_min_troops: row.target_min_troops === undefined || row.target_min_troops === null
+          ? 100000 : Number(row.target_min_troops) }
       this.editSnapA = { h: row.atk_per_hour || 0, t: row.atk_troop || 0, ty: row.atk_type || 0,
-        aw: row.attack_wild ? 1 : 0 }
+        aw: row.attack_wild ? 1 : 0,
+        // ★ 2026-10-26 目标最小兵力快照（改了才提交）
+        tmin: this.editForm.target_min_troops }
       this.editDlg = true
       this.editLoading = true
       api.get('/admin/ezfy-bot/' + row.user_id + '/buildings').then(r => {
@@ -733,7 +737,10 @@ export default {
             atk_per_hour_eff: row.atk_per_hour_eff || 0, atk_troop_eff: row.atk_troop_eff || 0,
             atk_type: row.atk_type || 0, atk_type_eff: row.atk_type_eff || 3,
             chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on,
-            attack_wild: row.attack_wild ? 1 : 0
+            attack_wild: row.attack_wild ? 1 : 0,
+            // ★ 2026-10-26 目标最小兵力（按人机分，默认 100000）
+            target_min_troops: row.target_min_troops === undefined || row.target_min_troops === null
+              ? 100000 : Number(row.target_min_troops)
           }
           // 只列已建造的建筑（level>0），未建造的坑位是噪音
           this.editBuildings = (r.data.buildings || []).filter(x => x.level > 0)
@@ -834,7 +841,13 @@ export default {
           ? 1 : (this.editForm.chat_on ? 1 : 0),
         // ★ 2026-10-25 打野地开关（基本信息 tab）：改了才提交（null=不更新；默认 0=不打玩家野地）
         attack_wild: (this.editSnapA.aw ? 1 : 0) === (this.editForm.attack_wild ? 1 : 0)
-          ? null : (this.editForm.attack_wild ? 1 : 0)
+          ? null : (this.editForm.attack_wild ? 1 : 0),
+        // ★ 2026-10-26 目标最小兵力（基本信息 tab）：改了才提交（null=不更新；0=不限）
+        //   输入框被清空（undefined/null）时保持原值，不要悄悄变成「不限」。
+        target_min_troops: (this.editForm.target_min_troops === undefined || this.editForm.target_min_troops === null)
+          ? null
+          : (Number(this.editSnapA.tmin) === Number(this.editForm.target_min_troops)
+              ? null : Number(this.editForm.target_min_troops))
       }).then(r => {
         this.editSaving = false
         if (r.code === 0) {
@@ -863,19 +876,34 @@ export default {
       }).catch(() => {})
     },
     // ★ 2026-10-19 发放/占领 tab：切进来拉当前资源 + 占领城市（原 openGrant/openOccupy 合并进编辑对话框）
+    // ★ 2026-10-26 修「当前集结令数量不对」：
+    //   ① 原来先填 cur.gather_count、随后 detail 返回时**整体覆盖** grantCur 把 gather 丢了（显示 undefined/旧值）；
+    //   ② cur.gather_count 是打开弹窗时列表里的旧值，发放后不刷新；
+    //   ③ 资源原来取 cities[0]（无排序，可能是分城），发放却落在「当前城」→ 数字对不上。
+    //   现在：资源按 profile.current_city_id 定位当前城；集结令只认背包里**名字**为「集结令」的行
+    //   （★ 禁按 cfg_id 猜身份 —— 道具/装备两张表各自从 1 编号，ID 会撞），背包没这行就是 0。
     loadGrantTab () {
       this.grantForm = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: 0 }
-      this.grantCur = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: this.cur.gather_count || 0 }
+      this.grantCur = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0,
+        gather: (this.cur && this.cur.gather_count) || 0 }
       api.get('/admin/ezfy-players/' + this.cur.user_id + '/detail').then(r => {
         if (r.code !== 0 || !r.data) return
         const cs = r.data.cities || []
-        if (cs.length) {
-          this.grantCur = {
-            gold: cs[0].gold || 0, food: cs[0].food || 0, steel: cs[0].steel || 0,
-            oil: cs[0].oil || 0, rare: cs[0].rare || 0
-          }
+        const curCityId = Number((r.data.player && r.data.player.current_city_id) || 0)
+        // 与后端 currentCity() 同口径：current_city_id 有效就用它，否则回落到 id 最小的主城
+        const ct = cs.find(c => Number(c.id) === curCityId) ||
+          cs.slice().sort((a, b) => Number(a.id) - Number(b.id))[0]
+        if (ct) {
+          // 合并资源字段，绝不能把 gather 一并覆盖掉
+          this.grantCur = Object.assign({}, this.grantCur, {
+            gold: ct.gold || 0, food: ct.food || 0, steel: ct.steel || 0,
+            oil: ct.oil || 0, rare: ct.rare || 0
+          })
         }
-      })
+        // 集结令以背包真实数量为准；背包没有这一行 = 0（不能沿用列表旧快照）
+        const g = (r.data.bag || []).find(b => b.item_name === '集结令')
+        this.grantCur.gather = g ? (Number(g.count) || 0) : 0
+      }).catch(() => {})
       this.occList = []
       this.occPage = 1
       this.loadOccupy()
@@ -891,6 +919,11 @@ export default {
         this.grantSaving = false
         if (r.code === 0) {
           this.$message.success(r.data.msg || '已发放')
+          // ★ 2026-10-26 修「当前集结令数量不对」：发放接口返回发放后的真实持有数，直接刷新「当前」
+          if (r.data && r.data.gather_count !== undefined && r.data.gather_count !== null) {
+            this.grantCur.gather = Number(r.data.gather_count) || 0
+            if (this.cur) this.cur.gather_count = Number(r.data.gather_count) || 0
+          }
           this.load()
           this.loadGrantTab()
         } else this.$message.error(r.msg)

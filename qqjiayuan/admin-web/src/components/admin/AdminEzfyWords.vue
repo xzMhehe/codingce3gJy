@@ -78,22 +78,25 @@
           <div class="grow" />
           <el-button type="warning" icon="el-icon-delete" @click="openClear">清空某玩家私聊</el-button>
         </div>
-        <!-- ★ 2026-10-25 加勾选框批量删除：row-key + reserve-selection = 翻页勾选不丢 -->
-        <el-table ref="privTable" :data="priv.list" row-key="id" v-loading="priv.loading" stripe border max-height="640" @selection-change="onPrivSel">
-          <el-table-column type="selection" width="46" align="center" :reserve-selection="true" />
+        <!-- ★ 2026-10-26 重做批量删除勾选（修「无法多选」）：
+             不再依赖 el-table 的 reserve-selection（翻页/刷新后勾选行为不稳定），
+             改为显式维护 privSelIds（跨页勾选的唯一真源），@select/@select-all 只改用户点的行。 -->
+        <el-table ref="privTable" :data="priv.list" row-key="id" v-loading="priv.loading" stripe border max-height="640"
+                  @select="onPrivSelect" @select-all="onPrivSelectAll">
+          <el-table-column type="selection" width="46" align="center" />
           <el-table-column prop="id" label="ID" width="80" align="center" />
           <!-- ★ 2026-10-25 修「发送方/接收方空白」：名字统一走 privName/privNum 兜底，
                后端没给名字时至少显示「用户+ID」，绝不再渲染出空白或「用户undefined」 -->
           <el-table-column label="发送方" min-width="160" show-overflow-tooltip>
             <template slot-scope="{row}">
               <span class="td-main">{{ privName(row, 'sender') }}</span>
-              <span class="td-muted">（{{ privNum(row, 'sender') }}）</span>
+              <span v-if="privNum(row, 'sender') !== '-'" class="td-muted">（{{ privNum(row, 'sender') }}）</span>
             </template>
           </el-table-column>
           <el-table-column label="接收方" min-width="160" show-overflow-tooltip>
             <template slot-scope="{row}">
               <span class="td-main">{{ privName(row, 'receiver') }}</span>
-              <span class="td-muted">（{{ privNum(row, 'receiver') }}）</span>
+              <span v-if="privNum(row, 'receiver') !== '-'" class="td-muted">（{{ privNum(row, 'receiver') }}）</span>
             </template>
           </el-table-column>
           <el-table-column prop="content" label="内容" min-width="320" show-overflow-tooltip />
@@ -114,8 +117,8 @@
         <div class="pager-bar">
           <div class="pager-info">共 <b>{{ priv.total }}</b> 条 · 每页 {{ priv.size }} 条</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <el-button size="mini" type="danger" plain icon="el-icon-delete"
-                       :disabled="!privSel.length" :loading="priv.saving" @click="delPrivSelected">删除选中（{{ privSel.length }}）</el-button>
+          <el-button size="mini" type="danger" plain icon="el-icon-delete"
+                     :disabled="!privSelIds.length" :loading="priv.saving" @click="delPrivSelected">删除选中（{{ privSelIds.length }}）</el-button>
             <el-pagination v-show="priv.total > 0" small background layout="sizes, prev, pager, next, jumper" :total="priv.total" :page-size="priv.size"
                            :current-page="priv.page" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { priv.page = p; loadPrivs() }"
@@ -166,8 +169,10 @@
             </el-form-item>
           </el-form>
           <!-- ★ 2026-10-25 支持删除：row-key + reserve-selection = 翻页后勾选不丢，可跨页一次删 -->
-          <el-table ref="mailTable" :data="sysMails" row-key="id" v-loading="mail.loading" stripe border max-height="420" @selection-change="onMailSel">
-            <el-table-column type="selection" width="46" align="center" :reserve-selection="true" />
+          <!-- ★ 2026-10-26 系统邮件勾选同样改为显式 id 集合（与私聊同一套，修「无法多选」） -->
+          <el-table ref="mailTable" :data="sysMails" row-key="id" v-loading="mail.loading" stripe border max-height="420"
+                    @select="onMailSelect" @select-all="onMailSelectAll">
+            <el-table-column type="selection" width="46" align="center" />
             <el-table-column prop="id" label="ID" width="70" align="center" />
             <el-table-column label="收件人" min-width="130" show-overflow-tooltip>
               <template slot-scope="{row}">
@@ -218,7 +223,7 @@
             <div class="pager-info">共 <b>{{ mail.total }}</b> 条 · 每页 {{ mail.size }} 条</div>
             <div style="display:flex;align-items:center;gap:8px">
               <el-button size="mini" type="danger" plain icon="el-icon-delete"
-                         :disabled="!mailSel.length" @click="delMailSelected">删除选中（{{ mailSel.length }}）</el-button>
+                         :disabled="!mailSelIds.length" @click="delMailSelected">删除选中（{{ mailSelIds.length }}）</el-button>
               <el-pagination v-show="mail.total > 0" small background layout="sizes, prev, pager, next, jumper" :total="mail.total" :page-size="mail.size"
                              :current-page="mail.page" :page-sizes="[5, 10, 20, 50, 100]"
                              @current-change="p => { mail.page = p; loadSysMails() }"
@@ -232,14 +237,17 @@
       <div v-else>
         <div class="toolbar">
           <el-input v-model="word" placeholder="按敏感词搜索" clearable style="width:220px"
-                    @keyup.enter.native="page = 1; loadWords()" />
+                    @keyup.enter.native="page = 1; loadWords()" @clear="page = 1; loadWords()" />
           <el-button type="primary" icon="el-icon-search" @click="page = 1; loadWords()">查询</el-button>
           <el-button type="success" icon="el-icon-plus" @click="openAdd">新增敏感词</el-button>
           <el-button type="warning" plain icon="el-icon-upload2" @click="bulkDlg = true">批量导入</el-button>
           <div class="grow" />
           <span class="td-sub">类型：<b>替换</b> = 用替换词覆盖（留空则打 *）；<b>拦截</b> = 直接拒绝发言</span>
         </div>
-        <el-table :data="list" v-loading="loading" stripe border>
+        <!-- ★ 2026-10-26 用户反馈「敏感词页空白」加固：
+             ① 搜索框点 × 也重新查询（原来只回车才查，看起来像「列表空了」）；
+             ② 空列表给明确文案；③ 类型按 Number 比较（老库返回字符串时原来恒显示「替换」）。 -->
+        <el-table :data="list" v-loading="loading" stripe border empty-text="暂无敏感词，点右上角「新增敏感词」添加">
           <el-table-column prop="id" label="ID" width="70" align="center" />
           <el-table-column label="敏感词" min-width="170" show-overflow-tooltip>
             <template slot-scope="{row}"><span class="td-main">{{ row.word }}</span></template>
@@ -249,8 +257,8 @@
           </el-table-column>
           <el-table-column label="类型" width="110" align="center">
             <template slot-scope="{row}">
-              <el-tag :type="row.type === 2 ? 'danger' : 'warning'" size="mini">
-                {{ row.type === 2 ? '拦截' : '替换' }}
+              <el-tag :type="Number(row.type) === 2 ? 'danger' : 'warning'" size="mini">
+                {{ Number(row.type) === 2 ? '拦截' : '替换' }}
               </el-tag>
             </template>
           </el-table-column>
@@ -323,22 +331,22 @@ export default {
       chat: { list: [], total: 0, page: 1, size: 20, word: '', start: '', end: '', loading: false },
       // 私聊记录（★ 2026-10-24 并入）
       priv: { list: [], total: 0, page: 1, size: 5, word: '', isRead: -1, loading: false, saving: false },
-      // ★ 2026-10-25 私聊批量删除：勾选集合（row-key + reserve-selection 支持跨页勾选）
-      privSel: [],
+      // ★ 2026-10-26 私聊批量删除：跨页勾选 id 集合（唯一真源，配合 syncPrivSel 回显）
+      privSelIds: [],
       clearDlg: false, clearForm: { user_id: 1, dir: 'all' },
       // 系统邮件（★ 2026-10-24 分页）
       mailForm: { target_id: 0, subject: '', content: '' },
       mail: { total: 0, page: 1, size: 5, loading: false },
       sysMails: [], mailSending: false,
-      // ★ 2026-10-25 系统邮件删除：勾选集合（多选批量删）
-      mailSel: [],
+      // ★ 2026-10-26 系统邮件删除：跨页勾选 id 集合（与私聊同一套）
+      mailSelIds: [],
       // 敏感词
       list: [], total: 0, page: 1, size: 5, word: '', loading: false,
       dlg: false, formId: 0, form: { word: '', replace: '', type: 1 }, saving: false,
       bulkDlg: false, bulkText: ''
     }
   },
-  mounted () { this.loadChats() },
+  mounted () { this.onTab() },
   methods: {
     channelOf (tab) { return { chat1: 1, chat2: 2, chat4: 4 }[tab] || 0 },
     channelNameOf (tab) { return { chat1: '世界', chat2: '军团', chat4: '系统' }[tab] || '' },
@@ -361,7 +369,7 @@ export default {
       }).then(r => {
         this.chat.loading = false
         if (r.code === 0) { this.chat.list = r.data.list || []; this.chat.total = r.data.total || 0 } else this.$message.error(r.msg)
-      })
+      }).catch(() => { this.chat.loading = false })
     },
     removeChat (row) {
       this.$confirm('删除该聊天记录（ID ' + row.id + '）？', '提示', { type: 'warning' }).then(() => {
@@ -400,38 +408,66 @@ export default {
           this.priv.list = r.data.list || []
           this.priv.total = r.data.total || 0
           this.priv.page = r.data.page || 1
+          // ★ 2026-10-26 翻页/刷新后回显跨页勾选
+          this.$nextTick(() => this.syncPrivSel())
         } else this.$message.error(r.msg)
-      })
+      }).catch(() => { this.priv.loading = false })
     },
     // ★ 2026-10-25 修「发送方/接收方空白」：名字/游戏号统一在这里兜底。
     //   后端正常会下发 sender_name/sender_num（实测有值）；万一某台旧后端没下发，
     //   这里退回「用户+ID」，绝不再渲染出空白或「用户undefined」。
+    // ★ 2026-10-26 重做批量勾选（修「无法多选」）：
+    //   不再依赖 el-table 的 reserve-selection（翻页/数据刷新后勾选行为不稳定，会出现
+    //   「勾了第二条第一条被取消」或「勾选全丢」），改为显式维护跨页 id 集合 privSelIds：
+    //   @select/@select-all 只处理用户点的那一行/当前页，翻页回来由 syncPrivSel 回显。
     privName (row, who) {
       const n = row[who + '_name']
-      if (n) return n
+      if (n && String(n).trim()) return String(n)
       const id = row[who + '_id']
       return (id === 0 || id) ? ('用户' + id) : '未知'
     },
     privNum (row, who) {
       const num = row[who + '_num']
-      if (num) return num
+      if (num !== undefined && num !== null && String(num) !== '') return num
       const id = row[who + '_id']
       return (id === 0 || id) ? id : '-'
     },
-    onPrivSel (rows) { this.privSel = rows || [] },
+    onPrivSelect (sel, row) {
+      const ids = new Set(this.privSelIds)
+      const checked = (sel || []).some(r => r.id === row.id)
+      if (checked) ids.add(row.id)
+      else ids.delete(row.id)
+      this.privSelIds = Array.from(ids)
+    },
+    onPrivSelectAll (sel) {
+      const ids = new Set(this.privSelIds)
+      const pageIds = (this.priv.list || []).map(r => r.id)
+      const allChecked = pageIds.length > 0 && pageIds.every(id => (sel || []).some(r => r.id === id))
+      pageIds.forEach(id => { allChecked ? ids.add(id) : ids.delete(id) })
+      this.privSelIds = Array.from(ids)
+    },
+    // 翻页/刷新后按 privSelIds 回显当前页勾选
+    syncPrivSel () {
+      const t = this.$refs.privTable
+      if (!t) return
+      t.clearSelection()
+      ;(this.priv.list || []).forEach(r => {
+        if (this.privSelIds.indexOf(r.id) >= 0) t.toggleRowSelection(r, true)
+      })
+    },
     delPrivSelected () {
-      const rows = this.privSel.slice()
-      if (!rows.length) { this.$message.warning('请先勾选要删除的私聊'); return }
-      this.$confirm(`删除选中的 ${rows.length} 条私聊记录？物理删除，不可恢复。`, '确认删除', { type: 'warning' }).then(() => {
+      const ids = this.privSelIds.slice()
+      if (!ids.length) { this.$message.warning('请先勾选要删除的私聊'); return }
+      this.$confirm(`删除选中的 ${ids.length} 条私聊记录？物理删除，不可恢复。`, '确认删除', { type: 'warning' }).then(() => {
         this.priv.saving = true
-        api.post('/admin/ezfy-privchats/batch-delete', { ids: rows.map(r => r.id) }).then(r => {
+        api.post('/admin/ezfy-privchats/batch-delete', { ids: ids }).then(r => {
           this.priv.saving = false
           if (r.code === 0) {
             this.$message.success(r.data && r.data.msg ? r.data.msg : '已删除')
-            this.privSel = []
+            this.privSelIds = []
             if (this.$refs.privTable) this.$refs.privTable.clearSelection()
             // 当前页被删空 → 回退一页，避免停在空页
-            if (this.priv.list.length <= rows.length && this.priv.page > 1) this.priv.page--
+            if (this.priv.list.length <= ids.length && this.priv.page > 1) this.priv.page--
             this.loadPrivs()
           } else this.$message.error(r.msg)
         }).catch(() => { this.priv.saving = false })
@@ -442,6 +478,8 @@ export default {
         api.delete('/admin/ezfy-privchats/' + row.id).then(r => {
           if (r.code === 0) {
             this.$message.success(r.data.msg || '已删除')
+            // ★ 2026-10-26 单条删除同样要清掉跨页勾选集合里的这个 id
+            this.privSelIds = this.privSelIds.filter(id => id !== row.id)
             if (this.priv.list.length <= 1 && this.priv.page > 1) this.priv.page--
             this.loadPrivs()
           } else this.$message.error(r.msg)
@@ -472,11 +510,35 @@ export default {
         if (r.code === 0) {
           this.sysMails = r.data.list || []
           this.mail.total = r.data.total || 0
+          // ★ 2026-10-26 翻页/刷新后回显跨页勾选
+          this.$nextTick(() => this.syncMailSel())
         } else this.$message.error(r.msg)
       }).catch(() => { this.mail.loading = false })
     },
     // ---- 系统邮件删除（★ 2026-10-25 用户需求：发错了 / 发错道具了要能一起删除） ----
-    onMailSel (rows) { this.mailSel = rows || [] },
+    // ★ 2026-10-26 勾选改为显式 mailSelIds（与私聊同一套，修「无法多选」）
+    onMailSelect (sel, row) {
+      const ids = new Set(this.mailSelIds)
+      const checked = (sel || []).some(r => r.id === row.id)
+      if (checked) ids.add(row.id)
+      else ids.delete(row.id)
+      this.mailSelIds = Array.from(ids)
+    },
+    onMailSelectAll (sel) {
+      const ids = new Set(this.mailSelIds)
+      const pageIds = (this.sysMails || []).map(r => r.id)
+      const allChecked = pageIds.length > 0 && pageIds.every(id => (sel || []).some(r => r.id === id))
+      pageIds.forEach(id => { allChecked ? ids.add(id) : ids.delete(id) })
+      this.mailSelIds = Array.from(ids)
+    },
+    syncMailSel () {
+      const t = this.$refs.mailTable
+      if (!t) return
+      t.clearSelection()
+      ;(this.sysMails || []).forEach(r => {
+        if (this.mailSelIds.indexOf(r.id) >= 0) t.toggleRowSelection(r, true)
+      })
+    },
     attachText (row) {
       const as = row.attaches || []
       if (!as.length) return '—'
@@ -492,14 +554,17 @@ export default {
       if (claimed) tip += `<br/>其中 <b>${claimed}</b> 封的附件玩家已领取，删除邮件<b>不会</b>收回已到手的道具。`
       return tip
     },
-    postDelMail (payload, removedCount) {
+    postDelMail (payload, removedCount, removedIds) {
       this.mail.loading = true
       api.post('/admin/ezfy-mails/system/delete', payload).then(r => {
         this.mail.loading = false
         if (r.code === 0) {
           this.$message.success(r.data && r.data.msg ? r.data.msg : '已删除')
-          // 删除成功后清掉勾选（跨页勾选靠 reserve-selection 保留，删完必须手动清，否则「删除选中」还记着已删的行）
-          this.mailSel = []
+          // 删除成功后把已删的 id 从跨页勾选集合里清掉（否则「删除选中」还记着已删的行）
+          if (removedIds && removedIds.length) {
+            const gone = new Set(removedIds)
+            this.mailSelIds = this.mailSelIds.filter(id => !gone.has(id))
+          }
           if (this.$refs.mailTable) this.$refs.mailTable.clearSelection()
           // 当前页被删空 → 回退一页，避免停在空页（列表看起来「数据没了」）
           if (this.sysMails.length <= removedCount && this.mail.page > 1) this.mail.page--
@@ -510,7 +575,7 @@ export default {
     delMail (row) {
       this.$confirm(this.mailDelTip([row]), '确认删除系统邮件',
         { type: 'warning', dangerouslyUseHTMLString: true }).then(() => {
-        this.postDelMail({ ids: [row.id] }, 1)
+        this.postDelMail({ ids: [row.id] }, 1, [row.id])
       }).catch(() => {})
     },
     delMailBatch (row) {
@@ -521,11 +586,12 @@ export default {
       }).catch(() => {})
     },
     delMailSelected () {
-      const rows = this.mailSel.slice()
-      if (!rows.length) { this.$message.warning('请先勾选要删除的邮件'); return }
-      this.$confirm(this.mailDelTip(rows), '确认删除所选系统邮件',
+      const ids = this.mailSelIds.slice()
+      if (!ids.length) { this.$message.warning('请先勾选要删除的邮件'); return }
+      const rows = (this.sysMails || []).filter(r => ids.indexOf(r.id) >= 0)
+      this.$confirm(this.mailDelTip(rows.length ? rows : ids.map(id => ({ id }))), '确认删除所选系统邮件',
         { type: 'warning', dangerouslyUseHTMLString: true }).then(() => {
-        this.postDelMail({ ids: rows.map(r => r.id) }, rows.length)
+        this.postDelMail({ ids: ids }, rows.length, ids)
       }).catch(() => {})
     },
     sendMail () {
@@ -551,10 +617,13 @@ export default {
       }).then(r => {
         this.loading = false
         if (r.code === 0) { this.list = r.data.list || []; this.total = r.data.total || 0 } else this.$message.error(r.msg)
-      })
+      // ★ 2026-10-26 修「敏感词页空白」：请求失败（403/500/断网）时原来 loading 永远为 true
+      //   → 表格一直转圈、看着像「一条数据都没有」。必须复位。
+      }).catch(() => { this.loading = false })
     },
     openAdd () { this.formId = 0; this.form = { word: '', replace: '', type: 1 }; this.dlg = true },
-    openEdit (row) { this.formId = row.id; this.form = { word: row.word, replace: row.replace, type: row.type }; this.dlg = true },
+    // ★ 2026-10-26 类型按 Number 取（老库可能返回字符串），否则编辑弹窗单选框会跳回「替换」
+    openEdit (row) { this.formId = row.id; this.form = { word: row.word, replace: row.replace, type: Number(row.type) === 2 ? 2 : 1 }; this.dlg = true },
     save () {
       if (!this.form.word.trim()) { this.$message.error('敏感词不能为空'); return }
       this.saving = true
@@ -596,7 +665,9 @@ export default {
           this.bulkDlg = false
           this.bulkText = ''
           this.$message.success(r.data.msg || '导入完成')
-          // ★ 2026-10-11 批量导入的词同样排在最前 → 回到第 1 页才能看到
+          // ★ 2026-10-26 修「导入后列表看起来是空的」：批量导入的词排在最前，
+          //   若沿用上次搜索词，新导入的词会被筛掉 → 一并清空搜索、回第 1 页。
+          this.word = ''
           this.page = 1
           this.loadWords()
         }
