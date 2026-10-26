@@ -11,7 +11,13 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
         <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
-        <el-table-column prop="home_num" label="家园号" width="100" align="center" />
+        <!-- ★ 2026-10-26 用户要求「分页家园号列改成游戏ID」：
+             游戏号（ezfy_profile.game_uid）才是玩家看得见的号；老数据 game_uid=0 时回落家园号，不留空白 -->
+        <el-table-column label="游戏ID" width="110" align="center">
+          <template slot-scope="{row}">
+            <span class="td-mono">{{ row.game_uid || row.home_num || '—' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="昵称" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span class="td-main">{{ row.nickname || row.home_nick || '—' }}</span>

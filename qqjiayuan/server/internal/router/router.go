@@ -1579,15 +1579,15 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-recruit-limit-users/:id/reset", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitReset)
 
 						// ---- 资源管理 ----
-						admin.GET("/ezfy-resources", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResources)
-						admin.GET("/ezfy-resources-summary", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceSummary)
-						admin.POST("/ezfy-resources/set", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceSet)
-						admin.POST("/ezfy-resources/grant", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceGrant)
+						admin.GET("/ezfy-resources", permAny(db, "module:ezfySystem", "module:ezfyResources"), ezfyAdminH.AdminEzfyResources)
+						admin.GET("/ezfy-resources-summary", permAny(db, "module:ezfySystem", "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceSummary)
+						admin.POST("/ezfy-resources/set", permAny(db, "module:ezfySystem", "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceSet)
+						admin.POST("/ezfy-resources/grant", permAny(db, "module:ezfySystem", "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceGrant)
 
 						// ---- 资源名称维护（改名后游戏端/管理端展示全部跟随） ----
-						admin.GET("/ezfy-res-cfg", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgList)
-						admin.PUT("/ezfy-res-cfg/:id", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgUpdate)
-						admin.POST("/ezfy-res-cfg/reset", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgReset)
+						admin.GET("/ezfy-res-cfg", permAny(db, "module:ezfySystem", "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgList)
+						admin.PUT("/ezfy-res-cfg/:id", permAny(db, "module:ezfySystem", "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgUpdate)
+						admin.POST("/ezfy-res-cfg/reset", permAny(db, "module:ezfySystem", "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgReset)
 
 						// ---- 资源交易行维护（系统挂单可定价黄金/钻石；玩家挂单只能黄金） ----
 						admin.GET("/ezfy-exchange", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeList)
@@ -2044,6 +2044,22 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	//   （wwii 模式不需要 admin-web；二战管理从 home 反代入口进入）。
 	if cfg.Mode() != "wwii" && cfg.Server.AdminWebDir != "" {
 		if st, err := os.Stat(cfg.Server.AdminWebDir); err == nil && st.IsDir() {
+			// ★★ 2026-10-26 修「管理端重新构建了，页面还是旧的」：
+			//   index.html 原来没有任何 Cache-Control → 浏览器启发式缓存（可能几小时），
+			//   于是它继续引用**旧 hash** 的 app.xxx.js / 动态 chunk：
+			//     · 旧 chunk 已被 build 清掉 → 白屏 / 报 chunk load failed；
+			//     · 部署时旧文件还留着 → 页面安静地跑旧代码（管理员以为「改了没生效」）。
+			//   入口 html 一律 no-cache；带 hash 的 js/css 保持默认（hash 变了自然换 URL）。
+			r.Use(func(c *gin.Context) {
+				p := c.Request.URL.Path
+				if (p == "/admin-ui" || strings.HasPrefix(p, "/admin-ui/")) &&
+					(strings.HasSuffix(p, ".html") || strings.HasSuffix(p, "/")) {
+					c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+					c.Header("Pragma", "no-cache")
+					c.Header("Expires", "0")
+				}
+				c.Next()
+			})
 			r.Static("/admin-ui", cfg.Server.AdminWebDir)
 		}
 	}

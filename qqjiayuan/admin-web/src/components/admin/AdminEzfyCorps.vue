@@ -1,5 +1,10 @@
 <template>
   <div class="farm-admin">
+    <!-- ★ 2026-10-26 用户要求「军团管理 和 军团商城维护 菜单合并，按 tab 展示」：
+         原独立菜单「军团商城维护」（AdminEzfyCorpsMall）内嵌成第二个 tab，逻辑一份不复制；
+         tab2 加 lazy —— 没切过去就不请求商城接口。 -->
+    <el-tabs v-model="tab">
+      <el-tab-pane label="军团列表" name="corps">
     <el-card shadow="never" class="box">
       <div class="toolbar">
         <el-input v-model="word" placeholder="军团名搜索" clearable style="width:200px"
@@ -37,6 +42,13 @@
                        @size-change="s => { size = s; page = 1; load() }" />
       </div>
     </el-card>
+      </el-tab-pane>
+
+      <!-- ★ 2026-10-26 军团商城维护（原独立菜单）合并进来，按 tab 展示 -->
+      <el-tab-pane label="军团商城" name="mall" lazy>
+        <AdminEzfyCorpsMall />
+      </el-tab-pane>
+    </el-tabs>
 
     <!-- 成员 -->
     <el-dialog :title="'军团成员 · ' + (cur.name || '')" :visible.sync="memberDlg" width="720px" :close-on-click-modal="false">
@@ -124,11 +136,16 @@
 
 <script>
 import api from '../../api'
+// ★ 2026-10-26 「军团商城维护合并到军团管理，按 tab 展示」→ 作为第二个 tab 内嵌
+import AdminEzfyCorpsMall from './AdminEzfyCorpsMall'
 
 export default {
   name: 'AdminEzfyCorps',
+  components: { AdminEzfyCorpsMall },
   data () {
     return {
+      // ★ 2026-10-26 tab：corps = 军团列表 / mall = 军团商城（原独立菜单）
+      tab: 'corps',
       list: [], total: 0, page: 1, size: 5, loading: false, word: '',
       cur: {},
       memberDlg: false, members: [], loadingMember: false,

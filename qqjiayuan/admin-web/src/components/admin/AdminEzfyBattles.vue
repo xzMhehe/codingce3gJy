@@ -22,7 +22,7 @@
         </el-select>
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
-        <span class="td-gray" style="font-size:12px">只显示进行中的部队；历史战报请到「战报查询」</span>
+        <span class="td-gray" style="font-size:12px">只显示进行中的部队；历史战报请切到上方「战报查询」tab</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe border max-height="600">
         <el-table-column prop="id" label="订单ID" width="85" align="center" />

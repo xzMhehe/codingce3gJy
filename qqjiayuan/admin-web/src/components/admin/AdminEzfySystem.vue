@@ -1,5 +1,10 @@
 <template>
   <div class="farm-admin">
+    <!-- ★ 2026-10-26 用户要求「资源管理合并到系统管理，按 tab 展示」：
+         原独立菜单「资源管理」（AdminEzfyResources）整体内嵌成第二个 tab，逻辑一份不复制；
+         tab2 加 lazy —— 没切过去就不请求资源接口。 -->
+    <el-tabs v-model="tab">
+      <el-tab-pane label="系统管理" name="main">
     <!-- 服务器维护 -->
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
@@ -111,6 +116,14 @@
       </div>
       <!-- [说明·不显示在界面] 提示：军团管理已独立为「二战风云 → 军团管理」模块（含成员/聊天/转让团长） -->
     </el-card>
+      </el-tab-pane>
+
+      <!-- ★ 2026-10-26 资源管理（原独立菜单）合并进来，按 tab 展示 -->
+      <el-tab-pane label="资源管理" name="res" lazy>
+        <AdminEzfyResources />
+      </el-tab-pane>
+    </el-tabs>
+
     <!-- 编辑已发布的公告 -->
     <el-dialog title="编辑公告" :visible.sync="noticeEditDlg" width="680px" :close-on-click-modal="false">
       <el-form label-width="90px" size="small">
@@ -136,11 +149,16 @@
 
 <script>
 import api from '../../api'
+// ★ 2026-10-26 「资源管理合并到系统管理，按 tab 展示」→ 作为第二个 tab 内嵌
+import AdminEzfyResources from './AdminEzfyResources'
 
 export default {
   name: 'AdminEzfySystem',
+  components: { AdminEzfyResources },
   data () {
     return {
+      // ★ 2026-10-26 tab：main = 系统管理（维护/统计/公告）/ res = 资源管理（原独立菜单）
+      tab: 'main',
       stats: null, loadingStats: false,
       srv: { maintenance: false, notice: '', players: 0, cities: 0 },
       srvForm: { on: false, notice: '' },

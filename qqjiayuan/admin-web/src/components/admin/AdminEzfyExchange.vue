@@ -50,8 +50,10 @@
         <el-input v-model="word" placeholder="挂单ID / 卖家ID / 卖家昵称" clearable style="width:240px"
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
-        <!-- ★ 2026-10-17 一键删除全部已成交记录（status=1，物理删除） -->
-        <el-button type="danger" plain icon="el-icon-delete" @click="dealtDelete">一键删除已成交</el-button>
+        <!-- ★ 2026-10-17 一键删除历史挂单记录（物理删除） -->
+        <!-- ★ 2026-10-26 用户要求「既能删已成交，也能删已下架」→ 拆成两个按钮，各自只清一种状态 -->
+        <el-button type="danger" plain icon="el-icon-delete" @click="dealtDelete(1)">清理已成交</el-button>
+        <el-button type="danger" plain icon="el-icon-delete" @click="dealtDelete(2)">清理已下架</el-button>
         <div class="grow" />
       </div>
       <!-- ★ 列宽按实测内容宽度定：数量/总价/单价 列要装得下千分位大数（如 100,000,000,000,000） -->
@@ -489,12 +491,18 @@ export default {
         })
       }).catch(() => {})
     },
-    // ★ 2026-10-17 一键删除全部已成交记录（历史流水清理，不可恢复）
-    dealtDelete () {
-      this.$confirm('确定删除全部【已成交】记录？该操作不可恢复，请谨慎操作！', '确认物理删除', { type: 'warning' }).then(() => {
-        api.delete('/admin/ezfy-exchange/dealt').then(r => {
+    // ★ 2026-10-17 一键删除历史挂单记录（不可恢复）
+    // ★ 2026-10-26 支持两种状态：status=1 已成交 / status=2 已下架（后端按 status 只删一种）
+    dealtDelete (status) {
+      const label = status === 2 ? '已下架' : '已成交'
+      const extra = status === 2
+        ? '（已下架记录的资源当时已退回卖家，删除只是清历史）'
+        : ''
+      this.$confirm('确定删除全部【' + label + '】记录？' + extra + '该操作不可恢复，请谨慎操作！',
+        '确认物理删除', { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-exchange/dealt', { params: { status: status } }).then(r => {
           if (r.code === 0) {
-            this.$message.success(r.data.msg + '，共 ' + (r.data.count || 0) + ' 条')
+            this.$message.success((r.data.msg || '已删除') + '，共 ' + (r.data.count || 0) + ' 条')
             this.page = 1
             this.load()
           } else this.$message.error(r.msg)

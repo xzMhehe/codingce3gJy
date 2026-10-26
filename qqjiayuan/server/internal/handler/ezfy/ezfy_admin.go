@@ -1713,14 +1713,30 @@ func (h *EzfyAdmin) AdminEzfyChatDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "已删除"})
 }
 
-// AdminEzfyExchangeDealtDelete 一键删除全部已成交记录（status = 1）
+// AdminEzfyExchangeDealtDelete 一键删除历史挂单记录（已成交 status=1 / 已下架 status=2）
 //
 // ★ 2026-10-17 管理端「交易行维护 → 挂单维护」的一键清理按钮；
 //
 //	ezfy_exchange 无软删字段，Delete 即物理删除。
+//
+// ★ 2026-10-26 用户要求「既能删已成交，也能删已下架」：
+//   `?status=2` 只删已下架、`?status=1` 只删已成交；
+//   **不传/非法值保持老行为（只删已成交）** —— 旧版管理端点「一键删除已成交」
+//   不带参数，绝不能因此把已下架记录一起清掉。
+//
+// 安全性：status=2 的行都是走过 AdminEzfyExchangeOff 的，资源当时已退回卖家；
+// 删除只是清历史记录，不会动玩家资产。
 func (h *EzfyAdmin) AdminEzfyExchangeDealtDelete(c *gin.Context) {
-	res := h.DB.Where("status = 1").Delete(&model.EzfyExchange{})
-	resp.OK(c, gin.H{"msg": "已删除", "count": res.RowsAffected})
+	st, _ := strconv.Atoi(strings.TrimSpace(c.Query("status")))
+	if st != 2 {
+		st = 1 // 默认/非法 → 只删已成交（兼容旧前端）
+	}
+	res := h.DB.Where("status = ?", st).Delete(&model.EzfyExchange{})
+	label := "已成交"
+	if st == 2 {
+		label = "已下架"
+	}
+	resp.OK(c, gin.H{"msg": "已删除" + label + "记录", "count": res.RowsAffected})
 }
 
 func (h *EzfyAdmin) ezfyAdminName(uid uint) (string, string) {

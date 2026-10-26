@@ -3,6 +3,8 @@
  * 新增管理模块：1) 在 components/admin/ 新建组件 2) 在下面菜单树挂一条 { key, name, icon, component }
  * App.vue 的侧边栏/标签导航和 Dashboard.vue 的页面分发都由本文件自动生成，不再手工双写。
  * perm 为该菜单对应后端接口的权限码（RBAC permissions.code），登录用户的角色未分配该权限则菜单隐藏；
+ *   ★ 2026-10-26 支持数组 = 「或」语义（如 ['module:ezfySystem','module:ezfyResources']，
+ *     菜单合并后两个模块任一权限即可见），字符串写法保持不变。
  * 超级管理员（super_admin）或无 perm 的项永远展示。
  *
  * ★ 2026-10-20 性能：component 一律写成 `() => import(...)` 懒加载。
@@ -196,7 +198,9 @@ export const menu = [
           //   （风云榜可开关统计 + 把玩家设为不参与排名；战力榜复用游戏内战力口径）。
           //   perm 复用数据管理。key 保持不变，不动已分配的权限。
           { key: 'ezfyPvpRank', name: '排行榜', icon: 'el-icon-trophy', component: () => import(/* webpackChunkName: "admin-AdminEzfyPvpRank" */ './components/admin/AdminEzfyPvpRank.vue'), perm: 'module:ezfyData' },
-          { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: () => import(/* webpackChunkName: "admin-AdminEzfyResources" */ './components/admin/AdminEzfyResources.vue'), perm: 'module:ezfyResources' },
+          // ★ 2026-10-26 「资源管理」合并进「系统管理」的第二个 tab，菜单项移除
+          //   （组件由 AdminEzfySystem.vue 内部 import；接口权限点已放宽为
+          //    permAny(module:ezfySystem, module:ezfyResources)，老角色不受影响）
           { key: 'ezfyExchange', name: '交易行维护', icon: 'el-icon-s-shop', component: () => import(/* webpackChunkName: "admin-AdminEzfyExchange" */ './components/admin/AdminEzfyExchange.vue'), perm: 'module:ezfyExchange' },
           { key: 'ezfyTechs', name: '科技管理', icon: 'el-icon-cpu', component: () => import(/* webpackChunkName: "admin-AdminEzfyTechs" */ './components/admin/AdminEzfyTechs.vue'), perm: 'module:ezfyTechs' },
           { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: () => import(/* webpackChunkName: "admin-AdminEzfyMap" */ './components/admin/AdminEzfyMap.vue'), perm: 'module:ezfyMap' },
@@ -209,16 +213,18 @@ export const menu = [
           //   不再单独挂菜单项，统一从「宣战管理」进去用 tab 切换（perm 复用 module:ezfyWars）
           { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: () => import(/* webpackChunkName: "admin-AdminEzfyWars" */ './components/admin/AdminEzfyWars.vue'), perm: 'module:ezfyWars' },
           // ★ 2026-09-25 军团商城维护（perm 复用军团管理 module:ezfyCorps）
-          { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: () => import(/* webpackChunkName: "admin-AdminEzfyCorpsMall" */ './components/admin/AdminEzfyCorpsMall.vue'), perm: 'module:ezfyCorps' },
+          //   ★ 2026-10-26 「军团商城维护」合并进「军团管理」第二个 tab，菜单项移除
+          //     （组件由 AdminEzfyCorps.vue 内部 import，接口权限点本来就是 module:ezfyCorps）
           // ★ 2026-10-17 聊天管理（原「聊天敏感词」改名）：世界/军团/系统 聊天记录 + 敏感词维护
           { key: 'ezfyWords', name: '聊天管理', icon: 'el-icon-chat-dot-square', component: () => import(/* webpackChunkName: "admin-AdminEzfyWords" */ './components/admin/AdminEzfyWords.vue'), perm: 'module:ezfyWords' },
           // ★ 2026-10-06 战报查询（独立于流水/出征记录：战报不是订单，按玩家+类型查 ezfy_report）
           //   ★ 2026-10-07 图标 el-icon-notice-board 在 Element UI 2.15 里不存在 → 图标空白，改用 notebook-2
+          //   ★ 2026-10-26 「战斗队列」合并进本页第二个 tab，菜单项移除
+          //     （组件由 AdminEzfyReports.vue 内部 import；两者权限点本来就是 module:ezfyLogs）
           { key: 'ezfyReports', name: '战报查询', icon: 'el-icon-notebook-2', component: () => import(/* webpackChunkName: "admin-AdminEzfyReports" */ './components/admin/AdminEzfyReports.vue'), perm: 'module:ezfyLogs' },
-          // ★ 2026-10-08 战斗队列管理：查看进行中的战场（双方部队/准备回合/逐回合日志），
-          //   支持手动推进一回合、一键自动打完、强制结算/清理卡死战场（perm 复用 module:ezfyLogs）
-          { key: 'ezfyBattles', name: '战斗队列', icon: 'el-icon-s-flag', component: () => import(/* webpackChunkName: "admin-AdminEzfyBattles" */ './components/admin/AdminEzfyBattles.vue'), perm: 'module:ezfyLogs' },
-          { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: () => import(/* webpackChunkName: "admin-AdminEzfySystem" */ './components/admin/AdminEzfySystem.vue'), perm: 'module:ezfySystem' },
+          // ★ 2026-10-26 「资源管理」合并进本页第二个 tab：perm 用数组表示「或」——
+          //   有系统管理权限、或只有资源管理权限的老角色都能看到入口
+          { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: () => import(/* webpackChunkName: "admin-AdminEzfySystem" */ './components/admin/AdminEzfySystem.vue'), perm: ['module:ezfySystem', 'module:ezfyResources'] },
           // ★ 2026-10-11 活动监测：造兵/征服/掠夺/召集次数排行（perm 复用 module:ezfySystem）
           { key: 'ezfyMonitor', name: '活动监测', icon: 'el-icon-data-line', component: () => import(/* webpackChunkName: "admin-AdminEzfyMonitor" */ './components/admin/AdminEzfyMonitor.vue'), perm: 'module:ezfySystem' },
           { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: () => import(/* webpackChunkName: "admin-AdminEzfyData" */ './components/admin/AdminEzfyData.vue'), perm: 'module:ezfyData' },
@@ -251,6 +257,22 @@ export const pageMap = {}
     if (it.children) walk(it.children)
   })
 })(menu)
+
+// ★ 2026-10-26 已合并进其它页面的老菜单：保留 pageMap/tabNames 兼容项。
+//   这些 key 不再出现在侧边栏（新入口是合并后的页面 + tab），但老书签/老链接
+//   （`/admin-ui/?tab=ezfyResources` 之类）仍能打开原页面，不会白屏。
+//   ★ 不要把它们加回 menu 树，否则侧边栏会重复出现两个入口。
+const legacyPageMap = {
+  ezfyResources: { name: '资源管理', comp: () => import(/* webpackChunkName: "admin-AdminEzfyResources" */ './components/admin/AdminEzfyResources.vue') },
+  ezfyBattles: { name: '战斗队列', comp: () => import(/* webpackChunkName: "admin-AdminEzfyBattles" */ './components/admin/AdminEzfyBattles.vue') },
+  ezfyCorpsMall: { name: '军团商城维护', comp: () => import(/* webpackChunkName: "admin-AdminEzfyCorpsMall" */ './components/admin/AdminEzfyCorpsMall.vue') }
+}
+Object.keys(legacyPageMap).forEach(k => {
+  if (!pageMap[k]) {
+    pageMap[k] = legacyPageMap[k].comp
+    tabNames[k] = legacyPageMap[k].name
+  }
+})
 
 // 应用菜单覆盖配置：覆盖 name/icon/perm/sort，hidden 过滤，sort 重排同级
 export function applyMenuOverrides (items, keyMap) {

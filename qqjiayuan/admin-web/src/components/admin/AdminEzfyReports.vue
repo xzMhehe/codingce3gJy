@@ -1,5 +1,10 @@
 <template>
   <div class="farm-admin">
+    <!-- ★ 2026-10-26 用户要求「战报查询 和 战斗队列 菜单合并，按 tab 展示」：
+         原独立菜单「战斗队列」（AdminEzfyBattles）内嵌成第二个 tab，逻辑一份不复制；
+         tab2 加 lazy —— 没切过去就不请求进行中订单接口。 -->
+    <el-tabs v-model="tab">
+      <el-tab-pane label="战报查询" name="reports">
     <el-card shadow="never" class="box">
       <div class="toolbar">
         <el-input v-model="word" placeholder="玩家ID / 游戏号 / 昵称" clearable style="width:220px"
@@ -55,6 +60,13 @@
                      @current-change="p => { page = p; load() }"
                      @size-change="s => { size = s; page = 1; load() }" />
     </el-card>
+      </el-tab-pane>
+
+      <!-- ★ 2026-10-26 战斗队列（原独立菜单）合并进来，按 tab 展示 -->
+      <el-tab-pane label="战斗队列" name="battles" lazy>
+        <AdminEzfyBattles />
+      </el-tab-pane>
+    </el-tabs>
 
     <!-- 战报详情 -->
     <el-dialog :title="detail ? detail.type_name + ' · ' + detail.title : '战报详情'"
@@ -90,11 +102,16 @@
 
 <script>
 import api from '../../api'
+// ★ 2026-10-26 「战斗队列合并到战报查询，按 tab 展示」→ 作为第二个 tab 内嵌
+import AdminEzfyBattles from './AdminEzfyBattles'
 
 export default {
   name: 'AdminEzfyReports',
+  components: { AdminEzfyBattles },
   data () {
     return {
+      // ★ 2026-10-26 tab：reports = 战报查询 / battles = 战斗队列（原独立菜单）
+      tab: 'reports',
       list: [], total: 0, page: 1, size: 10, loading: false,
       word: '', type: '', tmStart: '', tmEnd: '',
       // ★ 2026-10-08 战报类型下拉由后端返回库里真实的 type_name 去重列表动态填充，

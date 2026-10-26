@@ -220,8 +220,13 @@ export default {
       if (ov && ov.code === 0) (ov.data || []).forEach(o => { keyMap[o.key] = o })
       const merged = applyMenuOverrides(cloneMenu(), keyMap)
       const allow = it => {
-        if (!it.perm || isSuper || codes.includes(it.perm)) return true
-        return false
+        if (!it.perm) return true
+        if (isSuper) return true
+        // ★ 2026-10-26 支持「或」权限：perm 可以是数组（菜单合并后，任一个模块权限即可见）。
+        //   例：「系统管理」合并了「资源管理」→ perm: ['module:ezfySystem','module:ezfyResources']，
+        //   只被授予资源管理权限的老角色也还能看到入口。
+        const ps = Array.isArray(it.perm) ? it.perm : [it.perm]
+        return ps.some(p => codes.includes(p))
       }
       const walk = items => items
         .filter(allow)
