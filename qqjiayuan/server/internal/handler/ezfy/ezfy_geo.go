@@ -923,6 +923,10 @@ func ezfyMarchSpeedBonus() float64 {
 const (
 	ezfyConquerFeelingsDef = 5 // 征服单次最多扣民心（默认 5）
 	ezfyLootFeelingsDef    = 3 // 掠夺每次扣民心（默认 3）
+	// ★ 2026-10-27 人机征服单次扣民心上限（默认 100 = 直接打光）。
+	//   人机占城必须民心归零（民心 1 小时回满，慢慢扣永远打不下来）→ 默认保持清零行为；
+	//   管理员可在「二战系统配置」调小（填 5 与真人一致，但人机会很难占城）。
+	ezfyBotConquerFeelingsDef = 100
 	// ★ 2026-10-24 民心平滑回归（秒级，默认 3600 秒回归到合理位置）：
 	//   上升：民心低于上限时按秒线性涨回；下降：民心高于上限时按秒平滑降回。
 	//   0 无意义 → 读取端回落默认。
@@ -1169,6 +1173,15 @@ func ezfyLimitOr(v, def int) int {
 // ezfyConquerFeelingsCfg 征服(3) 单次最多扣目标多少民心
 func ezfyConquerFeelingsCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.ConquerFeelingsMax, ezfyConquerFeelingsDef)
+}
+
+// ezfyBotConquerFeelingsCfg 人机(AI) 征服(3) 单次最多扣目标多少民心（默认 100 = 打光）。
+//
+// ★ 2026-10-27：人机占城的前提是民心归零，所以默认给 100（一次打光，保持原行为）；
+// 管理员想让人机「温柔点」就调小（5 = 与真人一致，但人机基本占不了城）。
+// ⚠️ 0 无意义（扣 0 点 → 永远占不了城），读取端回落默认 100。
+func ezfyBotConquerFeelingsCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.BotConquerFeelingsMax, ezfyBotConquerFeelingsDef)
 }
 
 // ezfyLootFeelingsCfg 掠夺(2) 每次扣目标多少民心

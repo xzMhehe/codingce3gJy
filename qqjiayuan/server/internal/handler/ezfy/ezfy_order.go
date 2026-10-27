@@ -5080,20 +5080,31 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				feelingDrop = 1
 			}
 			// ★ 用户反馈「征服民心每次 -5 现在太多」→ 单次扣多少改为管理端可配
-			//   （ezfy_cfg_limit.conquer_feelings_max，默认 2）。
+			//   （ezfy_cfg_limit.conquer_feelings_max，默认 5）。
 			//   原来封顶写死 20，且按「幸存兵力/2000」动态算，大兵团一次就能清零民心。
 			//   现在既保留动态计算（小部队扣得少），又用配置值封顶。
-			if cm := ezfyConquerFeelingsCfg(); feelingDrop > cm {
+			//
+			// ★★ 2026-10-27 人机单独一份上限（ezfy_cfg_limit.bot_conquer_feelings_max，默认 100）：
+			//   原来这里是 `if city.IsBot == 1 { cur = 0 }` 硬清零 —— 人机一打就把守方民心
+			//   从 95 打到 0，玩家战报显示「民心 - 95」（真人单次最多 5 点），反馈「掉太多」。
+			//   现在改成「人机用自己的人机上限」：默认 100 = 仍然打光（占城必须民心归零），
+			//   管理员调小到 5 就与真人一致（代价：人机很难占城）、调到 20~30 是折中。
+			if city.IsBot == 1 {
+				if bcm := ezfyBotConquerFeelingsCfg(); bcm > 0 && feelingDrop > bcm {
+					feelingDrop = bcm
+				}
+			} else if cm := ezfyConquerFeelingsCfg(); feelingDrop > cm {
 				feelingDrop = cm
 			}
 			cur := target.Feelings - feelingDrop
 			if cur < 0 {
 				cur = 0
 			}
-			// ★ 2026-10-18 人机出征胜利 → 民心直接归零，下一次直接征服目标城市
-			//   （人机与真人走同一 /games/ezfy/order 结算链路，这里对攻方是 bot 时特判）
-			if city.IsBot == 1 {
-				cur = 0
+			// ★ 2026-10-27 修正「攻方战报数字 ≠ 守方战报数字」：
+			//   扣减量被民心实际值截断（民心只有 95，算出来扣 100）时，按**实际扣掉的**显示，
+			//   否则攻方看到「民心 - 100」、守方看到「民心 - 95」，两边对不上。
+			if cur == 0 && feelingDrop > target.Feelings {
+				feelingDrop = target.Feelings
 			}
 			report += fmt.Sprintf("\n民心 - %d\n当前民心 %d", feelingDrop, cur)
 			if cur > 0 {

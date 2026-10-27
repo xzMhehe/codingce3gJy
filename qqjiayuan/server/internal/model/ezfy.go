@@ -458,6 +458,14 @@ type EzfyCfgLimit struct {
 	//   掠夺(2)：每次固定扣目标多少民心（原来写死 5，线上现值 3）。
 	ConquerFeelingsMax int `gorm:"default:5;comment:Conquer民心上限" json:"conquer_feelings_max"`
 	LootFeelings       int `gorm:"default:3;comment:掠夺民心" json:"loot_feelings"`
+	// ★ 2026-10-27 人机（AI）征服单次最多扣目标多少民心。
+	//   背景：人机征服原来在 ezfy_order.go 里**特判清零**（`if city.IsBot == 1 { cur = 0 }`），
+	//   玩家守方战报会显示「民心 - 95」这种吓人的数字（真人单次最多 5 点）。
+	//   但人机占城的前提就是民心归零（民心 1 小时回满、人机每小时打 6~10 次，慢慢扣根本打不下来），
+	//   所以**默认 100 = 直接打光**（保持原行为），想让人机温柔点就调小：
+	//   填 5 = 与真人一致（人机会很难占城），填 20~30 = 折中。
+	//   ⚠️ 0 无意义（扣 0 点 → 人机永远占不了城）→ 读取端回落默认 100。
+	BotConquerFeelingsMax int `gorm:"default:100;comment:人机征服单次扣民心上限(100=打光)" json:"bot_conquer_feelings_max"`
 	// ★ 2026-10-24 民心平滑回归（秒级配置，入库持久化）：
 	//   上升：被掠夺/征服扣掉的民心按秒**平滑涨回**上限（默认 3600 秒回归到合理位置）；
 	//   下降：税率上调/民怨上升导致民心高于上限时，按秒**平滑降回**上限（默认 3600 秒）；
