@@ -30,7 +30,15 @@
           <div class="grow" />
           <span class="td-sub">当前频道：<b>{{ channelName }}</b> · 共 {{ chat.total }} 条</span>
         </div>
-        <el-table :data="chat.list" v-loading="chat.loading" stripe border>
+        <!-- ★★ 2026-10-27 必须加 key！切 tab 时这几个表格是 v-if/v-else-if/v-else 的三个兄弟，
+             Vue 会按「同 tag 同位置」**复用 el-table 组件实例** → 连内部的 el-table-column 也复用。
+             Element UI 的列只在 created 里写一次 columnConfig，而 label/prop/width 有 watcher 会更新、
+             **type 和 renderCell 没有 watcher** → 复用到新表格后：
+               · 勾选列（type="selection"）保持旧 type=default → 勾选框直接消失（「无法多选」的根因）；
+               · 发送方列还在用上一个表格的渲染函数 → 读 row.user_name 之类，显示空；
+               · 接收方列还在用「频道」列的 el-tag → 显示成橙色标签。
+             加唯一 key = 强制销毁重建，彻底避免跨 tab 串列。 -->
+        <el-table :key="'chat-' + tab" :data="chat.list" v-loading="chat.loading" stripe border>
           <el-table-column prop="id" label="ID" width="70" align="center" />
           <el-table-column label="频道" width="80" align="center">
             <template slot-scope="{row}">
@@ -81,7 +89,7 @@
         <!-- ★ 2026-10-26 重做批量删除勾选（修「无法多选」）：
              不再依赖 el-table 的 reserve-selection（翻页/刷新后勾选行为不稳定），
              改为显式维护 privSelIds（跨页勾选的唯一真源），@select/@select-all 只改用户点的行。 -->
-        <el-table ref="privTable" :data="priv.list" row-key="id" v-loading="priv.loading" stripe border max-height="640"
+        <el-table :key="'priv'" ref="privTable" :data="priv.list" row-key="id" v-loading="priv.loading" stripe border max-height="640"
                   @select="onPrivSelect" @select-all="onPrivSelectAll">
           <el-table-column type="selection" width="46" align="center" />
           <el-table-column prop="id" label="ID" width="80" align="center" />
@@ -170,7 +178,7 @@
           </el-form>
           <!-- ★ 2026-10-25 支持删除：row-key + reserve-selection = 翻页后勾选不丢，可跨页一次删 -->
           <!-- ★ 2026-10-26 系统邮件勾选同样改为显式 id 集合（与私聊同一套，修「无法多选」） -->
-          <el-table ref="mailTable" :data="sysMails" row-key="id" v-loading="mail.loading" stripe border max-height="420"
+          <el-table :key="'mail'" ref="mailTable" :data="sysMails" row-key="id" v-loading="mail.loading" stripe border max-height="420"
                     @select="onMailSelect" @select-all="onMailSelectAll">
             <el-table-column type="selection" width="46" align="center" />
             <el-table-column prop="id" label="ID" width="70" align="center" />
@@ -247,7 +255,7 @@
         <!-- ★ 2026-10-26 用户反馈「敏感词页空白」加固：
              ① 搜索框点 × 也重新查询（原来只回车才查，看起来像「列表空了」）；
              ② 空列表给明确文案；③ 类型按 Number 比较（老库返回字符串时原来恒显示「替换」）。 -->
-        <el-table :data="list" v-loading="loading" stripe border empty-text="暂无敏感词，点右上角「新增敏感词」添加">
+        <el-table :key="'words'" :data="list" v-loading="loading" stripe border empty-text="暂无敏感词，点右上角「新增敏感词」添加">
           <el-table-column prop="id" label="ID" width="70" align="center" />
           <el-table-column label="敏感词" min-width="170" show-overflow-tooltip>
             <template slot-scope="{row}"><span class="td-main">{{ row.word }}</span></template>

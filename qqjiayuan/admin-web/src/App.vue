@@ -45,10 +45,6 @@
           <span class="cur">{{ currentName }}</span>
         </div>
         <div class="right">
-          <!-- ★ 2026-10-27 构建版本号（构建时刻，vue.config.js 注入）：
-               管理端「改了看不到」时先看这里 —— 显示的还是老时间就是浏览器/服务器还在跑旧包，
-               不是代码问题。悬停可看完整提示。 -->
-          <span class="build-tag" :title="'当前管理端构建时间：' + buildTime + '（如果这不是你刚构建的时间，说明浏览器或服务器还在用旧包，请 Ctrl+F5 强刷 / 检查 dist 是否已替换）'">{{ buildTime }}</span>
           <!-- ★ 2026-10-17 二战拆多区部署：仅二战管理页显示「管理区」切换（选中 id 存 localStorage 'admin_ezfy_zone'，
                所有 /api/admin/ezfy* 请求经 api/index.js 自动带 X-Ezfy-Zone 头，家园服据此反向代理到对应二战区服） -->
           <div class="zone-switch" v-if="isEzfyTab">
@@ -108,8 +104,6 @@ export default {
   data () {
     return {
       user: {},
-      // ★ 2026-10-27 构建版本号（vue.config.js 的 DefinePlugin 注入，构建时替换成字符串字面量）
-      buildTime: typeof __BUILD_TIME__ === 'undefined' ? 'dev' : __BUILD_TIME__,
       // 登录用户角色未分配权限的菜单不展示（管理端菜单按角色过滤）
       menu: undefined,
       visited: ['dashboard'],
@@ -475,8 +469,6 @@ body {
 .header .crumb .sep { color: #d0d6e0; }
 .header .crumb .cur { color: #303133; font-weight: 600; }
 .header .right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
-/* ★ 2026-10-27 构建版本号：小字灰色，不抢视觉，只用来判断「跑的是不是新包」 */
-.build-tag { font-size: 11px; color: #97a8be; font-family: Consolas, 'Courier New', monospace; cursor: help; white-space: nowrap; }
 /* ★ 二战区服切换控件（仅二战管理页显示） */
 .zone-switch { display: flex; align-items: center; gap: 6px; }
 .zone-switch .zone-lab { font-size: 12px; color: #97a8be; white-space: nowrap; }
