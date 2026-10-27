@@ -105,20 +105,22 @@ func runHomeMode(cfg *config.Config) {
 	// ★★ 2026-10-17 二战独立部署：home 模式不再自动识别/连接二战独立库，
 	//   也**不初始化** ezfyDB —— 二战数据/二战服务全部由二战独立服承担。
 	homeDB := database.Init(&cfg.Mysql)
-	// ★★ 2026-10-23 家园库**不再建/维护二战表**。
+	// ★★ 2026-10-27 家园模式**恒不建/不维护任何二战表**（不再看配置）。
 	//
-	//	原来这里写死 `false`，于是家园服每次启动都会跑整条 EnsureEzfy* 链
-	//	（补列/补表/灌种子），家园库里那套 90+ 张 `ezfy_*` 残留表不但清不掉，
-	//	还会被继续建出来（玩家反馈「家园库为什么还在建二战的表」）。
-	//	现在只要配置了**独立二战库**（ezfy_mysql.dbname 且与家园库不同），
-	//	EzfyUsesOwnDB=true → seed.Run 不建二战表、skip 分支的 EnsureEzfy* 链整段跳过。
-	//	★ 单库部署（没配 ezfy_mysql，或配成同一个库）仍按老行为在家园库建表。
-	seed.EzfyUsesOwnDB = cfg.EzfyMysql.DBName != "" && cfg.EzfyMysql.DBName != cfg.Mysql.DBName
-	if seed.EzfyUsesOwnDB {
-		log.Printf("★ 运行模式：家园（home），只连家园库 %s；二战库 %s 由二战服独占（家园库不再建 ezfy_* 表）",
-			cfg.Mysql.DBName, cfg.EzfyMysql.DBName)
+	//	10-23 那次改成「配了 ezfy_mysql 才跳过」，但线上家园服的配置里根本没写
+	//	ezfy_mysql（家园服本来就不连二战库，二战库只在二战服配置里），于是
+	//	EzfyUsesOwnDB=false → skip 分支的 EnsureEzfy* 链又把表建回了家园库
+	//	（2026-10-26 21:55 一次就冒出 ezfy_ransom / ezfy_pvp_* / ezfy_bot / ezfy_title 等 20 张）。
+	//
+	//	home 模式既不连 ezfyDB、也不注册任何二战用户路由（/games/ezfy* 一律 302 到二战服），
+	//	二战表只该由 wwii 模式的 seed.RunEzfy 在二战库上建 → 这里直接恒为 true。
+	seed.EzfyUsesOwnDB = true
+	if cfg.EzfySplit() {
+		log.Printf("★ 运行模式：家园（home），只连家园库 %s；二战表由二战服在 %s 上维护，"+
+			"家园库不再建/不再改任何 ezfy_* 表", cfg.Mysql.DBName, cfg.EzfyMysql.DBName)
 	} else {
-		log.Printf("★ 运行模式：家园（home），只连家园库 %s（单库模式：二战表也在本库）", cfg.Mysql.DBName)
+		log.Printf("★ 运行模式：家园（home），只连家园库 %s；未配置 ezfy_mysql —— 家园库同样不再建/不再改"+
+			"任何 ezfy_* 表（二战表由 wwii 模式在二战库上建）", cfg.Mysql.DBName)
 	}
 
 	// ★★ 2026-10-10 道具 cfg_id 全体迁到 1001+（与装备配置 1~35 彻底不重叠，根除「同 ID 混淆」）。
