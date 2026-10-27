@@ -37,11 +37,40 @@ import pymysql
 import xlsxwriter
 
 # ---------------------------------------------------------------- 线上库连接
-DB_HOST = os.environ.get("EZFY_DB_HOST", "rm-uf6vobze9179joev7ho.mysql.cn-shanghai.rds.aliyuncs.com")
-DB_PORT = int(os.environ.get("EZFY_DB_PORT", "3306"))
-DB_USER = os.environ.get("EZFY_DB_USER", "root")
-DB_PASS = os.environ.get("EZFY_DB_PASS", "Mzd980625@@#")
+# ★ 这里**不写**任何账号密码 / 实例地址，避免脚本被分享或提交后泄漏。
+#   取用顺序：命令行参数 → 环境变量 → 凭据文件 ~/.ezfy_db.env（KEY=VALUE，建议 chmod 600）
+#   → 都没有就交互输入。凭据文件放在家目录，不在项目里，不会被 git 带上。
+CRED_FILE = os.path.expanduser("~/.ezfy_db.env")
+
+DB_HOST = ""
+DB_PORT = 3306
+DB_USER = ""
+DB_PASS = ""
 DB_NAME = os.environ.get("EZFY_DB_NAME", "qq_ezzt")  # 一区；二区是 qq_ezzt2
+
+
+def load_cred_file(path=CRED_FILE):
+    """读取 KEY=VALUE 形式的凭据文件（只补空值，不覆盖已有环境变量）。"""
+    global DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME
+    if not os.path.isfile(path):
+        return False
+    got = {}
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            got[k.strip()] = v.strip().strip('"').strip("'")
+    DB_HOST = DB_HOST or got.get("EZFY_DB_HOST", "")
+    DB_USER = DB_USER or got.get("EZFY_DB_USER", "")
+    DB_PASS = DB_PASS or got.get("EZFY_DB_PASS", "")
+    DB_NAME = got.get("EZFY_DB_NAME") or DB_NAME
+    try:
+        DB_PORT = int(got.get("EZFY_DB_PORT") or DB_PORT)
+    except ValueError:
+        pass
+    return True
 
 # ---------------------------------------------------------------- 世界常量（与 Go 一致）
 WORLD = 500          # ezfyWorldSize
@@ -454,11 +483,13 @@ def check_cell_px(path):
 
 def main():
     ap = argparse.ArgumentParser(description="导出二战风云世界地图到 Excel")
-    ap.add_argument("--host", default=DB_HOST)
-    ap.add_argument("--port", type=int, default=DB_PORT)
-    ap.add_argument("--user", default=DB_USER)
-    ap.add_argument("--password", default=DB_PASS)
-    ap.add_argument("--db", default=DB_NAME, help="一区 qq_ezzt / 二区 qq_ezzt2")
+    ap.add_argument("--host", default=None, help="不填则读 ~/.ezfy_db.env 或环境变量 EZFY_DB_HOST")
+    ap.add_argument("--port", type=int, default=None)
+    ap.add_argument("--user", default=None, help="不填则读 ~/.ezfy_db.env 或环境变量 EZFY_DB_USER")
+    ap.add_argument("--password", default=None,
+                    help="不填则读 ~/.ezfy_db.env / EZFY_DB_PASS，仍没有就交互输入（推荐不要写在命令行，"
+                         "会留在 shell 历史里）")
+    ap.add_argument("--db", default=None, help="一区 qq_ezzt / 二区 qq_ezzt2")
     ap.add_argument("--zone", default="1", help="仅用于标题展示")
     ap.add_argument("--out", default=None, help="输出 xlsx 路径")
     ap.add_argument("--dump", nargs="*", default=None, help="只打印坐标地形，如 --dump 234,96 231,97")
@@ -470,13 +501,31 @@ def main():
                     help="同时输出 PNG 预览图（不传路径则与 xlsx 同名）")
     args = ap.parse_args()
 
+    # 凭据补全：命令行 → 环境变量 → ~/.ezfy_db.env → 交互输入
+    global DB_HOST, DB_USER, DB_PASS, DB_PORT, DB_NAME
+    DB_HOST = args.host or os.environ.get("EZFY_DB_HOST", "")
+    DB_USER = args.user or os.environ.get("EZFY_DB_USER", "")
+    DB_PASS = args.password or os.environ.get("EZFY_DB_PASS", "")
+    if args.port:
+        DB_PORT = args.port
+    if args.db:
+        DB_NAME = args.db
+    load_cred_file()
+    if not DB_HOST:
+        DB_HOST = input("MySQL 主机：").strip()
+    if not DB_USER:
+        DB_USER = input("MySQL 账号：").strip()
+    if not DB_PASS:
+        import getpass
+        DB_PASS = getpass.getpass("MySQL 密码（不回显）：")
+
     out = args.out or os.path.join(
         os.getcwd(),
         f"线上一区地图{'-原始地形' if args.raw else ''}.xlsx")
 
-    print(f"[1/4] 连接 {args.host} / {args.db} ...")
-    conn = pymysql.connect(host=args.host, port=args.port, user=args.user,
-                           password=args.password, database=args.db,
+    print(f"[1/4] 连接线上库 / {DB_NAME} ...")
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER,
+                           password=DB_PASS, database=DB_NAME,
                            charset="utf8mb4", connect_timeout=15, read_timeout=120)
     try:
         print("[2/4] 读取地图格子覆盖 / 城市 ...")
@@ -513,7 +562,7 @@ def main():
         return
 
     meta = {
-        "title": f"二战风云 线上一区 世界地图（{args.db}）"
+        "title": f"二战风云 线上一区 世界地图（{DB_NAME}）"
                  + ("　—　原始地形（不含人工覆盖）" if args.raw else ""),
         "subtitle": f"导出时间 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}　"
                     f"城市 {len(cities)} 座（玩家 {player} / 机器人 {bot}）　"
@@ -528,7 +577,7 @@ def main():
                          "地形不是库里的字段，是后端按坐标哈希推导；本表已叠加管理端「地图格子覆盖」，"
                          "与游戏内一致。"),
         "sources": [
-            f"库：{args.host} / {args.db}",
+            f"库：线上 {DB_NAME}（实例地址、账号、密码均不写入本表）",
             f"ezfy_city：城市坐标（{len(cities)} 座，x/y 均在 1~499）",
             (f"ezfy_map_tile：管理端「地图格子覆盖」共 {len(tiles)} 格，本表**已忽略**（--raw）"
              if args.raw else
