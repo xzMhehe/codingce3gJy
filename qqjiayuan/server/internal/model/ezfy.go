@@ -289,17 +289,29 @@ type EzfyActCaptureLog struct {
 	Y int `gorm:"default:0;comment:目标Y坐标" json:"y"`
 	// CityId 抓到时部队出发城（军官落在哪座城）
 	CityId int64 `gorm:"default:0;comment:抓取时出发城ID" json:"city_id"`
-	// Kind 来源：1=战斗抓取 2=老数据迁移补记（历史抓取没流水时按拥有的军官实例数补）
-	Kind      int       `gorm:"default:1;comment:来源 1抓取 2老数据补记" json:"kind"`
+	// Kind 来源：1=战斗抓到（实时） 2=战报补记（从战报还原，时间/坐标都是真的） 3=军官补记（战报已删，只有近似时间）
+	Kind      int       `gorm:"default:1;comment:来源 1战斗 2战报补记 3军官补记" json:"kind"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 func (EzfyActCaptureLog) TableName() string { return "ezfy_act_capture_log" }
 
 // 活动守将抓取流水的来源
+//
+// ★ 2026-10-28 用户反馈「抓取错了吧，我的意思是抓住的记录呀」后的口径修正：
+//
+//	原来只有 1/2 两档，且回填直接数「当前拥有的军官实例数」——
+//	① 把**PvP 抢来的 / 管理端发放的 / 军校招募的**也算成「抓住过」（抢来的根本不是我抓的）；
+//	② 时间全写成回填那一刻（同一秒），看不出真实抓取时间；
+//	③ 抓过又被抢走的玩家一条都补不到（当时没记流水）。
+//
+//	现在改成**战报优先**：战报正文里有「俘虏敌将:XXX(5星, 忠诚30)」就是真抓到过，
+//
+//	时间/坐标都用战报的；战报覆盖不到的（已被清理）才按军官兜底，且**只认野地俘虏来源**。
 const (
-	EzfyActCaptureKindBattle  = 1 // 战斗抓到
-	EzfyActCaptureKindMigrate = 2 // 老数据补记
+	EzfyActCaptureKindBattle  = 1 // 战斗抓到（新代码实时写，最准）
+	EzfyActCaptureKindReport  = 2 // 战报补记（历史数据，从 ezfy_report 还原）
+	EzfyActCaptureKindOfficer = 3 // 军官补记（战报已删，只能按军官实例的时间近似）
 )
 
 func (EzfyActCaptureTry) TableName() string { return "ezfy_act_capture_try" }

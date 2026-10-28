@@ -101,8 +101,8 @@ func TestActCaptureLogOnlyGrows(t *testing.T) {
 	}
 
 	// 老数据兜底必须补记，否则「抓过又被抢走」的老玩家会回退
-	if !strings.Contains(src, "model.EzfyActCaptureKindMigrate") {
-		t.Fatal("缺少老数据兜底流水（KindMigrate）")
+	if !strings.Contains(src, "model.EzfyActCaptureKindOfficer") {
+		t.Fatal("缺少老数据兜底流水（KindOfficer）")
 	}
 	// 必须先走「已有流水」快路径，再兜底（兜底只在一条流水都没有时生效）
 	if !strings.Contains(src, "if used > 0 {\n\t\treturn used\n\t}") {
@@ -162,12 +162,66 @@ func TestActCaptureLogTable(t *testing.T) {
 		t.Fatal("main.go 的 seed.skip 分支没调用 EnsureEzfyActCaptureLogBackfill")
 	}
 	// 回填必须带一次性标记位，否则每次启动都重算
-	if !strings.Contains(sch, "ezfy_act_capture_log_backfill_v1") {
+	if !strings.Contains(sch, "ezfy_act_capture_log_backfill_v2") {
 		t.Fatal("回填没有一次性标记位（每次启动都会重跑）")
+	}
+	// ★ 2026-10-28 用户反馈「抓取信息不全」→ 回填必须**战报优先**（真实时间/坐标），
+	//   且只认野地俘虏来源，PvP 抢来的/发放的/招募的都不算「抓过」。
+	if !strings.Contains(sch, "俘虏敌将:") {
+		t.Fatal("回填没有从战报还原真实抓取（信息会不全：时间同一秒、坐标 0）")
+	}
+	if !strings.Contains(sch, "source IN (?, ?)") ||
+		!strings.Contains(sch, "model.EzfyOfficerSourceWildland") {
+		t.Fatal("军官兜底没有只认「野地俘虏/历史未标注」来源（抢来/发放/招募的会被误算成抓过）")
+	}
+	if !strings.Contains(sch, "model.EzfyActCaptureKindReport") {
+		t.Fatal("缺少「战报补记」来源标记")
 	}
 }
 
-// TestActCaptureAdminUI 管理端「抓取记录」：路由 + handler + 前端按钮/模态框/分页。
+// TestActCaptureNoReportDependency 抓取记录**不许依赖战报**（★ 2026-10-28 用户要求）。
+//
+// 用户原话：「注意别用战报关联查询，战报只保留 3 天的我会定期删除」。
+// 所以战报只能出现在**一次性历史回填**里，且必须限定时间窗口；下面三处一律不许出现：
+//
+//	① 运行时判定 ezfyActCaptureUsed / ezfyActCaptureLogAdd（玩家每打一次都会走）
+//	② 管理端抓取记录接口 AdminEzfyActWildCaptures（列表页会反复查）
+//	③ 结算 processActivityBattle（战斗高频路径）
+func TestActCaptureNoReportDependency(t *testing.T) {
+	for _, fn := range []string{
+		"func (h *EzfyHandler) ezfyActCaptureUsed(",
+		"func (h *EzfyHandler) ezfyActCaptureLogAdd(",
+		"func (h *EzfyHandler) processActivityBattle(",
+	} {
+		body := ezfyStripCommentLines(strings.ReplaceAll(
+			ezfyFuncBody(t, "ezfy_activity_target.go", fn), "\r\n", "\n"))
+		if strings.Contains(body, "EzfyReport") || strings.Contains(body, "ezfy_report") {
+			t.Fatalf("%s 里出现了战报查询 —— 战报只留 3 天会被删，抓取记录/可抓次数绝不能依赖它", fn)
+		}
+	}
+	adm := ezfyStripCommentLines(strings.ReplaceAll(
+		ezfyFuncBody(t, "ezfy_admin_actwild.go", "func (h *EzfyAdmin) AdminEzfyActWildCaptures("), "\r\n", "\n"))
+	if strings.Contains(adm, "EzfyReport") || strings.Contains(adm, "ezfy_report") {
+		t.Fatal("抓取记录接口里出现了战报查询 —— 列表必须只读 ezfy_act_capture_log")
+	}
+	// 回填（唯一允许读战报的地方）必须带时间窗口，否则 longtext 全表扫
+	sch := readFrontFile(t, "../../seed/ezfy_schema.go")
+	i := strings.Index(sch, "func EnsureEzfyActCaptureLogBackfill(")
+	if i < 0 {
+		t.Fatal("缺少 EnsureEzfyActCaptureLogBackfill")
+	}
+	body := sch[i:]
+	if j := strings.Index(body[1:], "\nfunc "); j >= 0 {
+		body = body[:j+1]
+	}
+	if !strings.Contains(body, "EzfyReport") {
+		t.Fatal("回填没有读战报？历史抓取会信息不全（时间/坐标丢失）")
+	}
+	if !strings.Contains(body, "AddDate(0, 0, -7)") {
+		t.Fatal("回填读战报没限定时间窗口（战报只留 3 天，7 天余量足够，避免全表扫）")
+	}
+}
+
 func TestActCaptureAdminUI(t *testing.T) {
 	// ① 路由
 	if !strings.Contains(readFrontFile(t, "../../router/router.go"),

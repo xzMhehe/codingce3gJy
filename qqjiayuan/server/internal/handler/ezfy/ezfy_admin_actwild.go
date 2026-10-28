@@ -491,8 +491,11 @@ func (h *EzfyAdmin) AdminEzfyActWildCaptures(c *gin.Context) {
 	out := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
 		kindName := "战斗抓取"
-		if r.Kind == model.EzfyActCaptureKindMigrate {
-			kindName = "历史补记"
+		switch r.Kind {
+		case model.EzfyActCaptureKindReport:
+			kindName = "战报补记"
+		case model.EzfyActCaptureKindOfficer:
+			kindName = "军官补记"
 		}
 		out = append(out, gin.H{
 			"id":          r.ID,

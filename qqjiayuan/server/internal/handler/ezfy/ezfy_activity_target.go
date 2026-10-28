@@ -522,21 +522,24 @@ func (h *EzfyHandler) ezfyActCaptureUsed(uid uint, generalId int) int64 {
 	}
 	// —— 老数据兜底：只在该玩家对该守将「一条流水都没有」时补记 ——
 	var had int64
-	// ★ 与旧口径一致：军校招募来的同池军官不算「抓过」，必须排掉 source = recruit。
+	// ★★ 2026-10-28 用户反馈「抓取错了吧，我的意思是抓住的记录呀」后收紧口径：
+	//   只认**野地俘虏**（source=3）与历史未标注（source=0）；
+	//   **PvP 抢来的（4）/ 管理端发放（1）/ 军校招募（2）都不算「抓过」** ——
+	//   抢来的守将不是自己抓的，不该消耗「可抓次数」。
 	h.DB.Model(&model.EzfyOfficer{}).
-		Where("general_id = ? AND source <> ? AND city_id IN (?)", generalId,
-			model.EzfyOfficerSourceRecruit,
+		Where("general_id = ? AND source IN ? AND city_id IN (?)", generalId,
+			[]int{model.EzfyOfficerSourceUnknown, model.EzfyOfficerSourceWildland},
 			h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id = ?", uid)).
 		Count(&had)
 	for i := int64(0); i < had; i++ {
-		h.ezfyActCaptureLogAdd(uid, generalId, 0, 0, 0, model.EzfyActCaptureKindMigrate)
+		h.ezfyActCaptureLogAdd(uid, generalId, 0, 0, 0, model.EzfyActCaptureKindOfficer)
 	}
 	return had
 }
 
 // ezfyActCaptureLogAdd 记一条抓取流水（★ 只增不删，这就是「可抓次数」的扣减）。
 //
-// kind：model.EzfyActCaptureKindBattle（战斗抓到）/ KindMigrate（老数据补记）。
+// kind：model.EzfyActCaptureKindBattle（战斗抓到）/ KindReport（战报补记）/ KindOfficer（军官补记）。
 func (h *EzfyHandler) ezfyActCaptureLogAdd(uid uint, generalId, x, y int, cityId int64, kind int) {
 	if uid == 0 || generalId <= 0 {
 		return

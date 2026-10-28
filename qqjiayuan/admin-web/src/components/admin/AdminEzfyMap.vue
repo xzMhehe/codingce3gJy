@@ -1127,6 +1127,13 @@
         <span v-else> · 可抓次数：<b>不限</b></span>
       </div>
       <el-alert v-if="awCapNote" type="warning" :closable="false" show-icon :title="awCapNote" style="margin-bottom:10px" />
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
+        <template slot="title">
+          来源说明：<b>战斗抓取</b>=上线后实时记录（最准）；<b>战报补记</b>=从战报「俘虏敌将」还原，
+          时间/坐标都是真的；<b>军官补记</b>=战报已过保留期，只能按军官实例的最后变动时间近似（坐标未知）。
+          抢来的（PvP）/ 发放 / 军校招募的<b>不算抓过</b>，不消耗可抓次数。
+        </template>
+      </el-alert>
       <el-table :data="awCapList" v-loading="awCapLoading" stripe border size="small">
         <el-table-column prop="id" label="流水ID" width="85" align="center" />
         <el-table-column label="玩家" min-width="140" show-overflow-tooltip>
@@ -1149,7 +1156,7 @@
         </el-table-column>
         <el-table-column label="来源" width="100" align="center">
           <template slot-scope="{row}">
-            <el-tag size="mini" :type="row.kind === 2 ? 'info' : 'success'">{{ row.kind_name }}</el-tag>
+            <el-tag size="mini" :type="row.kind === 1 ? 'success' : (row.kind === 2 ? 'warning' : 'info')">{{ row.kind_name }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="时间" width="150" align="center" />
