@@ -194,40 +194,30 @@ func (h *EzfyHandler) botChat(b *model.EzfyBot, city *model.EzfyCity) (string, s
 // 走真人 `/games/ezfy/troops/recover` 接口：免费版立即回城、只扣黄金（不花钻石，符合人机红线）。
 // 每轮只处理「有伤兵/逃兵的城」，逐城 all=1（伤兵 type=0、逃兵 type=1），
 // 黄金不足/伤兵营空时接口会拒 → 正常跳过（这轮做别的）。恢复不占用人口窗口。
-func (h *EzfyHandler) botHeal(b *model.EzfyBot) (string, string, bool) {
-	var cities []model.EzfyCity
-	h.DB.Where("user_id = ?", b.UserID).Find(&cities)
-	if len(cities) == 0 {
-		return "", "", false
-	}
-	// 找出有伤兵/逃兵的城（聚一次库，避免逐城 HTTP 白打）
-	var ids []int64
-	for _, ct := range cities {
-		ids = append(ids, int64(ct.ID))
-	}
-	if len(ids) == 0 {
+func (h *EzfyHandler) botHeal(b *model.EzfyBot, city *model.EzfyCity) (string, string, bool) {
+	// ★ 2026-10-28 多城市：只恢复**本城**的伤兵/逃兵 —— 每座城都有自己的行动槽，
+	//   一座城的 tick 不必替别的城干活（否则日志会把功劳记到错误的城上，且重复打接口）。
+	if city == nil || city.ID == 0 {
 		return "", "", false
 	}
 	var wTypes []int
-	h.DB.Model(&model.EzfyWounded{}).Where("city_id IN ? AND count > 0", ids).
+	h.DB.Model(&model.EzfyWounded{}).Where("city_id = ? AND count > 0", int64(city.ID)).
 		Distinct("type").Pluck("type", &wTypes)
 	if len(wTypes) == 0 {
 		return "", "", false
 	}
-	// 逐城恢复（伤兵 0 / 逃兵 1）；同一城两种都恢复
-	for _, ct := range cities {
-		for _, wt := range wTypes {
-			code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/troops/recover",
-				map[string]interface{}{"city_id": int64(ct.ID), "type": wt, "all": true})
-			if code == 0 {
-				label := "伤兵"
-				if wt == 1 {
-					label = "逃兵"
-				}
-				return "恢复" + label, fmt.Sprintf("%s 全部恢复", label), true
+	// 伤兵 0 / 逃兵 1（同一城两种都恢复）
+	for _, wt := range wTypes {
+		code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/troops/recover",
+			map[string]interface{}{"city_id": int64(city.ID), "type": wt, "all": true})
+		if code == 0 {
+			label := "伤兵"
+			if wt == 1 {
+				label = "逃兵"
 			}
-			_ = msg // 黄金不足/空营 → 跳过，本轮做别的
+			return "恢复" + label, fmt.Sprintf("%s 全部恢复", label), true
 		}
+		_ = msg // 黄金不足/空营 → 跳过，本轮做别的
 	}
 	return "", "", false
 }
@@ -404,6 +394,8 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 		//   不能靠列默认值 —— GORM 对带 default tag 的零值字段虽然会跳过写入，
 		//   但一旦有人改成显式 0 就变成「不限」，口径会悄悄漂移。
 		TargetMinTroops: ezfyBotTargetMinTroopsDef,
+		// ★ 2026-10-28 用户规则「人机添加默认自动发言是关着的」：新建人机默认闭嘴（管理端可开）。
+		ChatOn: 0,
 	}).Error; err != nil {
 		return rollback(fmt.Errorf("建人机档案失败: %w", err))
 	}
@@ -455,9 +447,16 @@ func ezfyBotPersona(level int) string {
 	return "均衡"
 }
 
-// ezfyBotLog 写一条行为日志（管理端「行为日志」数据源）。
+// ezfyBotLog 写一条**账号级**行为日志（管理端「行为日志」数据源）。
 func (h *EzfyHandler) ezfyBotLog(uid uint, action, detail string, ok int) {
-	h.DB.Create(&model.EzfyBotLog{BotUid: uid, Action: action, Detail: trimStr(detail, 240), Result: ok})
+	h.ezfyBotLogCity(uid, 0, action, detail, ok)
+}
+
+// ezfyBotLogCity 写一条行为日志并带上城市（★ 2026-10-28 多城市：管理端能看出是哪座城做的）。
+func (h *EzfyHandler) ezfyBotLogCity(uid uint, cityID int64, action, detail string, ok int) {
+	h.DB.Create(&model.EzfyBotLog{
+		BotUid: uid, CityId: cityID, Action: action, Detail: trimStr(detail, 240), Result: ok,
+	})
 }
 
 // ezfyBotSeedTroops 给人机城市塞初始兵力（★ 2026-10-17）。
@@ -554,7 +553,14 @@ func (h *EzfyHandler) BgTickBots() {
 	}
 }
 
-// botTickOnce 一轮：抢锁 → 取到点的 bot（分批）→ 逐个决策 → 释放锁。
+// botTickOnce 一轮：抢锁 → 同步「每座城一个行动槽」→ 取到点的槽（分批）→ 逐城决策 → 释放锁。
+//
+// ★★ 2026-10-28 多城市（用户反馈「人机被打后城市被占又被归还 → 名下两座城，但只会玩一座」）：
+//
+//	老实现每轮只取 profile.current_city_id 那一座城 → 归还回来的城永远不发育、不出兵。
+//	现在**没有主城概念**：名下每座城各占一个 ezfy_bot_city 行动槽，各自独立排期、独立决策，
+//	同一套优先级（建筑/人口/征兵/军官/军事），每座城都能自己出兵。
+//	出征的「攻频 / 每日上限」仍是**账号级**（ezfy_bot），多城叠加也不会刷爆。
 func (h *EzfyHandler) botTickOnce() {
 	now := time.Now().UnixMilli()
 	owner := ezfyBotOwner()
@@ -563,47 +569,151 @@ func (h *EzfyHandler) botTickOnce() {
 	}
 	defer h.botReleaseLease(ezfyBotLeaseName, owner)
 
-	var bots []model.EzfyBot
+	h.botSyncCityStates(now)
+
+	var slots []model.EzfyBotCity
 	h.DB.Where("enabled = 1 AND next_act_at <= ?", now).
-		Order("next_act_at ASC").Limit(ezfyBotBatchSize).Find(&bots)
-	for _, b := range bots {
-		h.botTickOne(b)
+		Order("next_act_at ASC").Limit(ezfyBotBatchSize).Find(&slots)
+	if len(slots) == 0 {
+		return
+	}
+	// 懒结算（等价于「玩家上线」）按 uid 只做一次：一轮里同一人机的多座城共用一次结算。
+	settled := map[uint]bool{}
+	for _, s := range slots {
+		var b model.EzfyBot
+		if err := h.DB.Where("user_id = ? AND enabled = 1", s.BotUid).First(&b).Error; err != nil {
+			// ★ 人机已删/已暂停：槽要**推后**而不是原样留着 ——
+			//   否则它每轮都排在最前面、白占一个批次名额，把别的人机挤掉（批次只有 ezfyBotBatchSize 个）。
+			h.DB.Model(&model.EzfyBotCity{}).Where("id = ?", s.ID).
+				Update("next_act_at", now+3600000)
+			continue
+		}
+		if !settled[b.UserID] {
+			h.processOrders(b.UserID)
+			settled[b.UserID] = true
+		}
+		h.botTickCitySlot(b, s)
 	}
 }
 
-// botTickOne 单个 bot 的一次行动：懒结算 → 决策 → 执行一个动作 → 写回下次时间。
+// botSyncCityStates 把「人机名下实际拥有的城」同步成行动槽（幂等，每轮 tick 跑一次）。
+//
+//   - 新拥有的城（被归还/赎回/新建城）→ 补一个槽，立刻可行动；
+//   - 已不属于该人机的城（被玩家占领 / 城被摧毁）→ 删槽；
+//   - 管理端把 ezfy_bot.next_act_at 提前到当前（立即行动 / 发放资源 / 新建人机）→
+//     把它名下所有槽一起提前，然后把这个「踢一下」的标记消费掉（推后 1 小时），
+//     否则每轮都会把全部城踢醒 = 刷屏执行。
+func (h *EzfyHandler) botSyncCityStates(now int64) {
+	h.DB.Exec(`INSERT INTO ezfy_bot_city (bot_uid, city_id, enabled, next_act_at, last_act_at, last_action, created_at, updated_at)
+		SELECT c.user_id, c.id, 1, ?, 0, '', NOW(), NOW()
+		FROM ezfy_city c
+		JOIN ezfy_bot b ON b.user_id = c.user_id
+		LEFT JOIN ezfy_bot_city s ON s.city_id = c.id
+		WHERE s.id IS NULL`, now)
+	h.DB.Exec(`DELETE s FROM ezfy_bot_city s
+		LEFT JOIN ezfy_city c ON c.id = s.city_id AND c.user_id = s.bot_uid
+		WHERE c.id IS NULL`)
+	// 管理端「踢一下」：只踢真正被提前的（next_act_at <= now），踢完消费掉标记
+	if res := h.DB.Exec(`UPDATE ezfy_bot_city s JOIN ezfy_bot b ON b.user_id = s.bot_uid
+		SET s.next_act_at = ? WHERE b.next_act_at <= ? AND s.enabled = 1 AND s.next_act_at > ?`,
+		now, now, now); res.RowsAffected > 0 {
+		h.DB.Exec(`UPDATE ezfy_bot SET next_act_at = ? WHERE next_act_at <= ? AND enabled = 1`,
+			now+3600000, now)
+	}
+}
+
+// botCities 该人机名下**可行动**的城（排除正被玩家占领中的城）。
+//
+// ★ 被占领的城不能再出兵/发育（否则会出现「城已被占还能从里面派兵」）。
+func (h *EzfyHandler) botCities(uid uint) []model.EzfyCity {
+	var cities []model.EzfyCity
+	h.DB.Where("user_id = ? AND id NOT IN (SELECT city_id FROM ezfy_occupy WHERE status = 1)", uid).
+		Order("id ASC").Find(&cities)
+	return cities
+}
+
+// botTickCitySlot 单个「城市槽」的一次行动：校验归属 → 决策 → 写日志 → 排下次。
+func (h *EzfyHandler) botTickCitySlot(b model.EzfyBot, slot model.EzfyBotCity) {
+	cfg := ezfyBotLevelOf(b.Level)
+	var city model.EzfyCity
+	if err := h.DB.Where("id = ? AND user_id = ?", slot.CityId, b.UserID).First(&city).Error; err != nil {
+		h.DB.Where("id = ?", slot.ID).Delete(&model.EzfyBotCity{})
+		return
+	}
+	if h.cityOccupied(int64(city.ID)) {
+		h.botCityReschedule(b, slot, cfg, "城被占领", "城市正被玩家占领，本城暂停行动", true)
+		return
+	}
+	action, detail, ok := h.botActCity(&b, city, cfg)
+	h.botCityReschedule(b, slot, cfg, action, detail, ok)
+}
+
+// botActCity 对**指定的一座城**做一轮决策（懒结算由调用方负责）。
+//
+// ★ 决策前重读一次 ezfy_bot：出征额度（攻频/每日上限）是账号级的，同一轮里多座城
+// 各自持有旧快照会各打一次，把配置的攻频打穿。
+func (h *EzfyHandler) botActCity(b *model.EzfyBot, city model.EzfyCity, cfg ezfyBotLevelCfg) (string, string, bool) {
+	h.refreshCity(b.UserID, &city)
+	h.DB.First(&city, city.ID)
+	if b.ID > 0 {
+		var fresh model.EzfyBot
+		if err := h.DB.First(&fresh, b.ID).Error; err == nil {
+			*b = fresh
+		}
+	}
+	action, detail, ok := h.botDecide(b, &city, cfg)
+	h.ezfyBotLogCity(b.UserID, int64(city.ID), action, detail, boolInt(ok))
+	return action, detail, ok
+}
+
+// botTickOne 让**这一个人机的全部城市**各行动一次（管理端「立即行动 / 一键立即行动」用）。
+//
+// ★ 与后台 tick 同一套决策，只是不走排期：管理端手动触发时把每座城都推进一轮。
 func (h *EzfyHandler) botTickOne(b model.EzfyBot) {
 	h.cfgs()
 	uid := b.UserID
 	cfg := ezfyBotLevelOf(b.Level)
-
 	// ① 懒结算（等价于「玩家上线」）：结算在途订单 + 逐城产出/建筑完工
 	h.processOrders(uid)
-	city := h.getOrCreateCity(uid)
-	if city.ID == 0 {
+	cities := h.botCities(uid)
+	if len(cities) == 0 {
+		h.ezfyBotLog(uid, "无城", "无法获取城市", 0)
 		h.botReschedule(b, cfg, "无城", "无法获取城市", false)
 		return
 	}
-	h.refreshCity(uid, &city)
-	// refreshCity 之后重新读一次，保证资源/人口是最新的
-	h.DB.First(&city, city.ID)
-
-	// ② 决策（一轮只做一件事）
-	action, detail, ok := h.botDecide(&b, &city, cfg)
-
-	// ③ 写日志 + 排下次行动（失败也排，避免卡死；但间隔更短，方便重试）
-	h.ezfyBotLog(uid, action, detail, boolInt(ok))
-	h.botReschedule(b, cfg, action, detail, ok)
+	// ② 每座城各决策一次（一座城一件事）
+	var lastAction, lastDetail string
+	lastOK := true
+	for _, city := range cities {
+		action, detail, ok := h.botActCity(&b, city, cfg)
+		lastAction, lastDetail, lastOK = action, detail, ok
+	}
+	// ③ 账号级汇总（管理端列表「最后行动」）+ 排下次
+	h.botReschedule(b, cfg, lastAction, lastDetail, lastOK)
 }
 
-// botReschedule 写回 next_act_at（随机抖动，模拟真人节奏）。
+// botReschedule 账号级排期写回（手动触发 / 无城 时用；常规行动由 botCityReschedule 按城排）。
+func (h *EzfyHandler) botReschedule(b model.EzfyBot, cfg ezfyBotLevelCfg, action, detail string, ok bool) {
+	gap := cfg.GrowMin + mathrand.Intn(cfg.GrowMax-cfg.GrowMin+1)
+	if !ok {
+		gap = 2 + mathrand.Intn(3) // 失败/跳过：2~4 分钟后重试
+	}
+	now := time.Now().UnixMilli()
+	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
+		"next_act_at": now + int64(gap)*60000,
+		"last_act_at": now,
+		"last_action": trimStr(action, 28),
+	})
+}
+
+// botCityReschedule 写回**这座城**的下次行动时间（随机抖动，模拟真人节奏）。
 //
-// ★ 2026-10-18 攻击频率修复：有活跃攻击计划（待宣战/待生效/可出击/冷却）时，
+// ★ 2026-10-18 攻击频率修复（保留）：有活跃攻击计划（待宣战/待生效/可出击/冷却）时，
 //
 //	按「1 小时 / 频率」的节奏排下次行动 —— 让宣战 → 生效 → 出击链路按配置的
 //	atk_per_hour 推进，而不是被 GrowMin~GrowMax（5~11 分钟）的发育节奏压住，
 //	导致实际出征次数远低于配置（线上表现：频率配置 8 次/h，实际一天只有几次）。
-func (h *EzfyHandler) botReschedule(b model.EzfyBot, cfg ezfyBotLevelCfg, action, detail string, ok bool) {
+func (h *EzfyHandler) botCityReschedule(b model.EzfyBot, slot model.EzfyBotCity, cfg ezfyBotLevelCfg, action, detail string, ok bool) {
 	gap := cfg.GrowMin + mathrand.Intn(cfg.GrowMax-cfg.GrowMin+1)
 	if !ok {
 		gap = 2 + mathrand.Intn(3) // 失败/跳过：2~4 分钟后重试
@@ -621,8 +731,13 @@ func (h *EzfyHandler) botReschedule(b model.EzfyBot, cfg ezfyBotLevelCfg, action
 		}
 	}
 	now := time.Now().UnixMilli()
-	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
+	h.DB.Model(&model.EzfyBotCity{}).Where("id = ?", slot.ID).Updates(map[string]interface{}{
 		"next_act_at": now + int64(gap)*60000,
+		"last_act_at": now,
+		"last_action": trimStr(action, 28),
+	})
+	// 账号级汇总（列表「最后行动」列）
+	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
 		"last_act_at": now,
 		"last_action": trimStr(action, 28),
 	})
@@ -708,7 +823,7 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 	//    每轮 tick 都先补兵，直到能出门反击/发育为止。
 	// 0') 伤兵/逃兵优先恢复（★ 2026-10-17 用户规则「人机会立即恢复伤兵、逃兵」）：
 	//    有伤兵就先用黄金恢复（走真人接口，立即回城，免费版只扣黄金）。
-	if a, d, ok := h.botHeal(b); ok {
+	if a, d, ok := h.botHeal(b, city); ok {
 		return a, d, ok
 	}
 	if troopTotal == 0 && buildingLv[14] > 0 {
@@ -2137,6 +2252,20 @@ func ezfyBotStatusText(b model.EzfyBot, now int64) string {
 		return "等待行动"
 	}
 	return "行动中"
+}
+
+// ezfyBotCityStatusText 人机状态文案（★ 2026-10-28 多城市）。
+//
+// 多城市后「下次行动」在每座城的行动槽里（ezfy_bot_city），ezfy_bot.next_act_at 只作
+// 「管理端踢一下」的标记 —— 所以状态要看**最早一座城**的排期（nextAct）。
+func ezfyBotCityStatusText(b model.EzfyBot, nextAct, now int64) string {
+	if b.Enabled == 0 {
+		return "已暂停"
+	}
+	if nextAct <= 0 || nextAct <= now {
+		return "行动中"
+	}
+	return "等待行动"
 }
 
 // ezfyBotNickOf 取人机展示昵称（profile 优先）。

@@ -3315,8 +3315,17 @@ func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare,
 //	   （与交易所下架同一个坑）。现在先 `calcResource` 把产量并进来。
 //	② 返回「实际入库的城市」与**实际到账量**（数组顺序 粮/钢/油/稀/金）——
 //	   被封顶/扣到 0 时调用方能明确告诉管理员，而不是只报「已发放」。
-func (h *EzfyHandler) giveResourcesNoCap(uid uint, food, steel, oil, rare, gold int64) (model.EzfyCity, [5]int64) {
-	city := h.getOrCreateCity(uid)
+// ★ 2026-10-28 多城市：cityID 可选（管理端给人机发资源时可指定落到哪座城），
+//
+//	不传 = 当前城（老行为）。城 id 不属于该玩家 → 回落当前城，绝不写到别人的城上。
+func (h *EzfyHandler) giveResourcesNoCap(uid uint, food, steel, oil, rare, gold int64, cityID ...int64) (model.EzfyCity, [5]int64) {
+	var city model.EzfyCity
+	if len(cityID) > 0 && cityID[0] > 0 {
+		h.DB.Where("id = ? AND user_id = ?", cityID[0], uid).First(&city)
+	}
+	if city.ID == 0 {
+		city = h.getOrCreateCity(uid)
+	}
 	h.calcResource(&city) // ★ 先把这段时间的产量结算进来，避免 saveCityRes 覆盖掉
 	b := [5]int64{city.Food, city.Steel, city.Oil, city.Rare, city.Gold}
 	city.Food = ezfyAddResMax("food", city.Food, food)

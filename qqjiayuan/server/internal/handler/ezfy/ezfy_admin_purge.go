@@ -113,6 +113,8 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	{"ezfy_title_daily", []string{"user_id"}},
 	// ★ 2026-10-17 人机模块：人机档案 / 攻击计划（两个方向）/ 行为日志，删号必须一起清
 	{"ezfy_bot", []string{"user_id"}},
+	// ★ 2026-10-28 人机多城市：每座城的行动槽（bot_uid 归属，删号必清）
+	{"ezfy_bot_city", []string{"bot_uid"}},
 	{"ezfy_bot_target", []string{"bot_uid", "target_uid"}},
 	{"ezfy_bot_log", []string{"bot_uid"}},
 	// ★ 2026-10-25 活动守将「兜底被俘次数」进度（玩家 × 守将的胜场数）——纯玩家数据，删号必清

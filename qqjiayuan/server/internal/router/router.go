@@ -1314,6 +1314,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-bot/:uid/grant", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotGrant)
 						// ★ 2026-10-17 编辑人机（昵称/声望/城市名/建筑等级）
 						admin.GET("/ezfy-bot/:uid/buildings", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotBuildings)
+						// ★ 2026-10-28 多城市：人机名下全部城市 + 每城行动状态 / 单城启停
+						admin.GET("/ezfy-bot/:uid/cities", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotCities)
+						admin.POST("/ezfy-bot/:uid/city/toggle", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotCityToggle)
 						admin.POST("/ezfy-bot/:uid/edit", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotEdit)
 						// ★ 2026-10-17 攻击目标：人机可自己找，也可管理端指定（可挂多个）
 						admin.GET("/ezfy-bot/:uid/targets", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargets)

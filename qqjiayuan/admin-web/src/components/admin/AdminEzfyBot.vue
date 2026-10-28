@@ -72,9 +72,13 @@
             <el-tag size="mini" :type="row.camp === 2 ? 'danger' : 'primary'">{{ row.camp_name }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="主城" min-width="120" show-overflow-tooltip>
+        <el-table-column label="城市" min-width="140">
           <template slot-scope="{row}">
-            <span v-if="row.city_id">{{ row.city_name }}（{{ row.x }},{{ row.y }}）</span>
+            <el-tooltip v-if="row.city_id" placement="top" :content="(row.city_names || []).join('、') || row.city_name">
+              <span class="city-cell">
+                {{ row.city_count > 1 ? row.city_count + ' 座' : row.city_name }}（{{ row.x }},{{ row.y }}）
+              </span>
+            </el-tooltip>
             <span v-else class="td-gray">—</span>
           </template>
         </el-table-column>
@@ -175,12 +179,30 @@
     <el-dialog :title="'编辑人机 —— ' + (cur ? cur.nickname : '')" :visible.sync="editDlg" width="1000px"
                :close-on-click-modal="false">
       <div v-loading="editLoading" style="min-height:300px">
+        <!-- ★ 2026-10-28 多城市：人机没有主城概念，所有「按城」的操作都作用于这里选中的城 -->
+        <div class="city-bar">
+          <span class="city-bar-label">城市</span>
+          <el-select v-model="editCityId" size="small" style="width:240px" @change="switchCity">
+            <el-option v-for="c in editCities" :key="c.id"
+                       :label="c.name + '（' + c.x + ',' + c.y + '）'" :value="c.id" />
+          </el-select>
+          <el-tooltip placement="top" :content="tips.citySwitch"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          <el-tag v-if="curCity && curCity.occupied" size="mini" type="danger" style="margin-left:6px">被占领中</el-tag>
+          <span class="city-bar-stat">人口 {{ fmtNum(editForm.pop) }}/{{ fmtNum(editForm.pop_max) }}</span>
+          <span class="city-bar-stat">兵力 {{ fmtNum(curCity ? curCity.troop_total : 0) }}</span>
+          <span class="city-bar-stat">军官 {{ curCity ? curCity.officer_num : 0 }}</span>
+          <div class="grow" />
+          <span class="city-bar-stat">自动行动</span>
+          <el-switch :value="curCity ? !!curCity.auto_on : true" :disabled="!curCity || curCity.occupied"
+                     @change="toggleCityAuto" />
+          <el-tooltip placement="top" :content="tips.cityAuto"><i class="el-icon-info cfg-tip" /></el-tooltip>
+        </div>
         <el-tabs v-model="editTab" type="card">
           <el-tab-pane label="基本信息" name="base">
             <el-form label-width="100px" label-position="left">
               <el-form-item label="游戏昵称">
                 <el-input v-model="editForm.nickname" maxlength="20" show-word-limit style="width:220px" />
-                <el-tooltip placement="top" content="同步改家园昵称 + 二战昵称（地图/聊天/战报一致）"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
+                <el-tooltip placement="top" :content="tips.nickname"><i class="el-icon-info cfg-tip" /></el-tooltip>
               </el-form-item>
               <el-form-item label="军功声望">
                 <el-input-number v-model.number="editForm.prestige" :min="0" :step="1000"
@@ -188,9 +210,8 @@
               </el-form-item>
               <el-form-item label="城市名">
                 <el-input v-model="editForm.city_name" maxlength="20" show-word-limit style="width:220px" />
-                <span class="td-gray" style="margin-left:6px">当前主城</span>
+                <el-tooltip placement="top" :content="tips.cityName"><i class="el-icon-info cfg-tip" /></el-tooltip>
               </el-form-item>
-              <!-- ★ 2026-10-26 编辑页精简：人口三项（空闲/上限/待恢复）合并成一行，原来占 3 行 -->
               <el-form-item label="人口">
                 <span class="td-gray">空闲</span>
                 <el-input-number v-model.number="editForm.freePop" :min="0" :step="1000" size="small"
@@ -201,48 +222,79 @@
                 <span class="td-gray" style="margin-left:10px">待恢复</span>
                 <el-input-number v-model.number="editForm.pop_recover" :min="0" :step="1000" size="small"
                                  controls-position="right" style="width:120px;margin-left:4px" />
-                <el-tooltip placement="top" content="空闲人口 = 总人口 − 建筑占用 − 训练占用 − 待恢复（保存时自动反推总人口）；上限配置后当前人口同步到上限，别人侦察即显示该值">
-                  <i class="el-icon-info cfg-tip" style="margin-left:6px" />
-                </el-tooltip>
-                <span class="td-gray" style="margin-left:6px">总人口 {{ fmtNum(editForm.pop) }}</span>
+                <el-tooltip placement="top" :content="tips.pop"><i class="el-icon-info cfg-tip" /></el-tooltip>
               </el-form-item>
-              <!-- ★ 2026-10-17 出征设置：攻击频率 + 单次出兵，0=按难度默认（新手6次/8h→普通8/精英10 + 30/35/40万） -->
-              <el-form-item label="攻频/出兵">
+              <el-form-item label="出征设置">
                 <el-input-number v-model.number="editForm.atk_per_hour" :min="0" :max="60" :step="1"
                                  controls-position="right" style="width:100px" />
-                <span class="td-gray" style="margin-left:6px">次/小时 (0=默认 {{ editForm.atk_per_hour_eff }})</span>
+                <span class="td-gray" style="margin-left:4px">次/小时</span>
                 <el-input-number v-model.number="editForm.atk_troop" :min="0" :step="10000"
-                                 controls-position="right" style="width:140px;margin-left:16px" />
-                <span class="td-gray" style="margin-left:6px">出兵 (0=默认 {{ fmtNum(editForm.atk_troop_eff) }})</span>
-                <el-select v-model.number="editForm.atk_type" style="width:110px;margin-left:16px" size="mini">
+                                 controls-position="right" style="width:130px;margin-left:14px" />
+                <span class="td-gray" style="margin-left:4px">出兵</span>
+                <el-select v-model.number="editForm.atk_type" style="width:110px;margin-left:14px" size="mini">
                   <el-option label="征服(默认)" :value="0" />
                   <el-option label="侦察" :value="1" />
                   <el-option label="掠夺" :value="2" />
                   <el-option label="征服" :value="3" />
                 </el-select>
-                <span class="td-gray" style="margin-left:6px">出征类型</span>
+                <el-tooltip placement="top" :content="tips.atkSet"><i class="el-icon-info cfg-tip" /></el-tooltip>
               </el-form-item>
-              <!-- ★ 2026-10-19 自动发言开关（人机是否像真人一样在世界/城市频道自动发言） -->
               <el-form-item label="自动发言">
                 <el-switch v-model="editForm.chat_on" :active-value="1" :inactive-value="0" />
-                <el-tooltip placement="top" content="关闭后人机不再自动发言（玩家端无从察觉它是机器人）">
-                  <i class="el-icon-info cfg-tip" style="margin-left:6px" />
-                </el-tooltip>
+                <el-tooltip placement="top" :content="tips.chat"><i class="el-icon-info cfg-tip" /></el-tooltip>
               </el-form-item>
-              <!-- ★ 2026-10-25 打野地开关（是否攻击真人玩家的附属野地；默认关闭） -->
               <el-form-item label="打野地">
                 <el-switch v-model="editForm.attack_wild" :active-value="1" :inactive-value="0" />
-                <el-tooltip placement="top" :content="tips.attackWild"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
-                <span class="td-gray" style="margin-left:6px">{{ editForm.attack_wild ? '会征服真人玩家的附属野地' : '不打玩家的附属野地（只打城市）' }}</span>
+                <el-tooltip placement="top" :content="tips.attackWild"><i class="el-icon-info cfg-tip" /></el-tooltip>
               </el-form-item>
-              <!-- ★ 2026-10-26 目标最小兵力（按人机分，用户要求从顶栏挪到这里，默认 100000） -->
               <el-form-item label="目标最小兵力">
                 <el-input-number v-model.number="editForm.target_min_troops" :min="0" :step="10000"
                                  controls-position="right" style="width:150px" />
-                <el-tooltip placement="top" :content="tips.targetMinTroops"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
-                <span class="td-gray" style="margin-left:6px">只自动打城内兵力 ≥ 此值的玩家城（0 = 不限）</span>
+                <el-tooltip placement="top" :content="tips.targetMinTroops"><i class="el-icon-info cfg-tip" /></el-tooltip>
               </el-form-item>
             </el-form>
+          </el-tab-pane>
+          <!-- ★ 2026-10-28 多城市：人机名下每座城的概况（人口/资源/兵力/军官/自动行动） -->
+          <el-tab-pane label="城市管理" name="city">
+            <div class="toolbar" style="margin-bottom:8px">
+              <span class="td-main">共 {{ editCities.length }} 座城</span>
+              <el-tooltip placement="top" :content="tips.cityList"><i class="el-icon-info cfg-tip" /></el-tooltip>
+              <div class="grow" />
+            </div>
+            <el-table :data="editCities" size="mini" border max-height="360" :key="'bot-cities'" style="width:100%">
+              <el-table-column label="城市" min-width="130" show-overflow-tooltip>
+                <template slot-scope="{row}">{{ row.name }}（{{ row.x }},{{ row.y }}）</template>
+              </el-table-column>
+              <el-table-column prop="city_level" label="城级" width="60" align="center" />
+              <el-table-column label="人口" width="130" align="center">
+                <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.pop) }}/{{ fmtNum(row.pop_max) }}</span></template>
+              </el-table-column>
+              <el-table-column label="兵力" width="100" align="center">
+                <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.troop_total) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="officer_num" label="军官" width="60" align="center" />
+              <el-table-column label="资源 粮/钢/油/稀" min-width="190" align="center">
+                <template slot-scope="{row}">
+                  <span class="td-mono" style="font-size:12px">
+                    {{ fmtNum(row.food) }}/{{ fmtNum(row.steel) }}/{{ fmtNum(row.oil) }}/{{ fmtNum(row.rare) }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="90" align="center">
+                <template slot-scope="{row}">
+                  <el-tag v-if="row.occupied" size="mini" type="danger">被占领</el-tag>
+                  <el-tag v-else size="mini" :type="row.auto_on ? 'success' : 'info'">{{ row.auto_on ? '自动' : '暂停' }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="150" align="center">
+                <template slot-scope="{row}">
+                  <el-button size="mini" plain :disabled="row.id === editCityId"
+                             @click="switchCity(row.id)">切换</el-button>
+                  <el-button size="mini" plain :disabled="row.occupied"
+                             @click="toggleCityAutoOf(row)">{{ row.auto_on ? '暂停' : '启用' }}</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
           </el-tab-pane>
           <el-tab-pane label="建筑等级" name="build">
             <el-table :data="editBuildings" size="mini" border max-height="300" style="width:100%">
@@ -286,8 +338,8 @@
                 <el-option v-for="g in generalOptions" :key="g.id" :label="(g.kind === 2 ? '★' : '') + g.name + '（' + g.star + '星）'" :value="g.id" />
               </el-select>
               <el-button size="mini" type="success" plain icon="el-icon-plus" :loading="grantSaving"
-                         @click="grantGeneral">发放到主城</el-button>
-              <el-tooltip placement="top" content="加点：直接填三维最终值，差额自动从「待分配点」扣减，待分配点不够会保存失败；待分配点也可直接调（管理端给点）"><i class="el-icon-info cfg-tip" /></el-tooltip>
+                         @click="grantGeneral">发放到该城</el-button>
+              <el-tooltip placement="top" :content="tips.officerPoint"><i class="el-icon-info cfg-tip" /></el-tooltip>
               <div class="grow" />
             </div>
             <el-table :data="editOfficers" size="mini" border max-height="320" style="width:100%">
@@ -313,7 +365,7 @@
               <el-table-column label="三维属性" width="250" align="center">
                 <template slot="header">
                   <span>三维属性</span>
-                  <el-tooltip placement="top" content="顺序：军事 / 后勤 / 学识，填最终值，差额自动从待分配点扣减">
+                  <el-tooltip placement="top" content="顺序：军事 / 后勤 / 学识">
                     <i class="el-icon-info cfg-tip" style="margin-left:2px" />
                   </el-tooltip>
                 </template>
@@ -345,7 +397,11 @@
           </el-tab-pane>
           <!-- ★ 2026-10-19 发放资源 + 占领城市 收进编辑人机 tab（外置按钮过多，用户要求挪进来） -->
           <el-tab-pane label="发放/占领" name="grant">
-            <div class="td-main" style="margin-bottom:4px">发放资源</div>
+            <div class="td-main" style="margin-bottom:4px">
+              发放资源
+              <span class="td-gray" style="font-weight:400;margin-left:6px">发放到「{{ editForm.city_name || '当前城' }}」</span>
+              <el-tooltip placement="top" :content="tips.grant"><i class="el-icon-info cfg-tip" /></el-tooltip>
+            </div>
             <el-form label-width="56px" label-position="left">
               <div style="display:flex; flex-wrap:wrap; gap:4px 28px">
                 <el-form-item v-for="f in resFields" :key="f.k" :label="f.t">
@@ -357,7 +413,7 @@
                   <el-input-number v-model.number="grantForm.gather" :step="1000" :precision="0"
                                    controls-position="right" style="width:130px" />
                   <div class="td-gray" style="font-size:12px">当前 {{ fmtNum(grantCur.gather) }}
-                    <el-tooltip effect="dark" content="人机出征时自动烧集结令扩出征上限（每个 +10 万），烧完列表实时可见" placement="top">
+                    <el-tooltip effect="dark" :content="tips.gather" placement="top">
                       <i class="el-icon-question" style="cursor:pointer"></i>
                     </el-tooltip>
                   </div>
@@ -365,9 +421,6 @@
               </div>
               <el-form-item>
                 <el-button type="primary" size="mini" :loading="grantSaving" @click="doGrant">发 放</el-button>
-                <el-tooltip placement="top" content="可填负数扣除；发完人机会立刻行动消化资源；不发钻石">
-                  <i class="el-icon-info cfg-tip" style="margin-left:6px" />
-                </el-tooltip>
               </el-form-item>
             </el-form>
             <el-divider style="margin:8px 0" />
@@ -434,7 +487,7 @@
         <el-input v-model.number="tgtInput" placeholder="目标玩家ID / 游戏号" clearable style="width:200px" />
         <el-button type="primary" size="mini" icon="el-icon-plus" :loading="tgtSaving" @click="addTarget">加入计划</el-button>
         <el-button type="danger" size="mini" plain icon="el-icon-s-custom" :loading="tgtSaving" @click="attackNearest">出征最近敌对城</el-button>
-        <span class="td-gray" style="font-size:12px">目标必须是真人；加入后该人机下一轮自动宣战（24h 生效）</span>
+        <el-tooltip placement="top" :content="tips.target"><i class="el-icon-info cfg-tip" /></el-tooltip>
       </div>
       <el-table :data="targets" v-loading="tgtLoading" size="mini" border max-height="300">
         <el-table-column prop="target_uid" label="目标ID" width="95" align="center" />
@@ -464,11 +517,11 @@
           <span style="margin:0 4px">,</span>
           <el-input-number v-model.number="relocateForm.y" :min="1" :max="499" controls-position="right"
                            style="width:130px" />
+          <el-tooltip placement="top" :content="tips.relocate"><i class="el-icon-info cfg-tip" /></el-tooltip>
         </el-form-item>
         <el-form-item label="当前坐标">
           <span class="td-gray">{{ cur ? cur.city_name + '(' + cur.x + ',' + cur.y + ')' : '—' }}</span>
         </el-form-item>
-        <div class="td-gray" style="font-size:12px">只能迁到平原或沿海平原，且目标坐标不能已有城市；迁完人机下一轮立即按新城行动</div>
       </el-form>
       <div slot="footer">
         <el-button @click="relocateDlg = false">取 消</el-button>
@@ -577,8 +630,10 @@ export default {
       editDlg: false, editLoading: false, editSaving: false, editTab: 'base',
       editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0, freePop: 0,
         atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
-        atk_type: 0, atk_type_eff: 3, chat_on: 1, attack_wild: 0 },
+        atk_type: 0, atk_type_eff: 3, chat_on: 0, attack_wild: 0 },
       editSnapA: { h: 0, t: 0, ty: 0, aw: 0 },
+      // ★ 2026-10-28 多城市：人机名下全部城 + 当前编辑的城（没有主城概念，逐城维护）
+      editCities: [], editCityId: 0,
       editBuildings: [],
       editTechs: [],
       editTroops: [],
@@ -605,16 +660,36 @@ export default {
       reportDetailDlg: false, reportDetail: { title: '', content: '', detail: '' },
       cur: null,
       tips: {
-        overview: '人机走和真人完全相同的接口（建城/升级/造兵/宣战），每 60 秒一轮、每轮最多 10 个，带租约锁（多进程只有一台真正执行）；人机不出现在「玩家信息管理」里。',
-        atk: '关闭 = 人机只发育、不打扰玩家；开启后受「每人每日出征上限」与新手保护约束（建城不满 3 天、兵力过低的目标不会被打）。',
-        foodFree: '开启后人机城内军队不扣维护粮、出征也免油耗（真人照常扣），让人机专注发育与出击。',
-        minPrestige: '人机自动挑攻击目标时，只打声望 ≥ 此值的真人玩家（0 = 不限制）；声望越高越优先被选中。',
-        train: '人机城内部队总数低于该值就执行征兵行动（默认 50 万）；填低于 1 万会自动回落到 50 万。',
-        targetMinTroops: '自动挑攻击目标时，只打城内兵力 ≥ 此值的真人玩家城。★ 按**每台人机**单独配置（编辑人机 → 基本信息），默认 100000；0 = 不限（愿意啃空城）。管理端手动指定目标不受此限。',
-        window: '人机只在指定时间段内出征（如 20:00-22:00,08:00-12:00，支持跨天 22:00-02:00）。★ 默认 08:00-23:00（早上 8 点到晚上 11 点）；要全天请填 00:00-23:59。发育/集结等其它行动不受限。',
-        attackWild: '默认关闭：人机只打城市，不碰真人玩家的附属野地。开启后 —— 宣战等待期先征服目标玩家的野地，周围没有可打的城市时也会兜底打玩家野地（一律征服，胜利后立刻放弃，不占领）。',
-        boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
+        overview: '人机与真人走同一套接口，每 60 秒一轮；每座城各自行动，出征频率按人机统计。',
+        atk: '关闭后人机只发育、不出征。开启后仍受每日出征上限、新手保护与出征时间段限制。',
+        foodFree: '开启后人机城内军队不扣维护粮、出征不耗油。真人照常扣。',
+        minPrestige: '自动选择攻击目标时，只打声望不低于该值的玩家（0 = 不限）。',
+        train: '城内部队总数低于该值时自动征兵。',
+        targetMinTroops: '自动选目标时，只打城内兵力不低于该值的玩家城。0 = 不限。',
+        window: '人机出征时间段，格式 20:00-22:00,08:00-12:00，支持跨天。留空按 08:00-23:00；全天填 00:00-23:59。',
+        attackWild: '开启后人机会征服玩家的附属野地（胜利后放弃，不占领）。',
+        boost: '额外发放启动资源与加速建筑，便于快速成型。',
+        // ★ 2026-10-28 编辑页提示统一精简（说明只放在 i 里，正文不再平铺）
+        nickname: '同时修改家园昵称与二战昵称。',
+        cityName: '修改当前选中城市的名称。',
+        pop: '空闲人口 = 总人口 − 建筑占用 − 训练占用 − 待恢复。上限生效后当前人口同步为该值。',
+        atkSet: '按人机统计。出征频率填 0 按难度默认（6/8/10 次每小时），出兵填 0 按难度默认。',
+        chat: '开启后人机会在世界频道自动发言。新建人机默认关闭。',
+        citySwitch: '人机可拥有多座城市，没有主城之分；这里选择要维护的城市。',
+        cityAuto: '关闭后该城暂停自动行动，其它城市照常。被占领中的城市无法启用。',
+        cityList: '每座城市独立发育、独立出兵，人口、资源、建筑、兵种、军官都按城市分别维护。',
+        grant: '正数发放，负数扣除。资源发放到当前选中城市，集结令进入背包。',
+        gather: '出征时自动消耗集结令提升出征上限，每个 +10 万。',
+        target: '目标必须是真人玩家。加入计划后人机下一轮自动宣战，24 小时后生效。',
+        relocate: '只能迁到平原或沿海平原，且目标坐标不能已有城市。',
+        officerPoint: '三维填最终值，差额从待分配点扣减；待分配点可直接调整。'
       }
+    }
+  },
+  computed: {
+    // 当前编辑的城市（多城市：所有按城的操作都看它）
+    curCity () {
+      return this.editCities.find(c => Number(c.id) === Number(this.editCityId)) || null
     }
   },
   watch: {
@@ -703,58 +778,110 @@ export default {
       })
     },
     // ---- 编辑（昵称/声望/城市名/人口/建筑/科技/兵种/军官）----
+    // ★ 2026-10-28 多城市：人机没有主城概念 → 打开时先拉「全部城市」，再按选中的城拉明细
     openEdit (row) {
       this.cur = row
       this.editTab = 'base'
+      this.editCities = []
+      this.editCityId = 0
       this.editBuildings = []
       this.editTechs = []
       this.editTroops = []
       this.editOfficers = []
-      this.editForm = { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0,
-        atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
-        atk_type: 0, atk_type_eff: 3,
-        chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on,
-        attack_wild: row.attack_wild ? 1 : 0,
-        // ★ 2026-10-26 目标最小兵力（按人机分，默认 100000；老行 0/空 = 不限）
-        target_min_troops: row.target_min_troops === undefined || row.target_min_troops === null
-          ? 100000 : Number(row.target_min_troops) }
+      this.editForm = this.blankForm(row)
       this.editSnapA = { h: row.atk_per_hour || 0, t: row.atk_troop || 0, ty: row.atk_type || 0,
         aw: row.attack_wild ? 1 : 0,
         // ★ 2026-10-26 目标最小兵力快照（改了才提交）
         tmin: this.editForm.target_min_troops }
       this.editDlg = true
+      this.loadCityDetail(true)
+    },
+    // 空白表单：自动发言默认关（新建人机默认关闭，老数据按列表返回值）
+    blankForm (row) {
+      const r = row || {}
+      return {
+        nickname: r.nickname || '', prestige: r.prestige || 0, city_name: '',
+        pop: 0, pop_max: 0, pop_recover: 0, freePop: 0,
+        atk_per_hour: r.atk_per_hour || 0, atk_troop: r.atk_troop || 0,
+        atk_per_hour_eff: r.atk_per_hour_eff || 0, atk_troop_eff: r.atk_troop_eff || 0,
+        atk_type: r.atk_type || 0, atk_type_eff: r.atk_type_eff || 3,
+        chat_on: r.chat_on === undefined || r.chat_on === null ? 0 : r.chat_on,
+        attack_wild: r.attack_wild ? 1 : 0,
+        target_min_troops: r.target_min_troops === undefined || r.target_min_troops === null
+          ? 100000 : Number(r.target_min_troops)
+      }
+    },
+    // 拉某座城的明细（editCityId=0 → 后端按当前城回落，并回填 city_id）
+    loadCityDetail (first) {
       this.editLoading = true
-      api.get('/admin/ezfy-bot/' + row.user_id + '/buildings').then(r => {
+      const params = this.editCityId ? { city_id: this.editCityId } : {}
+      api.get('/admin/ezfy-bot/' + this.cur.user_id + '/buildings', { params }).then(r => {
         this.editLoading = false
-        if (r.code === 0) {
-          this.editForm = {
-            nickname: r.data.nickname || '', prestige: r.data.prestige || 0,
-            city_name: r.data.city_name || '',
-            pop: r.data.pop || 0, pop_max: r.data.pop_max || 0, pop_recover: r.data.pop_recover || 0,
-            freePop: r.data.free_pop || 0,
-            // ★ 2026-10-17 出征设置（原值 + 按难度生效值，列表接口已返回）
-            atk_per_hour: row.atk_per_hour || 0, atk_troop: row.atk_troop || 0,
-            atk_per_hour_eff: row.atk_per_hour_eff || 0, atk_troop_eff: row.atk_troop_eff || 0,
-            atk_type: row.atk_type || 0, atk_type_eff: row.atk_type_eff || 3,
-            chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on,
-            attack_wild: row.attack_wild ? 1 : 0,
-            // ★ 2026-10-26 目标最小兵力（按人机分，默认 100000）
-            target_min_troops: row.target_min_troops === undefined || row.target_min_troops === null
-              ? 100000 : Number(row.target_min_troops)
-          }
-          // 只列已建造的建筑（level>0），未建造的坑位是噪音
-          this.editBuildings = (r.data.buildings || []).filter(x => x.level > 0)
-          this.editTechs = r.data.techs || []
-          this.editTroops = r.data.troops || []
-          this.editOfficers = (r.data.officers || []).map(o => ({
-            id: o.id, name: o.name, star: o.star, level: o.level, exp: o.exp,
-            military: o.military, logistics: o.logistics, learning: o.learning,
-            free_points: o.free_points || 0, skills: o.skills || []
-          }))
-          this.snapEdit()
-          this.loadEditOptions()
-        } else { this.editDlg = false; this.$message.error(r.msg) }
+        if (r.code !== 0) {
+          if (first) this.editDlg = false
+          this.$message.error(r.msg)
+          return
+        }
+        this.editCities = r.data.cities || []
+        if (!this.editCityId) this.editCityId = Number(r.data.city_id) || 0
+        this.applyCityData(r.data)
+        if (first) this.loadEditOptions()
       }).catch(() => { this.editLoading = false })
+    },
+    // 把接口返回回填到表单（切城时也走这里，保存快照同步刷新 → 只提交本城改动）
+    applyCityData (d) {
+      const row = this.cur || {}
+      this.editForm = {
+        nickname: d.nickname || '', prestige: d.prestige || 0,
+        city_name: d.city_name || '',
+        pop: d.pop || 0, pop_max: d.pop_max || 0, pop_recover: d.pop_recover || 0,
+        freePop: d.free_pop || 0,
+        atk_per_hour: row.atk_per_hour || 0, atk_troop: row.atk_troop || 0,
+        atk_per_hour_eff: row.atk_per_hour_eff || 0, atk_troop_eff: row.atk_troop_eff || 0,
+        atk_type: row.atk_type || 0, atk_type_eff: row.atk_type_eff || 3,
+        chat_on: row.chat_on === undefined || row.chat_on === null ? 0 : row.chat_on,
+        attack_wild: row.attack_wild ? 1 : 0,
+        target_min_troops: row.target_min_troops === undefined || row.target_min_troops === null
+          ? 100000 : Number(row.target_min_troops)
+      }
+      // 只列已建造的建筑（level>0），未建造的坑位是噪音
+      this.editBuildings = (d.buildings || []).filter(x => x.level > 0)
+      this.editTechs = d.techs || []
+      this.editTroops = d.troops || []
+      this.editOfficers = (d.officers || []).map(o => ({
+        id: o.id, name: o.name, star: o.star, level: o.level, exp: o.exp,
+        military: o.military, logistics: o.logistics, learning: o.learning,
+        free_points: o.free_points || 0, skills: o.skills || []
+      }))
+      this.snapEdit()
+      // 切城时若正停在「发放/占领」tab，把「当前资源」同步到新城
+      if (this.editTab === 'grant') this.refreshGrantCur()
+    },
+    // 切换城市（城市下拉 / 城市管理 tab 的「切换」都走这里）
+    // ★ 注意：下拉是 v-model + @change，v-model 先更新 editCityId 再触发 change →
+    //   这里**不能**用「id === editCityId 就 return」去重，否则下拉切换永远不加载。
+    switchCity (cityId) {
+      const id = Number(cityId) || 0
+      if (!id) return
+      this.editCityId = id
+      this.loadCityDetail(false)
+    },
+    loadCities () {
+      api.get('/admin/ezfy-bot/' + this.cur.user_id + '/cities').then(r => {
+        if (r.code === 0) this.editCities = r.data.list || []
+      })
+    },
+    // 单城自动行动开关（城市栏 / 城市管理 tab）
+    toggleCityAuto (v) { this.setCityAuto(this.editCityId, v ? 1 : 0) },
+    toggleCityAutoOf (row) { this.setCityAuto(row.id, row.auto_on ? 0 : 1) },
+    setCityAuto (cityId, enabled) {
+      if (!cityId) return
+      api.post('/admin/ezfy-bot/' + this.cur.user_id + '/city/toggle', { city_id: cityId, enabled }).then(r => {
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已更新')
+          this.loadCities()
+        } else this.$message.error(r.msg)
+      })
     },
     loadEditOptions () {
       // 军官池（普通+名将）供「发放军官」下拉
@@ -772,21 +899,15 @@ export default {
     grantGeneral () {
       if (!this.grantGeneralId) { this.$message.warning('请先选择军官池/名将'); return }
       this.grantSaving = true
-      api.post('/admin/ezfy-officers/grant', { user_id: this.cur.user_id, general_id: this.grantGeneralId }).then(r => {
+      // ★ 2026-10-28 多城市：军官发放到当前选中的城（军官按城存）
+      api.post('/admin/ezfy-officers/grant', {
+        user_id: this.cur.user_id, general_id: this.grantGeneralId, city_id: this.editCityId || 0
+      }).then(r => {
         this.grantSaving = false
         if (r.code === 0) {
           this.$message.success(r.data.msg || '已发放')
-          // 重新拉取军官列表
-          api.get('/admin/ezfy-bot/' + this.cur.user_id + '/buildings').then(r2 => {
-            if (r2.code === 0) {
-              this.editOfficers = (r2.data.officers || []).map(o => ({
-                id: o.id, name: o.name, star: o.star, level: o.level, exp: o.exp,
-                military: o.military, logistics: o.logistics, learning: o.learning,
-                free_points: o.free_points || 0, skills: o.skills || []
-              }))
-              this.snapEdit()
-            }
-          })
+          this.loadCityDetail(false) // 重新拉该城明细（军官/兵种/建筑一起刷新）
+          this.loadCities()
         } else this.$message.error(r.msg)
       }).catch(() => { this.grantSaving = false })
     },
@@ -820,6 +941,8 @@ export default {
         learning: x.learning, skills: x.skills })))
       this.editSaving = true
       api.post('/admin/ezfy-bot/' + this.cur.user_id + '/edit', {
+        // ★ 2026-10-28 多城市：城市名/人口/建筑/兵种/军官都写到当前选中的这座城
+        city_id: this.editCityId || 0,
         nickname: this.editForm.nickname,
         prestige: this.editForm.prestige,
         city_name: this.editForm.city_name,
@@ -836,9 +959,9 @@ export default {
         atk_per_hour: this.editSnapA.h === this.editForm.atk_per_hour ? null : this.editForm.atk_per_hour,
         atk_troop: this.editSnapA.t === this.editForm.atk_troop ? null : this.editForm.atk_troop,
         atk_type: this.editSnapA.ty === this.editForm.atk_type ? null : this.editForm.atk_type,
-        // ★ 2026-10-19 自动发言开关（基本信息 tab）
+        // ★ 2026-10-19 自动发言开关（基本信息 tab）：新建人机默认关，未填按关处理
         chat_on: this.editForm.chat_on === undefined || this.editForm.chat_on === null
-          ? 1 : (this.editForm.chat_on ? 1 : 0),
+          ? 0 : (this.editForm.chat_on ? 1 : 0),
         // ★ 2026-10-25 打野地开关（基本信息 tab）：改了才提交（null=不更新；默认 0=不打玩家野地）
         attack_wild: (this.editSnapA.aw ? 1 : 0) === (this.editForm.attack_wild ? 1 : 0)
           ? null : (this.editForm.attack_wild ? 1 : 0),
@@ -876,37 +999,28 @@ export default {
       }).catch(() => {})
     },
     // ★ 2026-10-19 发放/占领 tab：切进来拉当前资源 + 占领城市（原 openGrant/openOccupy 合并进编辑对话框）
-    // ★ 2026-10-26 修「当前集结令数量不对」：
-    //   ① 原来先填 cur.gather_count、随后 detail 返回时**整体覆盖** grantCur 把 gather 丢了（显示 undefined/旧值）；
-    //   ② cur.gather_count 是打开弹窗时列表里的旧值，发放后不刷新；
-    //   ③ 资源原来取 cities[0]（无排序，可能是分城），发放却落在「当前城」→ 数字对不上。
-    //   现在：资源按 profile.current_city_id 定位当前城；集结令只认背包里**名字**为「集结令」的行
-    //   （★ 禁按 cfg_id 猜身份 —— 道具/装备两张表各自从 1 编号，ID 会撞），背包没这行就是 0。
+    // ★ 2026-10-28 多城市：资源取**当前选中城市**（人机可有多座城，发放要落到选中的那座）
     loadGrantTab () {
       this.grantForm = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: 0 }
-      this.grantCur = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0,
-        gather: (this.cur && this.cur.gather_count) || 0 }
-      api.get('/admin/ezfy-players/' + this.cur.user_id + '/detail').then(r => {
-        if (r.code !== 0 || !r.data) return
-        const cs = r.data.cities || []
-        const curCityId = Number((r.data.player && r.data.player.current_city_id) || 0)
-        // 与后端 currentCity() 同口径：current_city_id 有效就用它，否则回落到 id 最小的主城
-        const ct = cs.find(c => Number(c.id) === curCityId) ||
-          cs.slice().sort((a, b) => Number(a.id) - Number(b.id))[0]
-        if (ct) {
-          // 合并资源字段，绝不能把 gather 一并覆盖掉
-          this.grantCur = Object.assign({}, this.grantCur, {
-            gold: ct.gold || 0, food: ct.food || 0, steel: ct.steel || 0,
-            oil: ct.oil || 0, rare: ct.rare || 0
-          })
-        }
-        // 集结令以背包真实数量为准；背包没有这一行 = 0（不能沿用列表旧快照）
-        const g = (r.data.bag || []).find(b => b.item_name === '集结令')
-        this.grantCur.gather = g ? (Number(g.count) || 0) : 0
-      }).catch(() => {})
+      this.refreshGrantCur()
       this.occList = []
       this.occPage = 1
       this.loadOccupy()
+    },
+    // 只刷新「当前值」（切城 / 发放后调用，不动输入框）
+    refreshGrantCur () {
+      const ct = this.curCity || {}
+      this.grantCur = {
+        gold: ct.gold || 0, food: ct.food || 0, steel: ct.steel || 0,
+        oil: ct.oil || 0, rare: ct.rare || 0,
+        gather: (this.cur && this.cur.gather_count) || 0
+      }
+      // 集结令以背包真实数量为准；背包没有这一行 = 0（不能沿用列表旧快照）
+      api.get('/admin/ezfy-players/' + this.cur.user_id + '/detail').then(r => {
+        if (r.code !== 0 || !r.data) return
+        const g = (r.data.bag || []).find(b => b.item_name === '集结令')
+        this.grantCur.gather = g ? (Number(g.count) || 0) : 0
+      }).catch(() => {})
     },
     doGrant () {
       const g = this.grantForm
@@ -915,19 +1029,21 @@ export default {
         return
       }
       this.grantSaving = true
-      api.post('/admin/ezfy-bot/' + this.cur.user_id + '/grant', g).then(r => {
-        this.grantSaving = false
-        if (r.code === 0) {
-          this.$message.success(r.data.msg || '已发放')
-          // ★ 2026-10-26 修「当前集结令数量不对」：发放接口返回发放后的真实持有数，直接刷新「当前」
-          if (r.data && r.data.gather_count !== undefined && r.data.gather_count !== null) {
-            this.grantCur.gather = Number(r.data.gather_count) || 0
-            if (this.cur) this.cur.gather_count = Number(r.data.gather_count) || 0
-          }
-          this.load()
-          this.loadGrantTab()
-        } else this.$message.error(r.msg)
-      }).catch(() => { this.grantSaving = false })
+      // ★ 2026-10-28 多城市：资源发放到当前选中的城
+      api.post('/admin/ezfy-bot/' + this.cur.user_id + '/grant',
+        Object.assign({}, g, { city_id: this.editCityId || 0 })).then(r => {
+          this.grantSaving = false
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已发放')
+            // ★ 2026-10-26 修「当前集结令数量不对」：发放接口返回发放后的真实持有数，直接刷新「当前」
+            if (r.data && r.data.gather_count !== undefined && r.data.gather_count !== null) {
+              this.grantCur.gather = Number(r.data.gather_count) || 0
+              if (this.cur) this.cur.gather_count = Number(r.data.gather_count) || 0
+            }
+            this.load()
+            this.loadCityDetail(false)
+          } else this.$message.error(r.msg)
+        }).catch(() => { this.grantSaving = false })
     },
     // ---- 攻击目标 ----
     openTargets (row) {
@@ -1131,6 +1247,11 @@ export default {
 /* ★ label 提示图标（与「二战系统配置」页同款，鼠标悬停显示） */
 .cfg-tip { margin-left: 3px; padding: 1px 3px; color: #909399; font-size: 13px; cursor: help; vertical-align: -1px; }
 .cfg-tip:hover { color: #409eff; }
+/* ★ 2026-10-28 多城市：编辑弹窗顶部城市选择栏 */
+.city-bar { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid #ebeef5; }
+.city-bar-label { color: #606266; font-size: 13px; }
+.city-bar-stat { color: #606266; font-size: 13px; margin-left: 10px; white-space: nowrap; }
+.city-cell { border-bottom: 1px dashed #c0c4cc; cursor: default; }
 /* ★ 战报详情：全文白底黑字，保留换行；detail 与 content 之间留分隔 */
 .report-pre { margin: 0 0 10px; padding: 10px; background: #fff; border: 1px solid #ebeef5;
   border-radius: 4px; white-space: pre-wrap; word-break: break-all; font-size: 13px; line-height: 1.7; }

@@ -42,7 +42,8 @@ type EzfyBot struct {
 	ChatDate string `gorm:"type:varchar(10);comment:世界发言日期 yyyymmdd" json:"chat_date"`
 	ChatUsed string `gorm:"type:text;comment:今日已用发言句下标(逗号分隔)" json:"chat_used"`
 	// ★ 2026-10-19 自动发言开关（管理端「编辑人机-基本信息」可调）：0=不自动发言
-	ChatOn int `gorm:"default:1;comment:是否自动发言(0=关闭,1=开启)" json:"chat_on"`
+	// ★ 2026-10-28 用户规则「人机添加默认自动发言是关着的」→ 新建人机默认 **0（关）**
+	ChatOn int `gorm:"default:0;comment:是否自动发言(0=关闭,1=开启)" json:"chat_on"`
 	// ★ 2026-10-25 打野地开关（管理端「编辑人机-基本信息」可调）：0=不打玩家附属野地（默认）1=打
 	//
 	//	开启后：① 宣战等待期先征服目标玩家的附属野地；② 周围没有可打的城市时兜底打玩家野地。
@@ -60,6 +61,33 @@ type EzfyBot struct {
 }
 
 func (EzfyBot) TableName() string { return "ezfy_bot" }
+
+// EzfyBotCity 人机「每座城」的独立行动状态（★ 2026-10-28 多城市）。
+//
+// 背景：人机的城被玩家征服后会由补给流程建新城，之后旧城被「归还/赎回」→ 一个人机名下会有 2 座以上城市。
+// 老实现 botTickOne 只取 profile.current_city_id（一座城）→ 另一座城永远不动（不发育、不出兵）。
+//
+// 现在每座城各占一个「行动槽」，各自有自己的下次行动时间：
+//
+//	调度：botTickOnce 取 next_act_at <= now 的槽（跨人机统一排序）→ 该城独立决策一次。
+//
+// 没有「主城」概念 —— 所有城平等（同一套决策优先级、都能出兵），人机整体出征节流仍按
+// ezfy_bot 上的攻频/每日上限统一计（避免多城叠加刷爆）。
+type EzfyBotCity struct {
+	ID     uint `gorm:"primaryKey;comment:主键ID" json:"id"`
+	BotUid uint `gorm:"uniqueIndex:uk_bot_city;index:idx_bot_city_uid;comment:人机玩家ID" json:"bot_uid"`
+	CityId uint `gorm:"uniqueIndex:uk_bot_city;comment:城市ID" json:"city_id"`
+	// ★ 0 = 该城不参与自动行动（管理端可单独停某座城，人机其它城照常）
+	Enabled   int    `gorm:"default:1;comment:该城是否自动行动(0=停,1=跑)" json:"enabled"`
+	NextActAt int64  `gorm:"default:0;index:idx_bot_city_next;comment:下次行动时间(ms)" json:"next_act_at"`
+	LastActAt int64  `gorm:"default:0;comment:上次行动时间(ms)" json:"last_act_at"`
+	LastAction string `gorm:"type:varchar(30);comment:上次动作" json:"last_action"`
+
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyBotCity) TableName() string { return "ezfy_bot_city" }
 
 // EzfyBotTarget 人机攻击计划
 //
@@ -86,8 +114,10 @@ func (EzfyBotTarget) TableName() string { return "ezfy_bot_target" }
 
 // EzfyBotLog 人机行为日志（排障 + 管理端展示「为什么没动手」）
 type EzfyBotLog struct {
-	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	BotUid    uint      `gorm:"index:idx_bot_log_uid;comment:人机玩家ID" json:"bot_uid"`
+	ID     uint `gorm:"primaryKey;comment:主键ID" json:"id"`
+	BotUid uint `gorm:"index:idx_bot_log_uid;comment:人机玩家ID" json:"bot_uid"`
+	// ★ 2026-10-28 多城市：记录是**哪座城**做的（0 = 账号级动作，如管理端编辑/昵称）
+	CityId    int64     `gorm:"default:0;comment:城市ID(0=账号级)" json:"city_id"`
 	Action    string    `gorm:"type:varchar(30);comment:动作" json:"action"`
 	Detail    string    `gorm:"type:varchar(255);comment:详情" json:"detail"`
 	Result    int       `gorm:"default:1;comment:1成功 0失败/跳过" json:"result"`

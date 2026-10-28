@@ -1497,7 +1497,9 @@ func (h *EzfyAdmin) AdminEzfyOfficerCfg(c *gin.Context) {
 }
 
 // ezfyGrantGeneral 把名将配置中的某位名将发放给玩家（返回 msg / errMsg，errMsg 非空表示失败）
-func (h *EzfyAdmin) ezfyGrantGeneral(uid uint, generalID int) (string, string) {
+//
+// ★ 2026-10-28 多城市：cityID 可选（>0 且属于该玩家 → 发放到该城），不传 = 当前城。
+func (h *EzfyAdmin) ezfyGrantGeneral(uid uint, generalID int, cityID ...int64) (string, string) {
 	var p model.EzfyProfile
 	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err != nil {
 		return "", "玩家不存在"
@@ -1507,7 +1509,13 @@ func (h *EzfyAdmin) ezfyGrantGeneral(uid uint, generalID int) (string, string) {
 	if g == nil {
 		return "", "名将不存在"
 	}
-	city := ez.getOrCreateCity(p.UserID)
+	var city model.EzfyCity
+	if len(cityID) > 0 && cityID[0] > 0 {
+		h.DB.Where("id = ? AND user_id = ?", cityID[0], uid).First(&city)
+	}
+	if city.ID == 0 {
+		city = ez.getOrCreateCity(p.UserID)
+	}
 	// ★★ 2026-10-04 用户规则：系统发放的名将**不再卡控 1 个**（同一名将可重复发放给同一玩家）。
 	//   原来「每名玩家同一名将只能持有 1 个」（2026-09-26 修复重复发放时加的查重）已移除。
 	// ★ 2026-10-05 用户规则：玩家抢玩家（PvP）也不卡控重复名将（见 defectDefenderOfficers），
@@ -1555,14 +1563,15 @@ func (h *EzfyAdmin) ezfyGrantGeneral(uid uint, generalID int) (string, string) {
 // AdminEzfyOfficerGrant 发放名将（军官管理模块入口，参数在 body：user_id + general_id）
 func (h *EzfyAdmin) AdminEzfyOfficerGrant(c *gin.Context) {
 	var in struct {
-		UserID    uint `json:"user_id"`
-		GeneralID int  `json:"general_id"`
+		UserID    uint  `json:"user_id"`
+		GeneralID int   `json:"general_id"`
+		CityID    int64 `json:"city_id"` // ★ 2026-10-28 多城市：发放到哪座城（0/不传 = 当前城）
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || in.UserID == 0 || in.GeneralID <= 0 {
 		resp.ParamError(c, "请选择玩家与名将")
 		return
 	}
-	msg, errMsg := h.ezfyGrantGeneral(in.UserID, in.GeneralID)
+	msg, errMsg := h.ezfyGrantGeneral(in.UserID, in.GeneralID, in.CityID)
 	if errMsg != "" {
 		resp.ParamError(c, errMsg)
 		return

@@ -74,6 +74,9 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 	}
 	profOf := map[uint]model.EzfyProfile{}
 	cityOf := map[uint]model.EzfyCity{}
+	cityNum := map[uint]int{}
+	cityNames := map[uint][]string{}
+	nextActOf := map[uint]int64{}
 	troopOf := map[uint]int64{}
 	// ★ 2026-10-17 人机集结令持有数（列表一眼可见，发/扣集结令有据可依）
 	gatherOf := map[uint]int{}
@@ -93,10 +96,16 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			} else if _, exists := cityOf[ct.UserID]; !exists {
 				cityOf[ct.UserID] = ct
 			}
+			// ★ 2026-10-28 多城市：人机可能有多座城（被打光建新城 + 旧城归还/赎回）
+			cityNum[ct.UserID]++
+			cityNames[ct.UserID] = append(cityNames[ct.UserID], ct.Name)
 		}
-		ids := make([]int64, 0, len(cityOf))
-		for _, ct := range cityOf {
+		// ★ 2026-10-28 多城市：兵力 = 该人机**全部城**的兵力合计（原来只算当前城，多城会漏）
+		ids := make([]int64, 0, len(cities))
+		cityIDOf := map[uint]uint{}
+		for _, ct := range cities {
 			ids = append(ids, int64(ct.ID))
+			cityIDOf[ct.ID] = ct.UserID
 		}
 		if len(ids) > 0 {
 			var sums []struct {
@@ -105,15 +114,22 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			}
 			h.DB.Model(&model.EzfyCityTroop{}).Select("city_id, SUM(count) AS total").
 				Where("city_id IN ?", ids).Group("city_id").Scan(&sums)
-			cityIDOf := map[uint]uint{}
-			for uid, ct := range cityOf {
-				cityIDOf[ct.ID] = uid
-			}
 			for _, s := range sums {
 				if uid, ok := cityIDOf[s.CityID]; ok {
-					troopOf[uid] = s.Total
+					troopOf[uid] += s.Total
 				}
 			}
+		}
+		// 每座城的下次行动时间（状态列取最早的一座；★ 2026-10-28 多城市后
+		// ezfy_bot.next_act_at 只作「管理端踢一下」的标记，不再是真实排期）
+		var nexts []struct {
+			BotUid uint
+			Next   int64
+		}
+		h.DB.Model(&model.EzfyBotCity{}).Select("bot_uid, MIN(next_act_at) AS next").
+			Where("bot_uid IN ? AND enabled = 1", uids).Group("bot_uid").Scan(&nexts)
+		for _, n := range nexts {
+			nextActOf[n.BotUid] = n.Next
 		}
 		// ★ 2026-10-17 人机集结令持有数
 		gatherCID := ezfyGatherItemID()
@@ -137,6 +153,8 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"persona": b.Persona, "enabled": b.Enabled,
 			"prestige": p.Prestige, "camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
 			"city_id": ct.ID, "city_name": ct.Name, "x": ct.X, "y": ct.Y, "city_level": ct.CityLevel,
+			// ★ 2026-10-28 多城市：城数 + 全部城名（列表「城市」列展示「N 座」并 tooltip 列出）
+			"city_count": cityNum[b.UserID], "city_names": cityNames[b.UserID],
 			"troop_total":  troopOf[b.UserID],
 			"gather_count": gatherOf[b.UserID],
 			// ★ 2026-10-17 出征设置：原值（0=按难度默认）+ 生效值（默认按难度阶梯）
@@ -150,8 +168,8 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			// ★ 2026-10-26 目标最小兵力（按人机分，编辑人机-基本信息可调，默认 100000，0=不限）
 			"target_min_troops": b.TargetMinTroops,
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
-			"next_act_at":     b.NextActAt,
-			"status_text":     ezfyBotStatusText(b, now),
+			"next_act_at": nextActOf[b.UserID],
+			"status_text": ezfyBotCityStatusText(b, nextActOf[b.UserID], now),
 			"atk_count_today": b.AtkCountToday, "atk_date": b.AtkDate,
 		})
 	}
@@ -410,6 +428,8 @@ func (h *EzfyAdmin) AdminEzfyBotClear(c *gin.Context) {
 	// 计划表/日志表里可能残留孤儿行（人机已删但计划还在）
 	h.DB.Exec("DELETE FROM ezfy_bot_target")
 	h.DB.Exec("DELETE FROM ezfy_bot_log")
+	// ★ 2026-10-28 多城市：每座城的行动槽同样要清
+	h.DB.Exec("DELETE FROM ezfy_bot_city")
 	resp.OK(c, gin.H{
 		"msg":     "已清空 " + strconv.Itoa(okCnt) + " 个人机" + map[bool]string{true: "（" + strconv.Itoa(failCnt) + " 个失败）"}[failCnt > 0],
 		"removed": okCnt, "failed": failCnt,
@@ -447,11 +467,13 @@ func (h *EzfyAdmin) AdminEzfyBotGrant(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Gold  int64 `json:"gold"`
-		Food  int64 `json:"food"`
-		Steel int64 `json:"steel"`
-		Oil   int64 `json:"oil"`
-		Rare  int64 `json:"rare"`
+		// ★ 2026-10-28 多城市：资源落到哪座城（0/不传 = 当前城）
+		CityID int64 `json:"city_id"`
+		Gold   int64 `json:"gold"`
+		Food   int64 `json:"food"`
+		Steel  int64 `json:"steel"`
+		Oil    int64 `json:"oil"`
+		Rare   int64 `json:"rare"`
 		// ★ 2026-10-17 集结令（正数发放进背包，负数从背包扣除，最低扣到 0）
 		Gather int64 `json:"gather"`
 	}
@@ -472,7 +494,7 @@ func (h *EzfyAdmin) AdminEzfyBotGrant(c *gin.Context) {
 	nick := ""
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	nick = ez.ezfyBotNickOf(uint(uid))
-	city, got := ez.giveResourcesNoCap(uint(uid), in.Food, in.Steel, in.Oil, in.Rare, in.Gold)
+	city, got := ez.giveResourcesNoCap(uint(uid), in.Food, in.Steel, in.Oil, in.Rare, in.Gold, in.CityID)
 	msg := "已发放入「" + city.Name + "」"
 	add := func(label string, want, real int64) {
 		if want == 0 {
@@ -534,12 +556,15 @@ func (h *EzfyAdmin) AdminEzfyBotBuildings(c *gin.Context) {
 	}
 	var p model.EzfyProfile
 	h.DB.Where("user_id = ?", uid).First(&p)
-	city := h.ezfyBotCurrentCity(uint(uid))
+	// ★ 2026-10-28 多城市：city_id 指定看哪座城（不传 = 当前城/第一座）
+	wantCity, _ := strconv.Atoi(c.Query("city_id"))
+	city := h.ezfyBotPickCity(uint(uid), int64(wantCity))
 	out := gin.H{
 		"nickname":    p.Nickname,
 		"prestige":    p.Prestige,
 		"city_id":     city.ID,
 		"city_name":   city.Name,
+		"cities":      h.ezfyBotCityList(uint(uid)),
 		"pop":         city.Pop,              // 总人口
 		"pop_max":     city.PopMax,           // 人口上限
 		"pop_recover": city.PopRecover,       // 待恢复人口
@@ -657,6 +682,8 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		return
 	}
 	var in struct {
+		// ★ 2026-10-28 多城市：作用于哪座城（0/不传 = 当前城）。城市名/人口/建筑/兵种/军官都按城存。
+		CityID     int64   `json:"city_id"`
 		Nickname   *string `json:"nickname"`
 		Prestige   *int    `json:"prestige"`
 		CityName   *string `json:"city_name"`
@@ -737,8 +764,8 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		changes = append(changes, fmt.Sprintf("声望→%d", *in.Prestige))
 	}
 
-	// ③ 城市名 / ④ 建筑等级（都挂在人机的当前城上）
-	city := h.ezfyBotCurrentCity(uint(uid))
+	// ③ 城市名 / ④ 建筑等级（都挂在**指定城**上；不传 city_id 就是当前城）
+	city := h.ezfyBotPickCity(uint(uid), in.CityID)
 	if in.CityName != nil && city.ID > 0 {
 		cn := strings.TrimSpace(*in.CityName)
 		if cn != "" {
@@ -1074,7 +1101,20 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 
 // ezfyBotCurrentCity 人机的当前城（current_city_id 优先，无效回落第一座）。
 func (h *EzfyAdmin) ezfyBotCurrentCity(uid uint) model.EzfyCity {
+	return h.ezfyBotPickCity(uid, 0)
+}
+
+// ezfyBotPickCity 取人机名下的一座城：cityID > 0 且归属该人机 → 用它；
+// 否则 profile.current_city_id；再否则 id 最小的城。
+//
+// ★ 2026-10-28 多城市：管理端所有「作用于一座城」的入口都走这里，city_id 显式传就绝不猜。
+func (h *EzfyAdmin) ezfyBotPickCity(uid uint, cityID int64) model.EzfyCity {
 	var city model.EzfyCity
+	if cityID > 0 {
+		if err := h.DB.Where("id = ? AND user_id = ?", cityID, uid).First(&city).Error; err == nil {
+			return city
+		}
+	}
 	var p model.EzfyProfile
 	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err == nil && p.CurrentCityId > 0 {
 		h.DB.Where("id = ? AND user_id = ?", p.CurrentCityId, uid).First(&city)
@@ -1084,6 +1124,144 @@ func (h *EzfyAdmin) ezfyBotCurrentCity(uid uint) model.EzfyCity {
 	}
 	h.DB.Where("user_id = ?", uid).Order("id ASC").First(&city)
 	return city
+}
+
+// ezfyBotCityList 人机名下**全部城市**的概览（编辑弹窗的城市下拉 / 城市管理用）。
+//
+// ★ 2026-10-28 多城市：人机被打光后会被补给流程建新城，旧城被「归还/赎回」→ 一个人机可能有多座城，
+// 每座城都要能单独查看/维护（人口、资源、建筑、兵种、军官都按城存）。
+func (h *EzfyAdmin) ezfyBotCityList(uid uint) []gin.H {
+	var cities []model.EzfyCity
+	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities)
+	out := make([]gin.H, 0, len(cities))
+	if len(cities) == 0 {
+		return out
+	}
+	ids := make([]int64, 0, len(cities))
+	for _, ct := range cities {
+		ids = append(ids, int64(ct.ID))
+	}
+	troopOf := map[int64]int64{}
+	var sums []struct {
+		CityID int64
+		Total  int64
+	}
+	h.DB.Model(&model.EzfyCityTroop{}).Select("city_id, COALESCE(SUM(count),0) AS total").
+		Where("city_id IN ?", ids).Group("city_id").Scan(&sums)
+	for _, s := range sums {
+		troopOf[s.CityID] = s.Total
+	}
+	offOf := map[int64]int64{}
+	var offs []struct {
+		CityID int64
+		Total  int64
+	}
+	h.DB.Model(&model.EzfyOfficer{}).Select("city_id, COUNT(*) AS total").
+		Where("city_id IN ?", ids).Group("city_id").Scan(&offs)
+	for _, s := range offs {
+		offOf[s.CityID] = s.Total
+	}
+	occOf := map[int64]bool{}
+	var occs []model.EzfyOccupy
+	h.DB.Select("city_id").Where("city_id IN ? AND status = 1", ids).Find(&occs)
+	for _, o := range occs {
+		occOf[o.CityId] = true
+	}
+	// 行动槽状态（该城是否在自动行动 / 上次做了什么 / 下次什么时候动）
+	slotOf := map[int64]model.EzfyBotCity{}
+	var slots []model.EzfyBotCity
+	h.DB.Where("bot_uid = ?", uid).Find(&slots)
+	for _, s := range slots {
+		slotOf[int64(s.CityId)] = s
+	}
+	for _, ct := range cities {
+		sl := slotOf[int64(ct.ID)]
+		run := 1
+		if sl.ID == 0 {
+			run = 1 // 槽还没建（下一轮 tick 自动补）→ 视为会行动
+		} else {
+			run = sl.Enabled
+		}
+		out = append(out, gin.H{
+			"id": ct.ID, "name": ct.Name, "x": ct.X, "y": ct.Y,
+			"city_level": ct.CityLevel,
+			"pop":        ct.Pop, "pop_max": ct.PopMax,
+			"food": ct.Food, "steel": ct.Steel, "oil": ct.Oil, "rare": ct.Rare, "gold": ct.Gold,
+			"troop_total": troopOf[int64(ct.ID)],
+			"officer_num": offOf[int64(ct.ID)],
+			"occupied":    occOf[int64(ct.ID)],
+			// 行动槽
+			"auto_on":      run,
+			"next_act_at":  sl.NextActAt,
+			"last_act_at":  sl.LastActAt,
+			"last_action":  sl.LastAction,
+		})
+	}
+	return out
+}
+
+// AdminEzfyBotCities GET /admin/ezfy-bot/:uid/cities —— 人机名下全部城市 + 每城行动状态
+//
+// ★ 2026-10-28 多城市：人机没有主城概念，每座城各自发育/出兵；这里一次给出全部城的
+// 人口/资源/兵力/军官数/是否被占/是否在自动行动，管理端「城市管理」tab 直接用。
+func (h *EzfyAdmin) AdminEzfyBotCities(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var b model.EzfyBot
+	if err := h.DB.Where("user_id = ?", uid).First(&b).Error; err != nil {
+		resp.NotFound(c, "人机不存在")
+		return
+	}
+	list := h.ezfyBotCityList(uint(uid))
+	resp.OK(c, gin.H{"list": list, "total": len(list)})
+}
+
+// AdminEzfyBotCityToggle POST /admin/ezfy-bot/:uid/city/toggle {city_id, enabled}
+//
+// 单独停/启某座城的自动行动（人机其它城照常跑）。城被玩家占领中时不能启。
+func (h *EzfyAdmin) AdminEzfyBotCityToggle(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	var in struct {
+		CityID  int64 `json:"city_id"`
+		Enabled int   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || uid <= 0 || in.CityID <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if in.Enabled != 0 {
+		in.Enabled = 1
+	}
+	var city model.EzfyCity
+	if err := h.DB.Where("id = ? AND user_id = ?", in.CityID, uid).First(&city).Error; err != nil {
+		resp.NotFound(c, "城市不存在或不属于该人机")
+		return
+	}
+	if in.Enabled == 1 {
+		var occ int64
+		h.DB.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", in.CityID).Count(&occ)
+		if occ > 0 {
+			resp.ParamError(c, "该城正被玩家占领中，无法启用自动行动")
+			return
+		}
+	}
+	// 槽可能还没建（tick 才会补）→ 先补再改
+	var slot model.EzfyBotCity
+	if err := h.DB.Where("city_id = ?", in.CityID).First(&slot).Error; err != nil {
+		slot = model.EzfyBotCity{BotUid: uint(uid), CityId: uint(in.CityID), Enabled: in.Enabled,
+			NextActAt: time.Now().UnixMilli()}
+		h.DB.Create(&slot)
+	} else {
+		h.DB.Model(&model.EzfyBotCity{}).Where("id = ?", slot.ID).
+			Updates(map[string]interface{}{"enabled": in.Enabled, "next_act_at": time.Now().UnixMilli()})
+	}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+	ez.ezfyBotLogCity(uint(uid), in.CityID, "城市管理",
+		map[bool]string{true: "启用自动行动", false: "暂停自动行动"}[in.Enabled == 1], 1)
+	resp.OK(c, gin.H{"msg": map[bool]string{true: "已启用该城自动行动", false: "已暂停该城自动行动"}[in.Enabled == 1]})
 }
 
 // AdminEzfyBotLogs GET /admin/ezfy-bot/logs?uid=&page=&size= —— 行为日志
@@ -1686,9 +1864,11 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 		resp.NotFound(c, "人机不存在")
 		return
 	}
-	botCity := h.ezfyBotCurrentCity(uint(uid))
+	// ★ 2026-10-28 多城市：从哪座城出发找最近目标（?city_id=，不传 = 当前城）
+	wantCity, _ := strconv.Atoi(c.Query("city_id"))
+	botCity := h.ezfyBotPickCity(uint(uid), int64(wantCity))
 	if botCity.ID == 0 {
-		resp.NotFound(c, "人机主城不存在")
+		resp.NotFound(c, "人机城市不存在")
 		return
 	}
 	// ★ 2026-10-17 修复：①真人候选直接用 JOIN 过滤（ezfy_profile.is_bot=0），
@@ -1777,6 +1957,8 @@ func (h *EzfyAdmin) AdminEzfyBotRelocate(c *gin.Context) {
 	var in struct {
 		X int `json:"x"`
 		Y int `json:"y"`
+		// ★ 2026-10-28 多城市：迁哪座城（0/不传 = 当前城）
+		CityID int64 `json:"city_id"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1792,9 +1974,9 @@ func (h *EzfyAdmin) AdminEzfyBotRelocate(c *gin.Context) {
 		resp.NotFound(c, "人机不存在")
 		return
 	}
-	ct := h.ezfyBotCurrentCity(uint(uid))
+	ct := h.ezfyBotPickCity(uint(uid), in.CityID)
 	if ct.ID == 0 {
-		resp.NotFound(c, "人机主城不存在")
+		resp.NotFound(c, "人机城市不存在")
 		return
 	}
 	old := fmt.Sprintf("%s(%d,%d)", ct.Name, ct.X, ct.Y)
@@ -1804,6 +1986,6 @@ func (h *EzfyAdmin) AdminEzfyBotRelocate(c *gin.Context) {
 		return
 	}
 	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Update("next_act_at", time.Now().UnixMilli())
-	ez.ezfyBotLog(uint(uid), "管理端迁城", fmt.Sprintf("迁城 %s → (%d,%d)", old, in.X, in.Y), 1)
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已把人机主城迁至 (%d,%d)", in.X, in.Y)})
+	ez.ezfyBotLogCity(uint(uid), int64(ct.ID), "管理端迁城", fmt.Sprintf("迁城 %s → (%d,%d)", old, in.X, in.Y), 1)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已把「%s」迁至 (%d,%d)", ct.Name, in.X, in.Y)})
 }

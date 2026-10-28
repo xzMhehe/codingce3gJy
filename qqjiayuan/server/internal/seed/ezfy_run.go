@@ -85,6 +85,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyTitleDaily{},    // ★ 2026-10-17 风云榜每日第一称号结算记录（day 唯一，幂等锁）
 	// —— 人机（AI 玩家）模块（★ 2026-10-17，见 model/ezfy_bot.go）——
 	&model.EzfyBot{},       // 人机档案（与 profile 一对一）
+	&model.EzfyBotCity{},   // ★ 2026-10-28 人机每座城的独立行动槽（多城市）
 	&model.EzfyBotTarget{}, // 攻击计划（宣战 24h 时序驱动）
 	&model.EzfyBotLog{},    // 行为日志
 	&model.EzfyBotLock{},   // tick 租约锁（多进程互斥）
