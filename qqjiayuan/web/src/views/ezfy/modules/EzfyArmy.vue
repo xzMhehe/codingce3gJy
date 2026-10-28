@@ -114,13 +114,10 @@
           <div class="panel-title" v-show="ezfy.hqTab === 0">兵种战斗配置</div>
           <div v-show="ezfy.hqTab === 0">
           <!-- ★ 2026-10-28 一句话说明「防守数量」（不写进每个兵种块，手机上省空间） -->
-          <div class="old-line gray">防守数量：留空 = 全部参战；填 N = 最多 N 个参战（城内不足 N 就按实际）。</div>
+          <div class="old-line gray">留空 = 全部，填 N = 最多 N 个</div>
           <!-- ★ 一个兵种一块（原来 5 列固定宽度表格在手机上会互相遮盖） -->
           <div class="ezfy-tgt-block" v-for="t in ezfy.troopsData.cfgs" :key="'cfg' + t.id">
-            <div class="ezfy-tgt-name">
-              {{ t.name }}
-              <span v-if="ezfy.isDefenceTroop(t)" class="gray">（防御兵种：固定阵地，不能前进/后退，也不能出征）</span>
-            </div>
+            <div class="ezfy-tgt-name">{{ t.name }}</div>
             <div class="ezfy-tgt-row">
               <span class="ezfy-tgt-lab">进攻目标</span>
               <select v-model="ezfy.targetCfg[t.id].atk" style="width:110px">
@@ -142,7 +139,7 @@
                 <option v-for="tt in ezfy.troopsData.cfgs" :key="'d' + tt.id" :value="tt.id">{{ tt.base_name || tt.name }}</option>
               </select>
               <span class="ezfy-tgt-lab">防守</span>
-              <select v-model="ezfy.targetCfg[t.id].defMove" style="width:96px"
+              <select v-model="ezfy.targetCfg[t.id].defMove" style="width:80px"
                       :disabled="ezfy.isDefenceTroop(t)">
                 <option :value="1">前进</option><option :value="0">停止</option>
                 <option :value="-2">后退</option><option :value="-1">避战</option>
@@ -157,7 +154,8 @@
                      :max="ezfy.troopsData.troop_max || undefined"
                      v-model.number="ezfy.targetCfg[t.id].defCount"
                      placeholder="全部">
-              <span class="gray">城内 {{ ezfy.fmtBig(ezfy.troopCount(t.id)) }}</span>
+              <!-- ★ 2026-10-28 只写「城 N」：手机上省字，N = 城内该兵种现有数量 -->
+              <span class="gray">城 {{ ezfy.fmtBig(ezfy.troopCount(t.id)) }}</span>
             </div>
           </div>
           <div class="old-line"><a href="javascript:;" @click="ezfy.doSaveTargets">[保存全部配置]</a></div>

@@ -1709,6 +1709,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-act-wilds", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildSave)
 						admin.POST("/ezfy-act-wilds/:id/toggle", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildToggle)
 						admin.GET("/ezfy-act-wilds/:id/attacks", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildAttacks)
+						// ★ 2026-10-28 抓取记录（活动守将「可抓次数」流水，只增不删）
+						admin.GET("/ezfy-act-wilds/:id/captures", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildCaptures)
 						admin.DELETE("/ezfy-act-wilds/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildDelete)
 						admin.POST("/ezfy-act-wilds/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildBatchDelete)
 						// 活动目标等级配置（活动野地 / 活动寇城 / 特殊城市；2026-10-22）

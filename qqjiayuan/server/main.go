@@ -169,6 +169,9 @@ func runHomeMode(cfg *config.Config) {
 		// ★ 2026-10-28 活动守将抓取流水表（「可抓次数」的计数依据）：新表只靠 AutoMigrate 建，
 		//   skip 分支不补 → 流水写不进去 → 可抓次数恒为 0 → 同一玩家能无限抓同一守将。
 		timedStep("EnsureEzfyActCaptureLogTable", func() { seed.EnsureEzfyActCaptureLogTable(homeDB) })
+		// ★ 2026-10-28 存量抓取补进流水表（一次性；差额补 → 幂等）。不补则「已开活动的区」
+		//   管理端抓取记录为空、老玩家还能多抓一次。
+		timedStep("EnsureEzfyActCaptureLogBackfill", func() { seed.EnsureEzfyActCaptureLogBackfill(homeDB) })
 		// ★★ 2026-10-12 二战独立登录账号表：skip 分支不补 → 二战登录直接报表不存在。
 		timedStep("EnsureEzfyAccountTable", func() { seed.EnsureEzfyAccountTable(homeDB) })
 		// ★★ 2026-10-06 线上事故：ezfy_officer.source 同样只由 AutoMigrate 建列，

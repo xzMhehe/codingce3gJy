@@ -415,6 +415,105 @@ func (h *EzfyAdmin) AdminEzfyActWildAttacks(c *gin.Context) {
 	resp.OK(c, gin.H{"x": a.X, "y": a.Y, "list": out, "total": total, "page": page, "size": size})
 }
 
+// AdminEzfyActWildCaptures GET /admin/ezfy-act-wilds/:id/captures —— 查看该活动野地守将的「抓取记录」（分页）
+//
+// ★ 2026-10-28 用户需求：地图管理 → 活动野地 → 操作里加「抓取记录」。
+//
+//	数据源 = ezfy_act_capture_log（每成功抓到一次守将记一条流水，只增不删），
+//	这也是「可抓次数（max_capture）」的计数依据 —— 配 1 次的玩家在这里有 1 条就再也抓不到，
+//	**哪怕那名军官后来被其他玩家抢走**。
+//
+// ⚠️ 流水按 (玩家, 守将) 存，不按坐标 —— 同一守将配在多个坐标时共用同一份计数，
+// 所以这里按 `general_id` 查（含该守将在其它坐标被抓的记录），坐标列展示当时打的是哪一格。
+func (h *EzfyAdmin) AdminEzfyActWildCaptures(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var a model.EzfyActWild
+	if err := h.DB.First(&a, id).Error; err != nil {
+		resp.NotFound(c, "该活动野地配置不存在（可能已被删除），请刷新后重试")
+		return
+	}
+	page, offset, size := pageOf(c, 15)
+	oName := ""
+	if g := ezfyCfg.general(a.OfficerId); g != nil {
+		oName = g.Name
+	}
+	base := gin.H{"x": a.X, "y": a.Y, "officer_id": a.OfficerId, "officer_name": oName,
+		"max_capture": a.MaxCapture, "page": page, "size": size, "list": []gin.H{}, "total": 0}
+	if a.OfficerId <= 0 {
+		base["note"] = "该坐标没有配置守将，不会有抓取记录"
+		resp.OK(c, base)
+		return
+	}
+	// 表还没建（老库没跑建表）→ 别报 500，给空列表 + 说明
+	if !h.DB.Migrator().HasTable(&model.EzfyActCaptureLog{}) {
+		base["note"] = "抓取流水表 ezfy_act_capture_log 尚未创建，请重启服务自动补建"
+		resp.OK(c, base)
+		return
+	}
+	q := h.DB.Model(&model.EzfyActCaptureLog{}).Where("general_id = ?", a.OfficerId)
+	var total int64
+	q.Count(&total)
+	var rows []model.EzfyActCaptureLog
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+
+	// 玩家昵称 / 城市名 批量取（避免 N+1）
+	uids := make([]uint, 0, len(rows))
+	cids := make([]int64, 0, len(rows))
+	seenU := map[uint]bool{}
+	seenC := map[int64]bool{}
+	for _, r := range rows {
+		if !seenU[r.UserId] {
+			seenU[r.UserId] = true
+			uids = append(uids, r.UserId)
+		}
+		if r.CityId > 0 && !seenC[r.CityId] {
+			seenC[r.CityId] = true
+			cids = append(cids, r.CityId)
+		}
+	}
+	names := map[uint]string{}
+	if len(uids) > 0 {
+		var ps []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ?", uids).Find(&ps)
+		for _, p := range ps {
+			names[p.UserID] = p.Nickname
+		}
+	}
+	cityNames := map[int64]string{}
+	if len(cids) > 0 {
+		var cs []model.EzfyCity
+		h.DB.Select("id, name").Where("id IN ?", cids).Find(&cs)
+		for _, cc := range cs {
+			cityNames[int64(cc.ID)] = cc.Name
+		}
+	}
+
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		kindName := "战斗抓取"
+		if r.Kind == model.EzfyActCaptureKindMigrate {
+			kindName = "历史补记"
+		}
+		out = append(out, gin.H{
+			"id":          r.ID,
+			"user_id":     r.UserId,
+			"player_name": names[r.UserId],
+			"general_id":  r.GeneralId,
+			"general_name": oName,
+			"x":           r.X,
+			"y":           r.Y,
+			"city_id":     r.CityId,
+			"city_name":   cityNames[r.CityId],
+			"kind":        r.Kind,
+			"kind_name":   kindName,
+			"created_at":  r.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+	base["list"] = out
+	base["total"] = total
+	resp.OK(c, base)
+}
+
 // captiveTextOf 从战报正文提取活动野地守将的俘虏情况
 //
 //	成功 → 原样带回「俘虏敌将:XXX(星级, 忠诚30) 可前往军校收编」行

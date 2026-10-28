@@ -114,6 +114,9 @@ func RunEzfy(db *gorm.DB, homeDB *gorm.DB) {
 	// ★ 2026-10-28 活动守将抓取流水表（「可抓次数」的计数依据）：新表只靠 AutoMigrate 建，
 	//   半旧库上补一次，否则流水写不进去 → 可抓次数恒为 0 → 能无限抓。
 	EnsureEzfyActCaptureLogTable(db)
+	// ★ 2026-10-28 把存量抓取补进流水表（一次性，差额补 → 幂等）：
+	//   不补的话「已开活动的区（2 区）」管理端抓取记录一片空白，且老玩家能多抓一次。
+	EnsureEzfyActCaptureLogBackfill(db)
 	EnsureEzfyAccountTable(db)
 	EnsureEzfyOfficerColumns(db)
 	EnsureEzfyBattleLockColumns(db)

@@ -246,9 +246,11 @@
               </template>
             </el-table-column>
             <el-table-column prop="des" label="备注" min-width="140" show-overflow-tooltip />
-            <el-table-column label="操作" width="215" align="center" fixed="right">
+            <el-table-column label="操作" width="290" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="success" plain icon="el-icon-view" title="查看被打记录" @click="openAwAttacks(row)">记录</el-button>
+                <!-- ★ 2026-10-28 抓取记录（活动守将「可抓次数」流水：谁在什么时候抓到了这名守将） -->
+                <el-button size="mini" type="warning" plain icon="el-icon-trophy" title="查看守将抓取记录" @click="openAwCaptures(row)">抓取</el-button>
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openAwEdit(row)" />
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delAw(row)" />
               </template>
@@ -1112,6 +1114,57 @@
         <el-button @click="awAttDlg = false">关 闭</el-button>
       </div>
     </el-dialog>
+
+    <!-- ============ 活动野地 · 守将抓取记录（2026-10-28） ============ -->
+    <!-- 数据源 = ezfy_act_capture_log：每成功抓到一次守将记一条，只增不删。
+         这也是「可抓次数」的计数依据 —— 玩家在这里有几条，就消耗了几次机会，
+         哪怕那名军官后来被其他玩家抢走也不退还。 -->
+    <el-dialog title="活动守将 · 抓取记录" :visible.sync="awCapDlg" width="760px" :close-on-click-modal="false">
+      <div class="td-sub" style="margin-bottom:10px" v-if="awCapRow">
+        坐标：<b class="td-mono">{{ awCapRow.x }},{{ awCapRow.y }}</b>
+        <span v-if="awCapRow.officer_name"> · 守将：<b class="td-blue">{{ awCapRow.officer_name }}</b></span>
+        <span v-if="awCapRow.max_capture"> · 可抓次数：<b>{{ awCapRow.max_capture }}</b>（抓满即封顶，抢走不退还）</span>
+        <span v-else> · 可抓次数：<b>不限</b></span>
+      </div>
+      <el-alert v-if="awCapNote" type="warning" :closable="false" show-icon :title="awCapNote" style="margin-bottom:10px" />
+      <el-table :data="awCapList" v-loading="awCapLoading" stripe border size="small">
+        <el-table-column prop="id" label="流水ID" width="85" align="center" />
+        <el-table-column label="玩家" min-width="140" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span class="td-blue">{{ row.player_name || ('玩家' + row.user_id) }}</span>
+            <span class="td-sub"> ({{ row.user_id }})</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="抓取坐标" width="110" align="center">
+          <template slot-scope="{row}">
+            <span v-if="row.x || row.y" class="td-mono">{{ row.x }},{{ row.y }}</span>
+            <span v-else class="td-sub">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="出发城" min-width="120" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span v-if="row.city_name">{{ row.city_name }}</span>
+            <span v-else class="td-sub">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源" width="100" align="center">
+          <template slot-scope="{row}">
+            <el-tag size="mini" :type="row.kind === 2 ? 'info' : 'success'">{{ row.kind_name }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="时间" width="150" align="center" />
+      </el-table>
+      <div class="pager-bar" style="margin-top:10px">
+        <div class="pager-info">共 <b>{{ awCapTotal }}</b> 条</div>
+        <el-pagination v-show="awCapTotal > 0" small background layout="sizes, prev, pager, next" :total="awCapTotal"
+                       :page-size="awCapSize" :current-page="awCapPage" :page-sizes="[10, 20, 50]"
+                       @current-change="p => { awCapPage = p; loadAwCaptures() }"
+                       @size-change="s => { awCapSize = s; awCapPage = 1; loadAwCaptures() }" />
+      </div>
+      <div slot="footer">
+        <el-button @click="awCapDlg = false">关 闭</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -1187,6 +1240,9 @@ export default {
       treasures: [], // ★ 2026-10-05 野地类型「宝物掉落」下拉：全部装备（武器/防具/饰品/珠宝）
       // 活动野地 · 被打记录模态框（2026-10-01）
       awAttDlg: false, awAttLoading: false, awAttRow: null, awAttList: [], awAttTotal: 0, awAttPage: 1, awAttSize: 10,
+      // ★ 2026-10-28 活动守将抓取记录（可抓次数流水）
+      awCapDlg: false, awCapLoading: false, awCapRow: null, awCapList: [], awCapTotal: 0,
+      awCapPage: 1, awCapSize: 10, awCapNote: '',
       saving: false
     }
   },
@@ -1506,8 +1562,33 @@ export default {
         } else this.$message.error(r.msg)
       }).catch(() => { this.awAttLoading = false })
     },
-    openAwEdit (row) {
-      this.aw = Object.assign({}, row)
+    // ★ 2026-10-28 活动野地 · 守将抓取记录（「可抓次数」流水，分页模态框）
+    //   与「被打记录」的区别：被打记录 = 每场战斗；抓取记录 = **真的抓到了**守将的那几次，
+    //   玩家抓满 max_capture 次后即使军官被抢走，这里也不会少 —— 所以这是封顶的唯一依据。
+    openAwCaptures (row) {
+      this.awCapRow = row
+      this.awCapPage = 1
+      this.awCapNote = ''
+      this.awCapList = []
+      this.awCapTotal = 0
+      this.awCapDlg = true
+      this.loadAwCaptures()
+    },
+    loadAwCaptures () {
+      if (!this.awCapRow || !this.awCapRow.id) return
+      this.awCapLoading = true
+      api.get('/admin/ezfy-act-wilds/' + this.awCapRow.id + '/captures', {
+        params: { page: this.awCapPage, size: this.awCapSize }
+      }).then(r => {
+        this.awCapLoading = false
+        if (r.code === 0) {
+          this.awCapList = r.data.list || []
+          this.awCapTotal = r.data.total || 0
+          this.awCapNote = r.data.note || ''
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.awCapLoading = false })
+    },
+    openAwEdit (row) {      this.aw = Object.assign({}, row)
       // 根据已选军官推断类型（能查到该军官 -> 用其 kind）
       const g = (this.generals || []).find(x => Number(x.id) === Number(row.officer_id))
       this.awOfficerKind = g ? (Number(g.kind) === 2 ? 2 : 1) : 1

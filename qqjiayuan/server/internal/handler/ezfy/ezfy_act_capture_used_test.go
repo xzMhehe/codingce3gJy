@@ -150,4 +150,57 @@ func TestActCaptureLogTable(t *testing.T) {
 	if !strings.Contains(readFrontFile(t, "../../../main.go"), "seed.EnsureEzfyActCaptureLogTable(homeDB)") {
 		t.Fatal("main.go 的 seed.skip 分支没调用 EnsureEzfyActCaptureLogTable（单库模式会缺表）")
 	}
+	// ⑤ 存量抓取回填（否则「已开活动的区」管理端抓取记录一片空白 + 老玩家能多抓一次）
+	sch := readFrontFile(t, "../../seed/ezfy_schema.go")
+	if !strings.Contains(sch, "func EnsureEzfyActCaptureLogBackfill(") {
+		t.Fatal("缺少 EnsureEzfyActCaptureLogBackfill（存量抓取回填）")
+	}
+	if !strings.Contains(readFrontFile(t, "../../seed/ezfy_run.go"), "EnsureEzfyActCaptureLogBackfill(db)") {
+		t.Fatal("RunEzfy 没调用 EnsureEzfyActCaptureLogBackfill")
+	}
+	if !strings.Contains(readFrontFile(t, "../../../main.go"), "seed.EnsureEzfyActCaptureLogBackfill(homeDB)") {
+		t.Fatal("main.go 的 seed.skip 分支没调用 EnsureEzfyActCaptureLogBackfill")
+	}
+	// 回填必须带一次性标记位，否则每次启动都重算
+	if !strings.Contains(sch, "ezfy_act_capture_log_backfill_v1") {
+		t.Fatal("回填没有一次性标记位（每次启动都会重跑）")
+	}
+}
+
+// TestActCaptureAdminUI 管理端「抓取记录」：路由 + handler + 前端按钮/模态框/分页。
+func TestActCaptureAdminUI(t *testing.T) {
+	// ① 路由
+	if !strings.Contains(readFrontFile(t, "../../router/router.go"),
+		`admin.GET("/ezfy-act-wilds/:id/captures"`) {
+		t.Fatal("缺少管理端路由 GET /admin/ezfy-act-wilds/:id/captures")
+	}
+	// ② handler
+	adm := readFrontFile(t, "ezfy_admin_actwild.go")
+	if !strings.Contains(adm, "func (h *EzfyAdmin) AdminEzfyActWildCaptures(") {
+		t.Fatal("缺少 AdminEzfyActWildCaptures")
+	}
+	// 按守将查（流水按玩家×守将存，与坐标无关）
+	if !strings.Contains(adm, `Where("general_id = ?", a.OfficerId)`) {
+		t.Fatal("抓取记录必须按 general_id 查（同一守将多坐标共用一份计数）")
+	}
+	// 未配守将 / 表未建 都要给友好提示，不能 500
+	if !strings.Contains(adm, "该坐标没有配置守将") || !strings.Contains(adm, "尚未创建") {
+		t.Fatal("缺少「未配守将 / 表未建」的兜底提示")
+	}
+
+	// ③ 前端：按钮 + 模态框 + 接口 + 分页
+	ui := strings.ReplaceAll(readFrontFile(t,
+		"../../../../admin-web/src/components/admin/AdminEzfyMap.vue"), "\r\n", "\n")
+	if !strings.Contains(ui, `@click="openAwCaptures(row)"`) {
+		t.Fatal("活动野地操作列没有「抓取记录」按钮")
+	}
+	if !strings.Contains(ui, `:visible.sync="awCapDlg"`) {
+		t.Fatal("缺少抓取记录模态框（awCapDlg）")
+	}
+	if !strings.Contains(ui, "'/admin/ezfy-act-wilds/' + this.awCapRow.id + '/captures'") {
+		t.Fatal("前端没有调用 /captures 接口")
+	}
+	if !strings.Contains(ui, "awCapTotal") || !strings.Contains(ui, "loadAwCaptures()") {
+		t.Fatal("抓取记录模态框缺少分页（awCapTotal / loadAwCaptures）")
+	}
 }
