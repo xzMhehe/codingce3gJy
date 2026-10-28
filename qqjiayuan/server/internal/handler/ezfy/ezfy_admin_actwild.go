@@ -380,6 +380,44 @@ func (h *EzfyAdmin) AdminEzfyActWildAttacks(c *gin.Context) {
 				}
 			}
 		}
+		// ③ ★★ 2026-10-28 战报只保留 3 天、运营会定期删（用户明确要求「别用战报关联查询」）→
+		//   战报已经取不到的，用**抓取流水**兜底判断「这一场到底有没有抓到」。
+		//   匹配条件：同一玩家 + 时间落在战斗开始后 10 分钟内 + 坐标一致（流水无坐标则不校验）。
+		//   ★ 只认 kind=1/2（实时记录 / 战报补记，时间可信）；kind=3 军官补记的时间是
+		//   军官最后变动时间，跟战斗对不上，参与匹配会误判。
+		if a.OfficerId > 0 && len(capText) < len(rows) {
+			uids2 := make([]uint, 0, len(rows))
+			for _, b := range rows {
+				if _, ok := capText[b.ID]; !ok {
+					uids2 = append(uids2, b.UserID)
+				}
+			}
+			if len(uids2) > 0 {
+				var logs []model.EzfyActCaptureLog
+				h.DB.Where("general_id = ? AND kind IN ? AND user_id IN ?", a.OfficerId,
+					[]int{model.EzfyActCaptureKindBattle, model.EzfyActCaptureKindReport}, uids2).
+					Find(&logs)
+				for _, b := range rows {
+					if _, ok := capText[b.ID]; ok {
+						continue
+					}
+					for _, l := range logs {
+						if l.UserId != b.UserID {
+							continue
+						}
+						dt := l.CreatedAt.Sub(b.CreatedAt)
+						if dt < -time.Minute || dt > 10*time.Minute {
+							continue
+						}
+						if l.X != 0 && (l.X != b.TargetX || l.Y != b.TargetY) {
+							continue
+						}
+						capText[b.ID] = "俘虏敌将（据抓取流水）"
+						break
+					}
+				}
+			}
+		}
 	}
 
 	out := make([]gin.H, 0, len(rows))
@@ -433,9 +471,14 @@ func (h *EzfyAdmin) AdminEzfyActWildCaptures(c *gin.Context) {
 		return
 	}
 	page, offset, size := pageOf(c, 15)
+	// ★ 守将名直接查库（不走 ezfyCfg 全局缓存）：管理端可能比任何玩家请求先到达，
+	//   此时配置缓存还没懒加载 → ezfyCfg.general() 返回 nil → 名字空着（本地冷启动实测过）。
 	oName := ""
-	if g := ezfyCfg.general(a.OfficerId); g != nil {
-		oName = g.Name
+	if a.OfficerId > 0 {
+		var g model.EzfyCfgGeneral
+		if err := h.DB.Select("id, name").First(&g, a.OfficerId).Error; err == nil {
+			oName = g.Name
+		}
 	}
 	base := gin.H{"x": a.X, "y": a.Y, "officer_id": a.OfficerId, "officer_name": oName,
 		"max_capture": a.MaxCapture, "page": page, "size": size, "list": []gin.H{}, "total": 0}
@@ -454,7 +497,9 @@ func (h *EzfyAdmin) AdminEzfyActWildCaptures(c *gin.Context) {
 	var total int64
 	q.Count(&total)
 	var rows []model.EzfyActCaptureLog
-	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	// ★ 按「抓取时间」倒序，不是按自增 id —— 补记行的 id 是回填顺序，跟抓取时间不一致
+	//   （军官补记的 id 更大但时间更早），按 id 排会让运营看到的时间是乱的。
+	q.Order("created_at DESC, id DESC").Offset(offset).Limit(size).Find(&rows)
 
 	// 玩家昵称 / 城市名 批量取（避免 N+1）
 	uids := make([]uint, 0, len(rows))
