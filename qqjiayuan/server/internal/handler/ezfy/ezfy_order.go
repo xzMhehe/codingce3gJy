@@ -4580,14 +4580,21 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//
 	// 注：攻方原来写死 myDead/10 + 50（按自己的战损算），语义是「越惨越有经验」，
 	// 与「胜利拿更多」相悖，这里一并改成按**击杀**计算（把对方打死才有战功）。
+	// ★★ 2026-10-28 守方军官经验**只给城守**（用户明确口径：「没城守就不给经验」）：
+	//
+	//	曾经加过「没有城守时退到守军主将（城内军事最高的在职军官）」的兜底，用户否决 →
+	//	守方经验/战报军官行一律只认 position=2 的城守；没任命城守 = 守城没有军官带队 = 不发经验。
+	//	（战报/声望照常给，只是没有「军官经验」这一行。）
+	defExpOfficer := cityGuard
 	defExp := int64(0)
-	// 守方：拿到城守军官的城才有（中立野地/寇城无玩家军官，自然跳过）
-	if cityGuard != nil && target != nil {
+	// 守方：拿到**城守**的城才有（没城守不发经验；中立野地/寇城无玩家军官，自然跳过）
+	if defExpOfficer != nil && target != nil {
 		// ★★ 2026-10-19 口径修正：守方的「击杀数」= **攻方战损**(br.AttackerLosses)。
 		//   原来传 br.DefenderLosses（守方自己人的损失）→ 守方杀敌越多、经验反而按自己死伤算，
 		//   与上一条注释「按击杀敌军数衡量」自相矛盾（攻方那一处传的才是对的，见下面 atkExp）。
-		defExp = ezfyOfficerBattleExp(enemyDeadOf(br.AttackerLosses), !win)
-		h.addOfficerExp(target, cityGuard.ID, defExp)
+		raw := ezfyOfficerBattleExp(enemyDeadOf(br.AttackerLosses), !win)
+		// ★ 2026-10-28 用**实际到账**经验（满级为 0）→ 战报不再写「+70 但经验不动」的假数字
+		defExp = h.addOfficerExp(target, defExpOfficer.ID, raw)
 	}
 	// 攻方：带队军官无论胜负都给经验（原来只在 if win 分支里给，
 	// 打输的部队回来军官一点经验都没有，与用户规则①不符）。
@@ -4666,8 +4673,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	report += troopChangeText(atkBefore, atkAfter)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, defLabel)
 	// ★★ 2026-10-19 守方军官跟在「[败]守方:」标题下（玩家城=城守；附属野地=驻军带队军官）。
-	if cityGuard != nil {
-		report += "军官:" + officerReportDesc(cityGuard) + "\n"
+	// ★ 2026-10-28 没有城守时显示「守军主将」（defExpOfficer，见上方经验归属），
+	//   否则守方军官拿了经验、战报里却看不到人（玩家会以为没给）。
+	if defExpOfficer != nil {
+		report += "军官:" + officerReportDesc(defExpOfficer) + "\n"
 	}
 	if wildDefOfficerDesc != "" {
 		report += "军官:" + wildDefOfficerDesc + "\n"
@@ -4700,8 +4709,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	detail += troopChangeText(atkBefore, atkAfter)
 	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, defLabel)
-	if cityGuard != nil {
-		detail += "军官:" + officerReportDesc(cityGuard) + "\n"
+	if defExpOfficer != nil {
+		detail += "军官:" + officerReportDesc(defExpOfficer) + "\n"
 	}
 	if wildDefOfficerDesc != "" {
 		detail += "军官:" + wildDefOfficerDesc + "\n"
@@ -5133,6 +5142,30 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					report += frag
 				}
 				h.addReport(uid, 3, "征服报告: "+targetName, report, detail, order.ID)
+				// ★★ 2026-10-28 守方战报补齐（用户：「城防守城的时候也有经验，玩家反馈被征服时没有」）：
+				//   原来这个分支**直接 return** → 守方既没有「被征服报告」、也拿不到参战声望，
+				//   军官经验虽然在库里发了却完全看不到反馈（玩家只能看到自己被打了）。
+				//   现在与「攻方获胜/守方守住」两个分支同一套守方视角正文（含军官行 + 军官经验+N）。
+				if target != nil && target.UserID != 0 && target.UserID != uid {
+					defBody := h.ezfyDefenderReportBody(ezfyDefReportSpec{
+						DefUID: target.UserID, DefName: targetName, DefWin: false, Draw: draw, Rounds: br.Rounds,
+						Now: now, DefTitle: "被征服报告", OcTitle: "征服", AtkCity: city, Order: order,
+						AtkTag: atkTag, DefTag: defTag,
+						AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
+						AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(defExpOfficer),
+						PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef,
+						AtkLabel: atkLabel, DefLabel: defLabel,
+						// 民心块与「被征服」同款：让守方看到民心扣了多少、还剩多少
+						DefFeelShow: true, DefFeelDrop: feelingDrop, DefFeelCur: cur,
+					})
+					head := fmt.Sprintf("你的城市%s遭到「%s」的军队进攻, 民心尚存, 城市未被征服!",
+						targetName, atkLabel)
+					pvpDefReportID = h.addReport(target.UserID, 4, "被征服报告: "+targetName+
+						"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
+						head+"\n\n"+defBody, detail, 0, target.ID)
+					h.addPrestige(target.UserID, 100)
+					h.ezfyPvpAttachReport(pvpDefDetailID, pvpDefReportID)
+				}
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 				return
@@ -5366,9 +5399,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// 带队军官战功经验: 见函数开头的统一口径（攻守共用 ezfyOfficerBattleExp）。
 		// ★ 原来是 myDead/10 + 50（按自己战损算），语义是「越惨越有经验」，
 		//   与用户规则「胜利方拿更多」相悖，已改为按击杀数算并叠加胜利加成。
+		// ★ 2026-10-28 写**实际到账**经验（满级到账 0 → 干脆不写这一行，别写冗余文案）
 		if leadOfficer != nil {
-			h.addOfficerExp(city, leadOfficer.ID, atkExp)
-			report += fmt.Sprintf("\n军官经验+%d", atkExp)
+			if eff := h.addOfficerExp(city, leadOfficer.ID, atkExp); eff > 0 {
+				report += fmt.Sprintf("\n军官经验+%d", eff)
+			}
 		}
 		travel := ezfyOneWayTravel(order)
 		order.Status = 2
@@ -5401,7 +5436,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					Now: now, DefTitle: defTitle, OcTitle: ocTitle, AtkCity: city, Order: order,
 					AtkTag: atkTag, DefTag: defTag,
 					AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
-					AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(cityGuard),
+					AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(defExpOfficer),
 					PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef,
 					AtkLabel: atkLabel, DefLabel: defLabel,
 					// ★ 2026-10-24 被征服报告：民心块放正文 [守方] 行下（用户指定格式，头部不再放）
@@ -5463,8 +5498,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   败仗回来军官经验一点不动）。数值已在函数开头按统一口径算好，
 		//   败方拿的是「无胜利加成」的基础经验，天然少于胜方。
 		if leadOfficer != nil && atkExp > 0 {
-			h.addOfficerExp(city, leadOfficer.ID, atkExp)
-			report += fmt.Sprintf("\n军官经验+%d", atkExp)
+			if eff := h.addOfficerExp(city, leadOfficer.ID, atkExp); eff > 0 {
+				report += fmt.Sprintf("\n军官经验+%d", eff)
+			}
 		}
 		report += "\n残部正在撤退返航。"
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct, healLineAtk)
@@ -5486,7 +5522,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				Now: now, DefTitle: defTitle, OcTitle: ocTitle, AtkCity: city, Order: order,
 				AtkTag: atkTag, DefTag: defTag,
 				AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
-				AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(cityGuard),
+				AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(defExpOfficer),
 				PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef,
 				AtkLabel: atkLabel, DefLabel: defLabel,
 			})
@@ -6315,7 +6351,7 @@ type ezfyDefReportSpec struct {
 	AtkOfficer     *model.EzfyOfficer // 攻方带队军官（挂在 [攻方] 标题下）
 	DefOfficerDesc string             // 守方军官展示文案（城守 / 野地驻军带队军官聚合）
 	PrestigeGain   int                // 守方本场军功声望（>0 才输出该行）
-	DefExp         int64              // 守方军官本场经验（>0 才输出该行）
+	DefExp         int64              // 守方军官本场**实际到账**经验（>0 才输出该行）
 	HealLineDef    string             // 守方「回收比例」行（空串=不显示）
 	// ★ 2026-10-24 守方「民心」块（被征服报告正文 [守方] 行下展示，头部不再放）：扣减量 + 当前值
 	DefFeelShow bool // 是否输出民心块

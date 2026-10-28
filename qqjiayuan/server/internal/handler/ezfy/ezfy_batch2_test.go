@@ -60,7 +60,8 @@ func TestDefenderReportIsDefenderPerspective(t *testing.T) {
 		// ② 野地守军带队军官经验
 		"h.addWildGarrisonOfficerExp(wildDefOrders, wlOwnerCityID, wildDefExp)",
 		// 守方「击杀数」= 攻方战损（原来误传守方自己人的损失）
-		"defExp = ezfyOfficerBattleExp(enemyDeadOf(br.AttackerLosses), !win)",
+		// ★ 2026-10-28 起先算 raw，再由 addOfficerExp 返回实际到账值（满级为 0）
+		"raw := ezfyOfficerBattleExp(enemyDeadOf(br.AttackerLosses), !win)",
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("守方视角 / 守方奖励接入缺失: %s", want)

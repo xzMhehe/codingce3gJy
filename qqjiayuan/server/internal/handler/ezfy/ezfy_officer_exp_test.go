@@ -74,9 +74,9 @@ func TestOfficerExpAwardedInBothBranches(t *testing.T) {
 	if n < 2 {
 		t.Fatalf("攻方军官经验写入应同时存在于胜/败两个分支，实际出现 %d 次", n)
 	}
-	// 守方军官经验也要写
-	if !strings.Contains(fn, "h.addOfficerExp(target, cityGuard.ID, defExp)") {
-		t.Fatal("守方城守军官经验写入缺失")
+	// 守方军官经验也要写（★ 2026-10-28 起守方军官 = 城守，没有城守时退到守军主将 defExpOfficer）
+	if !strings.Contains(fn, "h.addOfficerExp(target, defExpOfficer.ID, raw)") {
+		t.Fatal("守方军官经验写入缺失")
 	}
 	// 旧的「按自己战损算」写法不得作为**代码**复活
 	// （注释里提到旧公式是正常的，所以要先剥掉注释行再判断）。

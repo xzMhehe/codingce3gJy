@@ -2195,17 +2195,30 @@ func (h *EzfyHandler) moveOfficerTo(city *model.EzfyCity, name string, targetCit
 //
 // ★ 用户规则「军官最高等级 150 / 名将最高等级 350」：满级后不再升级，多余经验直接丢弃
 // （不丢的话经验会无限累积，将来放开上限会一次性跳很多级）。
-func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp int64) {
+//
+// ★★ 2026-10-28 **返回实际到账经验**（满级 / 俘虏 / 查不到 → 0）。
+//
+//	用户反馈「被征服、被掠夺时守方没有军官经验」：满级军官原来照样在战报里写
+//	「军官经验+70」，但库里 exp 被清零 → 玩家看到数字却查不到经验，等同「没有」。
+//	现在战报用返回值：满级到账 0 → 战报不写经验行（用户要求简约，不写「已满级」这类冗余）。
+//	（Go 允许忽略返回值，所以老的语句式调用不用改。）
+func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp int64) int64 {
 	var o model.EzfyOfficer
 	if err := h.DB.First(&o, officerId).Error; err != nil {
-		return
+		return 0
 	}
 	// ★ 2026-09-30 修复「野地军官/俘虏能升级」：俘虏(IsCaptive=1)未收编不能升级，
 	//   否则经验书/战斗经验会作用到野地守将身上。
 	if o.IsCaptive == 1 {
-		return
+		return 0
 	}
 	maxLv := h.officerMaxLevelOf(&o)
+	// 满级：经验直接丢弃，返回 0（战报因此不写经验行，不给假数字）
+	if o.Level >= maxLv {
+		o.Exp = 0
+		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("exp", 0)
+		return 0
+	}
 	o.Exp += exp
 	gained := 0
 	for o.Level < maxLv && o.Exp >= int64(o.Level)*200 {
@@ -2225,6 +2238,7 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 			o.Name+"在战斗中成长, 升到了"+strconv.Itoa(o.Level)+"级, 获得"+strconv.Itoa(gained)+
 				"点属性点(可前往 [军官] 详情页分配)!", "")
 	}
+	return exp
 }
 
 // accrueDutyExp 市长/城守在任期间按时间结算被动经验（★ 2026-09-29

@@ -845,6 +845,16 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 		}
 	}
 
+	// 0¾) 站位：有攻击计划且目标太远 → **先迁城贴近**（★ 2026-10-28 用户「人机不会迁城打目标城市了」）。
+	//
+	//	原来迁城只写在 botMilitary 里，而 botMilitary 排在召集/建筑/征兵/军官之后 →
+	//	人机只要还有东西可建/可造，就永远轮不到迁城；宣战等待的 24 小时里也不会挪窝，
+	//	等宣战生效时才开始搬 —— 表现就是「不迁城，直接几十格外远程出征」。
+	//	迁城是纯站位动作，不受攻频额度限制，所以提到这里（在建筑/征兵之前）。
+	if a, d, ok := h.botRelocateForPlan(b, city, troopTotal); ok {
+		return a, d, ok
+	}
+
 	// 0½) 世界聊天：**放在最后（闲置前）** —— 只在什么都做不了时才说话，
 	//    绝不抢占征兵/军官/军事轮次（★ 2026-10-17 回归修复：原来放最前面导致人机每天光说话不打人）。
 	//    这里保留已经说过的句去重；优先级交给 step 5。
@@ -1201,7 +1211,7 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 			//   目标城太远 → 先自迁城贴近（与 case 2 出击前同一口径，迁城不受冷却）。
 			var wtc model.EzfyCity
 			if err := h.DB.First(&wtc, p.TargetCityId).Error; err == nil &&
-				ezfyAbs(city.X-wtc.X)+ezfyAbs(city.Y-wtc.Y) > 10 {
+				ezfyAbs(city.X-wtc.X)+ezfyAbs(city.Y-wtc.Y) > ezfyBotRelocateDist {
 				if a, d, ok := h.botRelocateNear(b, city, wtc.X, wtc.Y); ok {
 					return a, d, ok
 				}
@@ -1239,7 +1249,7 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 			// ★ 2026-10-17 出征时间 > 10 分钟 → 人机先自迁城贴近目标，再出击
 			//   （默认行军速度换算：每格约 60 秒 → 10 分钟 ≈ 10 格；用曼哈顿距离估算，
 			//    实际受兵种/科技速度影响，够用来做「太远就搬家」的判断。迁城不受冷却。）
-			if dist := ezfyAbs(city.X-tcity.X) + ezfyAbs(city.Y-tcity.Y); dist > 10 {
+			if dist := ezfyAbs(city.X-tcity.X) + ezfyAbs(city.Y-tcity.Y); dist > ezfyBotRelocateDist {
 				if a, d, ok := h.botRelocateNear(b, city, tcity.X, tcity.Y); ok {
 					return a, d, ok
 				}
@@ -1754,6 +1764,65 @@ func (h *EzfyHandler) ezfyBotFiveStarDraft(gold int64) (*ezfyOfficerDraft, bool)
 	}, true
 }
 
+// ezfyBotRelocateDist 目标超过这个曼哈顿距离（格）就先迁城贴近再打，同时是**落点搜索半径**。
+//
+// ★ 默认行军约 1 格/分钟 → 12 格 ≈ 12 分钟，再远目标就跑了 / 战争过期了。
+// ★★ 落点必须也限制在这个距离内（见 ezfyBotPickRelocateSpot）—— 否则迁到 12 格外
+// 下一轮又判「还是太远」→ 无限迁城。
+const ezfyBotRelocateDist = 12
+
+// botRelocateForPlan 有攻击计划且目标太远 → 本城先迁城贴近（纯站位，不受攻频额度限制）。
+//
+// ★★ 2026-10-28 用户反馈「人机不会迁城打目标城市了」：迁城原来只写在 botMilitary 里，
+//
+//	而 botMilitary 排在召集/建筑/征兵/军官之后 —— 人机只要还有东西可建可造就永远轮不到迁城，
+//	宣战等待的 24 小时里也不挪窝，等生效后才开始搬（看起来就是「不迁城，远程出征」）。
+//	现在提到 botDecide 的 0¾ 步：只要有计划 + 目标超过 ezfyBotRelocateDist + 手里有兵，就先搬。
+//
+// 返回 (动作, 详情, 是否已执行)；没计划/目标够近/没兵 → false，让 tick 继续往下走。
+func (h *EzfyHandler) botRelocateForPlan(b *model.EzfyBot, city *model.EzfyCity, troopTotal int64) (string, string, bool) {
+	if !ezfyBotAttackOn() || troopTotal < 200 {
+		return "", "", false
+	}
+	// 优先推进「可出击(2)」，其次待生效(1)、待宣战(0)
+	var p model.EzfyBotTarget
+	if err := h.DB.Where("bot_uid = ? AND status IN (0,1,2)", b.UserID).
+		Order("status DESC, id ASC").First(&p).Error; err != nil {
+		return "", "", false
+	}
+	if p.TargetCityId <= 0 {
+		return "", "", false
+	}
+	var tcity model.EzfyCity
+	if err := h.DB.First(&tcity, p.TargetCityId).Error; err != nil {
+		return "", "", false
+	}
+	if ezfyAbs(city.X-tcity.X)+ezfyAbs(city.Y-tcity.Y) <= ezfyBotRelocateDist {
+		return "", "", false
+	}
+	return h.botRelocateNear(b, city, tcity.X, tcity.Y)
+}
+
+// botCityNearestTo 该城是不是「名下离目标最近的那座」。
+//
+// ★ 多城市（2026-10-28）：只有最近的那座城去迁，否则人机会把名下每座城都搬到同一片战区。
+func (h *EzfyHandler) botCityNearestTo(uid, cityID uint, x, y int) bool {
+	var cities []model.EzfyCity
+	h.DB.Select("id, x, y").Where("user_id = ?", uid).Find(&cities)
+	if len(cities) <= 1 {
+		return true
+	}
+	bestID := uint(0)
+	bestD := int64(1 << 62)
+	for _, c := range cities {
+		d := int64(ezfyAbs(c.X-x) + ezfyAbs(c.Y-y))
+		if d < bestD {
+			bestD, bestID = d, c.ID
+		}
+	}
+	return bestID == cityID
+}
+
 // botRelocateNear 人机自迁城（★ 2026-10-17 用户规则「人机迁城不受冷却限制」）。
 //
 // 走管理端同款路径：checkMoveTarget 校验后直接落库坐标 —— **不写 move_cool_until（不受冷却）、
@@ -1764,11 +1833,19 @@ func (h *EzfyHandler) ezfyBotFiveStarDraft(gold int64) (*ezfyOfficerDraft, bool)
 //	③ 旧坐标若残留附属野地 → 在途采集(4)/驻守(7)部队先转返航，再删野地行（直接删会丢部队，
 //	  见放弃野地的历史教训）。
 //
-// 频率很低（只有目标距主城 > 10 格、要远征时触发），不担心性能。
+// 频率很低（只有目标距本城 > ezfyBotRelocateDist 格、要远征时触发），不担心性能。
 func (h *EzfyHandler) botRelocateNear(b *model.EzfyBot, city *model.EzfyCity, nearX, nearY int) (string, string, bool) {
 	oldX, oldY := city.X, city.Y
-	tx, ty, ok := h.ezfyBotPickRelocateSpot(nearX, nearY)
+	// ★ 多城市：只让「离目标最近的那座城」去迁（否则每座城都会搬到同一片战区）
+	if !h.botCityNearestTo(b.UserID, city.ID, nearX, nearY) {
+		return "", "", false
+	}
+	tx, ty, ok := h.ezfyBotPickRelocateSpot(nearX, nearY, h.isSeaCity(city))
 	if !ok {
+		// ★ 2026-10-28 失败也要留痕：行为日志能直接看出「为什么没迁城」
+		//   （原来是静默返回 false，运营只看到人机远程出征、以为迁城功能坏了）。
+		h.ezfyBotLogCity(b.UserID, int64(city.ID), "迁城失败",
+			fmt.Sprintf("目标(%d,%d)附近没有可落脚的平原", nearX, nearY), 0)
 		return "", "", false // 附近没空地 → 本轮不迁（下轮再试）
 	}
 	// ① 落库新坐标（不动 move_cool_until → 人机不受迁城冷却）
@@ -1806,34 +1883,75 @@ func (h *EzfyHandler) botRelocateNear(b *model.EzfyBot, city *model.EzfyCity, ne
 	return "迁城", fmt.Sprintf("%s(%d,%d) → (%d,%d)", city.Name, oldX, oldY, tx, ty), true
 }
 
-// ezfyBotPickRelocateSpot 在目标坐标附近 3~6 格环形内找一个「合法空位」。
+// ezfyBotPickRelocateSpot 在目标坐标附近找一个「合法空位」给城市落脚。
 //
-// 从小圈到大圈（迁太近会被对方贴脸堵门，太远失去迁城意义）；每圈随机打散尝试顺序，
-// 命中 checkMoveTarget（坐标 1~499 / 平原 / 无人占用）即返回；每圈最多试 20 个点防卡。
-func (h *EzfyHandler) ezfyBotPickRelocateSpot(nearX, nearY int) (int, int, bool) {
-	for radius := 3; radius <= 6; radius++ {
-		cand := make([][2]int, 0, radius*8)
-		for dx := -radius; dx <= radius; dx++ {
-			for dy := -radius; dy <= radius; dy++ {
-				if ezfyAbs(dx) < radius && ezfyAbs(dy) < radius {
-					continue // 只取环上坐标
+// ★★ 2026-10-28 重写（用户反馈「人机不会迁城打目标城市了」）：
+//
+//	老实现 radius 3~6 每圈**随机只试 20 个点**、每个点一条 `ezfy_city` 查询 →
+//	线上实测 200 个随机目标里 **71 个（35%）找不到落点**：人机就悄悄放弃迁城、
+//	从几十格外远程出征（行军半小时、目标早跑了，看起来就是「不迁城」）。
+//	现在：① 先一次性把附近占用坐标查出来（1 条 SQL），地形判定纯内存；
+//	     ② 整圈全扫（不再随机抽样 20 个），半径扩到 12 格；
+//	     ③ 海城优先沿海平原（保住海城身份），找不到再退回内陆平原。
+func (h *EzfyHandler) ezfyBotPickRelocateSpot(nearX, nearY int, seaCity ...bool) (int, int, bool) {
+	const maxR = ezfyBotRelocateDist
+	if nearX < 1 || nearY < 1 || nearX > ezfyWorldSize-1 || nearY > ezfyWorldSize-1 {
+		return 0, 0, false
+	}
+	// ① 附近已有城市（含自己）一次性取回，避免逐点打库
+	var occupied []struct{ X, Y int }
+	h.DB.Raw("SELECT x, y FROM ezfy_city WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?",
+		nearX-maxR, nearX+maxR, nearY-maxR, nearY+maxR).Scan(&occupied)
+	taken := make(map[[2]int]bool, len(occupied))
+	for _, c := range occupied {
+		taken[[2]int{c.X, c.Y}] = true
+	}
+	// ② 海城先找沿海平原（迁到内陆平原会丢掉海城身份），找不到再退回平原
+	coastalModes := []bool{false}
+	if len(seaCity) > 0 && seaCity[0] {
+		coastalModes = []bool{true, false}
+	}
+	for _, needCoastal := range coastalModes {
+		for radius := 2; radius <= maxR; radius++ {
+			// 整圈候选（迁太近会被贴脸堵门，所以从 2 格起）
+			cand := make([][2]int, 0, radius*8)
+			for dx := -radius; dx <= radius; dx++ {
+				for dy := -radius; dy <= radius; dy++ {
+					if ezfyAbs(dx) < radius && ezfyAbs(dy) < radius {
+						continue // 只取环上坐标
+					}
+					// ★ 必须落在「迁完就不用再迁」的范围内（曼哈顿距离 ≤ ezfyBotRelocateDist），
+					//   否则迁到 12 格外 → 下一轮判定「还是太远」→ 无限迁城。
+					if ezfyAbs(dx)+ezfyAbs(dy) > ezfyBotRelocateDist {
+						continue
+					}
+					x, y := nearX+dx, nearY+dy
+					if x < 1 || x > ezfyWorldSize-1 || y < 1 || y > ezfyWorldSize-1 {
+						continue
+					}
+					if taken[[2]int{x, y}] {
+						continue // 已有城市
+					}
+					cand = append(cand, [2]int{x, y})
 				}
-				cand = append(cand, [2]int{nearX + dx, nearY + dy})
 			}
-		}
-		// Fisher-Yates 随机打散，避免每轮都从同一角开始
-		for i := len(cand) - 1; i > 0; i-- {
-			j := mathrand.Intn(i + 1)
-			cand[i], cand[j] = cand[j], cand[i]
-		}
-		checked := 0
-		for _, p := range cand {
-			checked++
-			if checked > 20 {
-				break
+			// 随机打散：同一目标不同人机落点不至于全挤在同一角
+			for i := len(cand) - 1; i > 0; i-- {
+				j := mathrand.Intn(i + 1)
+				cand[i], cand[j] = cand[j], cand[i]
 			}
-			if h.checkMoveTarget(p[0], p[1], false) == "" {
-				return p[0], p[1], true
+			for _, p := range cand {
+				t := ezfyTerrainEx(p[0], p[1])
+				if needCoastal {
+					if t != ezfyTerrainCoastalPlain {
+						continue
+					}
+				} else if t != 1 { // 1 = 平原（沿海平原要走「沿海迁城」口径，见 checkMoveTarget）
+					continue
+				}
+				if h.checkMoveTarget(p[0], p[1], needCoastal) == "" {
+					return p[0], p[1], true
+				}
 			}
 		}
 	}
