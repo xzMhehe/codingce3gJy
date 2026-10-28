@@ -267,6 +267,41 @@ type EzfyActCaptureTry struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// EzfyActCaptureLog 活动目标守将「抓取流水」：玩家每成功抓到一次守将就记一条，**只增不删**。
+//
+// ★ 2026-10-28 用户规则：「可抓次数（max_capture）是**针对玩家**的 —— 他抓住过一次，
+//
+//	就再也不能抓了；即使他抓到的那个守将后来被其他玩家抢走，也不能再抓。配 N 次同理。」
+//
+// 为什么单独一张流水表（而不是在 ezfy_act_capture_try 上加计数列）：
+//   - 流水**天然只增不减**，没有任何「回退/清零」的写法可以误改它；
+//   - 能追溯「谁、什么时候、在哪个坐标抓了哪个守将」（运营/客服查证用）；
+//   - 不动已有的 ezfy_act_capture_try（那张表只管「兜底被俘次数」的胜场数）。
+//
+// 判定口径：该玩家在该守将上的流水条数 >= max_capture → 概率归 0（见 ezfyActCaptureFull）。
+// 老数据（历史抓取没流水）：首次读到 0 条时按「当前拥有的军官实例数」补记 kind=2 的流水。
+type EzfyActCaptureLog struct {
+	ID        uint `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId    uint `gorm:"index:idx_act_cap_ug,priority:1;comment:玩家ID" json:"user_id"`
+	GeneralId int  `gorm:"index:idx_act_cap_ug,priority:2;comment:守将军官池ID" json:"general_id"`
+	// X/Y 抓到时目标坐标（活动野地坐标；同一守将可能在多个坐标配置）
+	X int `gorm:"default:0;comment:目标X坐标" json:"x"`
+	Y int `gorm:"default:0;comment:目标Y坐标" json:"y"`
+	// CityId 抓到时部队出发城（军官落在哪座城）
+	CityId int64 `gorm:"default:0;comment:抓取时出发城ID" json:"city_id"`
+	// Kind 来源：1=战斗抓取 2=老数据迁移补记（历史抓取没流水时按拥有的军官实例数补）
+	Kind      int       `gorm:"default:1;comment:来源 1抓取 2老数据补记" json:"kind"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (EzfyActCaptureLog) TableName() string { return "ezfy_act_capture_log" }
+
+// 活动守将抓取流水的来源
+const (
+	EzfyActCaptureKindBattle  = 1 // 战斗抓到
+	EzfyActCaptureKindMigrate = 2 // 老数据补记
+)
+
 func (EzfyActCaptureTry) TableName() string { return "ezfy_act_capture_try" }
 
 // 地图格子标记类型
@@ -476,6 +511,20 @@ type EzfyCfgLimit struct {
 	// ★ 2026-10-07 赎城功能：被占城市原主人赎回需消耗的钻石（管理端「建筑上限配置」可维护，默认 500）。
 	//   0 无意义（= 禁止赎城）→ 读取端回落默认 500。
 	RansomCost int `gorm:"default:500;comment:赎城金额钻石" json:"ransom_cost"`
+	// ★ 2026-10-28 用户规则：「二战自己的城市被占领，28 小时 [赎城] 加一个 [弃城] 操作，
+	//   可以自己弃城，这个 28 小时默认，可以二战系统配置配置」：
+	//   占领后的**保护期小时数**（默认 28），期内原主人只能 [赎回]，不能 [弃城]。
+	//   期满后：原主人可 [弃城]（物理销毁，坐标恢复原地形）。
+	//   ⚠️ 0 无意义（= 一占领就能弃城，保护期形同虚设）→ 读取端回落默认 28。
+	//   ★ 2026-10-28 补充：「占领方 建立 摧毁 不能和 原主人的 [弃城] 一起，要单独自己的配置」→
+	//   本项**只管原主人弃城**；占领方的建立/摧毁另读 OccupyFinalizeH（默认 24）。
+	OccupyProtectH int `gorm:"default:28;comment:占领保护期小时(原主人期满才能弃城)" json:"occupy_protect_h"`
+	// ★ 2026-10-28 用户规则：「占领方 建立 摧毁 不能和 原主人的 [弃城] 一起，要单独自己的配置
+	//   默认 24 小时」：
+	//   **占领方**占领后多久才能对这座城 [建立] / [摧毁]（默认 24）。与原主人的
+	//   OccupyProtectH（默认 28，弃城）**互相独立**，不要用一个值推另一个。
+	//   ⚠️ 0 无意义（= 刚占就能拆，赎回形同虚设）→ 读取端回落默认 24。
+	OccupyFinalizeH int `gorm:"default:24;comment:占领方建立/摧毁冷却小时" json:"occupy_finalize_h"`
 	// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资：每名军官每小时消耗
 	//   「等级 × 该值」黄金，在 calcResource 里随资源懒结算一起扣。
 	//   ★ 2026-09-26 「现值 2000 改成 20」：默认值 100 → **20**。
@@ -1980,6 +2029,14 @@ type EzfyCityTarget struct {
 	AtkMove        int   `gorm:"comment:攻击移动" json:"atk_move"`
 	DefTargetTroop int   `gorm:"comment:防御目标部队" json:"def_target_troop"`
 	DefMove        int   `gorm:"comment:防御移动" json:"def_move"`
+	// ★★ 2026-10-28 兵种防守数量（司令部「兵种战斗配置」→ 每个兵种一个「防守数量」）：
+	//
+	//	0 = 全部（默认，行为与改造前完全一致）；>0 = 参与防御的兵力上限。
+	//	实际参战 = min(城内该兵种数量, DefCount) —— 城内多于配置按配置打，少于配置按实际打。
+	//	**城市维度**（每城各一套，靠 uk_city_troop 的 city_id 区分），不是账号维度。
+	//	上限由服务端按「系统配置 → 单城兵力上限」(ezfy_cfg_limit.troop_max) 夹取。
+	//	⚠️ 0 只能表示「全部」，想让某兵种不参与防御请用 DefMove = -1（界面上叫「避战」）。
+	DefCount int64 `gorm:"default:0;comment:兵种防守数量(0=全部)" json:"def_count"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`

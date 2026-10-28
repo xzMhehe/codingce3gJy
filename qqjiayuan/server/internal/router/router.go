@@ -828,6 +828,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					ezfyG.GET("/city/warehouse", ezfyH.Warehouse)
 					ezfyG.POST("/city/warehouse", ezfyH.WarehouseSet)
 					ezfyG.POST("/city/occupy/:op", ezfyH.OccupyOp)
+					// ★ 2026-10-28 被占城市原主人：占领保护期（默认 28h）满后可自己弃城（物理销毁）。
+					//   ⚠️ 路径**不能**写成 /city/occupy/abandon —— 会和上面的 `/city/occupy/:op`
+					//   在同一层级产生「静态段 vs 通配段」冲突（gin 启动直接 panic）。
+					ezfyG.POST("/city/occupied/abandon", ezfyH.OccupyAbandon)
 					// ★ 2026-10-07 赎城：被占城市原主人发起赎回，占领方同意后返还
 					ezfyG.POST("/city/ransom", ezfyH.RansomCreate)
 					ezfyG.POST("/city/ransom/handle", ezfyH.RansomHandle)

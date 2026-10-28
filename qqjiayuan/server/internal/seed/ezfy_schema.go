@@ -12,7 +12,7 @@ import (
 //
 // ⚠️ 新增 Ezfy* model 时**记得往这里加一笔**，否则它的新列在 skip 分支上补不出来。
 var ezfySchemaModels = []interface{}{
-	&model.EzfyActWild{}, &model.EzfyActLevel{}, &model.EzfyActCaptureTry{}, &model.EzfyActivity{}, &model.EzfyBattle{},
+	&model.EzfyActWild{}, &model.EzfyActLevel{}, &model.EzfyActCaptureTry{}, &model.EzfyActCaptureLog{}, &model.EzfyActivity{}, &model.EzfyBattle{},
 	&model.EzfyCfgBuilding{}, &model.EzfyCfgBuildingLevel{}, &model.EzfyCfgChest{},
 	&model.EzfyCfgChestItem{}, &model.EzfyCfgEquipSet{}, &model.EzfyCfgEquipment{},
 	&model.EzfyCfgGeneral{}, &model.EzfyCfgGeneralSkill{}, &model.EzfyCfgItem{}, &model.EzfyCfgLimit{},
@@ -69,6 +69,22 @@ func ezfySchemaCatalog(db *gorm.DB) (tables map[string]bool, cols map[string]map
 		rows.Close()
 	}
 	return
+}
+
+// EnsureEzfyActCaptureLogTable 幂等补建 ezfy_act_capture_log 表（★ 2026-10-28 新表）。
+//
+// ★★ 为什么必须单独建表：`EnsureEzfySchema` **只补列、不建表**（表不存在直接 continue，
+// 交给 `seed.Run`/`RunEzfy` 的 AutoMigrate）。而多机共享库走 `seed.skip: true` 时
+// 单库分支根本不跑 AutoMigrate → 新表永远建不出来 → 抓取流水写不进去 →
+// 「可抓次数」永远读到 0 → **玩家可以无限抓同一个守将**（比缺列更隐蔽）。
+// 与 `EnsureEzfyRansomTable` / `EnsureEzfyVisitTable` 同款兜底，HasTable 幂等。
+func EnsureEzfyActCaptureLogTable(db *gorm.DB) {
+	if db.Migrator().HasTable(&model.EzfyActCaptureLog{}) {
+		return
+	}
+	if err := db.AutoMigrate(&model.EzfyActCaptureLog{}); err != nil {
+		log.Printf("[seed] 补建 ezfy_act_capture_log 表失败（活动守将可抓次数将失效）: %v", err)
+	}
 }
 
 // EnsureEzfySchema 幂等补齐 ezfy 全部表的**缺失列**（main.go 的 skip 分支必须调用）。

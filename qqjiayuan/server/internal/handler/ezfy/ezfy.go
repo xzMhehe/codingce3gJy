@@ -48,8 +48,13 @@ const (
 	// ★ 第九轮：军官忠诚 —— 派遣不再扣，只有打败仗才扣（见 ezfy_battle.go）
 	ezfyLoyaltyOnDefeat = 3 // 败仗基础扣忠心
 	// ★ 建筑图纸道具：升级到 10 级及以上必需。cfg_id 按名字解析（见 ezfyBlueprintItemID）。
-	// ★ 司令部兵种战斗配置「防守」第三种状态：不参与防御（被攻击时防御战斗兵种不含它）
+	// ★ 司令部兵种战斗配置「防守」第四种状态：不参战（界面文案「避战」；被攻击时防御战斗兵种不含它）。
+	//   ⚠️ -1 只表示「避战」，**不是**后退 —— 后退是下面的 ezfyDefMoveBack(-2)。
 	ezfyDefMoveNone = -1
+	// ★ 2026-10-28 司令部「防守」新增「后退」：战斗引擎里 moveMap 值 <0 一律按后退处理
+	//   （见 ezfyMoveDir），所以 -2 能直接生效，同时不会和「不参与」(-1) 撞车
+	//   （defExcludeSet 只认 -1，-2 的兵种照常参战，只是每回合往后撤）。
+	ezfyDefMoveBack = -2
 	// ★ 2026-09-28 科技 13「装载技术」：部队负重 +2%/级。
 	//   原来这条科技只在 ezfy_cfg_tech.effect 里写着，**代码里从没读过** →
 	//   玩家研到满级负重也不涨，就是反馈的「科技没实际作用」。见 ezfyCarryCapOf。
@@ -5256,21 +5261,32 @@ type ezfyCityView struct {
 	// ★ 2026-10-07 赎城：被占领(occupy status=1) / 有待处理赎城请求 —— 前端据此切换按钮
 	Occupied  bool `json:"occupied"`
 	Ransoming bool `json:"ransoming"`
+	// ★ 2026-10-28 原主人 [弃城]：占领保护期（默认 28h）满了才能自己弃城。
+	//   OccupyReadyAt = 保护期满的时刻(毫秒)，0 = 未被占领；CanAbandonOccupy 直接驱动按钮显示。
+	OccupyReadyAt    int64 `json:"occupy_ready_at"`
+	CanAbandonOccupy bool  `json:"can_abandon_occupy"`
 }
 
 func (h *EzfyHandler) cityViews(list []model.EzfyCity) []ezfyCityView {
 	// ★ 2026-10-07 赎城：一次 IN 查询整批城市的被占/待赎状态，避免每城一条 SQL
 	occupied := map[int64]bool{}
 	ransoming := map[int64]bool{}
+	// ★ 2026-10-28 [弃城]：被占城市的**原主人弃城保护期**期满时刻（毫秒），
+	//   读 occupy_protect_h（默认 28h，与占领方建立/摧毁的 occupy_finalize_h 是两个配置）。
+	occReady := map[int64]int64{}
 	if len(list) > 0 {
 		ids := make([]int64, 0, len(list))
 		for _, ct := range list {
 			ids = append(ids, int64(ct.ID))
 		}
-		var occIds []int64
-		h.DB.Model(&model.EzfyOccupy{}).Where("status = 1 AND city_id IN ?", ids).Pluck("city_id", &occIds)
-		for _, id := range occIds {
-			occupied[id] = true
+		// ★ 2026-10-28 原来只 Pluck city_id，现在要多拿 created_at 算保护期 → 查整行（仍是 1 条 SQL）
+		var occs []model.EzfyOccupy
+		h.DB.Select("city_id", "created_at").
+			Where("status = 1 AND city_id IN ?", ids).Find(&occs)
+		protect := ezfyOccupyProtectDur()
+		for _, o := range occs {
+			occupied[o.CityId] = true
+			occReady[o.CityId] = o.CreatedAt.Add(protect).UnixMilli()
 		}
 		var ranIds []int64
 		h.DB.Model(&model.EzfyRansom{}).Where("status = 0 AND city_id IN ?", ids).Pluck("city_id", &ranIds)
@@ -5278,15 +5294,21 @@ func (h *EzfyHandler) cityViews(list []model.EzfyCity) []ezfyCityView {
 			ransoming[id] = true
 		}
 	}
+	nowMs := time.Now().UnixMilli()
 	out := make([]ezfyCityView, 0, len(list))
 	for i := range list {
+		cid := int64(list[i].ID)
+		readyAt := occReady[cid]
 		out = append(out, ezfyCityView{
 			EzfyCity:  list[i],
 			IsSea:     h.isSeaCity(&list[i]),
 			Kind:      h.cityKind(&list[i]),
 			Continent: ezfyRegionName(list[i].X, list[i].Y),
-			Occupied:  occupied[int64(list[i].ID)],
-			Ransoming: ransoming[int64(list[i].ID)],
+			Occupied:  occupied[cid],
+			Ransoming: ransoming[cid],
+			// 只有「被占领 + 保护期已满」才给 [弃城] 按钮（期内只能赎回）
+			OccupyReadyAt:    readyAt,
+			CanAbandonOccupy: occupied[cid] && readyAt > 0 && nowMs >= readyAt,
 		})
 	}
 	return out

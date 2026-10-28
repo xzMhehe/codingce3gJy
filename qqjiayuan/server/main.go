@@ -166,6 +166,9 @@ func runHomeMode(cfg *config.Config) {
 		// ★★ 2026-10-07 线上事故：ezfy_ransom 赎城请求表只注册在 seed.Run 的 AutoMigrate 里，
 		//   skip 分支不补 → 查询/发起赎城直接报 Error 1146 表不存在。
 		timedStep("EnsureEzfyRansomTable", func() { seed.EnsureEzfyRansomTable(homeDB) })
+		// ★ 2026-10-28 活动守将抓取流水表（「可抓次数」的计数依据）：新表只靠 AutoMigrate 建，
+		//   skip 分支不补 → 流水写不进去 → 可抓次数恒为 0 → 同一玩家能无限抓同一守将。
+		timedStep("EnsureEzfyActCaptureLogTable", func() { seed.EnsureEzfyActCaptureLogTable(homeDB) })
 		// ★★ 2026-10-12 二战独立登录账号表：skip 分支不补 → 二战登录直接报表不存在。
 		timedStep("EnsureEzfyAccountTable", func() { seed.EnsureEzfyAccountTable(homeDB) })
 		// ★★ 2026-10-06 线上事故：ezfy_officer.source 同样只由 AutoMigrate 建列，

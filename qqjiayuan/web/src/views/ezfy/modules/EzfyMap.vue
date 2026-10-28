@@ -302,7 +302,7 @@
                本城正在被敌军攻击（指挥中）时，参战守军不能出征（后端 createOrder 硬拦，
                前端把它们的数量框禁用）；司令部标了「不参与防御」的兵种不参与当次防御，不受影响。 -->
           <div class="old-line red" v-if="ezfy.orderCalc && ezfy.orderCalc.def_locked">
-            城市正在被敌军攻击(指挥中)：参战部队不能出征；司令部设为「不参与防御」的兵种不受影响。
+            城市正在被敌军攻击(指挥中)：参战部队不能出征；司令部设为「避战」的兵种不受影响。
           </div>
           <div class="of-rows">
             <div class="of-row" v-for="t in ezfy.trainCfgs" :key="'at' + t.id"

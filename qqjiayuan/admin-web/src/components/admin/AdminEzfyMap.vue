@@ -903,7 +903,7 @@
         </el-form-item>
         <el-form-item label="可抓次数">
           <el-input-number v-model.number="aw.max_capture" :min="0" controls-position="right" style="width:160px" />
-          <el-tooltip placement="top" content="同一玩家最多可抓该守将几次（默认1，抓满后概率归0）；0 = 不限">
+          <el-tooltip placement="top" content="同一玩家最多可抓该守将几次（默认1，抓满后概率归0）；0 = 不限。★ 抓过就计一次：抓到后被其他玩家抢走也不退还次数">
             <i class="el-icon-info cfg-tip" style="margin-left:6px" />
           </el-tooltip>
         </el-form-item>
@@ -1050,7 +1050,7 @@
         </el-form-item>
         <el-form-item label="可抓次数">
           <el-input-number v-model.number="al.max_capture" :min="0" controls-position="right" style="width:160px" />
-          <el-tooltip placement="top" content="同一玩家最多可抓该守将几次（默认1，抓满后概率归0）；0 = 不限">
+          <el-tooltip placement="top" content="同一玩家最多可抓该守将几次（默认1，抓满后概率归0）；0 = 不限。★ 抓过就计一次：抓到后被其他玩家抢走也不退还次数">
             <i class="el-icon-info cfg-tip" style="margin-left:6px" />
           </el-tooltip>
         </el-form-item>

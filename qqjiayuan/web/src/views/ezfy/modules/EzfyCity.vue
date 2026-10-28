@@ -29,6 +29,11 @@
             <template v-else-if="ct.id !== ezfy.city.id && ct.occupied">
               <a v-if="!ct.ransoming" href="javascript:;" @click="ezfy.doRansom(ct)">[赎回]</a>
               <a v-else class="red" href="javascript:;" @click="ezfy.doRansomCancel(ct)">[撤赎城]</a>
+              <!-- ★ 2026-10-28 用户需求「28 小时 [赎城] 加一个 [弃城]，可以自己弃城」：
+                   占领保护期（默认 28 小时，二战系统配置可调）**满了**才显示 [弃城]
+                   （后端下发 can_abandon_occupy）；期内只有 [赎回]，不能弃。
+                   弃城 = 和普通弃城同口径：物理删除城市，坐标恢复原地形。 -->
+              <a v-if="ct.can_abandon_occupy" class="red" href="javascript:;" @click="ezfy.doAbandonOccupied(ct)">[弃城]</a>
             </template>
           </div>
 

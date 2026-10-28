@@ -3321,6 +3321,23 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN ransom_cost int DEFAULT 500")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET ransom_cost = 500 WHERE ransom_cost IS NULL OR ransom_cost <= 0")
+	// ★ 2026-10-28 占领保护期小时数（默认 28，原主人期满才能弃城）：存量库补 occupy_protect_h。
+	//   ★ 2026-10-28 补充：占领方的建立/摧毁是**另一个独立配置**（occupy_finalize_h，默认 24），
+	//     两者互不推导 —— 用户要求「不能和原主人的弃城一起，要单独自己的配置」。
+	//   0 无意义 → NULL/<=0 统一回落各自默认。
+	for _, c := range []struct {
+		col string
+		def int
+	}{
+		{"occupy_protect_h", 28},  // 原主人弃城保护期
+		{"occupy_finalize_h", 24}, // 占领方建立/摧毁冷却
+	} {
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) +
+			" WHERE " + c.col + " IS NULL OR " + c.col + " <= 0")
+	}
 	// ★ 2026-10-14 伤兵营「钻石一键恢复全部伤兵」单价可配置：默认 100 钻，0 无意义 → 统一回落 100
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "heal_all_diamond") {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN heal_all_diamond int DEFAULT 100")

@@ -3276,7 +3276,8 @@ export default {
     ensureTargetCfg () {
       const cfg = Object.assign({}, this.targetCfg)
       for (const t of (this.troopsData.cfgs || [])) {
-        if (!cfg[t.id]) cfg[t.id] = { atk: 0, atkMove: 1, def: 0, defMove: 1 }
+        // ★ 2026-10-28 defCount = 兵种防守数量（空 = 全部），与后端 ezfy_city_target.def_count 同口径
+        if (!cfg[t.id]) cfg[t.id] = { atk: 0, atkMove: 1, def: 0, defMove: 1, defCount: '' }
       }
       this.targetCfg = cfg
     },
@@ -4923,15 +4924,24 @@ export default {
       })
     },
     loadTargets () {
-      return api.get('/games/ezfy/targets').then(r => {
+      // ★ 2026-10-28 兵种战斗配置是**城市维度**的（每城一套）：显式带上当前城，
+      //   不依赖后端「当前城」默认值，切城后立刻看到该城自己的配置。
+      const cid = this.city && this.city.id ? this.city.id : 0
+      const url = '/games/ezfy/targets' + (cid ? '?city_id=' + cid : '')
+      return api.get(url).then(r => {
         // 先按兵种表建全默认值, 再覆盖服务端已保存的配置
         const cfg = {}
         for (const t of (this.troopsData.cfgs || [])) {
-          cfg[t.id] = { atk: 0, atkMove: 1, def: 0, defMove: 1 }
+          cfg[t.id] = { atk: 0, atkMove: 1, def: 0, defMove: 1, defCount: '' }
         }
         if (r.code === 0) {
           for (const t of r.data.targets) {
-            cfg[t.troop_id] = { atk: t.atk_target_troop, atkMove: t.atk_move, def: t.def_target_troop, defMove: t.def_move }
+            cfg[t.troop_id] = {
+              atk: t.atk_target_troop, atkMove: t.atk_move,
+              def: t.def_target_troop, defMove: t.def_move,
+              // 0 = 全部（默认）→ 输入框留空显示占位「全部」；>0 = 参与防御的兵力上限
+              defCount: t.def_count > 0 ? t.def_count : ''
+            }
           }
         }
         this.targetCfg = cfg
@@ -5551,6 +5561,25 @@ export default {
         this.ransomBusy = false
       }
     },
+    // ★ 2026-10-28 用户需求「自己的城市被占领 28 小时 [赎城] 加一个 [弃城]，可以自己弃城」：
+    //   占领保护期（默认 28 小时，二战系统配置可调）**满了**之后，原主人才能自己弃城；
+    //   期内只能 [赎回]。弃城与普通 [弃城] 同口径：物理删除城市、坐标恢复原地形，不可恢复。
+    //   按钮显隐由后端 `can_abandon_occupy` 驱动（保护期没到就不显示，零冗余文案）。
+    async doAbandonOccupied (ct) {
+      // 与 doRansom 共用同一把锁：请求未返回前连点直接忽略
+      if (this.ransomBusy) return
+      this.ransomBusy = true
+      try {
+        if (!await this.ask(`确定放弃被占领的城市[${ct.name}](${ct.x},${ct.y})吗？\n` +
+          '该城市的建筑、部队、军官、野地都会一并消失，坐标恢复为原地形。\n' +
+          '此操作不可恢复，弃城后这座城市不会再返还给你！')) return
+        const r = await api.post('/games/ezfy/city/occupied/abandon', { city_id: ct.id })
+        this.alert(r, r && r.code === 0 ? '已弃城' : '弃城失败')
+        this.go('cities')
+      } finally {
+        this.ransomBusy = false
+      }
+    },
     async doRansomHandle (rm, op) {
       // ★ 2026-10-15 赎城防抖（与 doRansom 同一把锁）：请求未返回前连点直接忽略
       if (this.ransomBusy) return
@@ -5969,17 +5998,34 @@ export default {
       // ★ 防御兵种(type=4) 固定阵地：前进/停止一律按「停止」提交
       const defIds = {}
       ;(this.troopsData.cfgs || []).forEach(c => { if (c.type === 4) defIds[c.id] = true })
+      // ★ 2026-10-28 防守数量上限 = 系统配置「单城兵力上限」；按**当前城**保存（每城一套配置）
+      const max = this.troopsData.troop_max || 0
+      const cid = this.city && this.city.id ? this.city.id : 0
       for (const tid in this.targetCfg) {
         const t = this.targetCfg[tid]
         const isDef = !!defIds[parseInt(tid)]
+        // 留空 / 0 = 全部；负数当 0；超过上限按上限（服务端还会再夹一次）
+        let dc = parseInt(t.defCount, 10)
+        if (!dc || dc < 0) dc = 0
+        if (max > 0 && dc > max) dc = max
+        // 夹完回写界面：手机上粘贴了一个超大数，保存后立刻看到被收窄成上限值（不留错觉）
+        const shown = dc > 0 ? dc : ''
+        if (t.defCount !== shown) t.defCount = shown
         list.push(api.post('/games/ezfy/targets', {
+          city_id: cid,
           troop_id: parseInt(tid), atk_target_troop: t.atk,
           atk_move: isDef ? 0 : t.atkMove,
           def_target_troop: t.def,
-          def_move: isDef ? 0 : t.defMove
+          def_move: isDef ? 0 : t.defMove,
+          def_count: dc
         }))
       }
-      Promise.all(list).then(() => this.notify('战斗配置已保存'))
+      // ★ 2026-10-28 不再「无论成败都提示已保存」：有失败就把后端文案弹出来（缺列/城已丢等）
+      Promise.all(list).then(rs => {
+        const bad = (rs || []).filter(r => r && r.code !== 0)
+        if (bad.length) this.notify((bad[0] && bad[0].msg) || '保存失败，请重试')
+        else this.notify('战斗配置已保存')
+      })
     },
     openOrder (o) {
       this.loadOrderView(o.id)
@@ -8776,6 +8822,14 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-tgt-name { font-weight: bold; color: #2f4156; margin-bottom: 2px; }
 .ezfy-page .ezfy-tgt-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
 .ezfy-page .ezfy-tgt-lab { color: #666; min-width: 56px; display: inline-block; }
+/* ★ 2026-10-28 司令部·「防守数量」输入框：手机手指能点中（高 30px），
+   宽度固定不挤占后面的「城内 N」；桌面端同样观感一致。 */
+.ezfy-page .ezfy-tgt-num {
+  width: 100px; height: 30px; padding: 0 6px; box-sizing: border-box;
+  border: 1px solid #c9d2dc; border-radius: 3px; background: #fff; color: #333;
+  font-size: var(--fs); line-height: 28px;
+}
+.ezfy-page .ezfy-tgt-num:focus { border-color: #2f6fb3; outline: none; }
 /* 页面内消息（替代 alert 弹窗）：现在由 msgStyle 固定定位在点击点附近 */
 .ezfy-page .ezfy-msg {
   padding: 4px 8px; border-radius: 3px;

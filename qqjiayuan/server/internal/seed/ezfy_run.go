@@ -52,6 +52,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyMapArea{}, &model.EzfyMapTile{}, &model.EzfyMapStar{}, &model.EzfyActWild{},
 	&model.EzfyActLevel{},
 	&model.EzfyActCaptureTry{}, // ★ 2026-10-25 活动守将「兜底被俘次数」进度（玩家×守将 胜场数）
+	&model.EzfyActCaptureLog{}, // ★ 2026-10-28 活动守将「可抓次数」抓取流水（只增不删）
 	// —— 出征 / 战斗 / 战报 ——
 	&model.EzfyOrder{}, &model.EzfyBattle{}, &model.EzfyReport{},
 	&model.EzfyWildland{}, &model.EzfyOccupy{}, &model.EzfyWounded{},
@@ -110,6 +111,9 @@ func RunEzfy(db *gorm.DB, homeDB *gorm.DB) {
 	EnsureEzfyLimitColumns(db)
 	EnsureEzfyRansomTable(db)
 	EnsureEzfyVisitTable(db)
+	// ★ 2026-10-28 活动守将抓取流水表（「可抓次数」的计数依据）：新表只靠 AutoMigrate 建，
+	//   半旧库上补一次，否则流水写不进去 → 可抓次数恒为 0 → 能无限抓。
+	EnsureEzfyActCaptureLogTable(db)
 	EnsureEzfyAccountTable(db)
 	EnsureEzfyOfficerColumns(db)
 	EnsureEzfyBattleLockColumns(db)

@@ -1376,7 +1376,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 					name = cfg.Name
 				}
 				return "城市正在被敌军攻击(指挥中), 参战部队「" + name +
-					"」不能出征；如不想让它参战, 可在司令部设为「不参与防御」"
+					"」不能出征；如不想让它参战, 可在司令部设为「避战」"
 			}
 		}
 	}
@@ -3677,7 +3677,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	wildDefOfficerDesc := ""
 
 	defender := []ezfyUnitGroup{}
-	var defExclude map[int]bool // 城市「不参与防御」兵种集合（case 3 里填充，驻军战块后构建友军守军时用）
+	var defExclude map[int]bool // 城市「不参与」兵种集合（case 3 里填充，驻军战块后构建友军守军时用）
+	// ★ 2026-10-28 城市「兵种防守数量」配置（case 3 里填充）：实际参战 = min(城内, 配置)。
+	var defCaps map[int]int64
 	targetName := ""
 	var lootFood, lootSteel, lootOil, lootRare, lootGold int64
 	win := false
@@ -3936,9 +3938,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 		}
 		targetName = target.Name
-		// ★ 排除「不参与防御」的兵种：被攻击时防御战斗兵种列表不含它们
+		// ★ 排除「不参与」的兵种：被攻击时防御战斗兵种列表不含它们
 		//   （友军自身守军在这里构建；盟友驻军队列在下方「驻军串行战」先打完）
 		defExclude = h.defExcludeSet(target.ID)
+		// ★ 2026-10-28 兵种防守数量：城内有 1000 万、司令部只配 100 万 → 只有 100 万参战
+		//   （剩下的照常留在城里，不参战也就不会按本场战损被扣）。
+		defCaps = h.defCapMap(target.ID)
 		defTech := h.techMap(target.ID)
 		// ★★ 2026-10-09 用户规则（「两个号都是满科技，战斗加成理论上应该一样」）：
 		//   守方防御**不再叠加城墙**（建筑7 ×5%/级）—— 原来守方比攻方凭空多一截城墙，
@@ -4065,7 +4070,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		allShotDown := false
 		if order.TargetType == 3 && target != nil && target.UserID > 0 && target.UserID != uid {
 			defMap := h.troopMap(target.ID)
-			defRecon := defMap[ezfyReconPlaneTroopID]
+			// ★ 2026-10-28 侦察机也吃「防守数量」：司令部把侦察机防守数量配成 N 时，
+			//   升空拦截的最多 N 架（与主战场口径一致，没配 = 全部）。
+			defRecon := defCountOf(defMap[ezfyReconPlaneTroopID], defCaps, ezfyReconPlaneTroopID)
 			if defRecon > 0 && !defExclude[ezfyReconPlaneTroopID] {
 				var atkRecon []ezfyUnitGroup
 				for _, g := range attacker {
@@ -4324,9 +4331,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		if !garrisonStopped {
 			// 驻军全部被打完后，才轮到友军自身部队
+			// ★ 2026-10-28 每兵种按「防守数量」封顶：min(城内数量, 司令部配置)，未配 = 全部。
 			for tid, count := range h.troopMap(target.ID) {
 				if count > 0 && !defExclude[tid] {
-					defender = append(defender, ezfyUnitGroup{TroopId: tid, Count: count})
+					defender = append(defender, ezfyUnitGroup{TroopId: tid, Count: defCountOf(count, defCaps, tid)})
 				}
 			}
 		}
@@ -5549,9 +5557,10 @@ func (h *EzfyHandler) buildMoveMap(cityId uint, atk bool) map[int]int {
 	return m
 }
 
-// defExcludeSet 城市「不参与防御」的兵种集合（司令部「防守」= 不参与防御，def_move = -1）。
+// defExcludeSet 城市「避战」的兵种集合（司令部「防守」= 避战，def_move = -1）。
 //
-// ★ （2026-09-23）：被攻击时，防御战斗的兵种列表**不包含**标记了「不参与防御」的兵种。
+// ★ （2026-09-23）：被攻击时，防御战斗的兵种列表**不包含**标记了「避战」的兵种。
+// ★ 2026-10-28：文案两易其名（不参与防御 → 不参与 → 避战），值始终是 -1，功能不变。
 func (h *EzfyHandler) defExcludeSet(cityId uint) map[int]bool {
 	m := map[int]bool{}
 	if cityId <= 0 {
@@ -5563,6 +5572,44 @@ func (h *EzfyHandler) defExcludeSet(cityId uint) map[int]bool {
 		m[t.TroopId] = true
 	}
 	return m
+}
+
+// defCapMap 城市「兵种防守数量」配置（司令部「兵种战斗配置」→ 每个兵种一行「防守数量」）。
+//
+// ★★ 2026-10-28 用户规则：
+//
+//	· 每个兵种可单独设置参与防御的兵力**上限**，默认「全部」；
+//	· 实际参战 = min(城内该兵种数量, 配置值)：城内多于配置就按配置打，少于配置就按实际打；
+//	· 上限 = 系统配置「单城兵力上限」（保存时已夹取，这里不再重复判）；
+//	· **城市维度**（ezfy_city_target.city_id），每座城各一套，互不影响。
+//
+// 只返回「配置值 > 0」的兵种；map 里没有 = 全部（保持改造前的行为）。
+func (h *EzfyHandler) defCapMap(cityId uint) map[int]int64 {
+	m := map[int]int64{}
+	if cityId <= 0 {
+		return m
+	}
+	var list []model.EzfyCityTarget
+	h.DB.Where("city_id = ? AND def_count > 0", cityId).Find(&list)
+	for _, t := range list {
+		if t.DefCount > 0 {
+			m[t.TroopId] = t.DefCount
+		}
+	}
+	return m
+}
+
+// defCountOf 该兵种实际参战兵力 = min(城内数量, 防守数量配置)。
+//
+// caps 里没有该兵种（或配置 <= 0）→ 视为「全部」，直接返回城内数量。
+func defCountOf(count int64, caps map[int]int64, troopId int) int64 {
+	if count <= 0 {
+		return 0
+	}
+	if c := caps[troopId]; c > 0 && count > c {
+		return c
+	}
+	return count
 }
 
 // cityDefendLocked 城市正在被敌军攻击（防御指挥室进行中）时，返回「参战兵种」集合。

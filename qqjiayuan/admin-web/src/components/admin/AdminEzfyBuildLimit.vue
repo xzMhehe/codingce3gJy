@@ -306,6 +306,16 @@
               <template slot="label">赎城金额(钻石)<el-tooltip placement="top" :content="tips.ransom_cost"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.ransom_cost" :min="1" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-28 占领保护期（默认 28 小时，原主人期满才能弃城） -->
+            <el-form-item>
+              <template slot="label">占领保护期(小时)<el-tooltip placement="top" :content="tips.occupy_protect_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.occupy_protect_h" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <!-- ★ 2026-10-28 占领方建立/摧毁冷却（默认 24 小时，与上面的弃城保护期互相独立） -->
+            <el-form-item>
+              <template slot="label">占领方处置冷却(小时)<el-tooltip placement="top" :content="tips.occupy_finalize_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.occupy_finalize_h" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-09-28 用户规则：安抚固定花费 + 冷却，四个值都可配 -->
             <el-divider content-position="left">安抚（民心/民怨）</el-divider>
             <el-form-item>
@@ -610,6 +620,8 @@ export default {
         troop_max: 1000000000, wound_expire_days: 5, dispatch_period_h: 4,
         march_speed_bonus: 0,
         conquer_feelings_max: 2, loot_feelings: 2, ransom_cost: 500,
+        // ★ 2026-10-28 占领保护期小时数（默认 28，原主人期满才能弃城）+ 占领方处置冷却（默认 24）
+        occupy_protect_h: 28, occupy_finalize_h: 24,
         // ★ 2026-10-27 人机征服扣民心上限（默认 100 = 直接打光）
         bot_conquer_feelings_max: 100,
         // ★ 2026-10-13 回合战斗公式（默认 = 移植前的硬编码值：40 / 6000 / 10000 / 50 / 50）
@@ -714,7 +726,7 @@ export default {
           'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_sec', 'act_treasure_cooldown_sec', 'act_item_cooldown_sec', 'move_cool_h'],
         battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
           'garrison_break_pct', 'battle_round_ms', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base',
-          'min_dmg_coeff', 'conquer_feelings_max', 'bot_conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'placate_gold',
+          'min_dmg_coeff', 'conquer_feelings_max', 'bot_conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'occupy_protect_h', 'occupy_finalize_h', 'placate_gold',
           'placate_grievance', 'placate_feelings', 'placate_cooldown_min', 'feelings_recover_seconds', 'feelings_drop_seconds', 'officer_salary_per_level',
           'speed_train_on', 'speed_train_rate', 'res_max_food', 'res_max_steel', 'res_max_oil',
           'res_max_rare', 'res_max_gold'],
@@ -780,6 +792,8 @@ export default {
         def_base: '伤害公式的防御加值，默认 10。防止防御为 0 时公式异常。',
         min_dmg_coeff: '最小伤害系数，默认 5：单支部队最小伤害 = 兵力数量 × 该值。',
         ransom_cost: '被占城市原主人赎城需先支付的钻石押金（拒绝或撤销自动退回，同意后归占领方），默认 500。',
+        occupy_protect_h: '城市被占领后的保护期（小时），默认 28。期内原主人只能「赎回」；期满后原主人可自己「弃城」（物理销毁、坐标恢复原地形）。',
+        occupy_finalize_h: '占领方占领后多久才能对这座城市「建立 / 摧毁」（小时），默认 24。与上面的「占领保护期」互相独立，可分别设置（默认 24 < 28：占领方先能处置，原主人还只能赎回）。',
         // ★ 2026-09-28 安抚：民心 + 税率 = 100 为基准，安抚只是临时顶一下民心、压一压民怨
         placate_gold: '每次安抚消耗的黄金，默认 5 万。',
         placate_grievance: '每次安抚降低的民怨值，默认 2。',
@@ -950,6 +964,9 @@ export default {
             bot_conquer_feelings_max: pos(r.data.bot_conquer_feelings_max, 100),
             loot_feelings: pos(r.data.loot_feelings, 2),
             ransom_cost: pos(r.data.ransom_cost, 500),
+            // ★ 2026-10-28 占领保护期（默认 28，原主人弃城）+ 占领方处置冷却（默认 24）
+            occupy_protect_h: pos(r.data.occupy_protect_h, 28),
+            occupy_finalize_h: pos(r.data.occupy_finalize_h, 24),
             // ★ 2026-10-13 回合战斗公式：0 无意义 → pos 回落各自默认
             battle_max_rounds: pos(r.data.battle_max_rounds, 40),
             battle_start_dist: pos(r.data.battle_start_dist, 6000),

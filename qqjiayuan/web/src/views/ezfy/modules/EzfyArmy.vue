@@ -113,6 +113,8 @@
           </div>
           <div class="panel-title" v-show="ezfy.hqTab === 0">兵种战斗配置</div>
           <div v-show="ezfy.hqTab === 0">
+          <!-- ★ 2026-10-28 一句话说明「防守数量」（不写进每个兵种块，手机上省空间） -->
+          <div class="old-line gray">防守数量：留空 = 全部参战；填 N = 最多 N 个参战（城内不足 N 就按实际）。</div>
           <!-- ★ 一个兵种一块（原来 5 列固定宽度表格在手机上会互相遮盖） -->
           <div class="ezfy-tgt-block" v-for="t in ezfy.troopsData.cfgs" :key="'cfg' + t.id">
             <div class="ezfy-tgt-name">
@@ -123,7 +125,9 @@
               <span class="ezfy-tgt-lab">进攻目标</span>
               <select v-model="ezfy.targetCfg[t.id].atk" style="width:110px">
                 <option :value="0">最近</option>
-                <option v-for="tt in ezfy.troopsData.cfgs" :key="'a' + tt.id" :value="tt.id">{{ tt.name }}</option>
+                <!-- ★ 2026-10-28 目标下拉用**基础兵种名**（步兵/重型坦克），不用阵营名（虎式重型坦克）：
+                     这里选的是敌方兵种类型，跟战场指挥室的目标下拉同口径 -->
+                <option v-for="tt in ezfy.troopsData.cfgs" :key="'a' + tt.id" :value="tt.id">{{ tt.base_name || tt.name }}</option>
               </select>
               <span class="ezfy-tgt-lab">进攻</span>
               <select v-model="ezfy.targetCfg[t.id].atkMove" style="width:80px"
@@ -135,13 +139,25 @@
               <span class="ezfy-tgt-lab">防守目标</span>
               <select v-model="ezfy.targetCfg[t.id].def" style="width:110px">
                 <option :value="0">最近</option>
-                <option v-for="tt in ezfy.troopsData.cfgs" :key="'d' + tt.id" :value="tt.id">{{ tt.name }}</option>
+                <option v-for="tt in ezfy.troopsData.cfgs" :key="'d' + tt.id" :value="tt.id">{{ tt.base_name || tt.name }}</option>
               </select>
               <span class="ezfy-tgt-lab">防守</span>
-              <select v-model="ezfy.targetCfg[t.id].defMove" style="width:110px"
+              <select v-model="ezfy.targetCfg[t.id].defMove" style="width:96px"
                       :disabled="ezfy.isDefenceTroop(t)">
-                <option :value="1">前进</option><option :value="0">停止</option><option :value="-1">不参与防御</option>
+                <option :value="1">前进</option><option :value="0">停止</option>
+                <option :value="-2">后退</option><option :value="-1">避战</option>
               </select>
+            </div>
+            <!-- ★★ 2026-10-28 兵种防守数量（城市维度，每城一套）：留空 = 全部；
+                 填了就是「参与防御的兵力上限」——城内部队比它多就按它打，比它少就按实际打。
+                 上限 = 后台「系统配置 → 单城兵力上限」（服务端也会再夹一次，手机端粘贴大数不会写脏）。 -->
+            <div class="ezfy-tgt-row">
+              <span class="ezfy-tgt-lab">防守数量</span>
+              <input type="number" inputmode="numeric" min="0" class="ezfy-tgt-num"
+                     :max="ezfy.troopsData.troop_max || undefined"
+                     v-model.number="ezfy.targetCfg[t.id].defCount"
+                     placeholder="全部">
+              <span class="gray">城内 {{ ezfy.fmtBig(ezfy.troopCount(t.id)) }}</span>
             </div>
           </div>
           <div class="old-line"><a href="javascript:;" @click="ezfy.doSaveTargets">[保存全部配置]</a></div>
@@ -267,7 +283,7 @@
             <div class="of-sec">③ 选择兵力</div>
             <!-- ★ 2026-10-09 本城正在被敌军攻击（指挥中）时，参战守军不能出征（同出征页口径）。 -->
             <div class="old-line red" v-if="ezfy.orderCalc && ezfy.orderCalc.def_locked">
-              城市正在被敌军攻击(指挥中)：参战部队不能出征；司令部设为「不参与防御」的兵种不受影响。
+              城市正在被敌军攻击(指挥中)：参战部队不能出征；司令部设为「避战」的兵种不受影响。
             </div>
             <div class="of-rows">
               <div class="of-row" v-for="t in ezfy.trainCfgs" :key="'pt' + t.id"

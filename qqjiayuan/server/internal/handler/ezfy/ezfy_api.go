@@ -508,6 +508,10 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 		f, s, o, r := h.trainCostWithActivity(t.Food, t.Steel, t.Oil, t.Rare)
 		cfgViews = append(cfgViews, gin.H{
 			"id": t.ID, "name": ezfyCfg.troopName(t.ID, camp), "type": t.Type,
+			// ★ 2026-10-28 基础兵种名（不带阵营色彩）：司令部「进攻/防守目标」下拉用它 ——
+			//   选的是**敌方兵种类型**，用阵营名（虎式重型坦克）去指代敌方同类兵种会让人对不上，
+			//   与战场指挥室 target_options 同口径（那边 2026-10-05 就统一成基础名了）。
+			"base_name": t.Name,
 			"health": t.Health, "defence": t.Defence, "speed": t.Speed, "attack_range": t.AttackRange,
 			"carry": t.Carry, "pop": t.Pop, "require": t.Require,
 			"atk_sea": t.AtkSea, "atk_ground": t.AtkGround, "atk_air": t.AtkAir, "atk_def": t.AtkDef,
@@ -566,6 +570,9 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 		"pop": city.Pop, "pop_used": popUsed, "cfgs": cfgViews,
 		// ★ 2026-10-14 伤兵营钻石一键恢复全部伤兵的单价（系统配置可配，默认 100）
 		"heal_all_diamond": ezfyHealAllDiamondCost(),
+		// ★ 2026-10-28 司令部「兵种战斗配置 → 防守数量」的输入上限 =
+		//   系统配置「单城兵力上限」(ezfy_cfg_limit.troop_max)，前端 input 的 max 用它。
+		"troop_max": ezfyTroopMaxCfg(),
 		// ★ 2026-10-13 待恢复人口（空闲人口 = 人口 − 占用 − 待恢复 + 额外空闲，见 ezfyPopFree）
 		"pop_recover":        city.PopRecover,
 		"pop_extra":          city.PopExtra,
@@ -1313,10 +1320,17 @@ func (h *EzfyHandler) ProduceSet(c *gin.Context) {
 func (h *EzfyHandler) Targets(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
-	city := h.getOrCreateCity(uid)
+	// ★ 2026-10-28 兵种战斗配置是**城市维度**的：支持 ?city_id= 显式指定，
+	//   不传则回落「当前城」（与 /troops 同口径，前端两个接口一起加载不会错位）。
+	cityId, _ := strconv.ParseInt(c.Query("city_id"), 10, 64)
+	city := h.bodyCity(uid, cityId)
+	if city == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
 	var list []model.EzfyCityTarget
 	h.DB.Where("city_id = ?", city.ID).Find(&list)
-	resp.OK(c, gin.H{"targets": list})
+	resp.OK(c, gin.H{"targets": list, "city_id": city.ID})
 }
 
 func (h *EzfyHandler) SaveTarget(c *gin.Context) {
@@ -1328,6 +1342,8 @@ func (h *EzfyHandler) SaveTarget(c *gin.Context) {
 		AtkMove        int   `json:"atk_move"`
 		DefTargetTroop int   `json:"def_target_troop"`
 		DefMove        int   `json:"def_move"`
+		// ★ 2026-10-28 兵种防守数量：0 / 不传 = 全部（默认），>0 = 参战兵力上限
+		DefCount int64 `json:"def_count"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1344,22 +1360,50 @@ func (h *EzfyHandler) SaveTarget(c *gin.Context) {
 		resp.ParamError(c, "兵种不存在")
 		return
 	}
+	// ★★ 2026-10-28 防守数量夹取：负数归 0（= 全部），上限 = 系统配置「单城兵力上限」。
+	//   前端输入框也带 max，但服务端必须自己卡（手机端可能绕过/粘贴大数）。
+	if req.DefCount < 0 {
+		req.DefCount = 0
+	}
+	if max := ezfyTroopMaxCfg(); max > 0 && req.DefCount > max {
+		req.DefCount = max
+	}
 	// ★ 防御兵种(type=4 城防：碉堡/榴弹炮/反坦克炮/防空炮…) 固定阵地，
 	//   前进/停止一律按「停止」落库，前端也不给选。
 	if tc.Type == 4 {
 		req.AtkMove = 0
 		req.DefMove = 0
 	}
+	// ★ 2026-10-28 防守指令只认 4 种：1 前进 / 0 停止 / -2 后退 / -1 不参与。
+	//   其它值（老客户端/手改请求）一律回落「前进」，避免落库出引擎看不懂的脏值。
+	switch req.DefMove {
+	case 1, 0, ezfyDefMoveBack, ezfyDefMoveNone:
+	default:
+		req.DefMove = 1
+	}
+	if req.AtkMove != 0 {
+		req.AtkMove = 1
+	}
 	var t model.EzfyCityTarget
 	if err := h.DB.Where("city_id = ? AND troop_id = ?", city.ID, req.TroopId).First(&t).Error; err != nil {
 		t = model.EzfyCityTarget{CityId: int64(city.ID), TroopId: req.TroopId,
 			AtkTargetTroop: req.AtkTargetTroop, AtkMove: req.AtkMove,
-			DefTargetTroop: req.DefTargetTroop, DefMove: req.DefMove}
-		h.DB.Create(&t)
+			DefTargetTroop: req.DefTargetTroop, DefMove: req.DefMove,
+			DefCount: req.DefCount}
+		if err := h.DB.Create(&t).Error; err != nil {
+			// ★ 2026-10-28 不再忽略 Create 的 error：缺列（1054）时玩家会看到
+			//   「保存成功」但其实什么都没存，正是「写入静默失败」的老坑。
+			resp.ParamError(c, "战斗配置保存失败，请稍后重试")
+			return
+		}
 	} else {
-		h.DB.Model(&model.EzfyCityTarget{}).Where("id = ?", t.ID).Updates(map[string]interface{}{
+		if err := h.DB.Model(&model.EzfyCityTarget{}).Where("id = ?", t.ID).Updates(map[string]interface{}{
 			"atk_target_troop": req.AtkTargetTroop, "atk_move": req.AtkMove,
-			"def_target_troop": req.DefTargetTroop, "def_move": req.DefMove})
+			"def_target_troop": req.DefTargetTroop, "def_move": req.DefMove,
+			"def_count": req.DefCount}).Error; err != nil {
+			resp.ParamError(c, "战斗配置保存失败，请稍后重试")
+			return
+		}
 	}
 	resp.OK(c, gin.H{"msg": "战斗配置已保存"})
 }

@@ -1283,34 +1283,62 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 }
 
 // ============ 被占城市管理 ============
-
-// ezfyOccupyFinalizeCd 占领后多久才能对这座城市做「最终处置」（建立 / 摧毁）。
 //
-// ★ 2026-10-25 用户需求演变（结论就是现在这样，别再反复了）：
+// ★★ 2026-10-28 用户规则（两个**独立**的时长，别再合并成一个）：
+//
+//	「占领方 建立 摧毁 不能和 原主人的 [弃城] 一起，要单独自己的配置 默认 24 小时」
+//
+//	① `occupy_finalize_h`（默认 **24h**）：**占领方**多久才能 [建立] / [摧毁]；
+//	② `occupy_protect_h`（默认 **28h**）：**原主人**多久才能 [弃城]（期内只能 [赎回]）。
+//
+//	两者互不推导：占领方到 24h 就能处置，但原主人要到 28h 才能弃城 ——
+//	中间那 4 小时是「占领方已能建/拆、原主人还只能赎」的窗口，属于刻意留的缓冲。
+//
+// ★ 2026-10-25 历史结论（建立/摧毁为什么共用同一个冷却，别再拆）：
 //  1. 最初：「占领后 摧毁 必须在占领 24 小时后才能点，给赎回的人点时间」；
 //  2. 中途说过「建立 别卡 24 小时没必要」→ 短暂只卡摧毁；
-//  3. 最后：「建立 也得卡 24 小时……加回来吧」→ **建立 + 摧毁都卡 24 小时**。
+//  3. 最后：「建立 也得卡 24 小时……加回来吧」→ **建立 + 摧毁都卡**。
 //
 // 理由：建立会把 `city.user_id` 过户给占领方、occupy 直接置终态，原主人从此再也赎不回来；
-// 只卡摧毁不卡建立 = 留个后门，冷却形同虚设。所以两个动作共用同一个冷却。
+// 只卡摧毁不卡建立 = 留个后门，冷却形同虚设。所以两个动作共用**占领方**这一个冷却。
 // `return`（归还）不卡 —— 对原主人有利，没必要拦。
+
+// ezfyOccupyFinalizeDur 占领方处置冷却（读 occupy_finalize_h，默认 24 小时）：建立/摧毁。
+func ezfyOccupyFinalizeDur() time.Duration {
+	return time.Duration(ezfyOccupyFinalizeH()) * time.Hour
+}
+
+// ezfyOccupyProtectDur 原主人弃城保护期（读 occupy_protect_h，默认 28 小时）。
 //
-// 改这个值只需改这里：拒绝文案由常量推导，前端由 `can_finalize` 驱动。
-const ezfyOccupyFinalizeCd = 24 * time.Hour
+//	期内原主人只能 [赎回]；期满后才能 [弃城]（物理销毁，坐标恢复原地形）。
+func ezfyOccupyProtectDur() time.Duration {
+	return time.Duration(ezfyOccupyProtectH()) * time.Hour
+}
 
-// ezfyOccupyFinalizeLeft 距离可处置（建立/摧毁）还剩多久；<=0 表示已可操作。
+// ezfyOccupyFinalizeLeft 占领方距离可处置（建立/摧毁）还剩多久；<=0 表示已可操作。
 func ezfyOccupyFinalizeLeft(o *model.EzfyOccupy) time.Duration {
-	return ezfyOccupyFinalizeCd - time.Since(o.CreatedAt)
+	return ezfyOccupyFinalizeDur() - time.Since(o.CreatedAt)
 }
 
-// ezfyOccupyFinalizeCdText 冷却时长的中文文案（「24小时」），用于拒绝提示。
-// 整小时就写「N小时」（24h 不写「1天」，玩家看「占领满24小时」比「满1天」直观）。
-func ezfyOccupyFinalizeCdText() string {
-	if ezfyOccupyFinalizeCd%time.Hour == 0 {
-		return fmt.Sprintf("%d小时", int(ezfyOccupyFinalizeCd.Hours()))
-	}
-	return ezfyDurationText(int64(ezfyOccupyFinalizeCd.Seconds()))
+// ezfyOccupyProtectLeft 原主人距离可弃城还剩多久；<=0 表示已可弃城。
+func ezfyOccupyProtectLeft(o *model.EzfyOccupy) time.Duration {
+	return ezfyOccupyProtectDur() - time.Since(o.CreatedAt)
 }
+
+// ezfyOccupyDurText 把时长写成中文文案（整小时写「N小时」，否则走 ezfyDurationText）。
+// 整小时不写「1天」，玩家看「占领满28小时」比「满1天」直观。
+func ezfyOccupyDurText(d time.Duration) string {
+	if d%time.Hour == 0 {
+		return fmt.Sprintf("%d小时", int(d.Hours()))
+	}
+	return ezfyDurationText(int64(d.Seconds()))
+}
+
+// ezfyOccupyFinalizeCdText 占领方处置冷却文案（「24小时」），用于拒绝提示。
+func ezfyOccupyFinalizeCdText() string { return ezfyOccupyDurText(ezfyOccupyFinalizeDur()) }
+
+// ezfyOccupyProtectCdText 原主人弃城保护期文案（「28小时」），用于拒绝提示。
+func ezfyOccupyProtectCdText() string { return ezfyOccupyDurText(ezfyOccupyProtectDur()) }
 
 func (h *EzfyHandler) OccupyList(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -1444,6 +1472,86 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 	default:
 		resp.ParamError(c, "未知操作")
 	}
+}
+
+// OccupyAbandon POST /city/occupy/abandon {city_id}
+//
+// 被占领城市的**原主人**在保护期满后自己弃城：与普通 [弃城] 完全同口径 ——
+// 物理删除城市（建筑/部队/军官/野地/队列全清），坐标恢复原地形（平原 / 沿海平原）。
+//
+// ★ 2026-10-28 用户规则（原话）：「二战自己的城市被占领，28 小时 [赎城] 加一个 [弃城]
+// 操作，可以自己弃城，这个 28 小时默认，可以二战系统配置配置」。
+//
+//	保护期内（占领未满 N 小时）：原主人只能 [赎回]，占领方也不能建立/摧毁 —— 双方都等满；
+//	保护期满：原主人可 [弃城]（这城我不要了），占领方可 [建立]/[摧毁]。
+//
+// 卡控与普通弃城一致：至少保留一座城、不能是当前所在城；再加玩家级 2 秒防抖。
+func (h *EzfyHandler) OccupyAbandon(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	// ★ 2026-10-28 必须先加载配置缓存：保护期小时数读 ezfy_cfg_limit.occupy_protect_h，
+	//   进程刚起、首个请求就是弃城时缓存还是零值 → 会误用默认 28 小时（与后台配置不符）。
+	h.cfgs()
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.CityId <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if !ezfyActionThrottle(uid, "occupy_abandon", 2000) {
+		resp.FailData(c, 429, "操作太快了，请稍后再试", nil)
+		return
+	}
+	// ⚠️ 不能用 cityOf/bodyCity：它们把「被占领」当成不可操作直接返回 nil，
+	//   而这里要操作的恰恰是被占领的城市 → 直接按 user_id 查。
+	var city model.EzfyCity
+	if err := h.DB.Where("id = ? AND user_id = ?", req.CityId, uid).First(&city).Error; err != nil {
+		resp.ParamError(c, "城市不存在")
+		return
+	}
+	var occ model.EzfyOccupy
+	if err := h.DB.Where("city_id = ? AND status = 1", city.ID).First(&occ).Error; err != nil {
+		resp.ParamError(c, "该城市未被占领, 无需弃城")
+		return
+	}
+	if occ.DefUserId != uid {
+		resp.ParamError(c, "只有城市原主人才能弃城")
+		return
+	}
+	// 保护期内只能赎回（★ 2026-10-28 与占领方「建立/摧毁」是**两个独立配置**：
+	//   这里读 occupy_protect_h（默认 28h），占领方那边读 occupy_finalize_h（默认 24h））
+	if left := ezfyOccupyProtectLeft(&occ); left > 0 {
+		resp.ParamError(c, fmt.Sprintf("占领满%s后才能弃城（还需 %s），期间可选择赎回",
+			ezfyOccupyProtectCdText(), ezfyDurationText(int64(left.Seconds()))))
+		return
+	}
+	// 至少保留一座城（与普通弃城同口径；被占城仍在自己名下，算在 owned 里）
+	var owned int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
+	if owned <= 1 {
+		resp.ParamError(c, "至少要保留一座城市")
+		return
+	}
+	// 不能弃当前所在城（被占城本来也切不过去，兜一层防旧页面/手工请求）
+	if cur := h.currentCity(uid); cur.ID == city.ID {
+		resp.ParamError(c, "不能放弃当前所在的城市，请先切换到别的城市")
+		return
+	}
+	atkUid := occ.AtkUserId
+	// ezfyDestroyCity 会顺带删掉该城的 occupy 记录 + 地图区域记录（坐标回到原地形）
+	if msg := h.ezfyDestroyCity(uid, &city); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	if atkUid != 0 {
+		h.addReport(atkUid, 5, "城市被原主人放弃",
+			fmt.Sprintf("你占领的城市[%s](%d,%d)已被原主人「%s」放弃并摧毁, 该坐标恢复为普通平原。",
+				city.Name, city.X, city.Y, h.ensureProfile(uid).Nickname))
+	}
+	ezfyViewCacheDel(uid)
+	ezfyPageCacheDel(uid)
+	ezfyPageCacheDel(atkUid)
+	resp.OK(c, gin.H{"msg": "城市「" + city.Name + "」已放弃并摧毁，该坐标恢复为原地形"})
 }
 
 // RansomCreate POST /city/ransom {city_id} —— 被占城市原主人**立即赎回**（无需占领方同意）
@@ -1992,7 +2100,9 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	for _, o := range occupies {
 		// ★ 2026-10-25 建立/摧毁冷却：前端按 can_finalize 决定是否显示 [建立][摧毁]
 		//   （不到时间就不显示 = 零文案，符合用户「简约提示，不要冗余提示」）
-		readyAt := o.CreatedAt.Add(ezfyOccupyFinalizeCd).UnixMilli()
+		// ★ 2026-10-28 这里读的是**占领方**的 occupy_finalize_h（默认 24h），
+		//   与原主人的 occupy_protect_h（默认 28h，弃城）互相独立。
+		readyAt := o.CreatedAt.Add(ezfyOccupyFinalizeDur()).UnixMilli()
 		occViews = append(occViews, gin.H{"id": o.ID, "x": o.X, "y": o.Y,
 			"city_id": o.CityId, "city_name": o.CityName, "def_user": nick[o.DefUserId],
 			"ready_at": readyAt, "can_finalize": nowMs >= readyAt})

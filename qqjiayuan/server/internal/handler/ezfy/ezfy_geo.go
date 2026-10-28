@@ -807,6 +807,42 @@ func ezfyRansomCost() int64 {
 	return ezfyRansomCostDefault
 }
 
+// ezfyOccupyProtectH 原主人弃城保护期小时数（读 ezfy_cfg_limit.occupy_protect_h，默认 28）
+//
+// ★ 2026-10-28 用户规则：「自己的城市被占领后 28 小时 [赎城] 加一个 [弃城]，可以自己弃城，
+// 这个 28 小时默认，可以二战系统配置配置」。
+//
+//	期内（占领未满 N 小时）：原主人只能 [赎回]，不能 [弃城]；
+//	期满后：原主人可 [弃城]（物理销毁、坐标恢复原地形）。
+//
+// ⚠️ 与 ezfyOccupyFinalizeH（占领方建立/摧毁，默认 24）是**两个独立配置**，不要互相推导：
+//
+//	「占领方 建立 摧毁 不能和 原主人的 [弃城] 一起，要单独自己的配置 默认 24 小时」。
+//
+// 0 或未配置时回落默认 28（0 = 一占领就能弃城，保护期形同虚设，视为非法配置）。
+func ezfyOccupyProtectH() int {
+	if n := ezfyCfg.limit.OccupyProtectH; n > 0 {
+		return n
+	}
+	return ezfyOccupyProtectHDef
+}
+
+// ezfyOccupyFinalizeH 占领方处置冷却小时数（读 ezfy_cfg_limit.occupy_finalize_h，默认 24）
+//
+// ★ 2026-10-28 用户规则：「占领方 建立 摧毁 不能和 原主人的 [弃城] 一起，要单独自己的配置
+// 默认 24 小时」→ 占领方占领后多久才能 [建立]/[摧毁]。
+//
+//	与原主人弃城保护期（ezfyOccupyProtectH，默认 28）**互相独立**：占领方可能先能处置，
+//	原主人还只能赎回（默认就是 24 < 28，中间 4 小时只有占领方能动）。
+//
+// 0 或未配置时回落默认 24（0 = 刚占就能拆，给原主人留的赎回时间形同虚设）。
+func ezfyOccupyFinalizeH() int {
+	if n := ezfyCfg.limit.OccupyFinalizeH; n > 0 {
+		return n
+	}
+	return ezfyOccupyFinalizeHDef
+}
+
 // ezfySysSellRatio 向系统出售资源的回收比例（每 100 单位 → 黄金）。
 //
 // ★ 2026-09-30 「玩家可向系统出售资源获得黄金，比例可配置」：
@@ -933,6 +969,12 @@ const (
 	ezfyFeelingsRecoverSecDef = 3600
 	ezfyFeelingsDropSecDef    = 3600
 	ezfyRansomCostDefault     = 500 // 赎城所需钻石（默认 500）
+	// ★ 2026-10-28 占领保护期小时数（默认 28）：期内原主人只能赎回，期满后才能自己弃城。
+	//   ★ 2026-10-28 补充：占领方的「建立/摧毁」是**另一个独立配置**（默认 24），见
+	//   ezfyOccupyFinalizeHDef —— 两个值互不推导。0 无意义 → 回落默认。
+	ezfyOccupyProtectHDef = 28
+	// ★ 2026-10-28 占领方处置冷却小时数（默认 24）：占领后多久才能 [建立]/[摧毁]。
+	ezfyOccupyFinalizeHDef = 24
 	ezfyOfficerSalaryDef      = 20  // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
 	ezfyWoundHealDivisorDef   = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
 	// ★ 商城单次购买数量上限（默认 999；2026-10-22 由 99 上调，线上原配置 15 也由 seed 一次性抬高）

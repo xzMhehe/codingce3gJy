@@ -117,6 +117,9 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	{"ezfy_bot_log", []string{"bot_uid"}},
 	// ★ 2026-10-25 活动守将「兜底被俘次数」进度（玩家 × 守将的胜场数）——纯玩家数据，删号必清
 	{"ezfy_act_capture_try", []string{"user_id"}},
+	// ★ 2026-10-28 活动守将「可抓次数」抓取流水（玩家 × 守将，只增不删）——纯玩家数据，删号必清。
+	//   不清的话：同一个 uid 重新注册/重建角色后，会继承「已经抓过」的次数而抓不到守将。
+	{"ezfy_act_capture_log", []string{"user_id"}},
 }
 
 // ezfyPurgeByCity 按**城市**归属的表（占位值 = 该玩家的城池 id 列表）。

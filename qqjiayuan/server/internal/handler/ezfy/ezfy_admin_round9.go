@@ -344,6 +344,14 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.SysSellFee <= 0 || lim.SysSellFee > 90 {
 		lim.SysSellFee = ezfySysSellFeeDefault
 	}
+	// ★ 2026-10-28 占领保护期小时数（默认 28，原主人弃城；0 无意义 → 回落默认）
+	if lim.OccupyProtectH <= 0 {
+		lim.OccupyProtectH = ezfyOccupyProtectHDef
+	}
+	// ★ 2026-10-28 占领方建立/摧毁冷却小时数（默认 24；0 无意义 → 回落默认）
+	if lim.OccupyFinalizeH <= 0 {
+		lim.OccupyFinalizeH = ezfyOccupyFinalizeHDef
+	}
 	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
 	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
@@ -391,6 +399,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		FeelingsDropSeconds    *int `json:"feelings_drop_seconds"`
 		// ★ 2026-10-07 赎城金额（钻石，默认 500；>= 1 才合法）
 		RansomCost *int `json:"ransom_cost"`
+		// ★ 2026-10-28 占领保护期小时数（默认 28；>= 1 才合法）：
+		//   原主人期满后才能自己弃城（期内只能赎回）。
+		OccupyProtectH *int `json:"occupy_protect_h"`
+		// ★ 2026-10-28 占领方建立/摧毁冷却小时数（默认 24；>= 1 才合法）：
+		//   与原主人的弃城保护期**互相独立**（用户要求「不能和原主人的弃城一起，要单独自己的配置」）。
+		OccupyFinalizeH *int `json:"occupy_finalize_h"`
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
 		PlacateGold           *int64 `json:"placate_gold"`
 		PlacateGrievance      *int   `json:"placate_grievance"`
@@ -882,6 +896,14 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	if !setPos(in.RansomCost, &lim.RansomCost, "赎城金额") {
+		return
+	}
+	// ★ 2026-10-28 占领保护期（默认 28 小时，原主人弃城）：0 无意义 → 只收 >= 1
+	if !setPos(in.OccupyProtectH, &lim.OccupyProtectH, "占领保护期") {
+		return
+	}
+	// ★ 2026-10-28 占领方建立/摧毁冷却（默认 24 小时）：0 无意义 → 只收 >= 1
+	if !setPos(in.OccupyFinalizeH, &lim.OccupyFinalizeH, "占领方处置冷却") {
 		return
 	}
 	if !setPos(in.OfficerSalaryPerLevel, &lim.OfficerSalaryPerLevel, "军官工资系数") {
@@ -1525,6 +1547,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}{
 		// ★ 2026-10-07 赎城金额：老库补列 + NULL/<=0 兜底 500（0 无意义 = 禁止赎城）
 		{"ransom_cost", ezfyRansomCostDefault},
+		// ★ 2026-10-28 占领保护期小时数：老库补列 + NULL/<=0 兜底 28（原主人弃城；0 无意义）
+		{"occupy_protect_h", ezfyOccupyProtectHDef},
+		// ★ 2026-10-28 占领方建立/摧毁冷却小时数：老库补列 + NULL/<=0 兜底 24（0 无意义）
+		{"occupy_finalize_h", ezfyOccupyFinalizeHDef},
 		// ★ 2026-10-22 驻军批量操作范围：老库补列 + NULL/0 兜底当前城市
 		{"garrison_batch_scope", ezfyGarrisonBatchScopeCurrent},
 		// ⚠️ default_continent 已移出本循环（2026-10-26）：0 现在是**合法值**（随机洲落），

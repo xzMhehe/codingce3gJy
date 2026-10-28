@@ -3,6 +3,7 @@ package ezfy
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -492,6 +493,73 @@ ON DUPLICATE KEY UPDATE wins = wins + 1, updated_at = VALUES(updated_at)`, uid, 
 	return n
 }
 
+// ezfyActCaptureUsed 该玩家对某守将的「已抓取次数」= 抓取流水条数（★ 2026-10-28 用户规则）。
+//
+// ★★ 口径变更（用户反馈）：「可抓次数配 1 次」是**针对玩家**的 —— 他抓住过一次，
+//
+//	就再也不能抓了；即使他抓到的那个守将后来被其他玩家抢走，也**不能**再抓。
+//	配置 N 次同理：抓 N 次（不管现在手里还剩几个）就封顶。
+//
+// ★ 旧实现为什么不对：原来数的是「该玩家当前拥有的该守将军官实例数」，
+//
+//	军官被抢走（PvP 俘虏/策反）后实例数归零 → 抓过的人又能再抓一次。
+//	现在数 ezfy_act_capture_log 的流水条数，**只增不减**（流水只插不删）。
+//
+// ★ 老数据兜底：流水表刚建时是空的（历史抓取没记过），此时按「当前拥有的
+//
+//	军官实例数」补记同样条数的 kind=2 流水，避免老玩家凭空多出一次机会；
+//	补记之后即使军官被抢走，流水仍在 → 不会再回退（这正是本次要修的点）。
+func (h *EzfyHandler) ezfyActCaptureUsed(uid uint, generalId int) int64 {
+	if uid == 0 || generalId <= 0 {
+		return 0
+	}
+	var used int64
+	h.DB.Model(&model.EzfyActCaptureLog{}).
+		Where("user_id = ? AND general_id = ?", uid, generalId).
+		Count(&used)
+	if used > 0 {
+		return used
+	}
+	// —— 老数据兜底：只在该玩家对该守将「一条流水都没有」时补记 ——
+	var had int64
+	// ★ 与旧口径一致：军校招募来的同池军官不算「抓过」，必须排掉 source = recruit。
+	h.DB.Model(&model.EzfyOfficer{}).
+		Where("general_id = ? AND source <> ? AND city_id IN (?)", generalId,
+			model.EzfyOfficerSourceRecruit,
+			h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id = ?", uid)).
+		Count(&had)
+	for i := int64(0); i < had; i++ {
+		h.ezfyActCaptureLogAdd(uid, generalId, 0, 0, 0, model.EzfyActCaptureKindMigrate)
+	}
+	return had
+}
+
+// ezfyActCaptureLogAdd 记一条抓取流水（★ 只增不删，这就是「可抓次数」的扣减）。
+//
+// kind：model.EzfyActCaptureKindBattle（战斗抓到）/ KindMigrate（老数据补记）。
+func (h *EzfyHandler) ezfyActCaptureLogAdd(uid uint, generalId, x, y int, cityId int64, kind int) {
+	if uid == 0 || generalId <= 0 {
+		return
+	}
+	if kind <= 0 {
+		kind = model.EzfyActCaptureKindBattle
+	}
+	// ★ 写入必须查 error：这张表要是没建出来（老库没跑建表），静默失败会让「可抓次数」
+	//   永远停在 0 → 玩家可以无限抓。宁可留日志也别无声无息。
+	if err := h.DB.Create(&model.EzfyActCaptureLog{
+		UserId: uid, GeneralId: generalId, X: x, Y: y, CityId: cityId, Kind: kind,
+	}).Error; err != nil {
+		log.Printf("【严重】活动守将抓取流水写入失败 user=%d general=%d: %v", uid, generalId, err)
+	}
+}
+
+// ezfyActCaptureFull 是否已达「同一玩家可抓次数」上限（maxCapture <= 0 = 不限）。
+//
+// ★ 唯一判定实现，便于测试；调用方不要再自己写 `used >= max`。
+func ezfyActCaptureFull(maxCapture int, used int64) bool {
+	return maxCapture > 0 && used >= int64(maxCapture)
+}
+
 // processActivityBattle 活动目标战斗结算（独立于普通野地/寇城流程，打赢不占领）
 func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, order *model.EzfyOrder,
 	now int64, actType int) {
@@ -941,9 +1009,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		//   CaptureRate=0 → 不俘虏；>0 → 按该百分比（100=必俘虏）。
 		// ★ 2026-09-30 同一玩家可抓次数上限（MaxCapture，默认 1）：
 		//   玩家已经抓到过该守将 ≥ 上限次数 → 本次概率强制 0（不再俘虏）。
-		//   判定口径：该玩家名下所有城里、general_id 为该守将、且是「真俘虏」（IsCaptive=1 或
-		//   已收编的也得算 —— 收编后 IsCaptive=0 但玩家已拥有，不能再抓）。
-		//   所以直接用「该玩家已拥有该守将的军官实例数」来算（含俘虏与收编，一次发放=1）。
+		// ★★ 2026-10-28 计数口径改为「累计抓到过几次」（ezfy_act_capture_log 流水条数，只增）：
+		//   用户规则 = 可抓次数是**针对玩家**的，抓住一次就计一次，即使之后被其他玩家抢走
+		//   也不能再抓。旧实现数「当前拥有的军官实例数」，被抢走会归零 → 抓过的人又能再抓。
+		//   同一个守将在哪个坐标打都算同一份计数（与「兜底被俘次数」同维度）。
 		// ★ 2026-10-24 配置来源 aw 启用优先，否则回退活动目标配置（同一套口径，按 general_id 统计与坐标无关）。
 		// ★ 2026-10-25 兜底被俘次数（min_capture_wins）：至少打赢该守将 N 次之后才可能被俘虏；
 		//   0 = 第一次打赢就按概率（默认）。未达标**静默不俘**，战报与用户端都不出现这个门槛。
@@ -954,23 +1023,14 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 				//   达标线（min_capture_wins）**只给运营看**，未达标时静默不俘 —— 战报里不提示，
 				//   用户端任何接口也不下发这个门槛（用户要求「不要展示到用户端」）。
 				wins := h.ezfyActCaptureWinAdd(uid, g.ID)
-				captures := 0
-				if defCfg.MaxCapture > 0 {
-					var had int64
-					// ★ 2026-10-06：军校招募的军官现在也写 general_id（= 池子 id，便于丢官追溯），
-					//   所以这里必须**排掉「军校招募」来源**，否则「从军校招过同一个池子军官」会被
-					//   误判成「已经抓过这个守将」而抓不了 —— 保持本次改动前的口径不变。
-					h.DB.Model(&model.EzfyOfficer{}).
-						Where("general_id = ? AND source <> ? AND city_id IN (?)", g.ID,
-							model.EzfyOfficerSourceRecruit,
-							h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id = ?", uid)).
-						Count(&had)
-					captures = int(had)
-				}
+				// ★ 2026-10-28 已抓次数（只增累计）。上限 = 0（不限）时**也要读**：
+				//   保证计数一直是真实的 —— 运营之后把「可抓次数」从 0 改成 N 时，
+				//   历史抓取次数不会从 0 重新算（玩家凭空多出机会）。
+				captures := h.ezfyActCaptureUsed(uid, g.ID)
 				rate := defCfg.CaptureRate
 				// ★ 2026-10-24 顺带修复：MaxCapture=0（不限）时 captures=0，旧写法 `captures >= 0` 恒真
 				//   会把概率强制归 0，等于「不限」反而永远抓不到 —— 只在上限 >0 时判达上限。
-				if defCfg.MaxCapture > 0 && captures >= defCfg.MaxCapture {
+				if ezfyActCaptureFull(defCfg.MaxCapture, captures) {
 					rate = 0 // 已达上限 → 概率 0
 					report += "\n" + g.Name + "已被你捕获达到上限，无法再次俘虏"
 				}
@@ -986,6 +1046,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 					}
 					if c := h.createCaptiveOfficer(city, g, level, true, rate, captiveLv); c != "" {
 						report += "\n" + c
+						// ★ 2026-10-28 抓到即记一条流水（**只增不删**）：这就是「可抓次数」的扣减，
+						//   即使之后这个守将被其他玩家抢走，本玩家的流水仍在、次数不会回退。
+						h.ezfyActCaptureLogAdd(uid, g.ID, order.TargetX, order.TargetY,
+							int64(city.ID), model.EzfyActCaptureKindBattle)
 						// ★ 2026-10-05 名将野地**按玩家判定**（用户纠正）：只有**已抓到该守将的玩家**
 						//   该坐标才是普通野地；对没抓到的玩家仍是名将野地。所以这里**不再全局禁用**——
 						//   全局禁用会害得其他没抓到的玩家也打不到名将野地。
