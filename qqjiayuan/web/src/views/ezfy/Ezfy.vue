@@ -3121,7 +3121,15 @@ export default {
       // ★ 2026-10-05 修复「切城后页面串数据（感觉所有城市都一样）」：
       //   城市真的变了（切城/弃城）就把按城缓存的页面数据清掉，避免渲染出上一座城的
       //   建筑/军队/野地；页面重新进入时 go() 会各自重新拉取。首页轮询时城市没变不清。
-      const cityChanged = !!d.city && (!this.city || d.city.id !== this.city.id)
+      // ★★ 2026-10-29 修复「刷新 ?cur=buildm / ?cur=builds 建筑全没了」：
+      //   刷新时 data 里的 city 还是初始空对象 {}（没有任何上一座城），旧写法
+      //   `!this.city || …` 会把它判成「换城了」→ 下面把 buildings/buildingPool 清空。
+      //   而 mounted 里 /view(load) 与 /buildings(restoreFromUrl→go→loadBuildings) 是**并发**的，
+      //   /view 更重、通常后到 → 把刚拉回来的建筑列表清成 []，且 /view 早已不下发 buildings
+      //   → 页面永久空白（必须再点一次「军事区/资源区」才恢复）。
+      //   真正换城 = 前后**都有** city.id 且不同；首次加载没有「上一座城」可清，不该清。
+      const prevCityID = (this.city && this.city.id) || 0
+      const cityChanged = !!d.city && prevCityID > 0 && d.city.id !== prevCityID
       this.city = d.city
       // ★ 2026-10-11 修复「首帧 city 未就绪 → 战报按 city_id=0 拉取显示暂无」：
       //   首次进入军情页时 /view 还没回来，restoreFromUrl→go('reports') 会用 city=undefined
@@ -3161,6 +3169,9 @@ export default {
         this.buildingPool = []
         this.wildlands = []
         this.queues = []
+        // ★ 2026-10-29 真换城且正停在建筑/军队/野地页时，清完立刻按当前页补拉一次：
+        //   否则会空白到 30s 轮询（或下次进页）才恢复。
+        this.reloadCityScopedData()
       }
       if (d.buildings !== undefined) this.buildings = d.buildings || []
       if (d.building_pool !== undefined) this.buildingPool = d.building_pool || []
@@ -3274,6 +3285,18 @@ export default {
         //   触发式 checkDueRefresh 负责到点即时刷新，这里是慢速兜底，两者互不冲突。
         this.loadDynamics(true)
       }
+    },
+    // ★ 2026-10-29 换城后按当前页补拉被清空的「按城」数据（buildings / queues / wildlands）。
+    //   只补当前页真正要用的接口，别一换城就打一堆；其余页面下次 go() 进页时自己会拉。
+    reloadCityScopedData () {
+      const t = this.cur
+      const armyPages = ['troops', 'troop', 'defence', 'factory', 'troopview', 'trainpre', 'troopstat']
+      const isArmy = armyPages.indexOf(t) >= 0
+      const needBuild = isArmy || ['buildm', 'builds', 'cityhall', 'buildpre', 'bdetail', 'citystatus'].indexOf(t) >= 0
+      if (needBuild) this.loadBuildings()
+      if (isArmy || t === 'citystatus' || t === 'hq') this.loadTroops()
+      if (t === 'wilds' || t === 'citystatus') this.loadWilds()
+      if (t === 'orders' || t === 'hq') this.loadOrders()
     },
     loadBuildings () {
       return api.get('/games/ezfy/buildings').then(r => {
