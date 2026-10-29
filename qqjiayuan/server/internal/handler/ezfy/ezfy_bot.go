@@ -2201,23 +2201,12 @@ func (h *EzfyHandler) ezfyBotBegMail(atkUID, botUID uint, knockedOut bool) {
 		"城都被你占了，再打我就真要飞了。咱们停手吧，我认输。")
 }
 
-// ezfyBotDailyAtkCap 每个人机每日出征次数上限（ezfy_cfg_limit.bot_atk_daily）。
-//
-// ★ 2026-10-29 用户反馈「每人每日出征 超过 100 没法配置」：
-//
-//	这个配置以前**只是展示**（真正卡的是难度阶梯 ezfyBotAtkDailyOf），现在改成真正生效：
-//	  · >0 → 指定次数（可以超过 100，管理端上限 100000）；
-//	  · 0  → 按难度阶梯（新手 40 / 普通 50 / 精英 60）。
-//	⚠️ 0 是合法值（= 按难度），不能用 ezfyLimitOr 兜底成 3。
-func ezfyBotDailyAtkCap() int {
-	if !ezfyCfg.ready() {
-		return 0 // 配置未加载 → 按难度阶梯，绝不用 0 以外的猜测值
-	}
-	if n := ezfyCfg.limit.BotAtkDaily; n > 0 {
-		return n
-	}
-	return 0
-}
+// 人机每日出征次数**按难度**的默认值（★ 2026-10-29 用户要求「40/50/60 也要能配，默认 60/100/160」）。
+const (
+	ezfyBotAtkDailyLv1Def = 60  // 新手
+	ezfyBotAtkDailyLv2Def = 100 // 普通
+	ezfyBotAtkDailyLv3Def = 160 // 精英
+)
 
 // ezfyBotMinPrestige 人机自动挑攻击目标的最低声望门槛（ezfy_cfg_limit.bot_min_prestige，默认 500000）。
 //
@@ -2294,12 +2283,9 @@ func (h *EzfyHandler) botAtkQuotaOK(b *model.EzfyBot) bool {
 		return false
 	}
 	// ★ 2026-10-17 每日出征次数上限（用户规则「征服次数按难度 40-60 阶梯」）：
-	//   新手 40 / 普通 50 / 精英 60 次/天；今日次数达到 → 今天不再出征（跨天重置）。
-	// ★ 2026-10-29 管理端「每人每日出征」现在**真正生效**：>0 用它（可超 100），0 = 按难度阶梯。
-	daily := ezfyBotDailyAtkCap()
-	if daily <= 0 {
-		daily = ezfyBotAtkDailyOf(b.Level)
-	}
+	//   新手 60 / 普通 100 / 精英 160 次/天（★ 2026-10-29 三个值都可在管理端配）；
+	//   今日次数达到 → 今天不再出征（跨天重置）。
+	daily := ezfyBotAtkDailyOf(b.Level)
 	if daily > 0 && b.AtkDate == time.Now().Format("20060102") && b.AtkCountToday >= daily {
 		return false
 	}
@@ -2317,17 +2303,42 @@ func (h *EzfyHandler) botAtkCountInc(b *model.EzfyBot) {
 		Updates(map[string]interface{}{"atk_count_today": cnt, "atk_date": today, "last_atk_at": time.Now().UnixMilli()})
 }
 
-// ezfyBotAtkDailyOf 每日出征次数上限（★ 2026-10-17 用户规则「征服次数按难度 40-60 阶梯」）：
+// ezfyBotAtkDailyOf 每日出征次数上限：**按难度读配置**（ezfy_cfg_limit.bot_atk_daily_lv1/2/3）。
 //
-//	新手 40 / 普通 50 / 精英 60 次/天；0 或负 = 不限制。
+// ★ 2026-10-17 用户规则「征服次数按难度阶梯」；★ 2026-10-29 用户要求「阶梯也要能配，默认 60/100/160」：
+//
+//	新手 60 / 普通 100 / 精英 160，管理端「人机管理」顶栏可直接改。
+//	0/负数无意义（= 不打人）→ 回落默认值；配置未加载时也用默认值。
+//	⚠️ 旧的全局 `bot_atk_daily` 已废弃不再读取（一刀切没有意义，见 model 注释）。
 func ezfyBotAtkDailyOf(level int) int {
+	def := ezfyBotAtkDailyDefOf(level)
+	if !ezfyCfg.ready() {
+		return def
+	}
+	v := 0
 	switch level {
 	case 1:
-		return 40
+		v = ezfyCfg.limit.BotAtkDailyLv1
 	case 3:
-		return 60
+		v = ezfyCfg.limit.BotAtkDailyLv3
+	default:
+		v = ezfyCfg.limit.BotAtkDailyLv2
 	}
-	return 50
+	if v > 0 {
+		return v
+	}
+	return def
+}
+
+// ezfyBotAtkDailyDefOf 难度 → 默认每日出征次数（60 / 100 / 160）。
+func ezfyBotAtkDailyDefOf(level int) int {
+	switch level {
+	case 1:
+		return ezfyBotAtkDailyLv1Def
+	case 3:
+		return ezfyBotAtkDailyLv3Def
+	}
+	return ezfyBotAtkDailyLv2Def
 }
 
 // ezfyBotAtkWindowOK 出征时间段是否放行（ezfy_cfg_limit.bot_atk_windows，管理端可配）。

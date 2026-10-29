@@ -913,9 +913,15 @@ type EzfyCfgLimit struct {
 
 	// ★ 2026-10-17 人机（AI 玩家）风控开关
 	//   BotAtkOn：0 = 只发育、不打扰玩家（**0 是合法值**，读取时不能用 ezfyLimitOr 兜底）
-	//   BotAtkDaily：每个人机每日出征次数上限（默认 3）
-	BotAtkOn    int `gorm:"default:1;comment:人机允许攻击玩家(1开0关=只发育)" json:"bot_atk_on"`
-	BotAtkDaily int `gorm:"default:3;comment:每个人机每日出征上限" json:"bot_atk_daily"`
+	BotAtkOn int `gorm:"default:1;comment:人机允许攻击玩家(1开0关=只发育)" json:"bot_atk_on"`
+	// ⚠️ 2026-10-29 起**不再读取**：全局一刀切的每日出征上限被「按难度三个值」取代
+	//   （见下面 BotAtkDailyLv1/2/3）。列保留只为兼容老库/老管理端，改它不生效。
+	BotAtkDaily int `gorm:"default:3;comment:[已废弃]每个人机每日出征上限(改用 lv1/2/3)" json:"bot_atk_daily"`
+	// ★ 2026-10-29 人机每日出征次数**按难度分别配置**（用户要求「40/50/60 也要能配，默认 60/100/160」）：
+	//   新手(level1) / 普通(level2) / 精英(level3)。0/负数无意义 → 读取端回落默认值。
+	BotAtkDailyLv1 int `gorm:"default:60;comment:人机每日出征-新手(默认60)" json:"bot_atk_daily_lv1"`
+	BotAtkDailyLv2 int `gorm:"default:100;comment:人机每日出征-普通(默认100)" json:"bot_atk_daily_lv2"`
+	BotAtkDailyLv3 int `gorm:"default:160;comment:人机每日出征-精英(默认160)" json:"bot_atk_daily_lv3"`
 	// ★ 2026-10-17 人机免耗粮：1 = 人机（city.is_bot=1）的城内军队不扣维护粮（真人照常扣）。
 	//   人机不打劫不打野时粮食全靠产出，军队耗粮经常把它饿死 → 运营可开这个让 AI 专注发育。
 	BotFoodFree int `gorm:"default:0;comment:人机军队免耗粮(1=不扣,真人照常)" json:"bot_food_free"`

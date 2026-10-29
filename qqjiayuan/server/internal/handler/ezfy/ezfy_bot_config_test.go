@@ -6,64 +6,83 @@ import (
 	"testing"
 )
 
-// TestBotDailyAtkCapConfigurable 人机「每人每日出征」必须**可配置且真正生效**。
+// TestBotDailyAtkCapConfigurable 人机「每日出征次数」必须**按难度可配**且默认 60/100/160。
 //
-// 背景（2026-10-29 用户反馈）：「人机管理 → 每人每日出征 这个配置是不是有问题，超过 100 没法配置」。
-// 实测两处 bug：
-//  1. 管理端输入框 :max=100 + 后端 `if v > 100 { v = 100 }` → 想配 200 会被悄悄截成 100；
-//  2. 这个配置以前**只是展示**（botAtkQuotaOK 真正卡的是难度阶梯 40/50/60），改它等于没改。
+// 背景（2026-10-29 用户反馈）：
+//
+//	① 「每人每日出征 超过 100 没法配置」→ 原配置只展示不生效、且前后端都写死 100；
+//	② 「按难度阶梯 40/50/60 也要能配置，默认 60/100/160」→ 改成按难度三个值，全局一刀切的旧列废弃。
 //
 // 断言：
-//  1. 后端保存上限放宽到 100000（不再写死 100）；
-//  2. botAtkQuotaOK 先读配置，0 才回落难度阶梯；
-//  3. 老库停在旧默认 3 的行由一次性修正归零（否则一启用就把人机砍到 3 次/天）。
+//  1. botAtkQuotaOK 走 ezfyBotAtkDailyOf（唯一实现），阶梯读配置 lv1/2/3；
+//  2. 默认值常量是 60/100/160，且 0/负数回落默认（不能出现「0 = 不打人」）；
+//  3. 旧的全局 bot_atk_daily 不再参与判断；
+//  4. 管理端 GET 下发三项、SET 校验并写三项；seed 补三列。
 func TestBotDailyAtkCapConfigurable(t *testing.T) {
 	bot := rawFile(t, "ezfy_bot.go")
 	admin := rawFile(t, "ezfy_admin_bot.go")
 
-	// ① 保存上限放宽（只看 AdminEzfyBotConfigSet 的 body）
-	setBody := funcBody(admin, "func (h *EzfyAdmin) AdminEzfyBotConfigSet(")
-	if setBody == "" {
-		t.Fatal("找不到 AdminEzfyBotConfigSet 函数体")
-	}
-	if !strings.Contains(setBody, "100000") {
-		t.Fatal("每日出征上限没放宽到 100000（用户配 200 会被截断）")
-	}
-	if strings.Contains(setBody, "v > 100 {") {
-		t.Fatal("AdminEzfyBotConfigSet 仍把每日出征上限截断到 100")
-	}
-
-	// ② 真正生效：配置优先，0 回落难度阶梯
+	// ① 唯一实现 + 读配置
 	quota := funcBody(bot, "func (h *EzfyHandler) botAtkQuotaOK(")
 	if quota == "" {
 		t.Fatal("找不到 botAtkQuotaOK 函数体")
 	}
-	if !strings.Contains(quota, "ezfyBotDailyAtkCap()") {
-		t.Fatal("botAtkQuotaOK 没读配置 ezfyBotDailyAtkCap() —— 管理端改了「每人每日出征」等于没改")
-	}
 	if !strings.Contains(quota, "ezfyBotAtkDailyOf(b.Level)") {
-		t.Fatal("botAtkQuotaOK 丢了难度阶梯兜底（0 = 按难度 40/50/60）")
+		t.Fatal("botAtkQuotaOK 没走 ezfyBotAtkDailyOf(b.Level)（每日出征上限的唯一实现）")
 	}
-	// 读取函数不能再把「没配」写成 3（0 = 按难度，是合法值）
-	capFn := funcBody(bot, "func ezfyBotDailyAtkCap()")
-	if capFn == "" {
-		t.Fatal("找不到 ezfyBotDailyAtkCap 函数体")
+	ofBody := funcBody(bot, "func ezfyBotAtkDailyOf(")
+	if ofBody == "" {
+		t.Fatal("找不到 ezfyBotAtkDailyOf 函数体")
 	}
-	if strings.Contains(capFn, "return 3") {
-		t.Fatal("ezfyBotDailyAtkCap 仍把未配置兜底成 3 —— 会让「0 = 按难度」失效")
+	for _, col := range []string{"BotAtkDailyLv1", "BotAtkDailyLv2", "BotAtkDailyLv3"} {
+		if !strings.Contains(ofBody, "ezfyCfg.limit."+col) {
+			t.Fatalf("ezfyBotAtkDailyOf 没读 %s —— 后台改了不生效", col)
+		}
+	}
+	if strings.Contains(ofBody, "BotAtkDaily ") || strings.Contains(ofBody, "limit.BotAtkDaily;") {
+		t.Fatal("ezfyBotAtkDailyOf 仍在读已废弃的全局 bot_atk_daily")
 	}
 
-	// ③ 一次性把旧默认 3 归零（settings 打标，只跑一次）
+	// ② 默认值 60/100/160 + 非法值回落
+	for _, s := range []string{"ezfyBotAtkDailyLv1Def = 60", "ezfyBotAtkDailyLv2Def = 100", "ezfyBotAtkDailyLv3Def = 160"} {
+		if !strings.Contains(strings.Join(strings.Fields(bot), " "), s) {
+			t.Fatalf("默认值不是 60/100/160（缺 %q）", s)
+		}
+	}
+	if !strings.Contains(ofBody, "ezfyBotAtkDailyDefOf(level)") {
+		t.Fatal("ezfyBotAtkDailyOf 缺「0/负数回落默认」的兜底")
+	}
+
+	// ③ 管理端 GET 下发三项
+	getBody := funcBody(admin, "func (h *EzfyAdmin) AdminEzfyBotConfig(")
+	if getBody == "" {
+		t.Fatal("找不到 AdminEzfyBotConfig 函数体")
+	}
+	for _, k := range []string{"atk_daily_lv1", "atk_daily_lv2", "atk_daily_lv3"} {
+		if !strings.Contains(getBody, `"`+k+`"`) {
+			t.Fatalf("AdminEzfyBotConfig 没下发 %s", k)
+		}
+	}
+	// ④ 管理端 SET 校验 + 写三项
+	setBody := funcBody(admin, "func (h *EzfyAdmin) AdminEzfyBotConfigSet(")
+	if setBody == "" {
+		t.Fatal("找不到 AdminEzfyBotConfigSet 函数体")
+	}
+	for _, col := range []string{"bot_atk_daily_lv1", "bot_atk_daily_lv2", "bot_atk_daily_lv3"} {
+		if !strings.Contains(setBody, col) {
+			t.Fatalf("AdminEzfyBotConfigSet 没写 %s", col)
+		}
+	}
+	if !strings.Contains(setBody, "100000") {
+		t.Fatal("每日出征次数上限没放宽（应允许 1~100000）")
+	}
+
+	// ⑤ seed 补三列（默认 60/100/160）
 	seedSrc := rawFile(t, filepath.Join("..", "..", "seed", "seed.go"))
-	fix := funcBody(seedSrc, "func ezfyBotAtkDailyDefault0(")
-	if fix == "" {
-		t.Fatal("缺 seed.ezfyBotAtkDailyDefault0（老库 bot_atk_daily=3 会让新逻辑把人机砍到 3 次/天）")
-	}
-	if !strings.Contains(fix, "ezfyOneTimeLimitFix") {
-		t.Fatal("ezfyBotAtkDailyDefault0 没有一次性标记位 —— 每次重启都会把管理员填的值改回 0")
-	}
-	if !strings.Contains(seedSrc, "ezfyBotAtkDailyDefault0(db)") {
-		t.Fatal("seed 没有调用 ezfyBotAtkDailyDefault0")
+	for _, col := range []string{"bot_atk_daily_lv1", "bot_atk_daily_lv2", "bot_atk_daily_lv3"} {
+		if !strings.Contains(seedSrc, `"`+col+`"`) {
+			t.Fatalf("seed 没补列 %s（老库会缺列）", col)
+		}
 	}
 }
 

@@ -175,7 +175,11 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{
 		"list": out, "total": len(out), "max": ezfyBotMaxCount,
-		"attack_on": ezfyBotAttackOn(), "atk_daily_cap": ezfyBotDailyAtkCap(),
+		"attack_on": ezfyBotAttackOn(),
+		// ★ 2026-10-29 每日出征次数按难度下发（默认 60/100/160），顶栏三个输入框直接展示
+		"atk_daily_lv1": ezfyBotAtkDailyOf(1),
+		"atk_daily_lv2": ezfyBotAtkDailyOf(2),
+		"atk_daily_lv3": ezfyBotAtkDailyOf(3),
 		// ★ 2026-10-17 免耗粮开关一并下发，前端 list 页首帧即显示真实状态（此前每次进页面自动变「关」）
 		"food_free": ezfyBotFoodFree(1),
 		// ★ 2026-10-17 自动攻击目标最低声望门槛（0=不限），供顶栏配置展示
@@ -1333,7 +1337,9 @@ func (h *EzfyAdmin) AdminEzfyBotLogClear(c *gin.Context) {
 func (h *EzfyAdmin) AdminEzfyBotConfig(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"attack_on":     ezfyBotAttackOn(),
-		"atk_daily_cap": ezfyBotDailyAtkCap(),
+		"atk_daily_lv1": ezfyBotAtkDailyOf(1),
+		"atk_daily_lv2": ezfyBotAtkDailyOf(2),
+		"atk_daily_lv3": ezfyBotAtkDailyOf(3),
 		"food_free":     ezfyCfg.ready() && ezfyCfg.limit.BotFoodFree != 0,
 		"min_prestige":  ezfyBotMinPrestige(),
 		"max_count":     ezfyBotMaxCount,
@@ -1373,13 +1379,17 @@ func ezfyBotTrainThreshold() int64 {
 	return 500000
 }
 
-// AdminEzfyBotConfigSet POST /admin/ezfy-bot/config {attack_on, atk_daily_cap, food_free, min_prestige, train_threshold}
+// AdminEzfyBotConfigSet POST /admin/ezfy-bot/config
+// {attack_on, atk_daily_lv1, atk_daily_lv2, atk_daily_lv3, food_free, min_prestige, train_threshold, atk_windows}
 //
 // ★ 改完必须 ezfyCfg.reload：开关读的是进程内配置缓存（不 reload 要等 30s 周期刷新）。
 func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 	var in struct {
-		AttackOn       *int    `json:"attack_on"`
-		AtkDailyCap    *int    `json:"atk_daily_cap"`
+		AttackOn *int `json:"attack_on"`
+		// ★ 2026-10-29 每日出征次数按难度分（新手/普通/精英），默认 60/100/160
+		AtkDailyLv1    *int    `json:"atk_daily_lv1"`
+		AtkDailyLv2    *int    `json:"atk_daily_lv2"`
+		AtkDailyLv3    *int    `json:"atk_daily_lv3"`
 		FoodFree       *int    `json:"food_free"`
 		MinPrestige    *int    `json:"min_prestige"`
 		TrainThreshold *int64  `json:"train_threshold"`
@@ -1400,18 +1410,25 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 		}
 		up["bot_atk_on"] = v
 	}
-	if in.AtkDailyCap != nil {
-		v := *in.AtkDailyCap
-		if v < 0 {
-			v = 0
+	// ★ 2026-10-29 每日出征次数按难度分（新手/普通/精英）：范围 1 ~ 100000。
+	//   旧的全局 bot_atk_daily 已废弃不再写（一刀切没有意义）。
+	for _, it := range []struct {
+		col string
+		val *int
+	}{
+		{"bot_atk_daily_lv1", in.AtkDailyLv1},
+		{"bot_atk_daily_lv2", in.AtkDailyLv2},
+		{"bot_atk_daily_lv3", in.AtkDailyLv3},
+	} {
+		if it.val == nil {
+			continue
 		}
-		// ★ 2026-10-29 修复「每人每日出征 超过 100 没法配置」：原来上限写死 100，
-		//   想让人机一天打几百场（多目标并行）根本配不上去 → 放宽到 100000。
-		//   0 = 按难度阶梯（新手 40 / 普通 50 / 精英 60），>0 = 指定次数。
-		if v > 100000 {
-			v = 100000
+		v := *it.val
+		if v < 1 || v > 100000 {
+			resp.ParamError(c, "每日出征次数需要在 1 ~ 100000 之间")
+			return
 		}
-		up["bot_atk_daily"] = v
+		up[it.col] = v
 	}
 	if in.FoodFree != nil {
 		v := 0

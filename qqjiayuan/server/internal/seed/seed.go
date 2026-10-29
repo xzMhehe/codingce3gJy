@@ -3372,10 +3372,22 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 	// ★ 2026-10-22 用户规则：商城单次购买上限 15 → 999；商城道具库存全部无限。
 	ezfyBumpMallBuyMax999Default(db)
 	ezfyUnlimitMallItemStockDefault(db)
-	// ★ 2026-10-29 人机「每人每日出征」：旧默认 3 改成 0（= 按难度阶梯 40/50/60）。
-	//   这个配置原来**只是展示**（真正生效的是难度阶梯），现在改成真正生效的上限：
-	//   0 = 按难度阶梯，>0 = 指定次数。老库停在 3 的话一启用就会把人机砍到 3 次/天，故一次性归零。
-	ezfyBotAtkDailyDefault0(db)
+	// ★ 2026-10-29 人机「每日出征次数」按难度分开配（默认 新手60 / 普通100 / 精英160）。
+	//   0/负数无意义（= 不打人）→ 用 `<= 0` 兜底回默认是安全的。
+	for _, c := range []struct {
+		col string
+		def int
+	}{
+		{"bot_atk_daily_lv1", 60},
+		{"bot_atk_daily_lv2", 100},
+		{"bot_atk_daily_lv3", 160},
+	} {
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) +
+			" WHERE " + c.col + " IS NULL OR " + c.col + " <= 0")
+	}
 	// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2）：⚠️ 0 合法（= 关闭）→ 只补列 + 只回填 NULL，
 	//   不能走上面那个 `WHERE IS NULL OR <= 0` 的循环。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_treasure_cooldown_h") {
@@ -3518,17 +3530,6 @@ func ezfyOneTimeLimitFix(db *gorm.DB, key, sql string) {
 	}
 	db.Exec(sql)
 	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
-}
-
-// ezfyBotAtkDailyDefault0 一次性把「人机每人每日出征」从旧默认 3 改成 0（= 按难度阶梯）。
-//
-// ★ 2026-10-29 用户反馈「每人每日出征 超过 100 没法配置」：修 bug 时把这个配置改成**真正生效**的
-// 每日上限（0 = 按难度阶梯 40/50/60，>0 = 指定次数）。老库停在旧默认 3 的话，一启用就会把
-// 所有人机砍到 3 次/天，所以这里一次性把 3 归零；管理员后来自己填的值不动。
-// 用 settings 打标**只跑一次**。
-func ezfyBotAtkDailyDefault0(db *gorm.DB) {
-	ezfyOneTimeLimitFix(db, "ezfy_bot_atk_daily_0",
-		"UPDATE ezfy_cfg_limit SET bot_atk_daily = 0 WHERE bot_atk_daily = 3")
 }
 
 // ezfySysSellDailyLimitDefault0 一次性把「系统回收每日上限」从旧默认 100 万改成 0（= 不限）。
