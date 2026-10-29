@@ -106,34 +106,36 @@
         </el-table>
 
         <div class="sub-title">已占野地（{{ detail.wildlands.length }}）</div>
+        <!-- ★ 2026-10-29 布局修复：原来 4 列全固定宽（合计 330px）铺不满弹窗 → 改 min-width 自动拉伸 -->
         <el-table :data="detail.wildlands" size="mini" border max-height="180">
-          <el-table-column prop="id" label="ID" width="70" align="center" />
-          <el-table-column label="坐标" width="100" align="center">
+          <el-table-column prop="id" label="ID" width="90" align="center" />
+          <el-table-column label="坐标" min-width="120" align="center">
             <template slot-scope="{row}">{{ row.x }},{{ row.y }}</template>
           </el-table-column>
-          <el-table-column prop="level" label="等级" width="70" align="center" />
-          <el-table-column label="状态" width="90" align="center">
+          <el-table-column prop="level" label="等级" min-width="100" align="center" />
+          <el-table-column label="状态" min-width="120" align="center">
             <template slot-scope="{row}">{{ row.status === 1 ? '采集中' : '空闲' }}</template>
           </el-table-column>
         </el-table>
 
         <div class="sub-title">最近出征（{{ detail.orders.length }}）</div>
         <!-- ★ 2026-10-26 加「战报」按钮：按订单反查战报（order_id），点开看全文（与玩家详情同一套） -->
+        <!-- ★ 2026-10-29 同上：6 列全固定宽（合计 560px）→ 改 min-width 铺满 -->
         <el-table :data="detail.orders" size="mini" border max-height="180">
-          <el-table-column prop="id" label="ID" width="70" align="center" />
-          <el-table-column label="类型" width="80" align="center">
+          <el-table-column prop="id" label="ID" width="90" align="center" />
+          <el-table-column label="类型" min-width="100" align="center">
             <template slot-scope="{row}">{{ orderTypes[row.order_type] || row.order_type }}</template>
           </el-table-column>
-          <el-table-column label="目标" width="100" align="center">
+          <el-table-column label="目标" min-width="120" align="center">
             <template slot-scope="{row}">{{ row.target_x }},{{ row.target_y }}</template>
           </el-table-column>
-          <el-table-column label="状态" width="90" align="center">
+          <el-table-column label="状态" min-width="110" align="center">
             <template slot-scope="{row}">{{ orderStatus[row.status] || row.status }}</template>
           </el-table-column>
-          <el-table-column label="时间" width="150" align="center">
+          <el-table-column label="时间" min-width="170" align="center">
             <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
           </el-table-column>
-          <el-table-column label="战报" width="70" align="center">
+          <el-table-column label="战报" width="80" align="center">
             <template slot-scope="{row}">
               <el-button v-if="row.report_id" size="mini" plain icon="el-icon-view" title="查看战报详情"
                          @click="openOrderReport(row)" />

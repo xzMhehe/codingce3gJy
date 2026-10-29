@@ -572,16 +572,18 @@
     </el-dialog>
 
     <!-- 出征战报（★ 2026-10-17 管理员看人机战报：复用全局战报查询，按 user_id 过滤） -->
+    <!-- ★ 2026-10-29 布局修复：原来 5 列全固定宽（合计 590px），860px 弹窗里只铺到七成 →
+         时间/类型/攻击方/被攻击方 改 min-width 自动拉伸铺满，「操作」保持固定宽。 -->
     <el-dialog :title="'出征战报 —— ' + (cur ? cur.nickname : '')" :visible.sync="reportsDlg" width="860px">
-      <el-table :data="reports" v-loading="reportsLoading" size="mini" border max-height="430">
+      <el-table :data="reports" v-loading="reportsLoading" size="mini" border max-height="430" style="width:100%">
         <!-- ★ 2026-10-18 时间列格式化：原来直接吐后端 ISO 时间串（2026-10-18T14:30:25+08:00），看不清 → 统一 fmtTime -->
-        <el-table-column label="时间" width="160" align="center">
+        <el-table-column label="时间" min-width="175" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column prop="type_name" label="类型" width="110" align="center" />
+        <el-table-column prop="type_name" label="类型" min-width="110" align="center" />
         <!-- ★ 2026-10-18 出征战报弹窗：攻击方（= 该人机）/ 被攻击方（守方玩家名） -->
-        <el-table-column prop="player_name" label="攻击方" width="120" show-overflow-tooltip />
-        <el-table-column label="被攻击方" width="120" show-overflow-tooltip>
+        <el-table-column prop="player_name" label="攻击方" min-width="150" show-overflow-tooltip />
+        <el-table-column label="被攻击方" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.target_name || '—' }}</template>
         </el-table-column>
         <!-- ★ 2026-10-26 用户要求「内容列去掉，多余展示，直接看详情」 -->
