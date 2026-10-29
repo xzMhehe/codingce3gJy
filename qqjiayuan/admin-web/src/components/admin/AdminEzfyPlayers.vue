@@ -175,8 +175,8 @@
             <el-table :data="detail.bag" size="mini" border max-height="330">
               <el-table-column prop="id" label="行ID" width="80" align="center" />
               <el-table-column prop="cfg_id" label="道具ID" width="90" align="center" />
-              <el-table-column prop="item_name" label="道具名" min-width="140" show-overflow-tooltip />
-              <el-table-column label="数量" width="110" align="center">
+              <el-table-column prop="item_name" label="道具名" min-width="260" show-overflow-tooltip />
+              <el-table-column label="数量" min-width="130" align="center">
                 <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.count) }}</span></template>
               </el-table-column>
               <el-table-column label="操作" width="150" align="center" fixed="right">
@@ -199,10 +199,10 @@
             <el-table :data="detail.chests" size="mini" border max-height="330">
               <el-table-column prop="id" label="行ID" width="80" align="center" />
               <el-table-column prop="chest_id" label="宝箱ID" width="90" align="center" />
-              <el-table-column label="宝箱名" min-width="160" show-overflow-tooltip>
+              <el-table-column label="宝箱名" min-width="280" show-overflow-tooltip>
                 <template slot-scope="{row}"><span class="td-main">{{ row.chest_name || '宝箱#' + row.chest_id }}</span></template>
               </el-table-column>
-              <el-table-column label="数量" width="110" align="center">
+              <el-table-column label="数量" min-width="130" align="center">
                 <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.count) }}</span></template>
               </el-table-column>
               <el-table-column label="操作" width="150" align="center" fixed="right">
@@ -216,32 +216,34 @@
           <!-- 军团 -->
           <el-tab-pane :label="'军团 (' + detail.corps.length + ')'" name="corps">
             <el-table :data="detail.corps" size="mini" border max-height="360">
-              <el-table-column prop="id" label="记录ID" width="90" align="center" />
-              <el-table-column prop="corps_name" label="军团名" min-width="120" />
-              <el-table-column prop="title" label="职位" width="110" align="center" />
-              <el-table-column label="身份" width="90" align="center">
+              <el-table-column prop="id" label="记录ID" width="110" align="center" />
+              <el-table-column prop="corps_name" label="军团名" min-width="240" />
+              <el-table-column prop="title" label="职位" min-width="130" align="center" />
+              <el-table-column label="身份" min-width="120" align="center">
                 <template slot-scope="{row}">{{ row.is_leader === 1 ? '军团长' : '成员' }}</template>
               </el-table-column>
             </el-table>
           </el-tab-pane>
           <!-- 最近出征 -->
           <!-- ★ 2026-10-26 加「战报」按钮：按订单反查战报（order_id），点开看全文（与城池详情同一套） -->
+          <!-- ★ 2026-10-29 布局修复：原来 6 列全是固定宽度（合计 580px），940px 的弹窗里只铺到一半多。
+               改成 min-width 让列自动拉伸铺满整个弹窗宽度。 -->
           <el-tab-pane :label="'最近出征 (' + detail.orders.length + ')'" name="orders">
-            <el-table :data="detail.orders" size="mini" border max-height="360">
-              <el-table-column prop="id" label="订单ID" width="90" align="center" />
-              <el-table-column label="类型" width="80" align="center">
+            <el-table :data="detail.orders" size="mini" border max-height="360" style="width:100%">
+              <el-table-column prop="id" label="订单ID" width="110" align="center" />
+              <el-table-column label="类型" min-width="100" align="center">
                 <template slot-scope="{row}">{{ typeNames[row.order_type] || row.order_type }}</template>
               </el-table-column>
-              <el-table-column label="目标" width="100" align="center">
+              <el-table-column label="目标" min-width="140" align="center">
                 <template slot-scope="{row}">{{ row.target_x }},{{ row.target_y }}</template>
               </el-table-column>
-              <el-table-column label="状态" width="90" align="center">
+              <el-table-column label="状态" min-width="110" align="center">
                 <template slot-scope="{row}">{{ statusNames[row.status] || row.status }}</template>
               </el-table-column>
-              <el-table-column label="时间" width="150" align="center">
+              <el-table-column label="时间" min-width="180" align="center">
                 <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
               </el-table-column>
-              <el-table-column label="战报" width="70" align="center">
+              <el-table-column label="战报" min-width="90" align="center">
                 <template slot-scope="{row}">
                   <el-button v-if="row.report_id" size="mini" plain icon="el-icon-view" title="查看战报详情"
                              @click="openOrderReport(row)" />

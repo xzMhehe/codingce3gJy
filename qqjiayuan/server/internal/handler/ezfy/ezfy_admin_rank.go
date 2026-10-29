@@ -260,8 +260,10 @@ func (h *EzfyAdmin) AdminEzfyPvpRank(c *gin.Context) {
 		"week": week, "weeks": weeks, "ranks": ranks,
 		"enabled":   ezfyPvpRankOn(),
 		"lock_week": ezfyPvpRankLockWeek(),
-		// ★ 2026-10-29 灭敌分上限开关（1 = 有上限 200 / 0 = 无上限）
+		// ★ 2026-10-29 灭敌分上限开关（1 = 有上限 200 / 0 = 无上限）+ 单场分数上限 + 同对手周封顶
 		"kill_cap_on": ezfyPvpKillCapOn(),
+		"battle_cap":  ezfyPvpBattleCap(),
+		"foe_cap":     ezfyPvpFoeCap(),
 		"excluded":    pvpExcludedRows(h.DB, ezfyBoardPvp),
 	})
 }
@@ -478,6 +480,50 @@ func (h *EzfyAdmin) AdminEzfyPvpKillCap(c *gin.Context) {
 		return
 	}
 	resp.OK(c, gin.H{"msg": "灭敌分上限已关闭（灭敌越多分越高，不再封顶）", "on": 0})
+}
+
+// AdminEzfyPvpCaps 设置风云榜数值上限（POST /admin/ezfy-pvp-rank/caps）。
+//
+// ★ 2026-10-29 用户需求「风云榜加个单场分数上限配置，默认 800」+「同一个人积分上限也可配置，
+// 默认 20000」→ 一个接口管两项，前端一个 [保存] 按钮提交（布局更简单）：
+//
+//	battle_cap：单场分数上限（默认 800；大兵团会战按此封顶，小仗按**一半**）
+//	foe_cap   ：同一周同一对手的积分累计封顶（默认 20000，防小号互刷）
+//
+// 两项都可选（只传要改的那一项）；只影响之后结算的战斗，已入账积分不回算。
+func (h *EzfyAdmin) AdminEzfyPvpCaps(c *gin.Context) {
+	var in struct {
+		BattleCap *int `json:"battle_cap"`
+		FoeCap    *int `json:"foe_cap"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || (in.BattleCap == nil && in.FoeCap == nil) {
+		resp.ParamError(c, "参数错误（至少传 battle_cap / foe_cap 之一）")
+		return
+	}
+	updates := map[string]interface{}{}
+	msg := ""
+	if in.BattleCap != nil {
+		if *in.BattleCap < 100 || *in.BattleCap > 1000000 {
+			resp.ParamError(c, "单场分数上限需要在 100 ~ 1000000 之间（默认 800）")
+			return
+		}
+		updates["pvp_battle_cap"] = *in.BattleCap
+		msg += "单场上限 " + strconv.Itoa(*in.BattleCap) + "（小仗 " + strconv.Itoa(*in.BattleCap/2) + "）；"
+	}
+	if in.FoeCap != nil {
+		if *in.FoeCap < 100 || *in.FoeCap > 100000000 {
+			resp.ParamError(c, "同对手积分上限需要在 100 ~ 100000000 之间（默认 20000）")
+			return
+		}
+		updates["pvp_foe_cap"] = *in.FoeCap
+		msg += "同对手上限 " + strconv.Itoa(*in.FoeCap) + "；"
+	}
+	if err := h.DB.Model(&model.EzfyCfgLimit{}).Where("id = 1").Updates(updates).Error; err != nil {
+		resp.ParamError(c, "保存失败："+err.Error())
+		return
+	}
+	h.ezfyReload()
+	resp.OK(c, gin.H{"msg": "已保存：" + msg + "只影响之后结算的战斗", "battle_cap": ezfyPvpBattleCap(), "foe_cap": ezfyPvpFoeCap()})
 }
 
 // AdminEzfyPvpExclude POST /admin/ezfy-pvp-rank/exclude，body: {user_id, reason, board}。

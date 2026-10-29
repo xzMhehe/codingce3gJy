@@ -50,11 +50,27 @@ const (
 	//	能带多少兵本来就受「司令部等级 + 集结令」的携带上限约束 —— 带上集结令把上限拉高、多带兵，
 	//	分自然更高（兵越多分越多）；靠几千垃圾兵互点无效。攻守同规则，任一方不足整仗 0 分。
 	ezfyPvpMinTroop = int64(20000)
-	// ezfyPvpFoeCap 同一自然周内，与**同一对手**对战的积分累计封顶（防小号互刷）。
+	// ezfyPvpFoeCapDef 同一自然周内，与**同一对手**对战的积分累计封顶**默认值**（防小号互刷）。
 	// ★ 2026-10-16 8000 → 20000：加权兵种分后单仗更能打了，封顶同步放宽。
+	// ★ 2026-10-29 改为可配置（ezfy_cfg_limit.pvp_foe_cap，见 ezfyPvpFoeCap）。
 	// 达上限后与该对手再交战：场次/灭敌/战损照记，积分不再计入榜单。
-	ezfyPvpFoeCap = int64(20000)
+	ezfyPvpFoeCapDef = int64(20000)
 )
+
+// ezfyPvpFoeCap 同一周内与同一对手的积分封顶（读 ezfy_cfg_limit.pvp_foe_cap，默认 20000）。
+//
+// ★ 2026-10-29 用户需求「pvp 对战同一个人积分上限也可以配置，默认 20000，可灵活调整」。
+// ⚠️ 0/负数无意义（= 与任何人交手都不计分）→ 未加载/非法值一律回落默认 20000。
+func ezfyPvpFoeCap() int64 {
+	if !ezfyCfg.ready() || ezfyCfg.limit.PvpFoeCap <= 0 {
+		return ezfyPvpFoeCapDef
+	}
+	v := int64(ezfyCfg.limit.PvpFoeCap)
+	if v > 100000000 { // 防呆：上限 1 亿
+		v = 100000000
+	}
+	return v
+}
 
 // pvpUnitCost 兵种分权重（★ 2026-10-16 用户要求「按建造资源多少算分」）。
 //
@@ -109,9 +125,10 @@ func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 // pvpBattlePoints 单场 PVP 积分（风云榜，★ 2026-10-14 规则；杀敌分同日本轮补充）。
 //
 //		积分 = ((行动分 + 胜负分) × 兵力劣势系数 + 杀敌分 + 战损比分) × 兵力规模系数，
-//		单场**封顶按规模分档**（★ 2026-10-16 用户要求「鼓励大仗、小仗卡 400 以下、大兵团趋近封顶」）：
-//		  本场投入 < 大兵团线(300 万加权 ≈ 10000 航母 / 150 万步兵) → 单场最多 **400**；
-//		  达到大兵团线（集结令拉满级别的会战）→ 单场最多 **800**。
+//		单场**封顶按规模分档**（★ 2026-10-16 用户要求「鼓励大仗、小仗卡 400 以下、大兵团趋近封顶」；
+//		★ 2026-10-29 上限改为可配置 pvp_battle_cap，默认 800）：
+//		  本场投入 < 大兵团线(300 万加权 ≈ 10000 航母 / 150 万步兵) → 单场最多 **上限的一半**（默认 400）；
+//		  达到大兵团线（集结令拉满级别的会战）→ 单场最多 **上限**（默认 800）。
 //
 //	  - 行动分：进攻(掠夺/征服) 20 分，防守 15 分（进攻稍高，鼓励主动出击）
 //	  - 胜负分：胜 40 / 平 15 / 负 10（参战即有，鼓励对抗）
@@ -129,14 +146,43 @@ func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 const (
 	// ezfyPvpKillPtCap 杀敌分封顶
 	ezfyPvpKillPtCap = int64(200)
-	// ezfyPvpMaxPoint 大兵团单场上限（集结令拉满级别的会战）；小仗上限见 ezfyPvpSmallMax
-	ezfyPvpMaxPoint = int64(800)
-	// ezfyPvpSmallMax 小仗单场上限（★ 2026-10-16 用户要求「小仗卡控在 400 以下」）
-	ezfyPvpSmallMax = int64(400)
-	// ezfyPvpBigArmyPower 大兵团线（加权口径）：本场投入达到该值才用 800 上限
+	// ezfyPvpMaxPointDef 单场分数上限**默认值**（大兵团会战）。
+	// ★ 2026-10-29 用户需求「风云榜加个单场分数上限配置，默认 800，可灵活调整」：
+	//   实际值读 ezfy_cfg_limit.pvp_battle_cap（见 ezfyPvpBattleCap），这里只是默认/兜底。
+	ezfyPvpMaxPointDef = int64(800)
+	// ezfyPvpSmallMaxDef 小仗单场上限**默认值**（★ 2026-10-16 用户要求「小仗卡控在 400 以下」）
+	//   实际值 = 单场上限的一半（见 ezfyPvpSmallCap），默认 800 → 400。
+	ezfyPvpSmallMaxDef = int64(400)
+	// ezfyPvpBigArmyPower 大兵团线（加权口径）：本场投入达到该值才用「全额」单场上限
 	// ≈ 1 万航母 / 150 万步兵 —— 不带集结令拉上限的话基本到不了，天然只属于大兵团会战
 	ezfyPvpBigArmyPower = int64(3000000)
 )
+
+// ezfyPvpBattleCap 风云榜单场分数上限（读 ezfy_cfg_limit.pvp_battle_cap，默认 800）。
+//
+// ★ 2026-10-29 用户需求「加个单场分数上限配置，默认 800，可灵活调整」：
+//
+//	大兵团会战（投入 ≥ 大兵团线）按此封顶；小仗按**一半**封顶（800 → 400，保持原平衡）。
+//	⚠️ 0/负数无意义（= 每场 0 分）→ 未加载/非法值一律回落默认 800，不会把榜单打成全 0。
+func ezfyPvpBattleCap() int64 {
+	if !ezfyCfg.ready() || ezfyCfg.limit.PvpBattleCap <= 0 {
+		return ezfyPvpMaxPointDef
+	}
+	v := int64(ezfyCfg.limit.PvpBattleCap)
+	if v > 1000000 { // 防呆：上限 100 万，别让手滑写成天文数字
+		v = 1000000
+	}
+	return v
+}
+
+// ezfyPvpSmallCap 小仗单场上限 = 单场上限的一半（默认 800 → 400）。
+func ezfyPvpSmallCap() int64 {
+	v := ezfyPvpBattleCap() / 2
+	if v < 1 {
+		v = 1
+	}
+	return v
+}
 
 // pvpArmyScale 兵力规模系数（★ 2026-10-16 用户要求「大兵团作战分越多，少兵刷不了」）。
 //
@@ -199,9 +245,10 @@ func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win,
 		}
 	}
 	// ★ 2026-10-16 单场封顶按规模分档：小仗 400，大兵团会战（≥300 万加权）800 —— 鼓励大仗
-	cap := ezfyPvpSmallMax
+	// ★ 2026-10-29 两个值改为读配置：上限 = pvp_battle_cap（默认 800），小仗 = 上限的一半
+	cap := ezfyPvpSmallCap()
 	if myPower >= ezfyPvpBigArmyPower {
-		cap = ezfyPvpMaxPoint
+		cap = ezfyPvpBattleCap()
 	}
 	pts := ((actBase+outcome)*mult/100 + killPts + kdrPts) * pvpArmyScale(myPower) / 100
 	if pts > cap {
@@ -230,14 +277,15 @@ func (h *EzfyHandler) accumPvpWeekOnce(week string, uid, foeID uint, nick, foeNi
 	// ★ 防刷：同一周与同一对手对战的积分封顶（小号互刷只能刷到固定上限）。
 	//   已计分 ≥ 上限 → 本场积分 0；未达上限 → 最多补到上限。场次/灭敌/战损不受影响。
 	if points > 0 && foeID > 0 {
+		foeCap := ezfyPvpFoeCap() // ★ 2026-10-29 改为读配置（默认 20000，管理端可调）
 		var cur int64
 		h.DB.Model(&model.EzfyPvpFoe{}).
 			Where("week = ? AND user_id = ? AND foe_id = ?", week, uid, foeID).
 			Select("points").Scan(&cur)
-		if cur >= ezfyPvpFoeCap {
+		if cur >= foeCap {
 			points = 0
-		} else if cur+points > ezfyPvpFoeCap {
-			points = ezfyPvpFoeCap - cur
+		} else if cur+points > foeCap {
+			points = foeCap - cur
 		}
 		credited = points
 		h.DB.Exec(`INSERT INTO ezfy_pvp_foe (week, user_id, foe_id, points, battles, updated_at)
@@ -552,8 +600,8 @@ func (h *EzfyHandler) PvpRank(c *gin.Context) {
 		}
 	}
 	resp.OK(c, gin.H{"week": week, "weeks": weeks, "ranks": ranks, "mine": mine, "enabled": true,
-		// ★ 2026-10-29 玩家端说明文案用：灭敌分当前是否有上限（关掉 = 无上限）
-		"kill_cap_on": ezfyPvpKillCapOn()})
+		// ★ 2026-10-29 玩家端说明文案用：灭敌分是否有上限、单场分数上限、同对手周封顶
+		"kill_cap_on": ezfyPvpKillCapOn(), "battle_cap": ezfyPvpBattleCap(), "foe_cap": ezfyPvpFoeCap()})
 }
 
 // ezfyPvpRankRows 查询风云榜指定周（管理端/玩家端共用），**按积分降序**。

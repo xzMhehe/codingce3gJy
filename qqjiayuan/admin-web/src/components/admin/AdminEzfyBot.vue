@@ -23,9 +23,12 @@
           <el-button type="danger" plain icon="el-icon-delete" :disabled="!list.length" @click="clearAll">清空全部</el-button>
         </div>
         <div class="bot-bar-row">
-          <span class="bot-item">每人每日出征</span>
-          <el-input-number v-model.number="atkDailyCap" :min="0" :max="100" size="mini"
-                           controls-position="right" style="width:90px" @change="saveConfig" />
+          <span class="bot-item">每人每日出征
+            <el-tooltip placement="top" :content="tips.atkDaily"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          </span>
+          <!-- ★ 2026-10-29 修复「超过 100 没法配置」：上限 100 → 100000，0 = 按难度阶梯 -->
+          <el-input-number v-model.number="atkDailyCap" :min="0" :max="100000" :step="10" size="mini"
+                           controls-position="right" style="width:110px" @change="saveConfig" />
           <span class="bot-sep" />
           <span class="bot-item">最低声望
             <el-tooltip placement="top" :content="tips.minPrestige"><i class="el-icon-info cfg-tip" /></el-tooltip>
@@ -614,7 +617,7 @@ export default {
   data () {
     return {
       list: [], max: 50, loading: false, word: '',
-      attackOn: 1, atkDailyCap: 3, foodFree: 1, minPrestige: 500000, trainThreshold: 500000,
+      attackOn: 1, atkDailyCap: 0, foodFree: 1, minPrestige: 500000, trainThreshold: 500000,
       // ★ 2026-10-26 「目标最小兵力」改按人机分（编辑人机-基本信息），顶栏不再有全局输入
       atkWindows: '', saving: false,
       // 攻击目标
@@ -662,6 +665,7 @@ export default {
       tips: {
         overview: '人机与真人走同一套接口，每 60 秒一轮；每座城各自行动，出征频率按人机统计。',
         atk: '关闭后人机只发育、不出征。开启后仍受每日出征上限、新手保护与出征时间段限制。',
+        atkDaily: '每座城每天最多出征几次。0 = 按难度（新手40 / 普通50 / 精英60）；填多少就最多打多少。',
         foodFree: '开启后人机城内军队不扣维护粮、出征不耗油。真人照常扣。',
         minPrestige: '自动选择攻击目标时，只打声望不低于该值的玩家（0 = 不限）。',
         train: '城内部队总数低于该值时自动征兵。',

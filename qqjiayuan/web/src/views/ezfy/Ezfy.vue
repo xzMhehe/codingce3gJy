@@ -1080,10 +1080,14 @@ export default {
     //   现在「单场灭敌加分上限」可以在管理端关掉 → 文案跟着后端 kill_cap_on 变，不能写死「最高200」。
     pvpRuleTitle () {
       const killCap = (this.pvpRank && this.pvpRank.kill_cap_on === false) ? '无上限' : '最高200'
+      // ★ 2026-10-29 单场分数上限 / 同对手周封顶都可配置（默认 800 / 20000）→ 文案取后端下发的值
+      const cap = Number(this.pvpRank && this.pvpRank.battle_cap) || 800
+      const small = Math.max(1, Math.floor(cap / 2))
+      const foeCap = Number(this.pvpRank && this.pvpRank.foe_cap) || 20000
       return '行动分：进攻20/防守15；胜负分：胜40/平15/负10；杀敌分按灭敌兵种价值加权对数计（' + killCap +
         '）；兵种越贵、兵团越大分越多（最多×3.5）；兵力不足约1万步兵/70航母不计分' +
-        '（出征上限由司令部+集结令决定）；小仗最多400分，大兵团会战（约1万航母/150万步兵）封顶800；' +
-        '侦察机/卡车不计分；同对手每周封顶20000'
+        '（出征上限由司令部+集结令决定）；小仗最多' + small + '分，大兵团会战（约1万航母/150万步兵）封顶' + cap +
+        '；侦察机/卡车不计分；同对手每周封顶' + foeCap
     },
     // ★ 2026-10-07 出征目标是不是「玩家城市」：
     //   地图格 area_type=3 表示玩家城 → 出征页「自动战斗」强制「否」且只读

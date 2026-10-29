@@ -1575,6 +1575,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-pvp-rank/toggle", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankToggle)
 						// ★ 2026-10-29 风云榜「单场灭敌加分上限」开关（开=最多 200 分 / 关=无上限）
 						admin.POST("/ezfy-pvp-rank/kill-cap", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpKillCap)
+						// ★ 2026-10-29 风云榜数值上限：单场分数上限（默认 800，小仗按一半）+ 同对手周封顶（默认 20000）
+						admin.POST("/ezfy-pvp-rank/caps", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpCaps)
 						admin.POST("/ezfy-pvp-rank/exclude", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExclude)
 						admin.DELETE("/ezfy-pvp-rank/exclude/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExcludeRemove)
 						admin.GET("/ezfy-power-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPowerRank)

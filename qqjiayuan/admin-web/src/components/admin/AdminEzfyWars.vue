@@ -26,11 +26,14 @@
             <div class="grow" />
             <el-button type="warning" plain icon="el-icon-alarm-clock" :loading="acting" @click="effectAll">一键生效全部</el-button>
             <el-button type="danger" plain icon="el-icon-circle-close" :loading="acting" @click="finishAll">一键完成全部</el-button>
-          </div>
-
-          <div class="td-sub" style="margin:4px 0 10px">
-            规则：宣战 <b>{{ delayHours }}</b> 小时后自动生效，生效后持续 <b>{{ durationHours }}</b> 小时；
-            「一键生效」可跳过等待直接开战，「一键完成」立即结束战争（双方恢复和平）。
+            <!-- ★ 2026-10-29 用户「简约提示」：整段规则说明收进 i 图标 -->
+            <el-tooltip placement="top" effect="light">
+              <div slot="content">
+                宣战 {{ delayHours }} 小时后自动生效，持续 {{ durationHours }} 小时。<br>
+                一键生效：跳过等待立即开战；一键完成：立即结束战争。
+              </div>
+              <i class="el-icon-info war-tip"></i>
+            </el-tooltip>
           </div>
 
           <el-table :data="list" v-loading="loading" stripe border>
@@ -253,4 +256,7 @@ export default {
 <style scoped>
 @import './farm-admin.css';
 .card-head { display: flex; justify-content: space-between; align-items: center; }
+/* ★ 2026-10-29 宣战规则说明收进 i 图标（原来整段灰字占一整行） */
+.war-tip { color: #a8b3c2; cursor: help; font-size: 14px; vertical-align: -1px; margin-left: 2px; }
+.war-tip:hover { color: #409eff; }
 </style>

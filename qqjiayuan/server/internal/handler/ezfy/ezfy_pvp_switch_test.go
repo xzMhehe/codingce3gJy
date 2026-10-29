@@ -228,6 +228,98 @@ func TestPvpKillCapSwitch(t *testing.T) {
 	}
 }
 
+// TestPvpBattleCapConfig —— 防回归：单场分数上限 / 同对手周封顶必须**可配置**且默认 800 / 20000。
+//
+// 背景（2026-10-29 用户需求）：「风云榜加个单场分数上限配置，默认 800，可灵活调整」
+// + 「pvp 对战同一个人积分上限也可以配置，默认 20000」。
+// 读取点分别是 ezfyPvpBattleCap() / ezfyPvpFoeCap()（读 ezfy_cfg_limit.pvp_battle_cap / pvp_foe_cap）。
+//
+// 风险：日后重构 pvpBattlePoints / accumPvpWeekOnce 时把 800/20000 写死回去（配置项只改了个 UI）——
+// 表现是「后台改了，分数还是卡在老值」，玩家端看不出原因。
+func TestPvpBattleCapConfig(t *testing.T) {
+	read := func(p string) string {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("读 %s 失败: %v", p, err)
+		}
+		return string(b)
+	}
+	pvpSrc := read(filepath.Join(".", "ezfy_pvp_rank.go"))
+
+	// 1) 封顶值必须来自配置读取函数，不能是常量
+	body := funcBody(pvpSrc, "func pvpBattlePoints(")
+	if body == "" {
+		t.Fatal("找不到 pvpBattlePoints 函数体")
+	}
+	if !strings.Contains(body, "ezfyPvpBattleCap()") || !strings.Contains(body, "ezfyPvpSmallCap()") {
+		t.Fatal("pvpBattlePoints 的封顶没走 ezfyPvpBattleCap()/ezfyPvpSmallCap()（配置改了不生效）")
+	}
+	if strings.Contains(body, "ezfyPvpMaxPoint ") || strings.Contains(body, "ezfyPvpSmallMax ") {
+		t.Fatal("pvpBattlePoints 里还在用写死的旧常量 ezfyPvpMaxPoint / ezfyPvpSmallMax")
+	}
+	// 同对手封顶同理
+	onceBody := funcBody(pvpSrc, "func (h *EzfyHandler) accumPvpWeekOnce(")
+	if onceBody == "" {
+		t.Fatal("找不到 accumPvpWeekOnce 函数体")
+	}
+	if !strings.Contains(onceBody, "ezfyPvpFoeCap()") {
+		t.Fatal("accumPvpWeekOnce 的同对手封顶没走 ezfyPvpFoeCap()（配置改了不生效）")
+	}
+
+	// 2) 读取函数：读缓存 limit + 非法值回落默认
+	capBody := funcBody(pvpSrc, "func ezfyPvpBattleCap()")
+	if capBody == "" {
+		t.Fatal("找不到 ezfyPvpBattleCap 函数体")
+	}
+	if !strings.Contains(capBody, "ezfyCfg.limit.PvpBattleCap") || !strings.Contains(capBody, "ezfyPvpMaxPointDef") {
+		t.Fatal("ezfyPvpBattleCap 未读 PvpBattleCap 或没有回落默认值（0 会把每场分打成 0）")
+	}
+	smallBody := funcBody(pvpSrc, "func ezfyPvpSmallCap()")
+	if smallBody == "" || !strings.Contains(smallBody, "ezfyPvpBattleCap() / 2") {
+		t.Fatal("ezfyPvpSmallCap 必须是「单场上限的一半」（默认 800 → 400）")
+	}
+	foeBody := funcBody(pvpSrc, "func ezfyPvpFoeCap()")
+	if foeBody == "" {
+		t.Fatal("找不到 ezfyPvpFoeCap 函数体")
+	}
+	if !strings.Contains(foeBody, "ezfyCfg.limit.PvpFoeCap") || !strings.Contains(foeBody, "ezfyPvpFoeCapDef") {
+		t.Fatal("ezfyPvpFoeCap 未读 PvpFoeCap 或没有回落默认值（0 会把同对手分打成 0）")
+	}
+
+	// 3) 默认值仍是 800 / 400 / 20000（配置缺省时行为不变）—— 用正则容忍 gofmt 的等号对齐空格
+	for _, re := range []string{
+		`ezfyPvpMaxPointDef\s*=\s*int64\(800\)`,
+		`ezfyPvpSmallMaxDef\s*=\s*int64\(400\)`,
+		`ezfyPvpFoeCapDef\s*=\s*int64\(20000\)`,
+	} {
+		if !regexp.MustCompile(re).MatchString(pvpSrc) {
+			t.Fatalf("默认值被改动（应匹配 %s）", re)
+		}
+	}
+
+	// 4) 模型列 + 迁移 + 管理端接口
+	modelSrc := read(filepath.Join("..", "..", "model", "ezfy.go"))
+	if !strings.Contains(modelSrc, "pvp_battle_cap") || !strings.Contains(modelSrc, "pvp_foe_cap") {
+		t.Fatal("model.EzfyCfgLimit 缺 pvp_battle_cap / pvp_foe_cap 列")
+	}
+	seedSrc := read(filepath.Join("..", "..", "seed", "seed.go"))
+	if !strings.Contains(seedSrc, "pvp_battle_cap int DEFAULT 800") {
+		t.Fatal("seed 没有补列 pvp_battle_cap（老库会缺列）")
+	}
+	if !strings.Contains(seedSrc, "pvp_foe_cap int DEFAULT 20000") {
+		t.Fatal("seed 没有补列 pvp_foe_cap（老库会缺列）")
+	}
+	adminSrc := read(filepath.Join(".", "ezfy_admin_rank.go"))
+	if !strings.Contains(adminSrc, "func (h *EzfyAdmin) AdminEzfyPvpCaps(") ||
+		!strings.Contains(adminSrc, `"pvp_battle_cap"`) || !strings.Contains(adminSrc, `"pvp_foe_cap"`) {
+		t.Fatal("缺管理端设置接口 AdminEzfyPvpCaps / 未写两个上限字段")
+	}
+	routerSrc := read(filepath.Join("..", "..", "router", "router.go"))
+	if !strings.Contains(routerSrc, "/ezfy-pvp-rank/caps") {
+		t.Fatal("路由缺 POST /admin/ezfy-pvp-rank/caps")
+	}
+}
+
 // funcBody 粗略取出 Go 函数体（从 signature 起，按大括号配平到函数结束）。
 // 只在测试里做静态检查用，遇到字符串/注释里的括号可能失真 —— 对本文件足够。
 func funcBody(src, sig string) string {

@@ -25,11 +25,14 @@
         <el-button type="warning" plain icon="el-icon-alarm-clock" :loading="acting" @click="effectAll">一键生效全部</el-button>
         <!-- 危险操作：一次结束所有进行中（待生效 / 交战中）的军团宣战 -->
         <el-button type="danger" plain icon="el-icon-circle-close" :loading="acting" @click="finishAll">全部结束进行中宣战</el-button>
-      </div>
-
-      <div class="td-sub" style="margin:4px 0 10px">
-        规则：军团宣战后 <b>12</b> 小时生效，宣战后 <b>48</b> 小时整场结束；生效期间双方军团成员可互相掠夺/征服并获得军团战绩。
-        「一键生效」可跳过等待直接开战，「强制结束」立即停战（双方成员恢复和平）。
+        <!-- ★ 2026-10-29 用户「简约提示」：整段规则说明收进 i 图标 -->
+        <el-tooltip placement="top" effect="light">
+          <div slot="content">
+            军团宣战后 12 小时生效，48 小时整场结束；生效期间双方成员可互相掠夺/征服。<br>
+            一键生效：跳过等待立即开战；全部结束：立即停战（双方恢复和平）。
+          </div>
+          <i class="el-icon-info war-tip"></i>
+        </el-tooltip>
       </div>
 
       <el-table :data="list" v-loading="loading" stripe border>
@@ -262,4 +265,7 @@ export default {
 <style scoped>
 @import './farm-admin.css';
 .card-head { display: flex; justify-content: space-between; align-items: center; }
+/* ★ 2026-10-29 军团宣战规则说明收进 i 图标 */
+.war-tip { color: #a8b3c2; cursor: help; font-size: 14px; vertical-align: -1px; margin-left: 2px; }
+.war-tip:hover { color: #409eff; }
 </style>

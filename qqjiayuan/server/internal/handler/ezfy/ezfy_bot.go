@@ -51,6 +51,14 @@ const (
 	ezfyBotMaxCount = 50
 	// ezfyBotHTTPTimeout 内部 HTTP 超时（懒结算可能稍慢）
 	ezfyBotHTTPTimeout = 15 * time.Second
+	// ezfyBotMaxPlans 同一台人机同时维护的「攻击目标计划」上限。
+	// ★ 2026-10-29 用户反馈「人机盯着一个人打，附近别的玩家却不打」→ 允许多目标并行：
+	//   同时最多对 3 个不同玩家宣战/出征，谁先生效打谁，轮流出手（见 botMilitary 的 updated_at 排序）。
+	ezfyBotMaxPlans = 3
+	// ezfyBotRevengeWindowMs 反击窗口（毫秒）。
+	// ★ 2026-10-29 用户规则「优先攻击附近打自己的玩家」：10 分钟 → 6 小时
+	//   （原来打完 10 分钟就忘，反击几乎永远不触发）。
+	ezfyBotRevengeWindowMs = int64(6 * 3600 * 1000)
 )
 
 // ezfyBotBaseURL 内部自调用地址（router.Setup 里按实际端口设置）。
@@ -1119,49 +1127,107 @@ func (h *EzfyHandler) botRevenge(b *model.EzfyBot, city *model.EzfyCity) bool {
 	if len(ids) == 0 {
 		return false
 	}
-	now := time.Now().UnixMilli()
-	var hit struct {
-		UID uint
+	// ★ 2026-10-29 计划已满 → 不再追加反击（多目标并行，但不能无限扩张）
+	var active int64
+	h.DB.Model(&model.EzfyBotTarget{}).Where("bot_uid = ? AND status IN (0,1,2,3)", b.UserID).Count(&active)
+	if int(active) >= ezfyBotMaxPlans {
+		return false
 	}
-	// 近 10 分钟：侦察(1)/掠夺(2)/征服(3) 打本 bot 城、且不是 bot 自己（排除自己劫自己）
+	now := time.Now().UnixMilli()
+	// ★★ 2026-10-29 用户反馈「附近打我的玩家不打，只盯着一个人」→ 两处口径放宽：
+	//   ① 窗口 10 分钟 → 6 小时（原来打完 10 分钟就忘，反击几乎永远不触发）；
+	//   ② 含已完成(3)/返航中(2) 的订单（原来只认还在路上的 0/1，打完了就查不到）。
+	//   按**最近一次**被打倒序取前 N 个不同玩家，逐个写入计划（多目标并行，不再只锁一个）。
+	var hits []struct {
+		UID    uint
+		LastMs int64
+	}
 	h.DB.Raw(`
-		SELECT o.user_id AS uid
+		SELECT o.user_id AS uid, MAX(o.created_at_ms) AS last_ms
 		FROM ezfy_order o
 		WHERE o.order_type IN (1,2,3) AND o.target_type = 3
 		  AND o.target_id IN ? AND o.user_id != ?
-		  AND o.status IN (0,1) AND o.created_at_ms >= ? - 600000
-		ORDER BY o.id ASC LIMIT 1`, ids, b.UserID, now).Scan(&hit)
-	if hit.UID == 0 {
+		  AND o.status IN (0,1,2,3) AND o.created_at_ms >= ?
+		GROUP BY o.user_id
+		ORDER BY last_ms DESC
+		LIMIT ?`, ids, b.UserID, now-ezfyBotRevengeWindowMs, ezfyBotMaxPlans).Scan(&hits)
+	if len(hits) == 0 {
 		return false
 	}
-	// ★★ 2026-10-17 声望门槛修复：反击 = 主动把攻方纳入攻击目标，同样要过最低声望线。
-	//   此前 botRevenge 直接写入计划不查声望 → 低于最低声望的玩家一打就被人机反打，
-	//   等于把人机当免费复仇器（用户反馈「人机还是会把低于最低声望的纳入目标」根因之一）。
-	if min := ezfyBotMinPrestige(); min > 0 {
-		var ap model.EzfyProfile
-		h.DB.Select("prestige").Where("user_id = ?", hit.UID).First(&ap)
-		if ap.Prestige < min {
-			h.ezfyBotLog(b.UserID, "反击", fmt.Sprintf("玩家 %d 攻击了我，但声望 %d 低于门槛 %d，不予反击", hit.UID, ap.Prestige, min), 0)
-			return false
+	minPrestige := ezfyBotMinPrestige()
+	added := 0
+	for _, hit := range hits {
+		if hit.UID == 0 {
+			continue
+		}
+		// ★★ 2026-10-17 声望门槛修复：反击 = 主动把攻方纳入攻击目标，同样要过最低声望线。
+		//   此前 botRevenge 直接写入计划不查声望 → 低于最低声望的玩家一打就被人机反打，
+		//   等于把人机当免费复仇器（用户反馈「人机还是会把低于最低声望的纳入目标」根因之一）。
+		if minPrestige > 0 {
+			var ap model.EzfyProfile
+			h.DB.Select("prestige").Where("user_id = ?", hit.UID).First(&ap)
+			if ap.Prestige < minPrestige {
+				h.ezfyBotLog(b.UserID, "反击", fmt.Sprintf("玩家 %d 攻击了我，但声望 %d 低于门槛 %d，不予反击", hit.UID, ap.Prestige, minPrestige), 0)
+				continue
+			}
+		}
+		// 打**离本城最近**的那座城（附近优先），而不是固定取 id 最小的
+		var tcs []model.EzfyCity
+		h.DB.Select("id", "name", "x", "y").Where("user_id = ?", hit.UID).Find(&tcs)
+		if len(tcs) == 0 {
+			continue
+		}
+		tc := tcs[0]
+		best := ezfyAbs(tc.X-city.X) + ezfyAbs(tc.Y-city.Y)
+		for _, c := range tcs[1:] {
+			if d := ezfyAbs(c.X-city.X) + ezfyAbs(c.Y-city.Y); d < best {
+				tc, best = c, d
+			}
+		}
+		if tc.ID == 0 {
+			continue
+		}
+		// 已在计划中（活跃）→ 不重复写；老计划已结束(4) → 复用该行重新宣战
+		if !h.botLockTargetPlan(b, ezfyBotTargetRow{
+			CityID: tc.ID, UserID: hit.UID, X: tc.X, Y: tc.Y, Name: tc.Name,
+		}, "反击 ") {
+			continue
+		}
+		added++
+		h.ezfyBotLog(b.UserID, "反击", fmt.Sprintf("玩家 %d 攻击了我，已列入反击计划（下轮宣战征服）", hit.UID), 1)
+		if int(active)+added >= ezfyBotMaxPlans {
+			break
 		}
 	}
-	// 已在计划中（任意状态）→ 不重复写（正常流程会打它；唯一键 (bot_uid,target_uid)）
-	var dup int64
-	h.DB.Model(&model.EzfyBotTarget{}).Where("bot_uid = ? AND target_uid = ?", b.UserID, hit.UID).Count(&dup)
-	if dup > 0 {
+	if added == 0 {
 		return false
 	}
-	var tc model.EzfyCity
-	if err := h.DB.Where("user_id = ?", hit.UID).Order("id ASC").First(&tc).Error; err != nil {
-		return false
-	}
-	h.DB.Create(&model.EzfyBotTarget{
-		BotUid: b.UserID, TargetUid: hit.UID, TargetCityId: int64(tc.ID),
-		Status: 0, Note: fmt.Sprintf("反击 %s(%d,%d)", tc.Name, tc.X, tc.Y),
-	})
 	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).Update("next_act_at", now)
-	h.ezfyBotLog(b.UserID, "反击", fmt.Sprintf("玩家 %d 攻击了我，已列入反击计划（下轮宣战征服）", hit.UID), 1)
 	return true
+}
+
+// botLockTargetPlan 写入一条「待宣战」攻击计划（唯一键 (bot_uid,target_uid)）。
+//
+// ★ 2026-10-29 多目标并行后更容易撞唯一键：老计划停在「已完成/放弃(4)」时 Create 必然失败，
+// 原代码直接返回 false → 这个玩家被反复选中却永远锁不上（军事分支原地卡死，看着像「不打人」）。
+// 现在改成**复用老行**（重置为待宣战）；只有「已有活跃计划」时才返回 false。
+// prefix 只影响计划备注（如「反击」），便于管理端一眼看出目标来源。
+func (h *EzfyHandler) botLockTargetPlan(b *model.EzfyBot, tgt ezfyBotTargetRow, prefix string) bool {
+	note := prefix + fmt.Sprintf("%s(%d,%d) 兵力%d", tgt.Name, tgt.X, tgt.Y, tgt.Troops)
+	var old model.EzfyBotTarget
+	if err := h.DB.Where("bot_uid = ? AND target_uid = ?", b.UserID, tgt.UserID).First(&old).Error; err == nil {
+		if old.Status != 4 {
+			return false // 已有活跃计划 → 不重复锁
+		}
+		return h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", old.ID).Updates(map[string]interface{}{
+			"status": 0, "target_city_id": int64(tgt.CityID),
+			"effect_time": 0, "cool_until": 0, "note": note,
+		}).Error == nil
+	}
+	return h.DB.Create(&model.EzfyBotTarget{
+		BotUid: b.UserID, TargetUid: tgt.UserID, TargetCityId: int64(tgt.CityID),
+		Status: 0, Note: note,
+	}).Error == nil
 }
 
 // botMilitary 军事：计划表驱动的「宣战 → 等 24h → 出击」。
@@ -1185,8 +1251,12 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 	now := time.Now().UnixMilli()
 
 	// ① 已有计划：推进状态
+	// ★ 2026-10-29 多目标轮换：按 updated_at 升序取（最久没动过的计划先推进），
+	//   出击成功会把该计划的 updated_at 刷新到最新 → 下次自然轮到**另一个**目标，
+	//   不再「盯着一个人打到死」（用户反馈：附近其他打过我的玩家一直没人打）。
 	var plans []model.EzfyBotTarget
-	h.DB.Where("bot_uid = ? AND status IN (0,1,2,3)", b.UserID).Order("id ASC").Limit(3).Find(&plans)
+	h.DB.Where("bot_uid = ? AND status IN (0,1,2,3)", b.UserID).
+		Order("updated_at ASC, id ASC").Limit(ezfyBotMaxPlans).Find(&plans)
 	for _, p := range plans {
 		switch p.Status {
 		case 3: // 冷却重试：到点转回待宣战
@@ -1305,16 +1375,16 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 		}
 	}
 
-	// ② 没有计划 → 先找**玩家城市**（坐标区间走索引，绝不遍历全图）
-	//   ★ 2026-10-26 「目标最小兵力」按**该人机**自己的配置（默认 100000，0 = 不限）
-	if tgt, ok := h.botPickTarget(city, troopTotal, cfg, b.TargetMinTroops); ok {
-		if err := h.DB.Create(&model.EzfyBotTarget{
-			BotUid: b.UserID, TargetUid: tgt.UserID, TargetCityId: int64(tgt.CityID),
-			Status: 0, Note: fmt.Sprintf("%s(%d,%d) 兵力%d", tgt.Name, tgt.X, tgt.Y, tgt.Troops),
-		}).Error; err != nil {
-			return "", "", false // 唯一键冲突（已有计划）→ 下轮再说
+	// ② 计划未满 → 再锁定一个**不同玩家**（★ 2026-10-29 多队列：人机可同时对附近几个玩家宣战/出征，
+	//   而不是等上一个目标打完才找下一个；botPickTarget 已排除「已有计划」的玩家）
+	if len(plans) < ezfyBotMaxPlans {
+		//   ★ 2026-10-26 「目标最小兵力」按**该人机**自己的配置（默认 100000，0 = 不限）
+		if tgt, ok := h.botPickTarget(city, troopTotal, cfg, b.TargetMinTroops); ok {
+			if !h.botLockTargetPlan(b, tgt, "") {
+				return "", "", false // 已有活跃计划 / 写库失败 → 下轮再说
+			}
+			return "锁定目标", fmt.Sprintf("锁定 %s(%d,%d) 兵力%d", tgt.Name, tgt.X, tgt.Y, tgt.Troops), true
 		}
-		return "锁定目标", fmt.Sprintf("锁定 %s(%d,%d) 兵力%d", tgt.Name, tgt.X, tgt.Y, tgt.Troops), true
 	}
 	// ③ 攻击不了玩家（周围没有可打的城市 / 都打不过 / 没有符合条件的目标）
 	//   → 改打**玩家占领的附属野地**（用户规则 2026-10-19）：
@@ -1548,10 +1618,14 @@ WHERE c.is_bot = 0
                   WHERE e.city_id = c.id AND e.effect_type = 2 AND e.until_time > ?)
   AND NOT EXISTS (SELECT 1 FROM ezfy_bot_target bt
                   WHERE bt.bot_uid = ? AND bt.target_uid = c.user_id AND bt.status = 3 AND bt.cool_until > ?)
+  -- ★ 2026-10-29 多目标并行：已经有计划（待宣战/待生效/可出击/冷却）的玩家不再重复锁定，
+  --   这样每轮锁定的是**另一个**附近玩家（用户反馈「只盯一个人打，附近的却不打」）。
+  AND NOT EXISTS (SELECT 1 FROM ezfy_bot_target bt2
+                  WHERE bt2.bot_uid = ? AND bt2.target_uid = c.user_id AND bt2.status IN (0,1,2,3))
 ORDER BY p.prestige DESC, COALESCE(t.troops, 0) ASC
 LIMIT 1`,
 		city.UserID, city.X-25, city.X+25, city.Y-25, city.Y+25,
-		newbieBefore, ezfyBotMinPrestige(), minTroops, limit, now, city.UserID, now).Scan(&r).Error
+		newbieBefore, ezfyBotMinPrestige(), minTroops, limit, now, city.UserID, now, city.UserID).Scan(&r).Error
 	if err != nil || r.CityID == 0 {
 		return r, false
 	}
@@ -2127,12 +2201,22 @@ func (h *EzfyHandler) ezfyBotBegMail(atkUID, botUID uint, knockedOut bool) {
 		"城都被你占了，再打我就真要飞了。咱们停手吧，我认输。")
 }
 
-// ezfyBotDailyAtkCap 每个人机每日出征次数上限（ezfy_cfg_limit.bot_atk_daily，默认 3）。
+// ezfyBotDailyAtkCap 每个人机每日出征次数上限（ezfy_cfg_limit.bot_atk_daily）。
+//
+// ★ 2026-10-29 用户反馈「每人每日出征 超过 100 没法配置」：
+//
+//	这个配置以前**只是展示**（真正卡的是难度阶梯 ezfyBotAtkDailyOf），现在改成真正生效：
+//	  · >0 → 指定次数（可以超过 100，管理端上限 100000）；
+//	  · 0  → 按难度阶梯（新手 40 / 普通 50 / 精英 60）。
+//	⚠️ 0 是合法值（= 按难度），不能用 ezfyLimitOr 兜底成 3。
 func ezfyBotDailyAtkCap() int {
+	if !ezfyCfg.ready() {
+		return 0 // 配置未加载 → 按难度阶梯，绝不用 0 以外的猜测值
+	}
 	if n := ezfyCfg.limit.BotAtkDaily; n > 0 {
 		return n
 	}
-	return 3
+	return 0
 }
 
 // ezfyBotMinPrestige 人机自动挑攻击目标的最低声望门槛（ezfy_cfg_limit.bot_min_prestige，默认 500000）。
@@ -2211,7 +2295,11 @@ func (h *EzfyHandler) botAtkQuotaOK(b *model.EzfyBot) bool {
 	}
 	// ★ 2026-10-17 每日出征次数上限（用户规则「征服次数按难度 40-60 阶梯」）：
 	//   新手 40 / 普通 50 / 精英 60 次/天；今日次数达到 → 今天不再出征（跨天重置）。
-	daily := ezfyBotAtkDailyOf(b.Level)
+	// ★ 2026-10-29 管理端「每人每日出征」现在**真正生效**：>0 用它（可超 100），0 = 按难度阶梯。
+	daily := ezfyBotDailyAtkCap()
+	if daily <= 0 {
+		daily = ezfyBotAtkDailyOf(b.Level)
+	}
 	if daily > 0 && b.AtkDate == time.Now().Format("20060102") && b.AtkCountToday >= daily {
 		return false
 	}

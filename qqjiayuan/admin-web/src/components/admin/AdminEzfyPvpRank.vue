@@ -34,12 +34,21 @@
           <span class="sw-label">灭敌分上限</span>
           <el-switch v-model="killCapOn" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关"
                      :loading="killCapToggling" @change="onToggleKillCap" />
-          <el-tooltip placement="top" effect="light">
-            <div slot="content" style="max-width:320px;line-height:1.7">
-              开（默认）：单场灭敌分 = 20×log10(加权灭敌)，最多 200 分。<br>
-              关：灭敌分不封顶，灭敌越多分越高（仍受单场规模上限 400 / 800 约束）。<br>
-              只影响之后结算的战斗，已入账积分不回算。
-            </div>
+          <el-tooltip content="开：灭敌分最多 200；关：不封顶。只影响之后结算的战斗。" placement="top" effect="light">
+            <i class="el-icon-info hint-i"></i>
+          </el-tooltip>
+          <span class="sw-div"></span>
+          <!-- ★ 2026-10-29 数值上限：单场分数上限（默认 800，小仗按一半）+ 同对手周封顶（默认 20000），
+               两项共用一个 [保存]，工具栏不再堆按钮 -->
+          <span class="sw-label">单场上限</span>
+          <el-input v-model.number="battleCap" size="small" style="width:76px"
+                    @keyup.enter.native="saveCaps" />
+          <span class="sw-label">同对手上限</span>
+          <el-input v-model.number="foeCap" size="small" style="width:88px"
+                    @keyup.enter.native="saveCaps" />
+          <el-button size="small" :loading="capsSaving" @click="saveCaps">保存</el-button>
+          <el-tooltip content="单场：会战按此、小仗按一半；同对手：同一周累计封顶。只影响之后的战斗。"
+                      placement="top" effect="light">
             <i class="el-icon-info hint-i"></i>
           </el-tooltip>
           <div class="grow" />
@@ -524,6 +533,10 @@ export default {
       // ★ 2026-10-29 灭敌分上限开关（1 = 有上限 200 分 / 0 = 无上限）
       killCapOn: 1,
       killCapToggling: false,
+      // ★ 2026-10-29 单场分数上限（默认 800，小仗按一半）+ 同对手周封顶（默认 20000）
+      battleCap: 800,
+      foeCap: 20000,
+      capsSaving: false,
       lockWeek: '', // ★ 2026-10-18 锁分：当前被锁定的周（空 = 未锁定）
       week: '',
       weeks: [],
@@ -713,6 +726,9 @@ export default {
           this.enabled = r.data.enabled ? 1 : 0
           // ★ 2026-10-29 灭敌分上限开关（缺字段 = 老后端 → 按默认「有上限」）
           this.killCapOn = r.data.kill_cap_on === false || r.data.kill_cap_on === 0 ? 0 : 1
+          // ★ 2026-10-29 单场分数上限 / 同对手周封顶（缺字段 = 老后端 → 用默认值）
+          this.battleCap = Number(r.data.battle_cap) || 800
+          this.foeCap = Number(r.data.foe_cap) || 20000
           // ★ 2026-10-18 锁分状态：锁定周（空 = 未锁定）
           this.lockWeek = r.data.lock_week || ''
           if (this.weeks.indexOf(this.week) < 0 && this.week) this.weeks.unshift(this.week)
@@ -751,6 +767,21 @@ export default {
         }
       }).catch(() => { this.killCapOn = val ? 0 : 1 })
         .finally(() => { this.killCapToggling = false })
+    },
+    // ★ 2026-10-29 数值上限保存：单场分数上限（默认 800，小仗按一半）+ 同对手周封顶（默认 20000）
+    saveCaps () {
+      const b = Math.round(Number(this.battleCap) || 0)
+      const f = Math.round(Number(this.foeCap) || 0)
+      if (!(b >= 100 && b <= 1000000)) { this.$message.error('单场上限需要在 100 ~ 1000000 之间'); return }
+      if (!(f >= 100 && f <= 100000000)) { this.$message.error('同对手上限需要在 100 ~ 100000000 之间'); return }
+      this.capsSaving = true
+      api.post('/admin/ezfy-pvp-rank/caps', { battle_cap: b, foe_cap: f }).then(r => {
+        if (r.code === 0) {
+          if (r.data.battle_cap) this.battleCap = r.data.battle_cap
+          if (r.data.foe_cap) this.foeCap = r.data.foe_cap
+          this.$message.success(r.data.msg || '已保存')
+        } else this.$message.error(r.msg)
+      }).catch(() => {}).finally(() => { this.capsSaving = false })
     },
     // ★ 2026-10-26 锁分 / 解锁：只锁**当期（本周）**，跨周自动失效
     onLock (lock) {

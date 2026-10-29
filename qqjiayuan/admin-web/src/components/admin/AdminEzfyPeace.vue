@@ -7,7 +7,11 @@
         <el-checkbox v-model="only" style="margin-left:12px" @change="page = 1; load()">只看在免战</el-checkbox>
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
-        <span class="td-gray" style="font-size:12px">开始免战 = 给该玩家<b>全部城池</b>打免战保护（管理端不受冷却限制）；结束 = 清除全部城池的免战</span>
+        <!-- ★ 2026-10-29 用户「简约提示或放到 i 里面」：整段说明收进 i 图标 -->
+        <el-tooltip placement="top" effect="light"
+                    content="开始免战：给该玩家全部城池打免战保护（管理端不受冷却限制）；结束：清除全部城池的免战。">
+          <i class="el-icon-info peace-tip"></i>
+        </el-tooltip>
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
         <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
@@ -149,4 +153,7 @@ export default {
 
 <style scoped>
 @import './farm-admin.css';
+/* ★ 2026-10-29 免战规则说明收进 i 图标（原来一整段灰字挤在工具栏） */
+.peace-tip { color: #a8b3c2; cursor: help; font-size: 14px; vertical-align: -1px; }
+.peace-tip:hover { color: #409eff; }
 </style>
