@@ -44,8 +44,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-10-23 临时空闲人口回落窗口（缺行时默认 300 秒 = 5 分钟）
 		PopExtraDecaySeconds: ezfyPopExtraDecaySecondsDef,
 		ConquerFeelingsMax:   ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
-		// ★ 2026-10-27 人机征服单次扣民心上限（默认 100 = 直接打光，保持原行为）
-		BotConquerFeelingsMax: ezfyBotConquerFeelingsDef,
 		// ★ 2026-10-24 民心平滑回归（秒级）：上升/下降默认均 3600 秒回归到合理位置
 		FeelingsRecoverSeconds: ezfyFeelingsRecoverSecDef,
 		FeelingsDropSeconds:    ezfyFeelingsDropSecDef,
@@ -169,10 +167,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 战斗/经济数值兜底：这几个 0 同样无意义（0 = 不扣民心 / 军官免费 / 恢复免费）
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
-	}
-	// ★ 2026-10-27 人机征服扣民心上限：0 无意义（扣 0 点 → 人机永远占不了城）→ 回落默认 100
-	if lim.BotConquerFeelingsMax <= 0 {
-		lim.BotConquerFeelingsMax = ezfyBotConquerFeelingsDef
 	}
 	if lim.LootFeelings <= 0 {
 		lim.LootFeelings = ezfyLootFeelingsDef
@@ -392,8 +386,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MoveCoolH          *int `json:"move_cool_h"`
 		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
 		LootFeelings       *int `json:"loot_feelings"`
-		// ★ 2026-10-27 人机征服单次扣民心上限（默认 100 = 直接打光；0 无意义 → 只收 >= 1）
-		BotConquerFeelingsMax *int `json:"bot_conquer_feelings_max"`
 		// ★ 2026-10-24 民心平滑回归（秒级）：上升/下降默认均 3600 秒
 		FeelingsRecoverSeconds *int `json:"feelings_recover_seconds"`
 		FeelingsDropSeconds    *int `json:"feelings_drop_seconds"`
@@ -542,8 +534,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-10-23 临时空闲人口回落窗口（缺行时默认 300 秒 = 5 分钟）
 		PopExtraDecaySeconds: ezfyPopExtraDecaySecondsDef,
 		ConquerFeelingsMax:   ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
-		// ★ 2026-10-27 人机征服单次扣民心上限（默认 100 = 直接打光，保持原行为）
-		BotConquerFeelingsMax: ezfyBotConquerFeelingsDef,
 		// ★ 2026-10-24 民心平滑回归（秒级）：上升/下降默认均 3600 秒回归到合理位置
 		FeelingsRecoverSeconds: ezfyFeelingsRecoverSecDef,
 		FeelingsDropSeconds:    ezfyFeelingsDropSecDef,
@@ -880,10 +870,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		lim.HealAllDiamond = *in.HealAllDiamond
 	}
 	if !setPos(in.ConquerFeelingsMax, &lim.ConquerFeelingsMax, "征服单次扣民心") {
-		return
-	}
-	// ★ 2026-10-27 人机征服扣民心上限：0 无意义（扣 0 点 = 人机永远占不了城）→ 只收 >= 1
-	if !setPos(in.BotConquerFeelingsMax, &lim.BotConquerFeelingsMax, "人机征服单次扣民心") {
 		return
 	}
 	if !setPos(in.LootFeelings, &lim.LootFeelings, "掠夺单次扣民心") {
@@ -1363,10 +1349,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
-	}
-	// ★ 2026-10-27 人机征服扣民心上限：0 无意义（扣 0 点 → 人机永远占不了城）→ 回落默认 100
-	if lim.BotConquerFeelingsMax <= 0 {
-		lim.BotConquerFeelingsMax = ezfyBotConquerFeelingsDef
 	}
 	if lim.LootFeelings <= 0 {
 		lim.LootFeelings = ezfyLootFeelingsDef

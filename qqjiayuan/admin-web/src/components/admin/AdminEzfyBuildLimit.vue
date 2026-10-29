@@ -291,12 +291,8 @@
               <template slot="label">征服单次扣民心<el-tooltip placement="top" :content="tips.conquer_feelings_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.conquer_feelings_max" :min="1" controls-position="right" style="width:180px" />
             </el-form-item>
-            <!-- ★ 2026-10-27 人机（AI）征服扣民心单独一份：默认 100 = 直接打光（占城必须民心归零），
-                 调小可让人机「温柔点」（5 = 与真人一致，但人机会很难占城） -->
-            <el-form-item>
-              <template slot="label">人机征服扣民心<el-tooltip placement="top" :content="tips.bot_conquer_feelings_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model.number="form.bot_conquer_feelings_max" :min="1" :max="100" controls-position="right" style="width:180px" />
-            </el-form-item>
+            <!-- ★ 2026-10-29 取消「人机征服扣民心」单独一项（用户规则：人机也是正常玩家，只是电脑控制）
+                 → 人机与真人共用上面这条「征服单次扣民心」。 -->
             <el-form-item>
               <template slot="label">掠夺单次扣民心<el-tooltip placement="top" :content="tips.loot_feelings"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.loot_feelings" :min="1" controls-position="right" style="width:180px" />
@@ -622,8 +618,6 @@ export default {
         conquer_feelings_max: 2, loot_feelings: 2, ransom_cost: 500,
         // ★ 2026-10-28 占领保护期小时数（默认 28，原主人期满才能弃城）+ 占领方处置冷却（默认 24）
         occupy_protect_h: 28, occupy_finalize_h: 24,
-        // ★ 2026-10-27 人机征服扣民心上限（默认 100 = 直接打光）
-        bot_conquer_feelings_max: 100,
         // ★ 2026-10-13 回合战斗公式（默认 = 移植前的硬编码值：40 / 6000 / 10000 / 50 / 50）
         battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50,
@@ -726,7 +720,7 @@ export default {
           'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_sec', 'act_treasure_cooldown_sec', 'act_item_cooldown_sec', 'move_cool_h'],
         battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
           'garrison_break_pct', 'battle_round_ms', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base',
-          'min_dmg_coeff', 'conquer_feelings_max', 'bot_conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'occupy_protect_h', 'occupy_finalize_h', 'placate_gold',
+          'min_dmg_coeff', 'conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'occupy_protect_h', 'occupy_finalize_h', 'placate_gold',
           'placate_grievance', 'placate_feelings', 'placate_cooldown_min', 'feelings_recover_seconds', 'feelings_drop_seconds', 'officer_salary_per_level',
           'speed_train_on', 'speed_train_rate', 'res_max_food', 'res_max_steel', 'res_max_oil',
           'res_max_rare', 'res_max_gold'],
@@ -763,9 +757,6 @@ export default {
         dispatch_period_h: '驻守采集每满该小时数结算一期（资源与宝物），默认 4 小时。',
         march_speed_bonus: '出征行军速度加成百分比：100 = 行军时间减半，默认 0（无加成）。',
         conquer_feelings_max: '真人征服成功时最多扣除目标多少民心，默认 5（实际按「幸存兵力÷2000」计算，最少 1）。',
-        bot_conquer_feelings_max: '人机（AI）征服时单次最多扣目标多少民心。默认 100 = 一次直接把民心打光（人机占城必须民心归零，' +
-          '而民心 1 小时就回满、人机每小时只打 6~10 次，慢慢扣永远打不下来）。' +
-          '觉得人机打得太狠就调小：填 5 = 与真人一致（代价是人机基本占不了城），填 20~30 = 折中。',
         loot_feelings: '掠夺成功时固定扣除目标多少民心，默认 3。',
         feelings_recover_seconds: '民心低于上限时，按该秒数平滑回升至上限，默认 3600 秒。' +
           '上限受「民心 + 民怨 + 税率 = 100」限制：民怨未清除时民心无法回满。',
@@ -960,8 +951,6 @@ export default {
             march_speed_bonus: (r.data.march_speed_bonus === undefined || r.data.march_speed_bonus === null)
               ? 0 : Number(r.data.march_speed_bonus),
             conquer_feelings_max: pos(r.data.conquer_feelings_max, 2),
-            // ★ 2026-10-27 人机征服扣民心上限（默认 100 = 直接打光；0 无意义 → pos 回落默认）
-            bot_conquer_feelings_max: pos(r.data.bot_conquer_feelings_max, 100),
             loot_feelings: pos(r.data.loot_feelings, 2),
             ransom_cost: pos(r.data.ransom_cost, 500),
             // ★ 2026-10-28 占领保护期（默认 28，原主人弃城）+ 占领方处置冷却（默认 24）

@@ -5107,16 +5107,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			//   原来封顶写死 20，且按「幸存兵力/2000」动态算，大兵团一次就能清零民心。
 			//   现在既保留动态计算（小部队扣得少），又用配置值封顶。
 			//
-			// ★★ 2026-10-27 人机单独一份上限（ezfy_cfg_limit.bot_conquer_feelings_max，默认 100）：
-			//   原来这里是 `if city.IsBot == 1 { cur = 0 }` 硬清零 —— 人机一打就把守方民心
-			//   从 95 打到 0，玩家战报显示「民心 - 95」（真人单次最多 5 点），反馈「掉太多」。
-			//   现在改成「人机用自己的人机上限」：默认 100 = 仍然打光（占城必须民心归零），
-			//   管理员调小到 5 就与真人一致（代价：人机很难占城）、调到 20~30 是折中。
-			if city.IsBot == 1 {
-				if bcm := ezfyBotConquerFeelingsCfg(); bcm > 0 && feelingDrop > bcm {
-					feelingDrop = bcm
-				}
-			} else if cm := ezfyConquerFeelingsCfg(); feelingDrop > cm {
+			// ★★ 2026-10-29 用户规则「人机也是正常玩家，只是电脑控制」→ **取消人机单独上限**：
+			//   2026-10-27 曾给人机单开一份 bot_conquer_feelings_max（默认 100 = 一次打光），
+			//   结果玩家被 AI 征服一次就「民心 -90」，与真人单次最多 -5 完全不对等，被投诉。
+			//   现在人机与真人**同一条规则、同一个配置**（conquer_feelings_max），
+			//   人机要占城也只能像真人一样反复征服把民心磨到 0。
+			if cm := ezfyConquerFeelingsCfg(); feelingDrop > cm {
 				feelingDrop = cm
 			}
 			cur := target.Feelings - feelingDrop
