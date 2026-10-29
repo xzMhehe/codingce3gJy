@@ -114,8 +114,9 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 	go func() { defer wg.Done(); boost = h.ezfyLoadActiveBoost(city.ID) }()
 	go func() { defer wg.Done(); mayor = h.mayorBonusPct(city.ID) }()
 	wg.Wait()
-	snap := &resCalcData{buildings: list, techs: techs, wilds: wilds, troops: troops,
-		boost: boost, boostDone: true, mayor: mayor}
+	// ★ 2026-10-29 没有「科研中心」的本城不享受科技加成（用已取到的建筑列表判定，0 额外 SQL）
+	snap := &resCalcData{buildings: list, techs: ezfyTechsPick(techs, ezfyBuildingsHaveAcademy(list)),
+		wilds: wilds, troops: troops, boost: boost, boostDone: true, mayor: mayor}
 	// 懒结算复用已取数据（零额外查询）
 	h.checkBuildingDone(&city, list)
 	h.checkTechDoneRows(&city, techRows)
@@ -502,7 +503,8 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	// ★ 2026-10-21 兵种详情/训练页展示的训练时间：与建队列同一公式
 	//   （含市长军事/开关 + 军训艺术等级）。市长和科技只查一次，下面所有兵种共用。
 	mayorMil := h.mayorTrainMilitary(city.ID)
-	trainArt := h.techMapOf(city.UserID)[5]
+	// ★ 2026-10-29 科技加成按**本城**生效：没有科研中心（建筑 8）的城不吃科技加成 → 用 techMap(city.ID)
+	trainArt := h.techMap(city.ID)[5]
 	// 已训练数量(城内部队), 供兵种详情页显示「现有:N」
 	for _, t := range allTroops {
 		f, s, o, r := h.trainCostWithActivity(t.Food, t.Steel, t.Oil, t.Rare)
@@ -4004,8 +4006,10 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 //	这里把**同一口径**逐条下发（每条自带 city_id/radar/recon/intel），
 //	前端就能「哪座城被打、那座城的情报等级够不够」一目了然，不必再看当前查看城。
 //
-// 性能：2 条 SQL（我的城市列表 + 这些城市的雷达站等级）。科技是**用户级**
-// （`ezfy_user_tech` 按 user_id、全账号共用，见 techMap 注释）→ 内存取值，不用按城查。
+// 性能：2 条 SQL（我的城市列表 + 这些城市的雷达站/科研中心等级，两个建筑 ID 合并成一次 IN）。
+// 科技等级本身是**账号级**（`ezfy_user_tech` 按 user_id，见 techMap 注释）→ 内存取值；
+// ★ 2026-10-29 用户规则：**没有「科研中心」建筑的城市不享受科技加成** → 逐条按该城的科研中心判定
+// 侦察技巧是否生效（同一份建筑查询里顺手取，不额外打库）。
 // 老行 city_id=0/NULL：按标题里的**城名**反查归属（与 ezfyCityReportCond 第 3 条路同口径）。
 func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
 	if len(views) == 0 {
@@ -4021,19 +4025,28 @@ func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
 		}
 		ids = append(ids, int64(c.ID))
 	}
-	// 一次查出这些城市的雷达站等级（同城多行取最高，与 buildingLevel 一致）
+	// 一次查出这些城市的雷达站(21) + 科研中心(8) 等级（同城多行取最高，与 buildingLevel 一致）。
+	// ★ 2026-10-29 科技加成按**本城**生效：没有科研中心的城不吃科技加成 → 侦察技巧按该城的科研中心判定。
+	//   ★ 与雷达站合并成同一条查询，SQL 条数不变。
 	radarByCity := map[int64]int{}
+	academyCity := map[int64]bool{}
 	if len(ids) > 0 {
 		var bs []model.EzfyCityBuilding
-		h.DB.Select("city_id, level").
-			Where("city_id IN ? AND building_id = ?", ids, ezfyRadarBuildingID).Find(&bs)
+		h.DB.Select("city_id, building_id, level").
+			Where("city_id IN ? AND building_id IN ?", ids, []int{ezfyRadarBuildingID, ezfyAcademyBuildingID}).Find(&bs)
 		for _, b := range bs {
+			if b.BuildingId == ezfyAcademyBuildingID {
+				if b.Level > 0 {
+					academyCity[b.CityId] = true
+				}
+				continue
+			}
 			if b.Level > radarByCity[b.CityId] {
 				radarByCity[b.CityId] = b.Level
 			}
 		}
 	}
-	recon := h.techMapOf(uid)[ezfyReconTechID] // 科技用户级 → 所有城共用
+	reconAccount := h.techMapOf(uid)[ezfyReconTechID] // 账号级等级（本城有科研中心才生效）
 	for _, v := range views {
 		cid, _ := v["city_id"].(int64)
 		if cid == 0 {
@@ -4048,6 +4061,11 @@ func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
 			}
 		}
 		radar := radarByCity[cid]
+		// ★ 2026-10-29 没有科研中心的那座城不享受科技加成 → 侦察技巧按 0 级算
+		recon := reconAccount
+		if !academyCity[cid] {
+			recon = 0
+		}
 		intel := 0
 		if radar > 0 { // 与 ezfyIntelLevel 完全同口径：没雷达站 = 0
 			intel = radar + recon

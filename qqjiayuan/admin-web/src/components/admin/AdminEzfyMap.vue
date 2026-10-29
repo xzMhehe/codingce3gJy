@@ -15,7 +15,7 @@
           地形 {{ lookupResult.terrain_name }} ·
           大陆 {{ lookupResult.continent }} ·
           野地等级 {{ lookupResult.wild_level }}
-          <span v-if="lookupResult.city"> · 城池「{{ lookupResult.city.name }}」（{{ lookupResult.city.player_name || '无主' }} · {{ lookupResult.city.home_num }}）</span>
+          <span v-if="lookupResult.city"> · 城池「{{ lookupResult.city.name }}」（{{ lookupResult.city.player_name || '无主' }} · 游戏ID {{ lookupResult.city.game_uid || lookupResult.city.user_id || '—' }}）</span>
           <span v-if="lookupResult.area"> · 区域类型 {{ areaTypes[lookupResult.area.area_type] || lookupResult.area.area_type }}</span>
         </template>
       </el-alert>
@@ -40,7 +40,10 @@
             <el-table-column prop="continent" label="大陆" width="90" align="center" />
             <el-table-column prop="city_level" label="市政厅" width="80" align="center" />
             <el-table-column prop="player_name" label="归属玩家" min-min-width="135" show-overflow-tooltip />
-            <el-table-column prop="home_num" label="家园号" width="95" align="center" />
+            <!-- ★ 2026-10-29 家园号 → 游戏ID（game_uid 才是玩家报给客服的号） -->
+            <el-table-column label="游戏ID" width="95" align="center">
+              <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id || '—' }}</span></template>
+            </el-table-column>
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ cityTotal }}</b> 条 · 每页 {{ citySize }} 条</div>
@@ -579,7 +582,9 @@
           <el-table :data="stars" v-loading="loadingStar" stripe border>
             <el-table-column prop="id" label="ID" width="70" align="center" />
             <el-table-column prop="owner_name" label="玩家" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="home_num" label="家园号" width="100" align="center" />
+            <el-table-column label="游戏ID" width="100" align="center">
+              <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id || '—' }}</span></template>
+            </el-table-column>
             <el-table-column label="坐标" width="105" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
             </el-table-column>

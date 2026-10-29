@@ -74,7 +74,7 @@
       <div v-if="detail">
         <el-descriptions :column="2" size="medium" border>
           <el-descriptions-item label="归属账号">{{ detail.user_id }}</el-descriptions-item>
-          <el-descriptions-item label="玩家">{{ detail.player_name }}（{{ detail.home_num }}）</el-descriptions-item>
+          <el-descriptions-item label="玩家">{{ detail.player_name }}（游戏ID {{ detail.game_uid || detail.user_id || '—' }}）</el-descriptions-item>
           <el-descriptions-item label="战报类型">
             <el-tag size="small" :type="tagType(detail.type_name)">{{ detail.type_name }}</el-tag>
           </el-descriptions-item>
@@ -156,14 +156,15 @@ export default {
       this.detailDlg = true
       api.get('/admin/ezfy-reports/' + row.id).then(r => {
         if (r.code === 0) {
-          // ★ 2026-10-07 修复详情 bug：后端返回的是 { report, player_name, home_num, type_name }，
-          //   玩家/家园号/类型名都在 report **外层**。原来只取 r.data.report，
+          // ★ 2026-10-07 修复详情 bug：后端返回的是 { report, player_name, home_num, game_uid, type_name }，
+          //   玩家/游戏ID/类型名都在 report **外层**。原来只取 r.data.report，
           //   导致弹窗标题显示「undefined · 标题」、玩家显示「（undefined）」、类型标签恒为默认色。
           const d = r.data || {}
           const rep = d.report || {}
           this.detail = Object.assign({}, rep, {
             player_name: d.player_name || rep.player_name || '',
             home_num: d.home_num || '',
+            game_uid: d.game_uid || rep.user_id || 0,
             type_name: d.type_name || ''
           })
         } else { this.detailDlg = false; this.$message.error(r.msg) }

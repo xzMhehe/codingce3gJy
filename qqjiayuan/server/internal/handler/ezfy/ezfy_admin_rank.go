@@ -260,7 +260,9 @@ func (h *EzfyAdmin) AdminEzfyPvpRank(c *gin.Context) {
 		"week": week, "weeks": weeks, "ranks": ranks,
 		"enabled":   ezfyPvpRankOn(),
 		"lock_week": ezfyPvpRankLockWeek(),
-		"excluded":  pvpExcludedRows(h.DB, ezfyBoardPvp),
+		// ★ 2026-10-29 灭敌分上限开关（1 = 有上限 200 / 0 = 无上限）
+		"kill_cap_on": ezfyPvpKillCapOn(),
+		"excluded":    pvpExcludedRows(h.DB, ezfyBoardPvp),
 	})
 }
 
@@ -448,6 +450,34 @@ func (h *EzfyAdmin) AdminEzfyPvpRankToggle(c *gin.Context) {
 		return
 	}
 	resp.OK(c, gin.H{"msg": "风云榜统计已关闭（不再统计新的玩家对战战绩）", "on": 0})
+}
+
+// AdminEzfyPvpKillCap 开关风云榜「单场灭敌加分上限」（POST /admin/ezfy-pvp-rank/kill-cap，body: {on: 0|1}）。
+//
+// ★ 2026-10-29 用户需求「单灭敌加分上限加个开关：默认开（有上限），关掉期间灭敌无上限」。
+//
+//	开（1，默认）= 杀敌分 20×log10(加权灭敌) 最多 200 分；
+//	关（0）      = 不封顶（灭敌越多分越高，仍受单场规模上限 400/800 约束）。
+//	只影响**之后**结算的战斗，已入账的历史积分不回算。
+func (h *EzfyAdmin) AdminEzfyPvpKillCap(c *gin.Context) {
+	var in struct {
+		On *int `json:"on"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.On == nil || (*in.On != 0 && *in.On != 1) {
+		resp.ParamError(c, "参数错误（on 只能是 0 或 1）")
+		return
+	}
+	if err := h.DB.Model(&model.EzfyCfgLimit{}).Where("id = 1").Update("pvp_kill_cap_on", *in.On).Error; err != nil {
+		resp.ParamError(c, "保存失败："+err.Error())
+		return
+	}
+	// 立即生效（重载配置缓存，别的节点靠周期刷新收敛）
+	h.ezfyReload()
+	if *in.On == 1 {
+		resp.OK(c, gin.H{"msg": "灭敌分上限已开启（单场灭敌分最多 200）", "on": 1})
+		return
+	}
+	resp.OK(c, gin.H{"msg": "灭敌分上限已关闭（灭敌越多分越高，不再封顶）", "on": 0})
 }
 
 // AdminEzfyPvpExclude POST /admin/ezfy-pvp-rank/exclude，body: {user_id, reason, board}。

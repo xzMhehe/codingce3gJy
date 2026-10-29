@@ -57,7 +57,7 @@
             <el-table-column prop="game_uid" label="游戏ID" width="100" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id }}</span></template>
             </el-table-column>
-            <el-table-column prop="home_num" label="家园号码" width="100" align="center" />
+            <!-- ★ 2026-10-29 去掉重复的「家园号码」列：上面已有游戏ID(game_uid)，家园号对玩家没意义 -->
             <el-table-column label="玩家" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.nickname || row.player_name || '—' }}</span></template>
             </el-table-column>

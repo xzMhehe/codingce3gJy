@@ -827,6 +827,12 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	for _, t := range userTechs {
 		techMap[t.TechId] = t.Level
 	}
+	// ★ 2026-10-29 用户规则：没有「科研中心」建筑的城市不享受科技加成 →
+	//   出征预览的负重（装载技术）与真实出征同口径，出发城没科研中心就按 0 级算。
+	//   （与上面两个 buildingLevel 并行块合并成同一次建筑列表查询代价相同，仍是一次 buildingList）
+	if h.buildingLevel(city.ID, ezfyAcademyBuildingID) <= 0 {
+		techMap = map[int]int{}
+	}
 
 	valid := []ezfyUnitGroup{}
 	for _, t := range req.Troops {

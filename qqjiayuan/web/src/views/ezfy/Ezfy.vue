@@ -1051,6 +1051,13 @@ export default {
   //   避免「已取消升级/已开始升级」这类提示一直挂在建筑行上不消失。
   //   [关闭] 仍然可用（直接置 null）。
   watch: {
+    // ★ 2026-10-29 离开「排行」页 → 就地展开的明细全部收起（场次明细 / 积分明细 / 战力明细 / 宝物）。
+    //   用户：「展开[场次明细]后离开 rank 页再进来还是展开的，不对」——页面状态属于一次性交互，
+    //   离开即复位，再进来是默认收起。放 watcher 里而不是 go() 里，是因为 cur 还有十几种被直接赋值
+    //   （openPlayer/back/popstate 等）的入口，只有监听 cur 才能全部覆盖。
+    cur (n, o) {
+      if (o === 'rank' && n !== 'rank') this.resetRankExpand()
+    },
     inlineTip (n) {
       if (this._tipTimer) { clearTimeout(this._tipTimer); this._tipTimer = null }
       if (n) this._tipTimer = setTimeout(() => { this.inlineTip = null }, 5000)
@@ -1069,6 +1076,15 @@ export default {
     }
   },
   computed: {
+    // ★ 2026-10-29 风云榜规则说明（榜单标题右侧小字的 title）：原来整段写死在模板里，
+    //   现在「单场灭敌加分上限」可以在管理端关掉 → 文案跟着后端 kill_cap_on 变，不能写死「最高200」。
+    pvpRuleTitle () {
+      const killCap = (this.pvpRank && this.pvpRank.kill_cap_on === false) ? '无上限' : '最高200'
+      return '行动分：进攻20/防守15；胜负分：胜40/平15/负10；杀敌分按灭敌兵种价值加权对数计（' + killCap +
+        '）；兵种越贵、兵团越大分越多（最多×3.5）；兵力不足约1万步兵/70航母不计分' +
+        '（出征上限由司令部+集结令决定）；小仗最多400分，大兵团会战（约1万航母/150万步兵）封顶800；' +
+        '侦察机/卡车不计分；同对手每周封顶20000'
+    },
     // ★ 2026-10-07 出征目标是不是「玩家城市」：
     //   地图格 area_type=3 表示玩家城 → 出征页「自动战斗」强制「否」且只读
     //   （守方是真人，必须留指挥机会）。野地 / AI 寇城为 1/2，不受限。
@@ -4334,6 +4350,22 @@ export default {
         }
       }).finally(() => { this.pvpLoading = false })
     },
+    // ★ 2026-10-29 离开排行页复位所有「就地展开」状态（默认收起）：
+    //   场次明细连分页/缓存一起清掉，下次再点[场次明细]从第 1 页重新拉，不会停在上次翻到的第 N 页。
+    resetRankExpand () {
+      const d = this.pvpDetail
+      // 作废在途的明细请求（否则旧响应晚到会把列表写回来、把 loading 卡在 true）
+      this._pvpDetailSeq = (this._pvpDetailSeq || 0) + 1
+      d.show = false
+      d.loading = false
+      d.page = 1
+      d.list = []
+      d.total = 0
+      d.week = ''
+      this.showPvpRow = -1
+      this.showPowerRow = -1
+      this.showTreasureRow = -1
+    },
     // ★ 2026-10-16 风云榜「我的战绩」场次明细：就地展开/收起（收起时不重新拉数据）
     togglePvpDetail () {
       const d = this.pvpDetail
@@ -4353,12 +4385,16 @@ export default {
       d.show = true
     },
     // ★ 2026-10-16 拉取当前页场次明细（分页倒序）
+    // ★ 2026-10-29 请求序号：只认最后一次请求的响应，晚到的旧响应（离开页面/连点翻页后）直接丢弃。
     loadPvpDetail () {
       const d = this.pvpDetail
-      if (d.loading || !d.week) return
+      if (!d.week) return
+      const seq = (this._pvpDetailSeq || 0) + 1
+      this._pvpDetailSeq = seq
       d.loading = true
       const q = '?week=' + encodeURIComponent(d.week) + '&page=' + d.page + '&size=' + d.size
       api.get('/games/ezfy/rank/pvp/detail' + q).then(r => {
+        if (seq !== this._pvpDetailSeq) return
         if (r.code === 0 && r.data) {
           d.list = r.data.list || []
           d.total = r.data.total || 0
@@ -4367,11 +4403,14 @@ export default {
             this.loadPvpDetail()
           }
         }
-      }).finally(() => { d.loading = false })
+      }).finally(() => { if (seq === this._pvpDetailSeq) d.loading = false })
     },
     // 场次明细翻页（step = ±1）
     pvpDetailPage (step) {
       const d = this.pvpDetail
+      // ★ 2026-10-29 局部刷新：上一次翻页还没回来就忽略连点，否则页码已经变了、
+      //   loadPvpDetail 又因 loading 提前返回 → 页码显示第 N 页、列表还是第 N-1 页。
+      if (d.loading) return
       const pages = Math.max(1, Math.ceil(d.total / d.size))
       const p = d.page + step
       if (p < 1 || p > pages) return

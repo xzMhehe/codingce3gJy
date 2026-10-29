@@ -2003,6 +2003,8 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues)
 	}()
 	wg.Wait()
+	// ★ 2026-10-29 没有「科研中心」的本城不享受科技加成（用已取到的建筑列表判定，0 额外 SQL）
+	techs = ezfyTechsPick(techs, ezfyBuildingsHaveAcademy(buildings))
 	// 懒结算复用已取数据（零额外查询）
 	h.checkBuildingDone(&city, buildings)
 	h.checkTechDoneRows(&city, techRows)

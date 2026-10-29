@@ -40,7 +40,10 @@
               </template>
             </el-table-column>
             <el-table-column prop="owner_name" label="归属玩家" min-width="130" show-overflow-tooltip />
-            <el-table-column prop="home_num" label="家园号" width="95" align="center" />
+            <!-- ★ 2026-10-29 家园号 → 游戏ID（game_uid 才是玩家报给客服的号） -->
+            <el-table-column label="游戏ID" width="95" align="center">
+              <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id || '—' }}</span></template>
+            </el-table-column>
             <el-table-column label="操作" width="190" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="改等级" @click="openEdit(row)" />
@@ -388,7 +391,7 @@ export default {
           this.total = r.data.total
           this.page = r.data.page
         } else this.$message.error(r.msg)
-      })
+      }).catch(() => { this.loading = false })
     },
     // ---- 科技配置 ----
     loadCfgs () {
@@ -399,7 +402,7 @@ export default {
           this.cfgs = r.data.list || []
           this.cfgTotal = r.data.total || 0
         } else this.$message.error(r.msg)
-      })
+      }).catch(() => { this.loadingCfg = false })
     },
     // 下拉用全量科技（不分页）
     loadAllTechs () {

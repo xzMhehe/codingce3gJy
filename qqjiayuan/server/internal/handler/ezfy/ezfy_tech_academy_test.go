@@ -71,3 +71,60 @@ func TestTechLevel10RequiresAcademy10(t *testing.T) {
 		t.Fatalf("Techs 的两处（研究中/未研究）都应用新口径：\n%s", techs)
 	}
 }
+
+// TestTechBonusRequiresAcademy 没有「科研中心」建筑的城市**不享受任何科技加成**。
+//
+// ★★ 2026-10-29 用户规则（当面明确）：科技等级属于玩家（`ezfy_user_tech` 按 user_id），
+// 但**生效按城市判** —— 本城建筑 8（科研中心）等级为 0 时，该城所有科技加成按 0 级算
+// （产量/训练/采集/载重/侦察/建造速度…）。科技与城市只有两处关系：
+// ① 研究由某城发起（队列 ezfy_city_tech）② 本测试这条「没科研中心不享受加成」。
+//
+// ★ 用户端**不加任何提示文案**，规则静默生效（别在页面上加「本城无科研中心…」之类冗余提示）。
+func TestTechBonusRequiresAcademy(t *testing.T) {
+	src := strings.ReplaceAll(rawFile(t, "ezfy.go"), "\r\n", "\n")
+	// ① 常量：科研中心 = 建筑 8
+	if !strings.Contains(src, "ezfyAcademyBuildingID = 8") {
+		t.Fatal("缺少常量 ezfyAcademyBuildingID = 8（科研中心建筑 ID）")
+	}
+	// ② techMap 必须按「本城科研中心等级 > 0」判定，否则返回空表
+	tm := stripGoComments(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) techMap(cityId uint) map[int]int {"))
+	for _, want := range []string{"ezfy_city_building", "ezfyAcademyBuildingID", "return map[int]int{}"} {
+		if !strings.Contains(tm, want) {
+			t.Fatalf("techMap 没把「本城有无科研中心」纳入判定（缺 %s）：\n%s", want, tm)
+		}
+	}
+	// ③ 纯内存版：用已取到的建筑列表判定（产量快照等零额外 SQL 场景）
+	hm := stripGoComments(ezfyFuncBody(t, "ezfy.go", "func ezfyBuildingsHaveAcademy(buildings []model.EzfyCityBuilding) bool {"))
+	if !strings.Contains(hm, "ezfyAcademyBuildingID") || !strings.Contains(hm, "Level > 0") {
+		t.Fatalf("ezfyBuildingsHaveAcademy 判定口径不对：\n%s", hm)
+	}
+	// ④ 四个产量/结算快照都必须经 ezfyTechsPick 按城过滤（不能直接把账号级 techs 喂进去）
+	for _, f := range []string{"ezfy.go", "ezfy_api.go", "ezfy_chat_exchange.go"} {
+		if c := strings.Count(strings.ReplaceAll(rawFile(t, f), "\r\n", "\n"), "ezfyTechsPick("); c == 0 {
+			t.Fatalf("%s 里没有用 ezfyTechsPick 按城过滤科技加成", f)
+		}
+	}
+	// ⑤ 批量结算的负重科技缓存必须按**城**（同一批可能有多个出发城，科研中心情况不同）
+	env := stripGoComments(ezfyFuncBody(t, "ezfy_settle_env.go", "func (h *EzfyHandler) envTechs(e *ezfySettleEnv, cityId uint) map[int]int {"))
+	if !strings.Contains(env, "techsByCity[cityId]") {
+		t.Fatalf("envTechs 没按城市缓存（应 key = 出发城ID）：\n%s", env)
+	}
+	if strings.Contains(env, "techMapOf(") {
+		t.Fatalf("envTechs 仍直接用账号级 techMapOf（会绕过科研中心判定）：\n%s", env)
+	}
+	// ⑥ 采集的负重判定必须按订单的出发城取科技
+	col := stripGoComments(rawFile(t, "ezfy_collect.go"))
+	if !strings.Contains(col, "academyOf[uint(order.CityId)]") {
+		t.Fatal("一键采集的负重判定没按出发城的科研中心过滤科技加成")
+	}
+	// ⑦ 公共取数入口 ezfyLoadCityData（~30 处 refreshCity* 都走它）必须按城过滤
+	lcd := stripGoComments(ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) ezfyLoadCityData(uid uint, city *model.EzfyCity, cities []model.EzfyCity, extra ...func()) *resCalcData {"))
+	if !strings.Contains(lcd, "ezfyTechsPick(") {
+		t.Fatalf("ezfyLoadCityData 没按本城科研中心过滤科技表（所有懒结算都会吃错加成）：\n%s", lcd)
+	}
+	// ⑧ 出征预览的负重（装载技术）也必须按出发城判定
+	ord := stripGoComments(rawFile(t, "ezfy_order.go"))
+	if !strings.Contains(ord, "h.buildingLevel(city.ID, ezfyAcademyBuildingID)") {
+		t.Fatal("出征预览的负重科技没按出发城的科研中心过滤")
+	}
+}

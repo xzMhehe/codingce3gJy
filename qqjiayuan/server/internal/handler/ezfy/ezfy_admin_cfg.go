@@ -1737,6 +1737,7 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 		Count     int    `json:"count"`
 		OwnerName string `json:"owner_name"`
 		HomeNum   string `json:"home_num"`
+		GameUID   int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		OfficerNm string `json:"officer_name"`
 		// Details 该聚合组每个实例的明细（穿戴军官 + 所在城），给「查看」弹框用
 		Details []gin.H `json:"details"`
@@ -1759,7 +1760,7 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	for _, r := range reps {
 		repByID[r.ID] = r
 	}
-	ownerName, homeNum := h.ezfyAdminNamesBatch(ownerIds)
+	ownerName, homeNum, ownerGuid := h.ezfyAdminNamesBatchEx(ownerIds)
 
 	// ★★ 2026-10-13 性能修复（用户反馈「玩家军官装备列表 换每页条数时分页卡顿」）：
 	//   原来**每次列表请求**都要把本页所有聚合组的**全部实例明细**拉回来（`items` 大查询 +
@@ -1792,7 +1793,7 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 			rgOff = offByName[rep.OfficerId]
 		}
 		out = append(out, rowOut{EzfyEquipment: rep, TierName: ezfyEquipTierName(g.Tier),
-			Count: g.Cnt, OwnerName: owner, HomeNum: home, OfficerNm: rgOff})
+			Count: g.Cnt, OwnerName: owner, HomeNum: home, GameUID: ownerGuid[g.UserID], OfficerNm: rgOff})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -2088,19 +2089,19 @@ func (h *EzfyAdmin) AdminEzfyTechMaxAll(c *gin.Context) {
 		resp.ParamError(c, "没有科技配置，无法满级")
 		return
 	}
-	// 只取该玩家的城市（去重只在这些城里做，绝不碰别人的数据）
+	// 历史脏数据去重：科技等级现在是**玩家级**（ezfy_user_tech），旧版本才把等级行存在
+	// ezfy_city_tech 里。有城才需要清理，**不把「必须有城市」当成满级前置条件**
+	// （★ 2026-10-29 用户规则：科技只和 user_id 有关，不绑城市）。
 	var cityIDs []uint
 	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", in.UserID).Pluck("id", &cityIDs)
-	if len(cityIDs) == 0 {
-		resp.ParamError(c, fmt.Sprintf("游戏ID %d 还没有城市", in.UserID))
-		return
-	}
-	// 1) 去重：同一 (city_id, tech_id) 只留 id 最小的一行
 	removed := int64(0)
-	dedup := h.DB.Exec("DELETE t1 FROM ezfy_city_tech t1 JOIN ezfy_city_tech t2 "+
-		"ON t1.city_id = t2.city_id AND t1.tech_id = t2.tech_id AND t1.id > t2.id "+
-		"WHERE t1.city_id IN ?", cityIDs)
-	removed = dedup.RowsAffected
+	if len(cityIDs) > 0 {
+		// 1) 去重：同一 (city_id, tech_id) 只留 id 最小的一行
+		dedup := h.DB.Exec("DELETE t1 FROM ezfy_city_tech t1 JOIN ezfy_city_tech t2 "+
+			"ON t1.city_id = t2.city_id AND t1.tech_id = t2.tech_id AND t1.id > t2.id "+
+			"WHERE t1.city_id IN ?", cityIDs)
+		removed = dedup.RowsAffected
+	}
 
 	now := time.Now()
 	rows := make([]model.EzfyUserTech, 0, len(techs))

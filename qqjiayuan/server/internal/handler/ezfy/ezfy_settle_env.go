@@ -41,7 +41,11 @@ type ezfySettleEnv struct {
 	carryIns  []ezfySettleIn // 负重取回入城（计入「本次入账」播报）
 	directIns []ezfySettleIn // 负重装不下、直接入城的部分（不计入播报，与原来一致）
 
-	techs map[int]int // 本批缓存的科技等级表（原每支要查 2 条 SQL 才能拿到）
+	// techsByCity 本批缓存的「**该城可享受的**科技等级表」（key = 出发城ID）。
+	// ★ 原每支要查 2 条 SQL 才能拿到（城的 user_id + 科技等级）；
+	// ★★ 2026-10-29 用户规则「没有科研中心建筑的城市不享受科技加成」→ 缓存必须**按城**
+	//   （同一批里可能有多个出发城，各自的科研中心情况不同），用 techMap(cityId) 取一次。
+	techsByCity map[uint]map[int]int
 
 	// officers 本批缓存的军官（key = 城ID|军官名）。
 	// ★ 原 `officerByName` 每支结算都要查一次（算采集后勤加成），批量时纯属重复。
@@ -209,19 +213,27 @@ func (h *EzfyHandler) envTreasureLeft(e *ezfySettleEnv, uid uint) int {
 	return e.treasureLeft
 }
 
-// envTechs 本批缓存的科技等级表（按 uid 只查一次）。
+// envTechs 本批缓存的「该出发城可享受的科技等级表」（按 cityId 只查一次）。
 //
 // ★★ 2026-10-13 性能：原 `ezfyCarryCap(order)` → `ezfyCarryCapOf` → `techMap(cityId)`
 // 每次都要打 2 条跨库查询（查城的 user_id + 查该玩家科技），而 settleDispatch 里
 // 一支采集部队就要调 3 次负重上限（算负重余量 / 判负重是否满 / 拼战报文案）→ 6 条往返/支。
-func (h *EzfyHandler) envTechs(e *ezfySettleEnv, uid uint) map[int]int {
+//
+// ★★ 2026-10-29 用户规则：**没有「科研中心」建筑的城市不享受科技加成** → 缓存按**城**分，
+// 直接复用 techMap(cityId)（它已把「本城有无科研中心」并进同一条 SQL，条数不变）。
+func (h *EzfyHandler) envTechs(e *ezfySettleEnv, cityId uint) map[int]int {
 	if e == nil {
 		return nil
 	}
-	if e.techs == nil {
-		e.techs = h.techMapOf(uid)
+	if e.techsByCity == nil {
+		e.techsByCity = map[uint]map[int]int{}
 	}
-	return e.techs
+	if m, ok := e.techsByCity[cityId]; ok {
+		return m
+	}
+	m := h.techMap(cityId)
+	e.techsByCity[cityId] = m
+	return m
 }
 
 // envCarryCap 本批缓存的负重上限（env == nil 时回落原实现）。
@@ -229,7 +241,7 @@ func (h *EzfyHandler) envCarryCap(e *ezfySettleEnv, order *model.EzfyOrder, uid 
 	if e == nil {
 		return h.ezfyCarryCap(order)
 	}
-	return h.ezfyCarryCapOf(parseGroups(order.Troops), uint(order.CityId), h.envTechs(e, uid))
+	return h.ezfyCarryCapOf(parseGroups(order.Troops), uint(order.CityId), h.envTechs(e, uint(order.CityId)))
 }
 
 // envCarryFull 该订单部队的「待带回」是否已装满负重（env == nil 时回落原实现）。

@@ -17,17 +17,39 @@
       <template v-if="tab === 'pvp'">
         <div class="toolbar">
           <!-- ★ 开启/关闭：开启 = 现在这样按周统计；关闭 = 不进行统计（历史保留） -->
+          <!-- ★ 2026-10-29 用户「所有冗余提示都放到 i 里面去 或者去掉，看着太乱了」：
+               说明文字全部收进 i 图标的 tooltip，工具栏只留控件本身。 -->
           <span class="sw-label">风云榜统计</span>
           <el-switch v-model="enabled" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关"
                      :loading="toggling" @change="onToggle" />
-          <span class="td-sub" style="margin-left:6px">
-            {{ enabled ? '按自然周统计玩家对战战绩' : '已关闭：不再统计新的玩家对战战绩（历史周榜保留）' }}
-          </span>
+          <el-tooltip placement="top" effect="light">
+            <div slot="content" style="max-width:300px;line-height:1.7">
+              开：按自然周（周一 00:00 ~ 周日 23:59）统计玩家对战战绩。<br>
+              关：不再统计新的玩家对战战绩，历史周榜保留。
+            </div>
+            <i class="el-icon-info hint-i"></i>
+          </el-tooltip>
+          <span class="sw-div"></span>
+          <!-- ★ 2026-10-29 用户「单灭敌加分上限加个开关，默认开有上限，关掉期间灭敌无上限」 -->
+          <span class="sw-label">灭敌分上限</span>
+          <el-switch v-model="killCapOn" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关"
+                     :loading="killCapToggling" @change="onToggleKillCap" />
+          <el-tooltip placement="top" effect="light">
+            <div slot="content" style="max-width:320px;line-height:1.7">
+              开（默认）：单场灭敌分 = 20×log10(加权灭敌)，最多 200 分。<br>
+              关：灭敌分不封顶，灭敌越多分越高（仍受单场规模上限 400 / 800 约束）。<br>
+              只影响之后结算的战斗，已入账积分不回算。
+            </div>
+            <i class="el-icon-info hint-i"></i>
+          </el-tooltip>
           <div class="grow" />
           <!-- ★ 2026-10-26 锁分只锁当期：按钮固定锁「本周」，跨周自动失效 -->
-          <el-button v-if="!lockWeek" type="danger" plain icon="el-icon-lock" :loading="locking" @click="onLock(true)">锁分（本周）</el-button>
-          <el-button v-else type="success" plain icon="el-icon-unlock" :loading="locking" @click="onLock(false)">已锁分（本周），点击解锁</el-button>
-          <span class="td-sub" style="margin-left:6px" v-if="lockWeek">本周风云榜已冻结，下周一自动失效</span>
+          <el-button v-if="!lockWeek" type="danger" plain icon="el-icon-lock" :loading="locking"
+                     title="锁分后本周风云榜终止竞争：战绩不再累计积分，榜单冻结在锁定前（下周一自动失效）"
+                     @click="onLock(true)">锁分（本周）</el-button>
+          <el-button v-else type="success" plain icon="el-icon-unlock" :loading="locking"
+                     title="本周风云榜已冻结（不再累计积分），下周一自动失效；点此解除"
+                     @click="onLock(false)">已锁分（本周），点击解锁</el-button>
           <!-- ★ 2026-10-15 风云榜查询：按游戏ID(user_id)精确查找玩家（清空 = 全量榜单） -->
           <el-input v-model="pvpWord" placeholder="游戏ID" clearable style="width:160px"
                     @keyup.enter.native="doPvpSearch()" />
@@ -79,7 +101,13 @@
         </el-table>
         <!-- ★ 2026-10-14 风云榜分页（默认每页 10 条） -->
         <div class="pager-bar">
-          <div class="pager-info">共 <b>{{ pvpTotal }}</b> 名 · 榜单按「积分」降序（同积分按灭敌多、胜场多、战损少）。昵称/军团为写榜时快照。</div>
+          <div class="pager-info">共 <b>{{ pvpTotal }}</b> 名<el-tooltip placement="top" effect="light">
+            <div slot="content" style="max-width:320px;line-height:1.7">
+              榜单按「积分」降序；同积分按灭敌多、胜场多、战损少排前。<br>
+              昵称 / 军团为写榜时的快照（改名、换军团不影响历史周）。
+            </div>
+            <i class="el-icon-info hint-i"></i>
+          </el-tooltip></div>
           <el-pagination v-show="pvpTotal > 0" small background layout="sizes, prev, pager, next, jumper"
                          :total="pvpTotal" :page-size="pvpSize" :current-page="pvpPage"
                          :page-sizes="[10, 20, 50, 100]"
@@ -90,8 +118,7 @@
         <!-- ★ 2026-10-18 「本期已发放奖励」：该周已发放的记录（谁、什么档位、发了什么奖励、什么时候），
              分页 + 局部刷新（点分页只刷这一块），随周切换自动刷新 -->
         <div class="panel-title">本期已发放奖励（共 <b>{{ rewardRecordTotal }}</b> 条）</div>
-        <el-table :data="rewardRecords" v-loading="rewardLoading" stripe border size="mini"
-                  :empty-text="'该周尚未发放风云榜奖励（点右上角「发放奖励」）'">
+        <el-table :data="rewardRecords" v-loading="rewardLoading" stripe border size="mini">
           <el-table-column label="名次" width="80" align="center">
             <template slot-scope="{row}">{{ row.rank_no > 3 ? '参与' : row.rank_no }}</template>
           </el-table-column>
@@ -131,7 +158,12 @@
                     @keyup.enter.native="powerPage = 1; loadPower()" />
           <el-button type="primary" icon="el-icon-search" @click="powerPage = 1; loadPower()">查询</el-button>
           <div class="grow" />
-          <span class="td-sub">战力 = 科技 + 建筑 + 兵种（权重在「二战系统配置」可调），与游戏内战力榜同口径</span>
+          <el-tooltip placement="top" effect="light">
+            <div slot="content" style="max-width:320px;line-height:1.7">
+              战力 = 科技 + 建筑 + 兵种（权重在「二战系统配置」可调），与游戏内战力榜同口径。
+            </div>
+            <i class="el-icon-info hint-i"></i>
+          </el-tooltip>
         </div>
         <el-table :data="powerList" v-loading="powerLoading" stripe border>
           <el-table-column label="名次" width="70" align="center">
@@ -183,7 +215,12 @@
                     @keyup.enter.native="prestigePage = 1; loadPrestige()" />
           <el-button type="primary" icon="el-icon-search" @click="prestigePage = 1; loadPrestige()">查询</el-button>
           <div class="grow" />
-          <span class="td-sub">与游戏内「军衔声望榜」同口径：按声望降序，名次为剔除「不参与排名」后的全服排名</span>
+          <el-tooltip placement="top" effect="light">
+            <div slot="content" style="max-width:320px;line-height:1.7">
+              与游戏内「军衔声望榜」同口径：按声望降序；名次为剔除「不参与排名」后的全服排名。
+            </div>
+            <i class="el-icon-info hint-i"></i>
+          </el-tooltip>
         </div>
         <el-table :data="prestigeList" v-loading="prestigeLoading" stripe border>
           <el-table-column label="名次" width="70" align="center">
@@ -231,8 +268,7 @@
       <!-- ★ 2026-10-16 不参与排名名单：**三个榜各自独立**（切换 tab 看/改的是该榜自己的名单，
            在风云榜标记不会影响战力榜、军衔声望榜，反之亦然） -->
       <div class="panel-title">「{{ boardLabel[tab] }}」不参与排名（{{ excludedNow.length }} 人）</div>
-      <el-table :data="excludedNow" v-loading="excludedLoading" stripe border size="mini"
-                :empty-text="'「' + boardLabel[tab] + '」暂无排除玩家'">
+      <el-table :data="excludedNow" v-loading="excludedLoading" stripe border size="mini">
         <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
         <el-table-column prop="name" label="玩家" min-width="120" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.name || '—' }}</template>
@@ -261,7 +297,12 @@
                   @keyup.enter.native="loadDetail(1)" @clear="loadDetail(1)" />
         <el-button type="primary" icon="el-icon-search" style="margin-left:8px" @click="loadDetail(1)">查询</el-button>
         <div class="grow" />
-        <span class="td-sub">每场玩家对战攻守双方各一条（0 分也记）；点「战报」看本场完整战报</span>
+        <el-tooltip placement="top" effect="light">
+          <div slot="content" style="max-width:320px;line-height:1.7">
+            每场玩家对战、攻守双方各一条（0 分也记）；点行尾「战报」看本场完整战报。
+          </div>
+          <i class="el-icon-info hint-i"></i>
+        </el-tooltip>
       </div>
       <el-table :data="detail.list" v-loading="detail.loading" size="mini" border stripe max-height="440">
         <el-table-column label="时间" width="110" align="center">
@@ -480,6 +521,9 @@ export default {
       toggling: false,
       locking: false, // ★ 2026-10-18 锁分按钮 loading
       enabled: 1,
+      // ★ 2026-10-29 灭敌分上限开关（1 = 有上限 200 分 / 0 = 无上限）
+      killCapOn: 1,
+      killCapToggling: false,
       lockWeek: '', // ★ 2026-10-18 锁分：当前被锁定的周（空 = 未锁定）
       week: '',
       weeks: [],
@@ -667,6 +711,8 @@ export default {
           this.$set(this.excluded, 'pvp', r.data.excluded || [])
           // 后端 1 = 开 / 0 = 关
           this.enabled = r.data.enabled ? 1 : 0
+          // ★ 2026-10-29 灭敌分上限开关（缺字段 = 老后端 → 按默认「有上限」）
+          this.killCapOn = r.data.kill_cap_on === false || r.data.kill_cap_on === 0 ? 0 : 1
           // ★ 2026-10-18 锁分状态：锁定周（空 = 未锁定）
           this.lockWeek = r.data.lock_week || ''
           if (this.weeks.indexOf(this.week) < 0 && this.week) this.weeks.unshift(this.week)
@@ -693,6 +739,18 @@ export default {
         }
       }).catch(() => { this.enabled = val ? 0 : 1 })
         .finally(() => { this.toggling = false })
+    },
+    // ★ 2026-10-29 灭敌分上限开关：开 = 单场灭敌分最多 200；关 = 无上限（只影响之后的结算）
+    onToggleKillCap (val) {
+      this.killCapToggling = true
+      api.post('/admin/ezfy-pvp-rank/kill-cap', { on: val }).then(r => {
+        if (r.code === 0) this.$message.success(r.data.msg || '已保存')
+        else {
+          this.$message.error(r.msg)
+          this.killCapOn = val ? 0 : 1 // 失败回滚开关显示
+        }
+      }).catch(() => { this.killCapOn = val ? 0 : 1 })
+        .finally(() => { this.killCapToggling = false })
     },
     // ★ 2026-10-26 锁分 / 解锁：只锁**当期（本周）**，跨周自动失效
     onLock (lock) {
@@ -842,6 +900,11 @@ export default {
   .td-rank.top { color: #e6a23c; }
   .cfg-tabs { margin-bottom: 6px; }
   .sw-label { font-size: 13px; color: #606266; margin-right: 6px; }
+  /* ★ 2026-10-29 冗余说明统一收进 i 图标 tooltip（原来一大段灰字挤在工具栏里） */
+  .hint-i { color: #a8b3c2; cursor: help; font-size: 14px; vertical-align: -1px; }
+  .hint-i:hover { color: #409eff; }
+  /* 两个开关之间的细分隔线（只是视觉分组，不占空间） */
+  .sw-div { width: 1px; height: 16px; background: #e4e8ee; margin: 0 2px; }
   .panel-title { font-size: 14px; font-weight: 600; color: #303133; margin: 16px 0 8px; }
   /* ★ 2026-10-18 风云榜奖励发放弹窗：真表格（table-layout:fixed，表头与内容严格对齐） */
   .rw-form .el-form-item { margin-bottom: 8px; }

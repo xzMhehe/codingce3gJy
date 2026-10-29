@@ -122,7 +122,8 @@ func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 //	    大兵团分越多、少兵碰瓷的白拿分被压低
 //	  - 杀敌分（★ 2026-10-14 用户反馈「大战积分太少」补上；★ 2026-10-16 灭敌改按兵种价值加权后
 //	    同数量高级兵种 > 低级兵种）：按**加权灭敌量**对数缩放，
-//	    20×log10(灭敌) 封顶 200 —— 千万级大战与百万级小仗拉开差距、大仗有分量；
+//	    20×log10(灭敌) 封顶 200（★ 2026-10-29 可在管理端关掉上限 → 无上限）——
+//	    千万级大战与百万级小仗拉开差距、大仗有分量；
 //	    对数压缩 → 灭敌量翻 10 倍只多 20 分，不会被天文数字刷爆。1 兵刷/空城刷由门槛拦住。
 //	  - 战损比分：按 战损比 = 灭敌÷战损 给分，kdr×10 封顶 30；无损(战损=0)按满 30 给
 const (
@@ -166,10 +167,11 @@ func pvpArmyScale(power int64) int64 {
 
 func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win, draw bool) int64 {
 	// 杀敌分：20×log10(灭敌)，0~200（灭敌 0 不给分）
+	// ★ 2026-10-29 上限可关（管理端「排行榜 → 风云榜 · 灭敌分上限」）：关掉后不封顶。
 	killPts := int64(0)
 	if kills > 0 {
 		killPts = int64(20 * math.Log10(float64(kills)))
-		if killPts > ezfyPvpKillPtCap {
+		if ezfyPvpKillCapOn() && killPts > ezfyPvpKillPtCap {
 			killPts = ezfyPvpKillPtCap
 		}
 	}
@@ -284,6 +286,21 @@ func ezfyPvpRankOn() bool {
 		return true // 配置未加载 → 按默认「开」，避免误判成关
 	}
 	return ezfyCfg.limit.PvpRankOn != 0
+}
+
+// ezfyPvpKillCapOn 风云榜「单场灭敌加分上限」开关（读 ezfy_cfg_limit.pvp_kill_cap_on）。
+//
+// ★ 2026-10-29 用户需求「单灭敌加分上限加个开关，默认开有上限，关掉期间灭敌无上限」。
+//
+//	· 开（1，默认）= 杀敌分 20×log10(加权灭敌) 最多 ezfyPvpKillPtCap(200) 分；
+//	· 关（0）      = 灭敌分不封顶（只受单场规模上限 400/800 约束）。
+//	⚠️ 与统计开关同理：0 是合法值，配置未加载时会读到零值 0 → 必须先 ready()，
+//	  否则重启后头几次结算会误判成「无上限」。
+func ezfyPvpKillCapOn() bool {
+	if !ezfyCfg.ready() {
+		return true // 配置未加载 → 按默认「有上限」，避免误判成无上限
+	}
+	return ezfyCfg.limit.PvpKillCapOn != 0
 }
 
 // ezfyPvpRankLocked 该周风云榜是否被「锁分」（★ 2026-10-18 用户需求）：
@@ -534,7 +551,9 @@ func (h *EzfyHandler) PvpRank(c *gin.Context) {
 			}
 		}
 	}
-	resp.OK(c, gin.H{"week": week, "weeks": weeks, "ranks": ranks, "mine": mine, "enabled": true})
+	resp.OK(c, gin.H{"week": week, "weeks": weeks, "ranks": ranks, "mine": mine, "enabled": true,
+		// ★ 2026-10-29 玩家端说明文案用：灭敌分当前是否有上限（关掉 = 无上限）
+		"kill_cap_on": ezfyPvpKillCapOn()})
 }
 
 // ezfyPvpRankRows 查询风云榜指定周（管理端/玩家端共用），**按积分降序**。

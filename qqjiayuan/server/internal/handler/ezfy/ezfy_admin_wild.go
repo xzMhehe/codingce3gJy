@@ -448,22 +448,36 @@ func ezfyBatchIDs(c *gin.Context) []int64 {
 
 // ezfyAdminNamesBatch 批量取「玩家昵称 + 账号名」（原 ezfyAdminName 是每行 2 条 SQL 的 N+1）。
 func (h *EzfyAdmin) ezfyAdminNamesBatch(uids []uint) (map[uint]string, map[uint]string) {
+	nick, num, _ := h.ezfyAdminNamesBatchEx(uids)
+	return nick, num
+}
+
+// ezfyAdminNamesBatchEx 同 ezfyAdminNamesBatch，额外批量返回「游戏ID」(game_uid)。
+//
+// ★ 2026-10-29 管理端口径统一「家园号 → 游戏ID」：`ezfy_profile.game_uid` 才是玩家在游戏里
+// 看到、报给客服的号（家园号 username 对玩家没意义）。game_uid 本来就在 ezfy_profile 里，
+// 顺手多取一列 → **不增加 SQL 条数**（仍是 2 条：profile 一次 IN + 家园 users 一次 IN）。
+func (h *EzfyAdmin) ezfyAdminNamesBatchEx(uids []uint) (map[uint]string, map[uint]string, map[uint]int64) {
 	nick := map[uint]string{}
 	num := map[uint]string{}
+	guid := map[uint]int64{}
 	if len(uids) == 0 {
-		return nick, num
+		return nick, num, guid
 	}
 	var ps []model.EzfyProfile
-	h.DB.Select("user_id, nickname").Where("user_id IN ?", uids).Find(&ps)
+	h.DB.Select("user_id, nickname, game_uid").Where("user_id IN ?", uids).Find(&ps)
 	for _, p := range ps {
 		nick[p.UserID] = p.Nickname
+		if p.GameUID > 0 {
+			guid[p.UserID] = p.GameUID
+		}
 	}
 	var us []model.User
 	h.home().Select("id, username").Where("id IN ?", uids).Find(&us)
 	for _, u := range us {
 		num[u.ID] = u.Username
 	}
-	return nick, num
+	return nick, num, guid
 }
 
 // ezfyWildCfgMap 一次取全部野地配置，按 "type:level" 建索引（原实现每行查一次）。

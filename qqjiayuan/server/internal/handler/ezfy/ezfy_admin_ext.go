@@ -69,8 +69,8 @@ func (h *EzfyAdmin) AdminEzfyCities(c *gin.Context) {
 
 	type rowOut struct {
 		model.EzfyCity
-		PlayerName  string `json:"player_name"`
-		HomeNum     string `json:"home_num"`
+		PlayerName string `json:"player_name"`
+		HomeNum    string `json:"home_num"`
 		// ★ 2026-10-26 用户要求「展示部分 变家园号展示为 游戏ID」：
 		//   游戏号(game_uid)才是玩家报给客服的号，家园号对玩家没意义。
 		GameUID     int64  `json:"game_uid"`
@@ -144,7 +144,7 @@ func (h *EzfyAdmin) AdminEzfyCities(c *gin.Context) {
 	out := []rowOut{}
 	for _, ct := range rows {
 		out = append(out, rowOut{EzfyCity: ct, PlayerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID],
-			GameUID: gameUIDOf[ct.UserID],
+			GameUID:  gameUIDOf[ct.UserID],
 			CampName: campOf[ct.UserID], BuildingNum: buildNum[ct.ID], TroopNum: troopNum[ct.ID],
 			OfficerNum: officerNum[ct.ID], WildNum: wildNum[ct.ID],
 			TerrainName: ezfyTerrainNameEx(ct.X, ct.Y),
@@ -236,8 +236,9 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 // ezfyOrderReportIDOf 批量反查出征订单的战报 ID（每单取最新一条）。
 //
 // ★ 2026-10-26 「最近出征 → 能看战报详情」：给订单行附带 report_id，
-//   前端据此显示/启用「战报」按钮（没有战报的订单不出按钮，点开也不会空）。
-//   一条 SQL GROUP BY 反查，避免逐单 N+1。
+//
+//	前端据此显示/启用「战报」按钮（没有战报的订单不出按钮，点开也不会空）。
+//	一条 SQL GROUP BY 反查，避免逐单 N+1。
 func (h *EzfyAdmin) ezfyOrderReportIDOf(orderIDs []int64) map[int64]uint {
 	m := map[int64]uint{}
 	if len(orderIDs) == 0 {
@@ -418,6 +419,7 @@ func (h *EzfyAdmin) AdminEzfyBuildings(c *gin.Context) {
 		CityName  string `json:"city_name"`
 		OwnerName string `json:"owner_name"`
 		HomeNum   string `json:"home_num"`
+		GameUID   int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		StatusTxt string `json:"status_txt"`
 	}
 	out := []rowOut{}
@@ -447,7 +449,7 @@ func (h *EzfyAdmin) AdminEzfyBuildings(c *gin.Context) {
 			uids = append(uids, c.UserID)
 		}
 	}
-	nickOf, numOf := h.ezfyAdminNamesBatch(uids)
+	nickOf, numOf, guidOf := h.ezfyAdminNamesBatchEx(uids)
 	for _, b := range rows {
 		name, typ, maxLv := "", 0, 0
 		if cfg := ezfyCfg.building(b.BuildingId); cfg != nil {
@@ -455,7 +457,7 @@ func (h *EzfyAdmin) AdminEzfyBuildings(c *gin.Context) {
 		}
 		ct := cityOf[b.CityId]
 		out = append(out, rowOut{EzfyCityBuilding: b, CfgName: name, CfgType: typ, MaxLevel: maxLv,
-			CityName: ct.Name, OwnerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID],
+			CityName: ct.Name, OwnerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID], GameUID: guidOf[ct.UserID],
 			StatusTxt: ezfyBuildStatusName(b.Status)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -644,6 +646,7 @@ func (h *EzfyAdmin) AdminEzfyBuildQueue(c *gin.Context) {
 		CityName   string `json:"city_name"`
 		OwnerName  string `json:"owner_name"`
 		HomeNum    string `json:"home_num"`
+		GameUID    int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		StatusTxt  string `json:"status_txt"`
 		RemainSec  int64  `json:"remain_sec"`
 		ChainBuild int    `json:"chain_build"` // 1=一键满级连锁
@@ -671,7 +674,7 @@ func (h *EzfyAdmin) AdminEzfyBuildQueue(c *gin.Context) {
 			uids = append(uids, c.UserID)
 		}
 	}
-	nickOf, numOf := h.ezfyAdminNamesBatch(uids)
+	nickOf, numOf, guidOf := h.ezfyAdminNamesBatchEx(uids)
 	for _, b := range rows {
 		name, maxLv := "", 0
 		if cfg := ezfyCfg.building(b.BuildingId); cfg != nil {
@@ -687,7 +690,7 @@ func (h *EzfyAdmin) AdminEzfyBuildQueue(c *gin.Context) {
 			chain = 1
 		}
 		out = append(out, rowOut{EzfyCityBuilding: b, CfgName: name, MaxLevel: maxLv,
-			CityName: ct.Name, OwnerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID],
+			CityName: ct.Name, OwnerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID], GameUID: guidOf[ct.UserID],
 			StatusTxt: ezfyBuildStatusName(b.Status), RemainSec: remain, ChainBuild: chain})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -884,6 +887,7 @@ func (h *EzfyAdmin) AdminEzfyTroops(c *gin.Context) {
 		CityName  string `json:"city_name"`
 		OwnerName string `json:"owner_name"`
 		HomeNum   string `json:"home_num"`
+		GameUID   int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		TypeName  string `json:"type_name"`
 	}
 	out := []rowOut{}
@@ -914,20 +918,21 @@ func (h *EzfyAdmin) AdminEzfyTroops(c *gin.Context) {
 		cityMap[ct.ID] = ct
 		uids = append(uids, ct.UserID)
 	}
-	nickMap, numMap := h.ezfyAdminNamesBatch(uids)
+	nickMap, numMap, guidMap := h.ezfyAdminNamesBatchEx(uids)
 	for _, t := range rows {
 		name, typ, pop := "", 0, 0
 		if cfg, ok := cfgMap[t.TroopId]; ok {
 			name, typ, pop = cfg.Name, cfg.Type, cfg.Pop
 		}
-		cityName, owner, home := "", "", ""
+		cityName, owner, home, guid := "", "", "", int64(0)
 		if ct, ok := cityMap[uint(t.CityId)]; ok {
 			cityName = ct.Name
 			owner = nickMap[ct.UserID]
 			home = numMap[ct.UserID]
+			guid = guidMap[ct.UserID]
 		}
 		out = append(out, rowOut{EzfyCityTroop: t, CfgName: name, TroopType: typ, Pop: pop,
-			TotalPop: t.Count * int64(pop), CityName: cityName, OwnerName: owner, HomeNum: home,
+			TotalPop: t.Count * int64(pop), CityName: cityName, OwnerName: owner, HomeNum: home, GameUID: guid,
 			TypeName: ezfyTroopTypeName(typ)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -1183,6 +1188,7 @@ func (h *EzfyAdmin) AdminEzfyTrainQueue(c *gin.Context) {
 		CityName  string `json:"city_name"`
 		OwnerName string `json:"owner_name"`
 		HomeNum   string `json:"home_num"`
+		GameUID   int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		StatusTxt string `json:"status_txt"`
 		RemainSec int64  `json:"remain_sec"`
 		PopNeed   int64  `json:"pop_need"`
@@ -1209,24 +1215,25 @@ func (h *EzfyAdmin) AdminEzfyTrainQueue(c *gin.Context) {
 	for _, ct := range cityMap {
 		uids = append(uids, ct.UserID)
 	}
-	nickMap, numMap := h.ezfyAdminNamesBatch(uids)
+	nickMap, numMap, guidMap := h.ezfyAdminNamesBatchEx(uids)
 	out := []rowOut{}
 	for _, t := range rows {
 		name, pop := "", 0
 		if cfg := ezfyCfg.troop(t.TroopId); cfg != nil {
 			name, pop = cfg.Name, cfg.Pop
 		}
-		cityName, owner, home := "", "", ""
+		cityName, owner, home, guid := "", "", "", int64(0)
 		if ct, ok := cityMap[t.CityId]; ok {
 			cityName = ct.Name
 			owner, home = nickMap[ct.UserID], numMap[ct.UserID]
+			guid = guidMap[ct.UserID]
 		}
 		remain := (t.EndTime - now) / 1000
 		if remain < 0 {
 			remain = 0
 		}
 		out = append(out, rowOut{EzfyTrainQueue: t, CfgName: name, CityName: cityName,
-			OwnerName: owner, HomeNum: home, StatusTxt: statusNames[t.Status],
+			OwnerName: owner, HomeNum: home, GameUID: guid, StatusTxt: statusNames[t.Status],
 			RemainSec: remain, PopNeed: t.Count * int64(pop)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -1260,8 +1267,9 @@ func (h *EzfyAdmin) AdminEzfyTrainCreate(c *gin.Context) {
 	sec := in.Seconds
 	if sec <= 0 {
 		// ★ 2026-10-21 管理端手动训练也走玩家端同一公式（市长军事/开关 + 军训艺术等级）。
+		// ★ 2026-10-29 科技加成按本城生效（没科研中心不吃加成）→ techMap(城) 而非 techMapOf(玩家)
 		ez.cfgs()
-		sec = ezfyTrainUnitSeconds(cfg.TrainTime, ez.mayorTrainMilitary(uint(in.CityId)), ez.techMapOf(ct.UserID)[5]) * in.Count
+		sec = ezfyTrainUnitSeconds(cfg.TrainTime, ez.mayorTrainMilitary(uint(in.CityId)), ez.techMap(uint(in.CityId))[5]) * in.Count
 		if sec <= 0 {
 			sec = 60
 		}
@@ -1427,6 +1435,7 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 		CityName   string `json:"city_name"`
 		OwnerName  string `json:"owner_name"`
 		HomeNum    string `json:"home_num"`
+		GameUID    int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		PosName    string `json:"pos_name"`
 		StatusName string `json:"status_name"`
 		// ★ 2026-09-29 是否名将（general_id>0 且池子该行 kind=2）—— 玩家军官列表据此加「类型」列
@@ -1463,14 +1472,15 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 	for _, c := range cityMap {
 		uids = append(uids, c.UserID)
 	}
-	nickMap, numMap := h.ezfyAdminNamesBatch(uids)
+	nickMap, numMap, guidMap := h.ezfyAdminNamesBatchEx(uids)
 
 	out := []rowOut{}
 	for _, o := range rows {
-		cityName, owner, home := "", "", ""
+		cityName, owner, home, guid := "", "", "", int64(0)
 		if ct, ok := cityMap[o.CityId]; ok {
 			cityName = ct.Name
 			owner, home = nickMap[ct.UserID], numMap[ct.UserID]
+			guid = guidMap[ct.UserID]
 		}
 		isGeneral := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
 		// 军官池模板（只读展示素材）：GeneralId>0 时取池子配置（内存配置，无 DB 开销）
@@ -1482,7 +1492,7 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 			}
 		}
 		out = append(out, rowOut{EzfyOfficer: o, CityName: cityName, OwnerName: owner,
-			HomeNum: home, PosName: posNames[o.Position], StatusName: statusNames[o.Status],
+			HomeNum: home, GameUID: guid, PosName: posNames[o.Position], StatusName: statusNames[o.Status],
 			IsGeneral: isGeneral, SourceName: model.EzfyOfficerSourceName(o.Source),
 			GeneralName: generalName, PoolBaseMilitary: pbM, PoolBaseLogistics: pbL, PoolBaseLearning: pbS})
 	}
@@ -1692,11 +1702,11 @@ func (h *EzfyAdmin) AdminEzfyOfficerEquips(c *gin.Context) {
 		return
 	}
 	// 归属城 / 归属玩家（账号昵称一律读家园库）
-	cityName, ownerName, homeNum := "", "", ""
+	cityName, ownerName, homeNum, ownerGUID := "", "", "", int64(0)
 	var ct model.EzfyCity
 	if err := h.DB.First(&ct, o.CityId).Error; err == nil {
 		cityName = ct.Name
-		ownerName, homeNum = h.ezfyAdminName(ct.UserID)
+		ownerName, homeNum, ownerGUID = h.ezfyAdminNameEx(ct.UserID)
 	}
 	// 军官池模板（只读展示，与玩家军官列表口径一致）
 	generalName, pbM, pbL, pbS := "", 0, 0, 0
@@ -1747,7 +1757,7 @@ func (h *EzfyAdmin) AdminEzfyOfficerEquips(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"officer": gin.H{
 			"id": o.ID, "name": o.Name, "city_id": o.CityId, "city_name": cityName,
-			"owner_name": ownerName, "home_num": homeNum,
+			"owner_name": ownerName, "home_num": homeNum, "game_uid": ownerGUID,
 			"general_id": o.GeneralId, "general_name": generalName,
 			"is_general": o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId),
 			"level":      o.Level, "star": o.Star, "exp": o.Exp,
@@ -1835,12 +1845,13 @@ func (h *EzfyAdmin) AdminEzfyResources(c *gin.Context) {
 		model.EzfyCity
 		PlayerName string `json:"player_name"`
 		HomeNum    string `json:"home_num"`
+		GameUID    int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		TotalRes   int64  `json:"total_res"`
 	}
 	out := []rowOut{}
 	for _, ct := range rows {
-		pn, hn := h.ezfyAdminName(ct.UserID)
-		out = append(out, rowOut{EzfyCity: ct, PlayerName: pn, HomeNum: hn,
+		pn, hn, guid := h.ezfyAdminNameEx(ct.UserID)
+		out = append(out, rowOut{EzfyCity: ct, PlayerName: pn, HomeNum: hn, GameUID: guid,
 			TotalRes: ct.Food + ct.Steel + ct.Oil + ct.Rare})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -1993,45 +2004,91 @@ func (h *EzfyAdmin) AdminEzfyTechs(c *gin.Context) {
 	now := time.Now().UnixMilli()
 	type rowOut struct {
 		model.EzfyUserTech
-		CfgName   string `json:"cfg_name"`
-		MaxLevel  int    `json:"max_level"`
-		CityName  string `json:"city_name"`
+		CfgName  string `json:"cfg_name"`
+		MaxLevel int    `json:"max_level"`
+		// ★★ 2026-10-29 用户规则：**科技只属于玩家（user_id），不绑城市**。
+		//   列表里不再返回「城名/归属城池」——科技等级是全账号一份，谈「哪个城的科技」没有意义。
+		//   科技与城市只有两处关系：① 研究由某个城市发起（队列在 ezfy_city_tech）
+		//   ② 没有「科研中心」建筑的城市不享受加成。两者都不影响这里的归属口径。
 		OwnerName string `json:"owner_name"`
 		HomeNum   string `json:"home_num"`
+		GameUID   int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
+		// ★ 2026-10-29 研究状态（1=研究中）：ezfy_user_tech 表本身没有 status 列，
+		//   状态来自「某城正在研究」(ezfy_city_tech.status=1)，但**状态归属玩家**（任一城在研究就算研究中）。
+		//   原来没回这个字段 → 前端 `row.status === 1` 恒 false，「剩余时间」列永远显示「—」。
+		Status    int    `json:"status"`
 		StatusTxt string `json:"status_txt"`
 		RemainSec int64  `json:"remain_sec"`
 	}
 	out := []rowOut{}
+	if len(rows) == 0 {
+		resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+		return
+	}
+	// ★★ 2026-10-29 性能（用户反馈「玩家科技 分页卡顿」）：原来**每一行 4 条 SQL**
+	//   ① `First(&cfg, t.TechId)` 科技配置
+	//   ② `MIN(id) FROM ezfy_city WHERE user_id = ?` 找该玩家的城
+	//   ③ `First(&ct, mid)` 取城名
+	//   ④ `First(&researchRow)` 查研究中（还带 `city_id IN (子查询 ezfy_city)`）
+	//   → size=100 就是 **400 条**、size=5 也要 20 条；线上 1核1G + RDS 跨 WAN 必然卡，
+	//     而且「每页条数」调大后更慢 —— 正是用户描述的现象。
+	//   现在整页**固定 4 条、与 size 无关**：
+	//     ① 科技配置走进程内缓存 ezfyCfg（0 条 SQL，配置表本来就在缓存里）
+	//     ② 研究中状态一条 JOIN 按 **user_id** 聚合（不再查城名、不做「主城/最小城」那套城市绑定）
+	//     ③ 昵称/家园号/游戏ID 一次批量（ezfyAdminNamesBatchEx 内部 2 条）
+	ezfyCfg.load(h.DB)
+	techUids := make([]uint, 0, len(rows))
+	techIDSet := map[int]bool{}
+	pageTechIDs := make([]int, 0, len(rows))
 	for _, t := range rows {
-		name, maxLv := "", 0
-		var cfg model.EzfyCfgTech
-		if err := h.DB.First(&cfg, t.TechId).Error; err == nil {
-			name, maxLv = cfg.Name, cfg.MaxLevel
+		techUids = append(techUids, t.UserId)
+		if !techIDSet[t.TechId] {
+			techIDSet[t.TechId] = true
+			pageTechIDs = append(pageTechIDs, t.TechId)
 		}
-		cityName, owner, home := "", "", ""
-		var mid uint
-		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", t.UserId).Select("MIN(id)").Scan(&mid)
-		if mid > 0 {
-			var ct model.EzfyCity
-			if err := h.DB.First(&ct, mid).Error; err == nil {
-				cityName = ct.Name
+	}
+	// 研究中状态：科技由**城市发起研究**，队列在 ezfy_city_tech；但状态归**玩家** →
+	// 一条 JOIN 直接拿 (user_id, tech_id, end_time)，按玩家聚合，同一 (玩家, 科技) 只取最早那条队列。
+	type techKey struct {
+		uid  uint
+		tech int
+	}
+	researchEnd := map[techKey]int64{}
+	if len(pageTechIDs) > 0 {
+		var ongoings []struct {
+			UserId  uint  `gorm:"column:user_id"`
+			TechId  int   `gorm:"column:tech_id"`
+			EndTime int64 `gorm:"column:end_time"`
+		}
+		h.DB.Table("ezfy_city_tech AS ct").
+			Select("c.user_id AS user_id, ct.tech_id AS tech_id, ct.end_time AS end_time").
+			Joins("JOIN ezfy_city AS c ON c.id = ct.city_id").
+			Where("ct.status = 1 AND ct.tech_id IN ? AND c.user_id IN ?", pageTechIDs, techUids).
+			Order("ct.id").Scan(&ongoings)
+		for _, r := range ongoings {
+			k := techKey{r.UserId, r.TechId}
+			if _, ok := researchEnd[k]; !ok {
+				researchEnd[k] = r.EndTime
 			}
 		}
-		owner, home = h.ezfyAdminName(t.UserId)
-		// 该玩家是否有该科技的进行中研究（任一城）
-		st := "已掌握"
-		remain := int64(0)
-		var researchRow model.EzfyCityTech
-		if err := h.DB.Where("tech_id = ? AND status = 1 AND city_id IN (SELECT id FROM ezfy_city WHERE user_id = ?)",
-			t.TechId, t.UserId).First(&researchRow).Error; err == nil {
-			st = "研究中"
-			remain = (researchRow.EndTime - now) / 1000
+	}
+	techNick, techNum, techGuid := h.ezfyAdminNamesBatchEx(techUids)
+	for _, t := range rows {
+		name, maxLv := "", 0
+		if cfg := ezfyCfg.tech(t.TechId); cfg != nil {
+			name, maxLv = cfg.Name, cfg.MaxLevel
+		}
+		st, stTxt, remain := 0, "已掌握", int64(0)
+		if end, ok := researchEnd[techKey{t.UserId, t.TechId}]; ok {
+			st, stTxt = 1, "研究中"
+			remain = (end - now) / 1000
 			if remain < 0 {
 				remain = 0
 			}
 		}
 		out = append(out, rowOut{EzfyUserTech: t, CfgName: name, MaxLevel: maxLv,
-			CityName: cityName, OwnerName: owner, HomeNum: home, StatusTxt: st, RemainSec: remain})
+			OwnerName: techNick[t.UserId], HomeNum: techNum[t.UserId],
+			GameUID: techGuid[t.UserId], Status: st, StatusTxt: stTxt, RemainSec: remain})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -2067,10 +2124,12 @@ func (h *EzfyAdmin) AdminEzfyTechSet(c *gin.Context) {
 	if cfg.MaxLevel > 0 && in.Level > cfg.MaxLevel {
 		in.Level = cfg.MaxLevel
 	}
-	var cnt int64
-	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", in.UserId).Count(&cnt)
-	if cnt == 0 {
-		resp.NotFound(c, "该玩家还没有城市")
+	// ★ 2026-10-29 用户规则：科技只属于玩家（user_id），**不要求有城市**。
+	//   原来这里校验「该玩家还没有城市」→ 把科技和城市绑在一起；改成校验二战档案存在。
+	var profCnt int64
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", in.UserId).Count(&profCnt)
+	if profCnt == 0 {
+		resp.NotFound(c, "该玩家没有二战档案")
 		return
 	}
 	h.DB.Clauses(clause.OnConflict{
@@ -2174,14 +2233,15 @@ func (h *EzfyAdmin) AdminEzfyMapCities(c *gin.Context) {
 		CityLevel   int    `json:"city_level"`
 		PlayerName  string `json:"player_name"`
 		HomeNum     string `json:"home_num"`
+		GameUID     int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		TerrainName string `json:"terrain_name"`
 		Continent   int    `json:"continent"`
 	}
 	out := []rowOut{}
 	for _, ct := range rows {
-		pn, hn := h.ezfyAdminName(ct.UserID)
+		pn, hn, guid := h.ezfyAdminNameEx(ct.UserID)
 		out = append(out, rowOut{ID: ct.ID, Name: ct.Name, UserID: ct.UserID, X: ct.X, Y: ct.Y,
-			CityLevel: ct.CityLevel, PlayerName: pn, HomeNum: hn,
+			CityLevel: ct.CityLevel, PlayerName: pn, HomeNum: hn, GameUID: guid,
 			TerrainName: ezfyTerrainNameEx(ct.X, ct.Y),
 			Continent:   ezfyContinentOf(ct.X, ct.Y)})
 	}
@@ -2216,16 +2276,17 @@ func (h *EzfyAdmin) AdminEzfyMapWildlands(c *gin.Context) {
 		CityName    string `json:"city_name"`
 		OwnerName   string `json:"owner_name"`
 		HomeNum     string `json:"home_num"`
+		GameUID     int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		TerrainName string `json:"terrain_name"`
 		StatusTxt   string `json:"status_txt"`
 	}
 	out := []rowOut{}
 	for _, w := range rows {
-		cityName, owner, home := "", "", ""
+		cityName, owner, home, guid := "", "", "", int64(0)
 		var ct model.EzfyCity
 		if err := h.DB.First(&ct, w.CityId).Error; err == nil {
 			cityName = ct.Name
-			owner, home = h.ezfyAdminName(ct.UserID)
+			owner, home, guid = h.ezfyAdminNameEx(ct.UserID)
 		}
 		st := "空闲"
 		if w.Status == 1 {
@@ -2233,7 +2294,7 @@ func (h *EzfyAdmin) AdminEzfyMapWildlands(c *gin.Context) {
 		}
 		out = append(out, rowOut{EzfyWildland: w, CityName: cityName, OwnerName: owner,
 			// ★ 2026-10-05：野地记录行 ⇒ 确定有野地 → 海里那块叫「海底森林」（岛屿仍是「岛屿」）
-			HomeNum: home, TerrainName: ezfyWildTerrainDisplayName(w.X, w.Y, true), StatusTxt: st})
+			HomeNum: home, GameUID: guid, TerrainName: ezfyWildTerrainDisplayName(w.X, w.Y, true), StatusTxt: st})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -2334,12 +2395,13 @@ func (h *EzfyAdmin) AdminEzfyMapStars(c *gin.Context) {
 		model.EzfyMapStar
 		OwnerName   string `json:"owner_name"`
 		HomeNum     string `json:"home_num"`
+		GameUID     int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		TerrainName string `json:"terrain_name"`
 	}
 	out := []rowOut{}
 	for _, s := range rows {
-		on, hn := h.ezfyAdminName(s.UserID)
-		out = append(out, rowOut{EzfyMapStar: s, OwnerName: on, HomeNum: hn,
+		on, hn, guid := h.ezfyAdminNameEx(s.UserID)
+		out = append(out, rowOut{EzfyMapStar: s, OwnerName: on, HomeNum: hn, GameUID: guid,
 			TerrainName: ezfyTerrainNameEx(s.X, s.Y)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -2370,9 +2432,9 @@ func (h *EzfyAdmin) AdminEzfyMapLookup(c *gin.Context) {
 	}
 	var ct model.EzfyCity
 	if err := h.DB.Where("x = ? AND y = ?", x, y).First(&ct).Error; err == nil {
-		pn, hn := h.ezfyAdminName(ct.UserID)
+		pn, hn, guid := h.ezfyAdminNameEx(ct.UserID)
 		out["city"] = gin.H{"id": ct.ID, "name": ct.Name, "user_id": ct.UserID,
-			"player_name": pn, "home_num": hn, "city_level": ct.CityLevel}
+			"player_name": pn, "home_num": hn, "game_uid": guid, "city_level": ct.CityLevel}
 	}
 	var area model.EzfyMapArea
 	if err := h.DB.Where("x = ? AND y = ?", x, y).First(&area).Error; err == nil {
@@ -2397,13 +2459,14 @@ func (h *EzfyAdmin) AdminEzfyCorpsMembers(c *gin.Context) {
 		model.EzfyCorpsMember
 		PlayerName string `json:"player_name"`
 		HomeNum    string `json:"home_num"`
+		GameUID    int64  `json:"game_uid"` // ★ 2026-10-29 游戏ID（家园号 → 游戏ID 口径）
 		Prestige   int    `json:"prestige"`
 		RankName   string `json:"rank_name"`
 		RoleName   string `json:"role_name"`
 	}
 	out := []rowOut{}
 	for _, m := range rows {
-		pn, hn := h.ezfyAdminName(m.UserId)
+		pn, hn, guid := h.ezfyAdminNameEx(m.UserId)
 		prestige := 0
 		rankLv := 1
 		var p model.EzfyProfile
@@ -2415,7 +2478,7 @@ func (h *EzfyAdmin) AdminEzfyCorpsMembers(c *gin.Context) {
 		if m.IsLeader == 1 {
 			role = "军团长"
 		}
-		out = append(out, rowOut{EzfyCorpsMember: m, PlayerName: pn, HomeNum: hn,
+		out = append(out, rowOut{EzfyCorpsMember: m, PlayerName: pn, HomeNum: hn, GameUID: guid,
 			Prestige: prestige, RankName: ezfyRankNameAt(rankLv), RoleName: role})
 	}
 	resp.OK(c, gin.H{"corps": cp, "list": out, "total": len(out)})

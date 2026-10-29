@@ -3423,6 +3423,12 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pvp_rank_on int DEFAULT 1")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET pvp_rank_on = 1 WHERE pvp_rank_on IS NULL")
+	// ★ 2026-10-29 风云榜「灭敌分上限」开关（默认 1 = 有上限 200 分）。
+	//   ⚠️ 0 合法（= 无上限）→ 只补列 + 只回填 NULL，**不能**用 `<= 0` 兜底（会把关掉的又打开）。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "pvp_kill_cap_on") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pvp_kill_cap_on int DEFAULT 1")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET pvp_kill_cap_on = 1 WHERE pvp_kill_cap_on IS NULL")
 	// ★ 2026-10-21 造兵时间：市长军事加成 / 装备套装军事计入（默认 1 = 开）。
 	//   ⚠️ 0 合法（= 关）→ 只补列 + 只回填 NULL，不能用 `<= 0` 兜底把管理员关掉的开关又打开。
 	for _, c := range []struct {

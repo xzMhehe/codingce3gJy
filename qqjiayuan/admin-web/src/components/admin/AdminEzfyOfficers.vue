@@ -293,7 +293,7 @@
             <el-table-column label="归属玩家" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}">
                 <span class="td-main">{{ row.owner_name || '—' }}</span>
-                <span class="td-muted">（{{ row.home_num || '—' }}）</span>
+                <span class="td-muted">（{{ row.game_uid || row.user_id || '—' }}）</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="240" align="center" fixed="right">
@@ -433,7 +433,7 @@
             <el-table-column label="持有玩家" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}">
                 <span class="td-main">{{ row.owner_name || '—' }}</span>
-                <span class="td-sub">（{{ row.home_num || row.user_id || '—' }}）</span>
+                <span class="td-sub">（{{ row.game_uid || row.user_id || '—' }}）</span>
               </template>
             </el-table-column>
             <el-table-column label="穿戴军官" width="110" show-overflow-tooltip>
@@ -507,7 +507,7 @@
             <el-tag size="mini" :type="odOfficer.is_captive === 1 ? 'danger' : 'success'">{{ odOfficer.is_captive === 1 ? '俘虏' : odOfficer.status_name }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="归属城池">{{ odOfficer.city_name || '—' }}（{{ odOfficer.city_id }}）</el-descriptions-item>
-          <el-descriptions-item label="归属玩家">{{ odOfficer.owner_name || '—' }}（{{ odOfficer.home_num || '—' }}）</el-descriptions-item>
+          <el-descriptions-item label="归属玩家">{{ odOfficer.owner_name || '—' }}（{{ odOfficer.game_uid || '—' }}）</el-descriptions-item>
           <el-descriptions-item label="获取途径">{{ odOfficer.source_name || '—' }}</el-descriptions-item>
           <el-descriptions-item label="军官池">{{ odOfficer.general_id ? (odOfficer.general_id + ' · ' + odOfficer.general_name) : '预置' }}</el-descriptions-item>
           <el-descriptions-item label="技能" :span="2">
@@ -645,7 +645,7 @@
         <el-form-item v-if="grantPlayers.length" label="选择玩家" required>
           <el-select v-model="grantForm.user_id" filterable style="width:320px" placeholder="选择玩家">
             <el-option v-for="p in grantPlayers" :key="p.user_id"
-                       :label="p.nickname + '（ID ' + p.user_id + (p.home_num ? ' · 家园号 ' + p.home_num : '') + '）'"
+                       :label="p.nickname + '（游戏ID ' + (p.game_uid || p.user_id) + '）'"
                        :value="p.user_id" />
           </el-select>
         </el-form-item>
@@ -1007,7 +1007,7 @@
       <el-form label-width="110px" size="small">
         <el-form-item label="玩家ID" required>
           <el-input-number v-model.number="egForm.user_id" :min="1" controls-position="right" />
-          <span class="td-sub" style="margin-left:8px">即用户ID（不是家园号）</span>
+          <span class="td-sub" style="margin-left:8px">即用户ID（不是游戏ID）</span>
         </el-form-item>
         <!-- ★ 2026-10-09 「装备下拉支持多选」：multiple + collapse-tags，
              一次可勾选多种装备，每种各发「数量」件。 -->

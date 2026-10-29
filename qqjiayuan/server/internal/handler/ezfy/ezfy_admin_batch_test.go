@@ -103,12 +103,12 @@ func TestAdminEzfyCitiesNoNPlusOne(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"h.ezfyAdminNamesBatch(uids)",      // 玩家名/家园号：一次 IN
-		`Where("city_id IN ?", cityIDs)`,   // 城池子表：一次 IN
-		`Group("city_id")`,                 // 计数：一次 GROUP BY
-		`"deleted_at IS NULL"`,             // ★ 军官软删除口径必须显式带上
-		`"level > 0"`,                      // 建筑口径
-		`"count > 0"`,                      // 部队口径
+		"h.ezfyAdminNamesBatch(uids)",    // 玩家名/家园号：一次 IN
+		`Where("city_id IN ?", cityIDs)`, // 城池子表：一次 IN
+		`Group("city_id")`,               // 计数：一次 GROUP BY
+		`"deleted_at IS NULL"`,           // ★ 军官软删除口径必须显式带上
+		`"level > 0"`,                    // 建筑口径
+		`"count > 0"`,                    // 部队口径
 		// ★ 2026-10-26 多取了 game_uid（城市管理「家园号 → 游戏ID」展示），仍是**一次 IN**、不是 N+1
 		`Select("user_id, camp, game_uid")`, // 阵营 + 游戏号：一次 IN
 	} {
@@ -127,6 +127,52 @@ func TestAdminEzfyItemGrantPlayersNoNPlusOne(t *testing.T) {
 	}
 	if !strings.Contains(body, `Where("id IN ?", gids)`) {
 		t.Fatal("发放道具目标搜索必须一次 IN 批量取家园号")
+	}
+}
+
+// TestAdminEzfyTechsNoNPlusOne 管理端「科技管理 → 玩家科技」列表禁止逐行查库，
+// 且**禁止把科技和城市绑定**（★ 2026-10-29 用户规则：科技只属于玩家 user_id）。
+//
+// ★★ 2026-10-29 用户反馈「科技管理 → 玩家科技 分页卡顿」。原来**每一行 4 条 SQL**：
+//
+//	① `First(&cfg, t.TechId)` 科技配置  ② `MIN(id) FROM ezfy_city` 找该玩家的城
+//	③ `First(&ct, mid)` 取城名          ④ `First(&researchRow)` 查研究中（还带 `city_id IN (子查询)`）
+//
+// → size=100 就是 400 条、size=5 也要 20 条；线上 1核1G + RDS 跨 WAN 必卡，
+// 而且「每页条数」调大后更慢 —— 正是用户描述的现象。
+//
+// 现在整页固定 4 条（与 size 无关）：配置走 ezfyCfg 内存缓存 / 研究中一条 JOIN 按 user_id 聚合 /
+// 昵称+家园号+游戏ID 一次批量。
+//
+// ★★ 归属口径：科技等级是**玩家级**（`ezfy_user_tech`，user_id+tech_id 一份），列表**不得**
+// 再出现「城名/归属城池」——科技与城市只有两处关系：① 研究由某城发起（队列 ezfy_city_tech）
+// ② 没有「科研中心」建筑的城市不享受加成。所以这里也静态锁死：不许回 city_name。
+func TestAdminEzfyTechsNoNPlusOne(t *testing.T) {
+	body := stripGoComments(ezfyFuncBody(t, "ezfy_admin_ext.go", "func (h *EzfyAdmin) AdminEzfyTechs("))
+	for _, bad := range []string{
+		"h.DB.First(&cfg, t.TechId)",             // 逐行查科技配置
+		`Select("MIN(id)")`,                      // 逐行找城
+		"h.DB.First(&ct, mid)",                   // 逐行取城名
+		"city_id IN (SELECT id FROM ezfy_city",   // 逐行子查询研究中
+		"h.ezfyAdminName(t.UserId)",              // 逐行查昵称（2 条/行）
+		`h.DB.Where("tech_id = ? AND status = 1`, // 逐行查研究中
+		"CityName",                               // ★ 科技不绑城市：不许再回城名
+		`"city_name"`,                            // ★ 同上（JSON 字段）
+	} {
+		if strings.Contains(body, bad) {
+			t.Fatalf("玩家科技列表里还有 N+1 或城市绑定：%s\n科技只属于玩家(user_id)，且分页越大越慢必须批量", bad)
+		}
+	}
+	for _, want := range []string{
+		"ezfyCfg.tech(t.TechId)", // 科技配置：内存缓存
+		// 研究中状态：一条 JOIN 直接按 user_id 聚合（不经过「先查城、再按城归属」两步）
+		`Joins("JOIN ezfy_city AS c ON c.id = ct.city_id")`,
+		`Where("ct.status = 1 AND ct.tech_id IN ? AND c.user_id IN ?"`,
+		"h.ezfyAdminNamesBatchEx(techUids)", // 昵称/家园号/游戏ID：一次批量
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("玩家科技列表的批量取数缺失（缺 %s）", want)
+		}
 	}
 }
 

@@ -166,7 +166,7 @@
                        style="margin-top:6px;width:100%"
                        :filterable="grantPlayers.length > 1" default-first-option>
               <el-option v-for="p in grantPlayers" :key="p.user_id"
-                         :label="p.nickname + '（ID:' + p.user_id + (p.home_num ? ' / 家园:' + p.home_num : '') + '）'"
+                         :label="p.nickname + '（游戏ID:' + (p.game_uid || p.user_id) + '）'"
                          :value="p.user_id" />
             </el-select>
             <div v-if="grantUserId" class="grant-target">已选：{{ grantTargetName }}</div>
@@ -216,7 +216,7 @@
                        style="margin-top:6px;width:100%"
                        :filterable="grantPlayers.length > 1" default-first-option>
               <el-option v-for="p in grantPlayers" :key="'cg' + p.user_id"
-                         :label="p.nickname + '（ID:' + p.user_id + (p.home_num ? ' / 家园:' + p.home_num : '') + '）'"
+                         :label="p.nickname + '（游戏ID:' + (p.game_uid || p.user_id) + '）'"
                          :value="p.user_id" />
             </el-select>
             <div v-if="grantUserId" class="grant-target">已选：{{ grantTargetName }}</div>

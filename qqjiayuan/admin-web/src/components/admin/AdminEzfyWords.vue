@@ -139,7 +139,7 @@
           <el-form label-width="120px" size="small">
             <el-form-item label="用户ID" required>
               <el-input-number v-model.number="clearForm.user_id" :min="1" controls-position="right" />
-              <div class="td-sub" style="margin-top:4px">即会员用户ID（不是家园号）</div>
+              <div class="td-sub" style="margin-top:4px">即用户ID（不是游戏ID）</div>
             </el-form-item>
             <el-form-item label="清空范围">
               <el-radio-group v-model="clearForm.dir">

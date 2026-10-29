@@ -124,7 +124,7 @@
       </div>
       <el-table :data="players" v-loading="playerLoading" stripe border max-height="420">
         <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
-        <el-table-column label="游戏号" width="100" align="center">
+        <el-table-column label="游戏ID" width="100" align="center">
           <template slot-scope="{row}">{{ row.game_uid || '—' }}</template>
         </el-table-column>
         <el-table-column prop="nickname" label="昵称" min-width="140" show-overflow-tooltip />

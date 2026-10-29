@@ -57,7 +57,10 @@
         <el-table-column prop="player_name" label="玩家" min-width="140" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.player_name || '—' }}</span></template>
         </el-table-column>
-        <el-table-column prop="home_num" label="家园号" width="90" align="center" />
+        <!-- ★ 2026-10-29 家园号 → 游戏ID（game_uid 才是玩家报给客服的号） -->
+        <el-table-column label="游戏ID" width="90" align="center">
+          <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id || '—' }}</span></template>
+        </el-table-column>
         <el-table-column prop="user_id" label="用户ID" width="80" align="center" />
         <el-table-column label="身份" width="100" align="center">
           <template slot-scope="{row}">

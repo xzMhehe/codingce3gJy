@@ -608,6 +608,9 @@ func (h *EzfyAdmin) AdminEzfyItemGrantPlayers(c *gin.Context) {
 		UserID   uint   `json:"user_id"`
 		Nickname string `json:"nickname"`
 		HomeNum  string `json:"home_num"`
+		// ★ 2026-10-29 管理端「家园号 → 游戏ID」：下拉里展示的号改成游戏ID(game_uid)，
+		//   老数据 game_uid=0 时回落 user_id（玩家报的号就是这个）。
+		GameUID int64 `json:"game_uid"`
 	}
 	// ★ 2026-10-15 同 AdminEzfyPlayers：家园号**一次 IN 批量取**，别再每行一次 First
 	//   （这个对话框最多 20 行 → 原来 20 条跨库往返，线上明显卡）。
@@ -625,7 +628,11 @@ func (h *EzfyAdmin) AdminEzfyItemGrantPlayers(c *gin.Context) {
 	}
 	list := []out{}
 	for _, p := range rows {
-		list = append(list, out{UserID: p.UserID, Nickname: p.Nickname, HomeNum: homeNumOf[p.UserID]})
+		gid := p.GameUID
+		if gid == 0 {
+			gid = int64(p.UserID)
+		}
+		list = append(list, out{UserID: p.UserID, Nickname: p.Nickname, HomeNum: homeNumOf[p.UserID], GameUID: gid})
 	}
 	resp.OK(c, gin.H{"list": list})
 }
@@ -1551,10 +1558,10 @@ func (h *EzfyAdmin) AdminEzfyReportDetail(c *gin.Context) {
 		resp.NotFound(c, "战报不存在")
 		return
 	}
-	pn, hn := h.ezfyAdminName(r.UserID)
+	pn, hn, guid := h.ezfyAdminNameEx(r.UserID)
 	resp.OK(c, gin.H{
 		"report":      r,
-		"player_name": pn, "home_num": hn,
+		"player_name": pn, "home_num": hn, "game_uid": guid,
 		"type_name": ezfyTypeNameStored(r),
 	})
 }
@@ -1740,17 +1747,26 @@ func (h *EzfyAdmin) AdminEzfyExchangeDealtDelete(c *gin.Context) {
 }
 
 func (h *EzfyAdmin) ezfyAdminName(uid uint) (string, string) {
+	nick, num, _ := h.ezfyAdminNameEx(uid)
+	return nick, num
+}
+
+// ezfyAdminNameEx 同 ezfyAdminName，额外返回「游戏ID」(game_uid)。
+//
+// ★ 2026-10-29 管理端口径统一「家园号 → 游戏ID」：game_uid 才是玩家在游戏里看到/报客服的号。
+// game_uid 就在上面那条 ezfy_profile 查询里 → **不增加 SQL 条数**（仍是 2 条）。
+func (h *EzfyAdmin) ezfyAdminNameEx(uid uint) (string, string, int64) {
 	var p model.EzfyProfile
-	nick := ""
+	nick, guid := "", int64(0)
 	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err == nil {
-		nick = p.Nickname
+		nick, guid = p.Nickname, p.GameUID
 	}
 	var u model.User
 	num := ""
 	if err := h.home().First(&u, uid).Error; err == nil {
 		num = u.Username
 	}
-	return nick, num
+	return nick, num, guid
 }
 
 // atoiOr 解析整数，空串/非法时返回默认值

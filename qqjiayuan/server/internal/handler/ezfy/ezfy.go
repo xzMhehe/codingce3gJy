@@ -60,6 +60,12 @@ const (
 	//   玩家研到满级负重也不涨，就是反馈的「科技没实际作用」。见 ezfyCarryCapOf。
 	ezfyLoadTechID  = 13
 	ezfyLoadTechPct = 2
+	// ★★ 2026-10-29 用户规则：**没有「科研中心」建筑的城市不享受任何科技加成**。
+	//   科技等级本身是账号级（ezfy_user_tech 按 user_id 一份），但「生效」按城市判：
+	//   本城建筑 8（科研中心）等级为 0 → 该城所有科技加成按 0 级算
+	//   （产量/训练/采集/载重/侦察/建造速度…）。科技与城市只有两处关系，这是第二处。
+	//   ★ 用户端**不加任何提示文案**（规则静默生效）。
+	ezfyAcademyBuildingID = 8
 )
 
 var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)
@@ -739,10 +745,73 @@ func (h *EzfyHandler) buildingMaxLevel(cityId uint, buildingId int) int {
 //
 // ★ 2026-09-28 「没有主城概念，所有城市都是一样的」：等级存 ezfy_user_tech
 // （按 user_id），所有调用点（结算/展示/加成）自动变成全账号共用，不用逐个改。
+// techMap 返回**该城可享受**的科技等级表（加成用；展示等级请用 techMapOf）。
+//
+// ★★ 2026-10-29 用户规则：**没有「科研中心」建筑（建筑 8）的城市不享受任何科技加成**
+// → 本城科研中心等级为 0 时返回**空表**（等价于全科技 0 级）。
+// 科技等级本身是账号级（ezfy_user_tech 按 user_id），这里只做「本城是否生效」的判定。
+//
+// ★ 性能：uid 与科研中心等级**合并成一条 SQL**（LEFT JOIN 建筑表，实测走 PRIMARY + idx_city_building），
+// SQL 条数与原实现一致（1 条 JOIN + techMapOf 1 条 = 2 条）。
 func (h *EzfyHandler) techMap(cityId uint) map[int]int {
-	var uid uint
-	h.DB.Model(&model.EzfyCity{}).Where("id = ?", cityId).Select("user_id").Scan(&uid)
-	return h.techMapOf(uid)
+	var row struct {
+		UserID  uint
+		Academy int
+	}
+	h.DB.Table("ezfy_city AS c").
+		Select("c.user_id AS user_id, IFNULL(b.level, 0) AS academy").
+		Joins("LEFT JOIN ezfy_city_building AS b ON b.city_id = c.id AND b.building_id = ?", ezfyAcademyBuildingID).
+		Where("c.id = ?", cityId).Scan(&row)
+	if row.UserID == 0 || row.Academy <= 0 {
+		return map[int]int{}
+	}
+	return h.techMapOf(row.UserID)
+}
+
+// ezfyBuildingsHaveAcademy 已取到的建筑列表里有没有「科研中心」（等级 > 0）。
+// ★★ 2026-10-29 用户规则：没有科研中心的城市不享受任何科技加成。
+func ezfyBuildingsHaveAcademy(buildings []model.EzfyCityBuilding) bool {
+	for _, b := range buildings {
+		if b.BuildingId == ezfyAcademyBuildingID && b.Level > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// techsForCity 用**已取到的建筑列表**判定本城科技加成是否生效（0 条额外 SQL）。
+//
+// 与 techMap(cityId) 同口径：建筑 8（科研中心）等级 > 0 才返回账号科技等级，否则返回空表。
+// 产量结算/首页快照这类已经批量取过建筑列表的地方用它，避免再打一次库。
+func (h *EzfyHandler) techsForCity(uid uint, buildings []model.EzfyCityBuilding) map[int]int {
+	return ezfyTechsPick(h.techMapOf(uid), ezfyBuildingsHaveAcademy(buildings))
+}
+
+// ezfyAcademyCitySet 批量判定「这些城里哪些有科研中心」（一条 SQL，多城场景用）。
+// 返回的集合只包含**有科研中心（等级>0）**的城市。
+func (h *EzfyHandler) ezfyAcademyCitySet(cityIDs []uint) map[uint]bool {
+	out := map[uint]bool{}
+	if len(cityIDs) == 0 {
+		return out
+	}
+	var rows []model.EzfyCityBuilding
+	h.DB.Select("city_id, level").
+		Where("city_id IN ? AND building_id = ?", cityIDs, ezfyAcademyBuildingID).Find(&rows)
+	for _, b := range rows {
+		if b.Level > 0 {
+			out[uint(b.CityId)] = true
+		}
+	}
+	return out
+}
+
+// ezfyTechsOfCity 批量版：账号科技等级 + 「该城有没有科研中心」两样都已知时用它。
+// academy=false → 空表（本城不享受加成）。
+func ezfyTechsPick(techs map[int]int, academy bool) map[int]int {
+	if !academy {
+		return map[int]int{}
+	}
+	return techs
 }
 
 // techMapOf 按 user_id 取科技等级表。
@@ -1829,6 +1898,10 @@ func (h *EzfyHandler) ezfyLoadCityData(uid uint, city *model.EzfyCity, cities []
 	go func() { defer wg.Done(); d.boost = h.ezfyLoadActiveBoost(city.ID) }()
 	go func() { defer wg.Done(); d.mayor = h.mayorBonusPct(city.ID) }()
 	wg.Wait()
+	// ★★ 2026-10-29 用户规则：没有「科研中心」建筑的城市不享受科技加成。
+	//   这个快照是 ~30 处 refreshCity* 的公共取数入口，科技表在这里**按城过滤一次**，
+	//   后续 calcResource / getResourceCalcWith 全部复用（用已取到的建筑列表判定，0 额外 SQL）。
+	d.techs = ezfyTechsPick(d.techs, ezfyBuildingsHaveAcademy(d.buildings))
 	d.boostDone = true // 已确认过（含「确实没有增产令」），消费方零查询
 	d.cities = cities
 	return d
@@ -4813,7 +4886,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	//   这两个消费方原来会把 buildingList / techMap / wildlandList / troopMap / 增产令 /
 	//   市长加成 / 节日活动**全部再查一遍**（跨 WAN 每个请求白打 ~8 个往返）。
 	snap := &resCalcData{
-		buildings: buildings, techs: tmap, wilds: wildlands, troops: troops,
+		buildings: buildings, techs: ezfyTechsPick(tmap, ezfyBuildingsHaveAcademy(buildings)), wilds: wildlands, troops: troops,
 		boost: boostEff, boostDone: true, mayor: mayorPct,
 	}
 	h.checkBuildingDone(&city, buildings)
@@ -5906,8 +5979,9 @@ func (h *EzfyHandler) Resources(c *gin.Context) {
 	go func() { defer wg.Done(); boost = h.ezfyLoadActiveBoost(city.ID) }()
 	go func() { defer wg.Done(); mayor = h.mayorBonusPct(city.ID) }()
 	wg.Wait()
-	snap := &resCalcData{buildings: buildings, techs: techs, wilds: wilds, troops: troops,
-		boost: boost, boostDone: true, mayor: mayor}
+	// ★ 2026-10-29 没有「科研中心」的本城不享受科技加成（用已取到的建筑列表判定，0 额外 SQL）
+	snap := &resCalcData{buildings: buildings, techs: ezfyTechsPick(techs, ezfyBuildingsHaveAcademy(buildings)),
+		wilds: wilds, troops: troops, boost: boost, boostDone: true, mayor: mayor}
 	// 先结算（把资源推进到当前时刻），再按同一份快照出详情 —— 顺序与改造前一致。
 	h.calcResourceD(&city, snap)
 	data := gin.H{"city": city, "calc": h.getResourceCalcWith(&city, snap)}

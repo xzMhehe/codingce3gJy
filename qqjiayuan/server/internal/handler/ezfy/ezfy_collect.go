@@ -74,6 +74,15 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 		wildIDs = append(wildIDs, orders[i].TargetId)
 		cityIDs = append(cityIDs, orders[i].CityId)
 	}
+	// ★ 2026-10-29 没有「科研中心」的出发城不享受科技加成（载重科技按城生效）：
+	//   一次 IN 批量判定哪些城有科研中心（1 条 SQL），循环里按订单的出发城取。
+	uidCities := make([]uint, 0, len(cityIDs))
+	for _, id := range cityIDs {
+		if id > 0 {
+			uidCities = append(uidCities, uint(id))
+		}
+	}
+	academyOf := h.ezfyAcademyCitySet(uidCities)
 	wilds := h.batchWildlands(wildIDs)
 	cityAtMax := map[int64]bool{}
 	if allCities {
@@ -101,7 +110,8 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 			skip++
 			continue
 		}
-		if cap := h.ezfyCarryCapOf(parseGroups(order.Troops), uint(order.CityId), techs); cap > 0 &&
+		if cap := h.ezfyCarryCapOf(parseGroups(order.Troops), uint(order.CityId),
+			ezfyTechsPick(techs, academyOf[uint(order.CityId)])); cap > 0 &&
 			parseCarry(order.Carry).total() >= cap {
 			carrySkip++
 			continue

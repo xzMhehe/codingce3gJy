@@ -44,8 +44,9 @@
         <el-table-column label="城名" min-width="140" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
         </el-table-column>
-        <el-table-column label="归属玩家（家园号）" min-width="150" show-overflow-tooltip>
-          <template slot-scope="{row}">{{ row.player_name || '—' }}（{{ row.home_num || '—' }}）</template>
+        <!-- ★ 2026-10-29 家园号 → 游戏ID（game_uid 才是玩家报给客服的号） -->
+        <el-table-column label="归属玩家（游戏ID）" min-width="150" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.player_name || '—' }}（{{ row.game_uid || row.user_id || '—' }}）</template>
         </el-table-column>
         <el-table-column :label="resName('gold') + ' / 上限'" width="145" align="center">
           <template slot-scope="{row}">

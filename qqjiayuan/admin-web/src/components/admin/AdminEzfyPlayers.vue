@@ -13,12 +13,14 @@
            注：小屏/pad 上横向滚动是既有适配行为，不靠压缩列宽去消除。 -->
       <el-table :data="list" v-loading="loading" stripe border>
         <el-table-column prop="user_id" label="用户ID" width="100" align="center" />
-        <el-table-column prop="home_num" label="家园号" width="100" align="center" />
-        <el-table-column label="家园昵称" min-width="110" show-overflow-tooltip>
-          <template slot-scope="{row}">{{ row.home_nick || '—' }}</template>
+        <!-- ★ 2026-10-29 用户要求「家园号 → 游戏ID、家园昵称 → 游戏昵称」：
+             游戏ID(game_uid) 才是玩家在游戏里看到/报客服的号；老数据 game_uid=0 回落 user_id。
+             原来单独一列「家园昵称」= 家园库 users.nickname，与下面的游戏昵称重复 → 去掉。 -->
+        <el-table-column label="游戏ID" width="100" align="center">
+          <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id }}</span></template>
         </el-table-column>
-        <el-table-column label="玩家昵称" min-width="130" show-overflow-tooltip>
-          <template slot-scope="{row}"><span class="td-main">{{ row.nickname }}</span></template>
+        <el-table-column label="游戏昵称" min-width="130" show-overflow-tooltip>
+          <template slot-scope="{row}"><span class="td-main">{{ row.nickname || '—' }}</span></template>
         </el-table-column>
         <el-table-column label="阵营" width="85" align="center">
           <template slot-scope="{row}">
@@ -75,7 +77,7 @@
               <el-tag size="mini" type="info" effect="plain">{{ detail.rank_name }}</el-tag>
             </div>
             <div class="ph-sub">
-              家园号 <span class="td-mono">{{ detail.home_num || '—' }}</span> · 家园昵称 {{ detail.home_nick || '—' }}
+              游戏ID <span class="td-mono">{{ detail.player.game_uid || detail.player.user_id }}</span> · 游戏昵称 {{ detail.player.nickname || '—' }}
             </div>
           </div>
           <div class="ph-stats">

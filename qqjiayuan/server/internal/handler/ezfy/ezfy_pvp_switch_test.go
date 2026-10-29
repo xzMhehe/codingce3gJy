@@ -150,6 +150,84 @@ func TestPvpExcludeBoardsIndependent(t *testing.T) {
 	}
 }
 
+// TestPvpKillCapSwitch —— 防回归：风云榜「灭敌分上限」开关必须真的生效。
+//
+// 背景（2026-10-29 用户需求）：「单灭敌加分上限加个开关，默认开有上限，关掉期间灭敌无上限」。
+// 关闭靠 ezfy_cfg_limit.pvp_kill_cap_on = 0，读取点是 ezfyPvpKillCapOn()。
+//
+// 风险：日后有人重构 pvpBattlePoints 时把封顶写回「无条件截断」（开关只改了个 UI），
+// 表现是「后台明明关了无上限，分还是卡在 200」——玩家端看不出来，运营要查半天。
+// 所以这里断言：
+//  1. pvpBattlePoints 里的截断受 ezfyPvpKillCapOn() 门禁（不是裸 if killPts > cap）；
+//  2. ezfyPvpKillCapOn 读缓存 limit.PvpKillCapOn 且有 ready() 保护（0 合法，不能零值误判）；
+//  3. 模型有列 + 迁移补列（只回填 NULL，不用 <= 0 兜底，否则关掉的又被打开）；
+//  4. 管理端有开关接口（路由 + handler）。
+func TestPvpKillCapSwitch(t *testing.T) {
+	read := func(p string) string {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("读 %s 失败: %v", p, err)
+		}
+		return string(b)
+	}
+	pvpSrc := read(filepath.Join(".", "ezfy_pvp_rank.go"))
+
+	// 1) 截断必须带开关门禁
+	body := funcBody(pvpSrc, "func pvpBattlePoints(")
+	if body == "" {
+		t.Fatal("找不到 pvpBattlePoints 函数体（重构后请同步更新本断言）")
+	}
+	guard := strings.Index(body, "ezfyPvpKillCapOn()")
+	if guard < 0 {
+		t.Fatal("pvpBattlePoints 里没有灭敌分上限开关门禁（ezfyPvpKillCapOn()）—— 关掉开关仍会封顶")
+	}
+	capCut := strings.Index(body, "killPts = ezfyPvpKillPtCap")
+	if capCut < 0 {
+		t.Fatal("pvpBattlePoints 里找不到灭敌分封顶语句（killPts = ezfyPvpKillPtCap）")
+	}
+	if capCut < guard {
+		t.Fatal("封顶语句出现在开关门禁之前 —— 关闭开关也会封顶")
+	}
+
+	// 2) 开关读取走缓存 limit + ready() 保护
+	onBody := funcBody(pvpSrc, "func ezfyPvpKillCapOn()")
+	if onBody == "" {
+		t.Fatal("找不到 ezfyPvpKillCapOn 函数体")
+	}
+	if !strings.Contains(onBody, "ezfyCfg.limit.PvpKillCapOn") {
+		t.Fatal("ezfyPvpKillCapOn 未读 ezfyCfg.limit.PvpKillCapOn")
+	}
+	if !strings.Contains(onBody, "ezfyCfg.ready()") {
+		t.Fatal("ezfyPvpKillCapOn 缺 ready() 保护 —— 配置未加载时会读到零值 0，误判成「无上限」")
+	}
+
+	// 3) 模型列 + 迁移（0 合法：只回填 NULL）
+	modelSrc := read(filepath.Join("..", "..", "model", "ezfy.go"))
+	if !strings.Contains(modelSrc, "PvpKillCapOn") || !strings.Contains(modelSrc, "pvp_kill_cap_on") {
+		t.Fatal("model.EzfyCfgLimit 缺 PvpKillCapOn / pvp_kill_cap_on 列")
+	}
+	seedSrc := read(filepath.Join("..", "..", "seed", "seed.go"))
+	if !strings.Contains(seedSrc, "pvp_kill_cap_on int DEFAULT 1") {
+		t.Fatal("seed 没有补列 pvp_kill_cap_on（老库会缺列）")
+	}
+	if strings.Contains(seedSrc, "pvp_kill_cap_on <= 0") {
+		t.Fatal("seed 用 `pvp_kill_cap_on <= 0` 兜底 —— 会把管理员关掉的上限又打开")
+	}
+
+	// 4) 管理端接口
+	adminSrc := read(filepath.Join(".", "ezfy_admin_rank.go"))
+	if !strings.Contains(adminSrc, "func (h *EzfyAdmin) AdminEzfyPvpKillCap(") {
+		t.Fatal("缺管理端开关 handler AdminEzfyPvpKillCap")
+	}
+	if !strings.Contains(adminSrc, `Update("pvp_kill_cap_on"`) {
+		t.Fatal("AdminEzfyPvpKillCap 没有写 pvp_kill_cap_on")
+	}
+	routerSrc := read(filepath.Join("..", "..", "router", "router.go"))
+	if !strings.Contains(routerSrc, "/ezfy-pvp-rank/kill-cap") {
+		t.Fatal("路由缺 POST /admin/ezfy-pvp-rank/kill-cap")
+	}
+}
+
 // funcBody 粗略取出 Go 函数体（从 signature 起，按大括号配平到函数结束）。
 // 只在测试里做静态检查用，遇到字符串/注释里的括号可能失真 —— 对本文件足够。
 func funcBody(src, sig string) string {

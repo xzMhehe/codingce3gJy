@@ -42,7 +42,10 @@
         </el-table-column>
         <el-table-column prop="city_name" label="所属城池" min-width="130" show-overflow-tooltip />
         <el-table-column prop="owner_name" label="归属玩家" min-width="130" show-overflow-tooltip />
-        <el-table-column prop="home_num" label="家园号" width="90" align="center" />
+        <!-- ★ 2026-10-29 家园号 → 游戏ID（game_uid 才是玩家报给客服的号） -->
+        <el-table-column label="游戏ID" width="90" align="center">
+          <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id || '—' }}</span></template>
+        </el-table-column>
         <el-table-column label="操作" width="190" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="success" plain :disabled="row.status === 2" @click="finish(row)">完成</el-button>
@@ -197,9 +200,9 @@ export default {
       this.cities = []
       this.createDlg = true
     },
-    // 玩家下拉选项文案
+    // 玩家下拉选项文案（★ 2026-10-29 家园号 → 游戏ID：game_uid 才是玩家报给客服的号）
     pLabel (p) {
-      return (p.home_nick || '') + ' · 家园' + (p.home_num || '') + '（ID ' + p.user_id + '）'
+      return (p.nickname || '') + ' · 游戏ID ' + (p.game_uid || p.user_id || '')
     },
     // 远程搜索玩家（昵称 / 游戏号 / 用户ID）—— ★ 2026-10-15 后端口径：家园号 → 游戏号
     loadPlayers (word) {

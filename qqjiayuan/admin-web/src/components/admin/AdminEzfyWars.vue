@@ -96,10 +96,10 @@
     <el-dialog title="新建宣战" :visible.sync="addDlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="140px" size="small">
         <el-form-item label="宣战方玩家ID">
-          <el-input v-model.number="form.atk_user_id" placeholder="家园玩家ID（users.id）" />
+          <el-input v-model.number="form.atk_user_id" placeholder="宣战方用户ID（users.id）" />
         </el-form-item>
         <el-form-item label="被宣战方玩家ID">
-          <el-input v-model.number="form.def_user_id" placeholder="家园玩家ID（users.id）" />
+          <el-input v-model.number="form.def_user_id" placeholder="被宣战方用户ID（users.id）" />
         </el-form-item>
         <el-form-item label="立即生效">
           <el-switch v-model="form.instant" />
