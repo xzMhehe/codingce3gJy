@@ -286,22 +286,26 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				// (活动野地橙、活动寇城品红、特殊城市红, 三种都带活动等级 1~3)
 				// ★ 2026-10-05 名将野地按玩家判定：该玩家已抓到守将 → 该格对其是普通野地，
 				//   不再标活动标记/守将标识（没抓到的玩家照常看到名将野地）。
-				if act := h.ezfyActTargetType(x, y); act > 0 && !actDailyBlocked() && !h.playerOwnsActWildGeneral(uid, x, y) {
+				// ★★ 2026-10-30 名将活动目标不卡每日上限 → 本城次数用完后，名将格**照常**显示为活动目标。
+				if act := h.ezfyActTargetType(x, y); act > 0 && !h.playerOwnsActWildGeneral(uid, x, y) {
 					actLevel := ezfyMarkLevelAt(x, y)
-					cell["act_type"] = act
-					cell["act_level"] = actLevel
-					cell["act_name"] = ezfyActTargetName(act)
-					// 格子名直接用活动标签, 目标详情页标题即「活动野地2级 / 特殊城市3级」
-					cell["name"] = ezfyActTargetLabel(act, actLevel)
-					// ★ 2026-09-30 带守将军官的活动野地加特殊标识（玩家区分普通活动野地与带名将守将的）
-					// ★ 2026-10-24 守将来源与战斗/详情同口径：aw 启用优先，否则回退活动目标配置
 					aw := ezfyActWildAt(x, y)
-					if dc := ezfyActDefConfigOf(aw, act, actLevel); dc.OfficerId > 0 {
-						cell["act_officer"] = true
-						if g := ezfyCfg.general(dc.OfficerId); g != nil {
-							cell["act_officer_name"] = g.Name
-							cell["act_officer_kind"] = g.Kind // 1普通军官 2名将
-							cell["act_officer_star"] = g.Star
+					// ★ 2026-10-24 守将来源与战斗/详情同口径：aw 启用优先，否则回退活动目标配置
+					dc := ezfyActDefConfigOf(aw, act, actLevel)
+					if h.ezfyActNamedTargetAt(x, y) || !actDailyBlocked() {
+						cell["act_type"] = act
+						cell["act_level"] = actLevel
+						cell["act_name"] = ezfyActTargetName(act)
+						// 格子名直接用活动标签, 目标详情页标题即「活动野地2级 / 特殊城市3级」
+						cell["name"] = ezfyActTargetLabel(act, actLevel)
+						// ★ 2026-09-30 带守将军官的活动野地加特殊标识（玩家区分普通活动野地与带名将守将的）
+						if dc.OfficerId > 0 {
+							cell["act_officer"] = true
+							if g := ezfyCfg.general(dc.OfficerId); g != nil {
+								cell["act_officer_name"] = g.Name
+								cell["act_officer_kind"] = g.Kind // 1普通军官 2名将
+								cell["act_officer_star"] = g.Star
+							}
 						}
 					}
 				}
@@ -438,8 +442,13 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	// 活动目标(活动野地/活动寇城/特殊城市): 守军/奖励/说明走活动配置, 不走普通野地配置表
 	// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家，该坐标对其是普通野地 → 走下面普通野地详情
 	// ★ 2026-10-30 当前城市当日活动攻击次数用完后，详情也按普通野地展示（与地图/战斗同口径）
+	//   ★★ 名将活动目标不卡每日上限 → 次数用完后名将格仍展示活动详情。
 	//   先判是不是活动目标，普通野地详情不再多一次配额/城市查询。
 	if act := h.ezfyActTargetType(x, y); act > 0 && !h.playerOwnsActWildGeneral(uid, x, y) {
+		if h.ezfyActNamedTargetAt(x, y) {
+			resp.OK(c, h.ezfyActWildlandView(uid, profile.Camp, x, y, act))
+			return
+		}
 		curCity := h.getOrCreateCity(uid)
 		if !h.ezfyActDailyLimitReached(int64(curCity.ID)) {
 			resp.OK(c, h.ezfyActWildlandView(uid, profile.Camp, x, y, act))
@@ -1686,11 +1695,13 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// ★ 2026-10-30 活动目标每日攻打上限：下单时固化本单是否按活动目标结算。
 	//   达到上限后 ActType 落 0 → 到达时走普通野地/寇城战斗，不再发活动奖励。
 	//   侦查(1)不占次数，但次数用完后也按普通野地回报情报；并发下单由到达时的 id 排名二次卡控。
+	//   ★★ 名将活动目标（配了守将）**不卡这个上限**：名将只受「可抓次数 max_capture」约束
+	//      （抓满后该坐标对该玩家变普通地形，见 playerOwnsActWildGeneral）。
 	actType := 0
 	if targetType != 3 && (orderType == 1 || orderType == 2 || orderType == 3) {
 		if act := h.ezfyActTargetType(targetX, targetY); act > 0 &&
 			!h.playerOwnsActWildGeneral(uid, targetX, targetY) &&
-			!h.ezfyActDailyLimitReached(int64(city.ID)) {
+			(h.ezfyActNamedTargetAt(targetX, targetY) || !h.ezfyActDailyLimitReached(int64(city.ID))) {
 			actType = act
 		}
 	}

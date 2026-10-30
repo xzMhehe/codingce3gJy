@@ -391,14 +391,47 @@ func ezfyActDailyAllow(limit int, rank int64) bool {
 }
 
 // ezfyActDailyUsed 某城今日已创建的活动目标攻击订单数。
+//
+// ★★ 2026-10-30 名将活动目标（配了守将的）**不计入**配额 —— 它们既不占次数，
+// 也不受上限约束（见 ezfyActNamedTargetAt）。否则打名将会把普通活动目标的次数挤掉。
+// 订单量很小（每城每天上限几十条），取坐标后在内存里过滤，不额外打库。
 func (h *EzfyHandler) ezfyActDailyUsed(cityID int64) int64 {
 	start, end := ezfyActDailyRange(time.Now().UnixMilli())
-	var n int64
-	h.DB.Model(&model.EzfyOrder{}).
+	var rows []model.EzfyOrder
+	h.DB.Model(&model.EzfyOrder{}).Select("target_x", "target_y").
 		Where("city_id = ? AND act_type > 0 AND order_type IN (?, ?) AND start_time >= ? AND start_time < ?",
 			cityID, 2, 3, start, end).
-		Count(&n)
+		Find(&rows)
+	n := int64(0)
+	for i := range rows {
+		if h.ezfyActNamedTargetAt(rows[i].TargetX, rows[i].TargetY) {
+			continue
+		}
+		n++
+	}
 	return n
+}
+
+// ezfyActNamedTargetAt 该坐标是否为「名将活动目标」—— 活动目标且守将**是名将**（general.Kind=2）。
+//
+// 守将来源与 ezfyActDefConfigOf 同口径（坐标级 aw 优先，其次活动目标等级配置）；
+// ★ 只认**名将**（kind=2）：配普通军官（kind=1）的活动野地仍按普通活动目标受每日上限约束。
+//
+// ★★ 2026-10-30 用户规则：**名将活动目标不卡「活动目标每日上限(次/城)」**。
+// 名将只受原有「可抓次数 max_capture」约束 —— 抓满后该坐标对该玩家变普通地形
+// （playerOwnsActWildGeneral）。所以名将订单既不计入当日配额，也不被配额拦下。
+func (h *EzfyHandler) ezfyActNamedTargetAt(x, y int) bool {
+	act := h.ezfyActTargetType(x, y)
+	if act <= 0 {
+		return false
+	}
+	aw := ezfyActWildAt(x, y)
+	lv := ezfyMarkLevelAt(x, y)
+	if aw != nil && aw.Enabled == 1 && aw.Level >= 1 && aw.Level <= 3 {
+		lv = aw.Level
+	}
+	oid := ezfyActDefConfigOf(aw, act, lv).OfficerId
+	return oid > 0 && ezfyCfg.isGeneral(oid) // isGeneral = 唯一实现（kind==2 名将，普通军官不算）
 }
 
 // ezfyActDailyLimitReached 该城今日活动目标攻击次数是否已用完。
@@ -412,23 +445,36 @@ func (h *EzfyHandler) ezfyActDailyLimitReached(cityID int64) bool {
 
 // ezfyActDailyOrderRank 该订单是出发城市当日第几支活动攻击队（含自己，从 1 开始）。
 // 用订单 id 排序做「到达时二次卡控」，防止并发下单同时穿过创建时的读校验。
+// ★ 名将活动目标的订单不计入排名（它们不占配额）。
 func (h *EzfyHandler) ezfyActDailyOrderRank(order *model.EzfyOrder) int64 {
 	if order == nil {
 		return 0
 	}
 	start, end := ezfyActDailyRange(order.StartTime)
-	var n int64
-	h.DB.Model(&model.EzfyOrder{}).
+	var rows []model.EzfyOrder
+	h.DB.Model(&model.EzfyOrder{}).Select("target_x", "target_y").
 		Where("city_id = ? AND act_type > 0 AND order_type IN (?, ?) AND start_time >= ? AND start_time < ? AND id <= ?",
 			order.CityId, 2, 3, start, end, order.ID).
-		Count(&n)
+		Order("id").
+		Find(&rows)
+	n := int64(0)
+	for i := range rows {
+		if h.ezfyActNamedTargetAt(rows[i].TargetX, rows[i].TargetY) {
+			continue
+		}
+		n++
+	}
 	return n
 }
 
 // ezfyActOrderWithinDailyLimit 该订单到达时是否仍可用活动目标结算。
 // ★ 存量订单（ActType = -1，补列前创建）不做配额追溯，保持原有在途战斗行为。
+// ★★ 名将活动目标（配了守将）不受每日上限约束，直接放行（只受「可抓次数」约束）。
 func (h *EzfyHandler) ezfyActOrderWithinDailyLimit(order *model.EzfyOrder) bool {
 	if order == nil || order.ActType < 0 {
+		return true
+	}
+	if h.ezfyActNamedTargetAt(order.TargetX, order.TargetY) {
 		return true
 	}
 	limit := ezfyActDailyLimit()
@@ -464,6 +510,14 @@ func (h *EzfyHandler) ezfyOrderActType(uid uint, order *model.EzfyOrder) int {
 //
 //	该坐标才是普通野地。判定口径 = 该玩家名下任一城市的军官里存在 general_id == 守将ID
 //	（收编后 IsCaptive=0 也算已拥有）。快速路径：非活动野地/没配守将 → 直接 false，零查询。
+//
+// ★★ 2026-10-30 用户规则「名将只卡原来的 —— 抓到了最大次数才会变成普通地形」：
+//
+//	守将是**名将**且「可抓次数 max_capture > 0」时，改按**已抓次数是否抓满**判定
+//	（ezfy_act_capture_log 只增流水）。原来「拥有即变」会让 max_capture=3 时
+//	抓到第 1 只坐标就变普通地形，剩下的 2 次永远用不掉。
+//	· max_capture <= 0（不限）→ 仍按「拥有即变」（否则可以无限刷名将野地资源）；
+//	· 普通军官守将 → 仍按「拥有即变」（本次只收口名将）。
 func (h *EzfyHandler) playerOwnsActWildGeneral(uid uint, x, y int) bool {
 	aw := ezfyActWildAt(x, y)
 	if aw == nil || aw.Enabled != 1 || aw.OfficerId <= 0 {
@@ -472,6 +526,18 @@ func (h *EzfyHandler) playerOwnsActWildGeneral(uid uint, x, y int) bool {
 	g := ezfyCfg.general(aw.OfficerId)
 	if g == nil {
 		return false
+	}
+	if g.Kind == 2 && aw.MaxCapture > 0 {
+		// ★ 只读流水计数（不能调 ezfyActCaptureUsed：它在无流水时会**补记流水**，
+		//   而这个函数在地图渲染里逐格调用，绝不能写库）。
+		var used int64
+		h.DB.Model(&model.EzfyActCaptureLog{}).
+			Where("user_id = ? AND general_id = ?", uid, g.ID).
+			Count(&used)
+		if used > 0 {
+			return ezfyActCaptureFull(aw.MaxCapture, used)
+		}
+		// 没有抓取流水（老数据 / 非野地来源）→ 落到下面「拥有即变」兜底，避免凭空多出机会
 	}
 	var n int64
 	h.DB.Model(&model.EzfyOfficer{}).

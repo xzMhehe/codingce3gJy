@@ -132,6 +132,8 @@ func TestActDailyCountScope(t *testing.T) {
 		"order_type IN (?, ?)",
 		"start_time >= ? AND start_time < ?",
 		"cityID, 2, 3, start, end",
+		// ★★ 2026-10-30 名将活动目标不占配额 → 计数里必须跳过
+		"h.ezfyActNamedTargetAt(rows[i].TargetX, rows[i].TargetY)",
 	} {
 		if !strings.Contains(used, want) {
 			t.Fatalf("ezfyActDailyUsed 的计数口径缺少 %q：\n%s", want, used)
@@ -140,7 +142,8 @@ func TestActDailyCountScope(t *testing.T) {
 
 	rank := ezfyStripCommentLines(strings.ReplaceAll(
 		ezfyFuncBody(t, "ezfy_activity_target.go", "func (h *EzfyHandler) ezfyActDailyOrderRank("), "\r\n", "\n"))
-	for _, want := range []string{"city_id = ?", "act_type > 0", "order_type IN (?, ?)", "id <= ?"} {
+	for _, want := range []string{"city_id = ?", "act_type > 0", "order_type IN (?, ?)", "id <= ?",
+		"h.ezfyActNamedTargetAt(rows[i].TargetX, rows[i].TargetY)"} {
 		if !strings.Contains(rank, want) {
 			t.Fatalf("ezfyActDailyOrderRank 的排名口径缺少 %q：\n%s", want, rank)
 		}
@@ -203,7 +206,11 @@ func TestActDailyLimitArrivalRecheck(t *testing.T) {
 func TestActDailyLimitDisplay(t *testing.T) {
 	mapBody := ezfyStripCommentLines(strings.ReplaceAll(
 		ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) MapView("), "\r\n", "\n"))
-	for _, want := range []string{"actDailyBlocked()", "act > 0 && !actDailyBlocked()"} {
+	for _, want := range []string{
+		"actDailyBlocked()",
+		// ★★ 2026-10-30 名将活动目标不卡每日上限 → 配额用完也照常显示为活动目标
+		"h.ezfyActNamedTargetAt(x, y) || !actDailyBlocked()",
+	} {
 		if !strings.Contains(mapBody, want) {
 			t.Fatalf("MapView 缺少配额展示拦截 %q", want)
 		}
@@ -213,6 +220,8 @@ func TestActDailyLimitDisplay(t *testing.T) {
 		ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) WildlandView("), "\r\n", "\n"))
 	for _, want := range []string{
 		"if act := h.ezfyActTargetType(x, y); act > 0",
+		// ★★ 名将活动目标：次数用完也展示活动详情（先于配额判定返回）
+		"if h.ezfyActNamedTargetAt(x, y) {",
 		"h.ezfyActDailyLimitReached(int64(curCity.ID))",
 	} {
 		if !strings.Contains(detailBody, want) {
@@ -318,6 +327,98 @@ func TestActDailyLimitAdminPlumbing(t *testing.T) {
 	// 0 = 不限，前端 min 必须是 0（不能从 1 起）
 	if !strings.Contains(vue, `v-model.number="form.act_daily_limit" :min="0"`) {
 		t.Fatal("活动目标每日上限输入框 min 必须是 0（0 = 不限）")
+	}
+}
+
+// TestActNamedTargetNotLimitedByDailyLimit 名将活动目标（守将是**名将**）**不占也不受**每日上限。
+//
+// ★★ 2026-10-30 用户规则：「名将野地活动不要卡活动目标每日上限(次/城)，
+// 名将只卡原来的 —— 抓到了最大次数才会变成普通地形」。
+// ★ 用户补充：「仅仅是配置了名将的守将的」→ 只认守将 kind=2（名将）；
+// 配普通军官(kind=1)的活动野地仍按普通活动目标受每日上限约束。
+//
+// 口径：
+//   - 名将订单不计入当日配额（不挤掉普通活动目标的次数）；
+//   - 名将订单到达时不被配额拦下（只受 max_capture / playerOwnsActWildGeneral 约束）；
+//   - 地图/详情在本城次数用完后，名将格仍按活动目标展示。
+func TestActNamedTargetNotLimitedByDailyLimit(t *testing.T) {
+	// ① 名将判定：坐标级配置的守将**是名将**才算
+	oldActWilds, oldGenerals := ezfyCfg.actWilds, ezfyCfg.generals
+	ezfyCfg.mu.Lock()
+	ezfyCfg.actWilds = map[int64]*model.EzfyActWild{
+		ezfyTileKey(7, 7): {X: 7, Y: 7, Enabled: 1, Level: 1, OfficerId: 42}, // 名将
+		ezfyTileKey(8, 8): {X: 8, Y: 8, Enabled: 1, Level: 1, OfficerId: 43}, // 普通军官
+		ezfyTileKey(9, 9): {X: 9, Y: 9, Enabled: 1, Level: 1, OfficerId: 0},  // 无守将
+	}
+	ezfyCfg.mu.Unlock()
+	ezfyCfg.generals = map[int]model.EzfyCfgGeneral{
+		42: {ID: 42, Name: "名将甲", Kind: 2},
+		43: {ID: 43, Name: "普通军官乙", Kind: 1},
+	}
+	defer func() {
+		ezfyCfg.mu.Lock()
+		ezfyCfg.actWilds = oldActWilds
+		ezfyCfg.mu.Unlock()
+		ezfyCfg.generals = oldGenerals
+	}()
+
+	h := &EzfyHandler{}
+	if !h.ezfyActNamedTargetAt(7, 7) {
+		t.Fatal("守将是名将(kind=2)的活动野地应判为名将活动目标")
+	}
+	if h.ezfyActNamedTargetAt(8, 8) {
+		t.Fatal("守将是普通军官(kind=1)的活动野地不应判为名将活动目标（仍受每日上限）")
+	}
+	if h.ezfyActNamedTargetAt(9, 9) {
+		t.Fatal("没配守将的活动野地不应判为名将活动目标")
+	}
+	// ② 名将订单到达时直接放行（不查库、不看配额）
+	if !h.ezfyActOrderWithinDailyLimit(&model.EzfyOrder{
+		ActType: ezfyActWild, OrderType: 2, TargetX: 7, TargetY: 7}) {
+		t.Fatal("名将活动目标的订单不应被每日上限拦下")
+	}
+
+	// ③ 接线：下单/地图/详情都要给名将开口子
+	create := ezfyStripCommentLines(strings.ReplaceAll(
+		ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) createOrder("), "\r\n", "\n"))
+	if !strings.Contains(create, "h.ezfyActNamedTargetAt(targetX, targetY) || !h.ezfyActDailyLimitReached") {
+		t.Fatal("createOrder 里名将活动目标必须绕过每日上限")
+	}
+	gate := ezfyStripCommentLines(strings.ReplaceAll(
+		ezfyFuncBody(t, "ezfy_activity_target.go", "func (h *EzfyHandler) ezfyActOrderWithinDailyLimit("), "\r\n", "\n"))
+	if !strings.Contains(gate, "if h.ezfyActNamedTargetAt(order.TargetX, order.TargetY) {") {
+		t.Fatal("ezfyActOrderWithinDailyLimit 必须对名将活动目标短路放行")
+	}
+	// 名将判定必须复用 isGeneral（kind==2），不能只看「配了守将」
+	named := ezfyStripCommentLines(strings.ReplaceAll(
+		ezfyFuncBody(t, "ezfy_activity_target.go", "func (h *EzfyHandler) ezfyActNamedTargetAt("), "\r\n", "\n"))
+	if !strings.Contains(named, "ezfyCfg.isGeneral(oid)") {
+		t.Fatal("名将判定必须用 isGeneral（kind==2），否则普通军官守将也会被放过")
+	}
+}
+
+// TestActNamedGeneralSwitchesToNormalOnlyWhenFull 名将野地「抓满最大次数」才变普通地形。
+//
+// ★★ 2026-10-30 用户规则：「名将只卡原来的 —— 抓到了最大次数才会变成普通地形」。
+//
+//	原来 playerOwnsActWildGeneral 是「拥有即变普通地形」→ max_capture=3 时
+//	抓到第 1 只该坐标就变普通野地，剩下 2 次永远用不掉。
+//	现在名将（kind=2）且 max_capture>0 时按抓取流水条数判抓满；其余保持原口径。
+func TestActNamedGeneralSwitchesToNormalOnlyWhenFull(t *testing.T) {
+	body := ezfyStripCommentLines(strings.ReplaceAll(
+		ezfyFuncBody(t, "ezfy_activity_target.go", "func (h *EzfyHandler) playerOwnsActWildGeneral("), "\r\n", "\n"))
+	for _, want := range []string{
+		"g.Kind == 2 && aw.MaxCapture > 0", // 只对名将 + 配了次数
+		"ezfyActCaptureFull(aw.MaxCapture, used)",
+		"user_id = ? AND general_id = ?",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("playerOwnsActWildGeneral 缺少「抓满才变普通地形」逻辑 %q：\n%s", want, body)
+		}
+	}
+	// ★ 地图渲染逐格调用 → 绝不能调 ezfyActCaptureUsed（无流水时它会**补记流水**，等于写库）
+	if strings.Contains(body, "h.ezfyActCaptureUsed(") {
+		t.Fatal("playerOwnsActWildGeneral 不能调 ezfyActCaptureUsed（会补记流水 = 写库），只读 count")
 	}
 }
 
