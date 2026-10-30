@@ -113,13 +113,6 @@
               <div class="old-line" v-else>野地等级：{{ ezfy.selDetail.level }}级</div>
               <!-- ★ 2026-10-09 掉落宝物可读化：后端下发的是结构化 JSON，直接展示是一串花括号
                    （用户反馈）→ 走 fmtWildDrop 格式化成「防弹衣×1(2%)、青铜军刀×1(10%)」。 -->
-              <div class="old-line" v-if="ezfy.selDetail.type === 3">
-                掉落宝物：{{ ezfy.fmtWildDrop(ezfy.selDetail.treasure) || '普通宝物' }}
-              </div>
-              <!-- ★ 野地/海野也能在「野地类型」里配掉落 → 配了才多显示这一行 -->
-              <div class="old-line" v-else-if="ezfy.fmtWildDrop(ezfy.selDetail.treasure)">
-                掉落宝物：{{ ezfy.fmtWildDrop(ezfy.selDetail.treasure) }}
-              </div>
               <!-- ★ 2026-10-11 修复「野地归属描述消失」：归属行原来挂在上面掉落宝物的 v-else 上，
                    野地一旦配置了掉落宝物就永远走不到它 → 归属描述丢了。改为独立显示，不受宝物影响。 -->
               <!-- ★ 2026-10-22 野地归属的玩家名可点：进该玩家统帅页（games/ezfy?cur=playerinfo），
@@ -309,9 +302,9 @@
           <div class="of-rows">
             <div class="of-row" v-for="t in ezfy.trainCfgs" :key="'at' + t.id"
                  :class="{ 'of-off': ezfy.troopCount(t.id) <= 0 }"
-                 :title="t.name + '（现有 ' + ezfy.fmtN(ezfy.troopCount(t.id)) + '，本次最多可派 ' + ezfy.fmtN(ezfy.orderQtyMax(t.id)) + '）' + (ezfy.troopLocked(t.id) ? ' —— 指挥中不能出征' : '')">
+                 :title="t.name + '（' + ezfy.fmtN(ezfy.troopCount(t.id)) + '，本次最多可派 ' + ezfy.fmtN(ezfy.orderQtyMax(t.id)) + '）' + (ezfy.troopLocked(t.id) ? ' —— 指挥中不能出征' : '')">
               <span class="of-name">{{ t.name }}</span>
-              <span class="of-avail">现有 {{ ezfy.fmtN(ezfy.troopCount(t.id)) }}<span class="red" v-if="ezfy.troopLocked(t.id)"> · 指挥中</span></span>
+              <span class="of-avail">{{ ezfy.fmtN(ezfy.troopCount(t.id)) }}<span class="red" v-if="ezfy.troopLocked(t.id)"> · 指挥中</span></span>
               <span class="of-ctl">
                 <input type="range" class="of-range" min="0" step="1"
                        :max="ezfy.troopCount(t.id)" :value="ezfy.orderQty(t.id)"
@@ -336,9 +329,9 @@
           <div class="of-rows">
             <div class="of-row" v-for="res in ezfy.resFields" :key="res.key"
                  :class="{ 'of-off': ezfy.orderResDisabled }"
-                 :title="res.name + '（城内现有 ' + ezfy.fmtN(ezfy.resAvail(res.key)) + '，本次最多 ' + ezfy.fmtN(ezfy.resQtyMax(res.key)) + '）'">
+                 :title="res.name + '（城内 ' + ezfy.fmtN(ezfy.resAvail(res.key)) + '，本次最多 ' + ezfy.fmtN(ezfy.resQtyMax(res.key)) + '）'">
               <span class="of-name">{{ res.name }}</span>
-              <span class="of-avail">现有 {{ ezfy.fmtN(ezfy.resAvail(res.key)) }}</span>
+              <span class="of-avail">{{ ezfy.fmtN(ezfy.resAvail(res.key)) }}</span>
               <span class="of-ctl">
                 <input type="range" class="of-range" min="0" step="1"
                        :max="ezfy.resQtyMax(res.key)" :value="ezfy.resQty(res.key)"
