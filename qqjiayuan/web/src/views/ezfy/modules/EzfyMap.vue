@@ -274,11 +274,12 @@
                 学{{ o.learning_total || o.learning }} 后{{ o.logistics_total || o.logistics }}
               </option>
             </select>
-            <!-- ★ 2026-10-30 用户规则「除派遣外，出征必须带军官」：1/2/3/4/6/7 一律必选；
-                 8 派遣是军官随军调往目标城（不强制）；5 运输属资源互运，可空。 -->
-            <span v-if="ezfy.mustLeadOfficer" class="red">(必选)</span>
+            <!-- ★ 2026-10-30 用户规则「除派遣外，出征必须带军官」：1~7 一律必选，只有 8 派遣不强制
+                 （派遣是军官随军调往目标城）。★ 文案要简约：三者互斥只显示一条，
+                 长说明（去军校招募）放 title 悬浮，不占版面。 -->
+            <span v-if="!ezfy.onDutyOfficers.length" class="red" title="暂无可带队军官，可前往军校招募">(无可用军官)</span>
+            <span v-else-if="ezfy.mustLeadOfficer" class="red">(必选)</span>
             <span v-else-if="ezfy.orderType === 8" class="gray">(随军调往目标城)</span>
-            <span v-if="!ezfy.onDutyOfficers.length" class="gray">(暂无可带队军官，可前往军校招募)</span>
           </div>
 
           <!-- ② 集结令 -->

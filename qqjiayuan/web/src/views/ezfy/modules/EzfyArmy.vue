@@ -260,7 +260,7 @@
                   学{{ o.learning_total || o.learning }} 后{{ o.logistics_total || o.logistics }}
                 </option>
               </select>
-              <span v-if="!ezfy.onDutyOfficers.length" class="gray">(「{{ ezfy.city.name }}」暂无可带队军官)</span>
+              <span v-if="!ezfy.onDutyOfficers.length" class="gray" title="暂无可带队军官，可前往军校招募">(无可用军官)</span>
             </div>
             <!-- ② 集结令 -->
             <div class="of-sec">② 出征集结令</div>
