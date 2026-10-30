@@ -274,9 +274,10 @@
                 学{{ o.learning_total || o.learning }} 后{{ o.logistics_total || o.logistics }}
               </option>
             </select>
-            <span v-if="ezfy.orderType === 7" class="red">(派遣必须选择)</span>
-            <span v-else-if="ezfy.orderType === 6" class="gray">(增援后军官调任目标城市)</span>
-            <span v-else-if="ezfy.orderType === 8" class="gray">(派遣后军官随军调往目标城市)</span>
+            <!-- ★ 2026-10-30 用户规则「除派遣外，出征必须带军官」：1/2/3/4/6/7 一律必选；
+                 8 派遣是军官随军调往目标城（不强制）；5 运输属资源互运，可空。 -->
+            <span v-if="ezfy.mustLeadOfficer" class="red">(必选)</span>
+            <span v-else-if="ezfy.orderType === 8" class="gray">(随军调往目标城)</span>
             <span v-if="!ezfy.onDutyOfficers.length" class="gray">(暂无可带队军官，可前往军校招募)</span>
           </div>
 
@@ -302,14 +303,14 @@
                本城正在被敌军攻击（指挥中）时，参战守军不能出征（后端 createOrder 硬拦，
                前端把它们的数量框禁用）；司令部标了「不参与防御」的兵种不参与当次防御，不受影响。 -->
           <div class="old-line red" v-if="ezfy.orderCalc && ezfy.orderCalc.def_locked">
-            城市正在被敌军攻击(指挥中)：参战部队不能出征；司令部设为「避战」的兵种不受影响。
+            指挥中：参战部队不能出征
           </div>
           <div class="of-rows">
             <div class="of-row" v-for="t in ezfy.trainCfgs" :key="'at' + t.id"
                  :class="{ 'of-off': ezfy.troopCount(t.id) <= 0 }"
-                 :title="t.name + '（现有 ' + ezfy.fmtN(ezfy.troopCount(t.id)) + '，本次最多可派 ' + ezfy.fmtN(ezfy.orderQtyMax(t.id)) + '）' + (ezfy.troopLocked(t.id) ? ' —— 城市正在被敌军攻击(指挥中)，参战部队不能出征' : '')">
+                 :title="t.name + '（现有 ' + ezfy.fmtN(ezfy.troopCount(t.id)) + '，本次最多可派 ' + ezfy.fmtN(ezfy.orderQtyMax(t.id)) + '）' + (ezfy.troopLocked(t.id) ? ' —— 指挥中不能出征' : '')">
               <span class="of-name">{{ t.name }}</span>
-              <span class="of-avail">现有 {{ ezfy.fmtN(ezfy.troopCount(t.id)) }}<span class="red" v-if="ezfy.troopLocked(t.id)"> · 参战部队·指挥中不能出征</span></span>
+              <span class="of-avail">现有 {{ ezfy.fmtN(ezfy.troopCount(t.id)) }}<span class="red" v-if="ezfy.troopLocked(t.id)"> · 指挥中</span></span>
               <span class="of-ctl">
                 <input type="range" class="of-range" min="0" step="1"
                        :max="ezfy.troopCount(t.id)" :value="ezfy.orderQty(t.id)"
@@ -366,7 +367,6 @@
           <div class="old-line gray" v-if="ezfy.orderType === 5">
             己方/同盟城市互运：带部队装货（<b>负重</b>，卡车最佳）；送达后部队自动返回。
           </div>
-          <div class="old-line gray" v-else-if="ezfy.orderType === 7">派遣必须选择带队军官。</div>
           <div class="old-line gray" v-else-if="ezfy.orderType === 8">
             派遣：把自己的部队 / 军官 / 随军资源送到<b>自己的另一座城市</b>；必须带部队，
             能带多少资源看<b>负重</b>，军官会随军调往目标城市。

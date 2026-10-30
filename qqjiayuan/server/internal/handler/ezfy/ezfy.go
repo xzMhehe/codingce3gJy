@@ -933,24 +933,72 @@ func (h *EzfyHandler) checkTroopCapD(add int64, troops map[int]int64, trainQ []m
 	return ""
 }
 
+// addTroop 给城市加兵（**原子累加**）。
+//
+// ★★ 2026-10-30 线上事故（玩家反馈「军工厂造的 20w 火箭完工，凭空卡出 20w 火箭」）：
+//
+//	原实现是**读-改-写**：先 First 读出 count，在 Go 里算 count+n，再
+//	`UPDATE ... SET count = <算好的绝对值>`。这在多机共享 RDS + 前端 30s 轮询下必然踩：
+//
+//	  goroutine A（军工厂完工 collectTrainQueue）读 count = 200000
+//	  goroutine B（出征 deductCityTroops）原子扣 200000 → 0
+//	  goroutine A 写回 200000 + 200000 = 400000   ← **把扣兵整条覆盖掉**
+//	  ⇒ 出征的部队照常出发，城里的兵却一点没少 = 凭空多出一队
+//
+//	现在改成**一条 SQL 的原子 upsert**（INSERT ... ON DUPLICATE KEY UPDATE
+//	count = LEAST(count + ?, max)）：增量在数据库侧相对累加，任何并发扣兵都不会被覆盖。
+//	唯一索引 uk_city_troop(city_id, troop_id) 保证 upsert 语义正确。
+//
+//	⚠️ 这里**必须**是相对累加，不能再退回「先读再写绝对值」—— 那是本 bug 的根因。
 func (h *EzfyHandler) addTroop(cityId uint, troopId int, count int64) {
 	if count == 0 {
 		return
 	}
 	max := ezfyTroopMaxCfg()
-	var t model.EzfyCityTroop
-	if err := h.DB.Where("city_id = ? AND troop_id = ?", cityId, troopId).First(&t).Error; err != nil {
-		// ★ 新建行也夹取：负数直接不建行，超上限截断（防溢出兜底）
-		n := ezfySafeAdd(0, count, max)
-		if n <= 0 {
-			return
-		}
-		t = model.EzfyCityTroop{CityId: int64(cityId), TroopId: troopId, Count: n}
-		h.DB.Create(&t)
+	// 负数 = 扣减（历史调用点存在），走同一条原子扣减，绝不建新行
+	if count < 0 {
+		h.deductTroopCapped(int64(cityId), troopId, -count)
 		return
 	}
-	h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", t.ID).
-		Update("count", ezfySafeAdd(t.Count, count, max))
+	init := ezfySafeAdd(0, count, max)
+	if init <= 0 {
+		return
+	}
+	row := model.EzfyCityTroop{CityId: int64(cityId), TroopId: troopId, Count: init}
+	err := h.DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "city_id"}, {Name: "troop_id"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			// 相对累加 + 上限夹取（max 由配置决定，可能是 int64 大数）
+			"count":      gorm.Expr("LEAST(ezfy_city_troop.count + ?, ?)", count, max),
+			"updated_at": time.Now(),
+		}),
+	}).Create(&row).Error
+	if err == nil {
+		return
+	}
+	// 兜底：表结构异常（如缺唯一索引）时 upsert 会失败 —— 退回逐条原子 UPDATE，
+	// 仍然不做「读绝对值再写回」，宁可少加也绝不多加。
+	if res := h.DB.Model(&model.EzfyCityTroop{}).
+		Where("city_id = ? AND troop_id = ?", cityId, troopId).
+		Update("count", gorm.Expr("LEAST(ezfy_city_troop.count + ?, ?)", count, max)); res.Error == nil && res.RowsAffected > 0 {
+		return
+	}
+	log.Printf("[ezfy] addTroop upsert 失败 city=%d troop=%d count=%d err=%v", cityId, troopId, count, err)
+}
+
+// deductTroopCapped 原子扣兵（允许扣不满，最少扣到 0，不报错）。
+// 用于「战损扣减」这类**按当前实际兵力封顶**的场景（守方侦察机被击落、守军战损）。
+//
+// ★ 与 addTroop 同理：必须用相对表达式，不能先读再写绝对值 —— 否则会覆盖并发的加兵/扣兵。
+func (h *EzfyHandler) deductTroopCapped(cityId int64, troopId int, count int64) {
+	if count <= 0 {
+		return
+	}
+	h.DB.Model(&model.EzfyCityTroop{}).
+		Where("city_id = ? AND troop_id = ?", cityId, troopId).
+		Update("count", gorm.Expr("GREATEST(ezfy_city_troop.count - ?, 0)", count))
+	h.DB.Where("city_id = ? AND troop_id = ? AND count <= 0", cityId, troopId).
+		Delete(&model.EzfyCityTroop{})
 }
 
 func (h *EzfyHandler) addWounded(cityId uint, troopId, wtype int, count int64) {

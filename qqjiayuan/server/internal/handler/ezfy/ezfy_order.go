@@ -600,6 +600,21 @@ func ezfyOrderTypeName(orderType int) string {
 	}
 }
 
+// ezfyMustLeadOfficer 该出征类型是否**必须**携带带队军官（★ 2026-10-30 用户规则）。
+//
+//	必须带：侦查(1) / 掠夺(2) / 征服(3) / 采集(4) / 运输(5) / 增援(6) / 驻守采集(7)
+//	不用带：派遣(8，城际调兵) —— 唯一例外
+//
+// ★ 与「一个军官同时只能带一支队伍」的卡控配套：不带军官就能出兵，
+// 等于绕开军官数量限制（有多少兵/多少资源就能派多少队），所以出征一律要求带队军官。
+func ezfyMustLeadOfficer(orderType int) bool {
+	switch orderType {
+	case 1, 2, 3, 4, 5, 6, 7:
+		return true
+	}
+	return false
+}
+
 func (h *EzfyHandler) isOwnCity(uid uint, cityId int64) bool {
 	var n int64
 	h.DB.Model(&model.EzfyCity{}).Where("id = ? AND user_id = ?", cityId, uid).Count(&n)
@@ -1269,7 +1284,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 				return "增援(驻守)只能派往自己占领的附属野地"
 			}
 			if officer == "" {
-				return "增援部队必须携带一名军官"
+				return "请选择带队军官"
 			}
 			if len(validTroops) == 0 {
 				return "增援必须携带部队"
@@ -1300,7 +1315,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 				}
 			} else {
 				// ★ 第九轮用户规则：自己城市之间能运输，同盟(军团)成员之间也能运输；
-				//   运量看负重（所以要用卡车等部队装），**可以不带队军官**。
+				//   运量看负重（所以要用卡车等部队装）。
+				//   ★ 2026-10-30 用户规则更新：运输**也要带带队军官**（唯一例外是派遣8）。
 				if !own && !ally {
 					return "运输目标必须是自己或同盟成员的城市"
 				}
@@ -1415,14 +1431,24 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		//   随战斗正常结算（全灭则资源损失）。原「采集中不能征服/掠夺」拦截已废弃。
 		//   中立野地/寇城仍按配置守军（见 processArrive 守军构建），这里不再拦截。
 	}
+	// ★★ 2026-10-30 用户规则「除了派遣, 出征必须带军官」：
+	//   征服(3) / 侦查(1) / 掠夺(2) / 采集(4) / 运输(5) / 增援(6) / 驻守采集(7) 一律**强制**携带一名带队军官；
+	//   唯一例外 派遣(8，城际调兵) —— 那是把自己的部队/资源挪到自己的另一座城，不是出征。
+	//   ★ 放在兵力/资源校验**之前**：没带军官是最容易犯的错，先报这一条更贴切。
+	//   ★ 人机(is_bot) 例外：人机可能还没建军校、或本城军官全在外面，
+	//     强制会让它永远打不出去（botAttack 已经优先带军官，能带就带）。
+	if officer == "" && ezfyMustLeadOfficer(orderType) && city.IsBot == 0 {
+		return "请选择带队军官"
+	}
 	if orderType == 4 {
 		var wl model.EzfyWildland
 		if err := h.DB.Where("id = ? AND city_id = ?", targetId, city.ID).First(&wl).Error; err != nil {
 			return "只能采集已占领的野地"
 		}
 		// ★ 用户规则：采集/派遣都要带一个军官（带队）
+		//   ★ 2026-10-30 上面已统一强制（ezfyMustLeadOfficer），这里保留作防御。
 		if officer == "" {
-			return "采集部队必须携带一名军官"
+			return "请选择带队军官"
 		}
 		// ★★ 2026-10-09 修复「自己的附属野地只能一支队伍采集」卡控完全失效（线上有人几百支）：
 		//   原实现把「一野地一采集队」的卡控**只做在 `StartCollect`（开始采集）那一步**，
@@ -1448,7 +1474,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return "只能派遣到已占领的野地"
 		}
 		if officer == "" {
-			return "派遣部队必须携带军官"
+			return "请选择带队军官"
 		}
 	}
 	// 带队军官校验: 必须存在且在职(未出征/非俘虏)
@@ -1467,7 +1493,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		// ★ 2026-09-24 俘虏出征 bug 加固：只有 Status=0(在职) 的军官才能带队，
 		//   Status=1(出征中)/2(被俘) 一律拒绝（历史数据里被俘军官可能 IsCaptive=0, 单看字段会漏拦）。
 		if lead.Status != 0 || h.officerBusyOrderByID(city.ID, officer, uint(lead.ID)) {
-			return "军官" + lead.Name + "正在出征中, 未归队前不能再次出征"
+			return "军官" + lead.Name + "出征中"
 		}
 		if lead.IsCaptive == 1 {
 			return "俘虏不能带队出征, 请先在军校收编"
@@ -1528,7 +1554,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if f < 0 || s < 0 || o < 0 || r < 0 || g < 0 {
 			return "资源数量错误"
 		}
-		// ★ 第九轮：携带资源必须有部队来装（负重决定能带多少），军官可以不带队。
+		// ★ 第九轮：携带资源必须有部队来装（负重决定能带多少）。
+		//   ★ 2026-10-30 用户规则更新：运输同样必须带带队军官（见上面的 ezfyMustLeadOfficer）。
 		if len(validTroops) == 0 {
 			return "携带资源需要部队来装载(卡车负重最高)"
 		}
@@ -1652,6 +1679,41 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		order.Resources = string(b)
 	}
 
+	// ★★ 2026-10-30 用户规则「一个军官不能同时出征多次」—— **CAS 抢占**（最终裁决）。
+	//
+	//	上面那段「Status=0 + 没有未结束命令」是**读校验**：连点、双开、
+	//	同时往两个不同目标出兵时，两个请求会**同时**通过读校验 → 同一名军官带两支队伍出去
+	//	（线上真实出现过：一个军官出现在两条出征队列里）。
+	//	dupCnt 那条防抖只认「同城市+同类型+同目标」，换个目标就绕过了。
+	//	→ 这里用一条带条件的 UPDATE 把「置出征态」变成**原子抢占**：
+	//	  只有成功把 status 从 0 改成 1 的那个请求才算抢到该军官；
+	//	  另一个 RowsAffected=0 → 直接拒绝。此时资源/兵/集结令/订单**都还没写库**
+	//	  （city.Oil 只改了内存副本，saveCityRes 在下面才发），所以直接 return 是干净的。
+	//	★ 代价：多一次串行写往返（跨 WAN ~120ms），但这是「同一军官只能出一队」的硬保证。
+	if lead != nil {
+		res := h.DB.Model(&model.EzfyOfficer{}).
+			Where("id = ? AND status = 0", lead.ID).
+			Update("status", 1)
+		if res.Error != nil || res.RowsAffected == 0 {
+			return "军官" + lead.Name + "出征中"
+		}
+	}
+
+	// ★★ 2026-10-30 扣兵提前到**写库之前**，且改成「条件扣减、扣不到就中止」。
+	//
+	//	原来它在下面的并行块里、用 GREATEST 静默夹取 —— 于是「校验用快照 → 扣兵用实时值」
+	//	之间的窗口内，只要兵力被别的请求拿走（第二支队伍出征、军工厂完工前后的一批
+	//	并发结算），第二个请求扣到 0 也照样成功出发，凭空多出一队兵（见 deductCityTroops 注释）。
+	//	现在扣不到就回滚 + 报错，玩家只会看到「兵力不足，请刷新后重试」，不会白拿一队兵。
+	//	⚠️ 此时订单/资源都还没写库（city.Oil 只改了内存副本），失败直接 return 是干净的。
+	if msg := h.deductCityTroops(city.ID, validTroops); msg != "" {
+		// 军官 CAS 已抢到出征态 → 还回去，否则这名军官会被一直判「出征中」
+		if lead != nil {
+			h.DB.Model(&model.EzfyOfficer{}).Where("id = ? AND status = 1", lead.ID).Update("status", 0)
+		}
+		return msg
+	}
+
 	// ★★ 2026-10-05 性能：所有校验都过了，从这里开始**写库**。
 	//   这些写落在**不同的表**上、互不依赖 → **并行**发出。
 	//   原来它们是 6 条串行写（城市资源 / 集结令 / 订单 / 扣兵 / 军官状态 / 战报），
@@ -1667,19 +1729,14 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	//   「接口报成功、兵和油已扣、出征队列里什么都没有」。现在捕获并吼出来。
 	var orderErr error
 	go func() { defer wwg.Done(); orderErr = h.DB.Create(&order).Error }()
-	// ③ 从城市扣兵：一条 CASE UPDATE + 一条清零 DELETE（原来每个兵种 SELECT+UPDATE = 2N 条）
-	wwg.Add(1)
-	go func() { defer wwg.Done(); h.deductCityTroops(city.ID, validTroops) }()
+	// ③ 扣兵：★ 2026-10-30 已提前到上面（条件扣减 + 失败中止），这里不再重复。
 	// ④ 集结令：一次扣完（原来是每个道具一条 consumeItem）
 	if gather > 0 {
 		wwg.Add(1)
 		go func() { defer wwg.Done(); h.consumeItemN(uid, ezfyGatherItemID(), gather, "出征集结令") }()
 	}
-	// ⑤ 带队军官置出征态（复用已查好的 lead，不再按名字查一次）
-	if lead != nil {
-		wwg.Add(1)
-		go func() { defer wwg.Done(); h.officerGoOutByID(lead.ID, true) }()
-	}
+	// ⑤ 带队军官置出征态：★ 2026-10-30 已提前到上面的 **CAS 抢占**（并发安全），
+	//   这里不再重复写一次（否则又多一次跨 WAN 写往返）。
 	// ⑥ 雷达站事前预警（自己的读 + 一条战报写，也一起并行）
 	wwg.Add(1)
 	go func() {
@@ -1691,6 +1748,14 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	//   根因通常是「库上缺列」—— 多机共享库走 seed.skip 时不跑 AutoMigrate，
 	//   新加的列要由 seed.EnsureEzfyOrderColumns 等幂等补列负责（见 main.go skip 分支）。
 	if orderErr != nil {
+		// ★ 2026-10-30 订单没写成功 → 把刚抢占到的出征态**还回去**，
+		//   否则这名军官会被判「出征中」一直锁着（只能等下次军官列表自愈）。
+		if lead != nil {
+			h.DB.Model(&model.EzfyOfficer{}).Where("id = ? AND status = 1", lead.ID).Update("status", 0)
+		}
+		// ★ 2026-10-30 扣兵已经提前执行 → 订单没落库就必须把兵**原样退回**，
+		//   否则玩家会「兵没了、出征队列里也没有」（原来的静默丢兵事故）。
+		h.restoreTroops(city.ID, validTroops)
 		log.Printf("【严重】出征订单写入失败(uid=%d city=%d orderType=%d): %v —— 检查该库是否缺列",
 			uid, city.ID, orderType, orderErr)
 		return "出征命令写入失败, 请稍后重试或联系管理员"
@@ -1820,35 +1885,69 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 	}
 }
 
-// deductCityTroops 出征后从城市扣兵。
+// deductCityTroops 出征后从城市扣兵。返回非空字符串 = 扣兵失败（调用方必须中止并回滚）。
 //
 // ★ 2026-10-05 性能：原来每个兵种「SELECT 行 + UPDATE/DELETE」= 2N 条跨 WAN 往返；
-// 现在合并成**一条 CASE UPDATE**（一次改完所有兵种）+ **一条 DELETE**（清掉归零/负数行）。
-// 数量用 GREATEST(count-?,0) 夹取，绝不会写出负数兵力（与全站防负数防线一致）。
-func (h *EzfyHandler) deductCityTroops(cityId uint, troops []ezfyUnitGroup) {
+// 现在每个兵种**一条**条件 UPDATE（相对扣减）+ 收尾一条 DELETE（清掉归零行）。
+//
+// ★★ 2026-10-30 线上事故（玩家反馈「派两队各 20w 火箭打活动寇，城里军工厂刚好完工，
+// 结果凭空卡出 20w 火箭」）：
+//
+//	原实现用 `GREATEST(count - ?, 0)` **静默夹取** —— 扣不够就当扣满了。
+//	而上面的兵力校验用的是**懒结算快照**（cityTroops），校验和扣兵之间隔着军官 CAS、
+//	耗油计算等若干次跨 WAN 往返。两个出征请求（连点 / 双开 / 同时打两个不同目标，
+//	dupCnt 防抖只认「同目标」所以绕得过去）会**同时**通过快照校验，
+//	第二个请求扣兵时库里已经是 0 → GREATEST 夹成 0 → 不报错、部队照样出发
+//	= 凭空多出一整队兵。
+//
+//	现在改成**条件扣减**：`WHERE count >= ?`，RowsAffected=0 就说明兵力已被
+//	并发操作拿走 → 回滚已扣的兵种并返回错误，绝不允许「没扣到兵也出征」。
+//	⚠️ 不要再退回 GREATEST 静默夹取：那是本 bug 的根因。
+func (h *EzfyHandler) deductCityTroops(cityId uint, troops []ezfyUnitGroup) string {
 	if len(troops) == 0 {
-		return
+		return ""
 	}
+	done := make([]ezfyUnitGroup, 0, len(troops))
 	ids := make([]int, 0, len(troops))
-	var expr strings.Builder
-	expr.WriteString("CASE troop_id")
-	args := make([]interface{}, 0, len(troops)*2)
 	for _, t := range troops {
 		if t.Count <= 0 {
 			continue
 		}
 		ids = append(ids, t.TroopId)
-		expr.WriteString(" WHEN ? THEN GREATEST(count - ?, 0)")
-		args = append(args, t.TroopId, t.Count)
+		res := h.DB.Model(&model.EzfyCityTroop{}).
+			Where("city_id = ? AND troop_id = ? AND count >= ?", cityId, t.TroopId, t.Count).
+			Update("count", gorm.Expr("ezfy_city_troop.count - ?", t.Count))
+		if res.Error != nil {
+			h.restoreTroops(cityId, done)
+			log.Printf("[ezfy] 扣兵失败 city=%d troop=%d count=%d err=%v", cityId, t.TroopId, t.Count, res.Error)
+			return "出征失败(扣兵异常), 请稍后重试"
+		}
+		if res.RowsAffected == 0 {
+			// 兵力已被并发操作扣走（另一支队伍出征 / 战损结算）→ 整体回滚
+			h.restoreTroops(cityId, done)
+			name := "兵种" + strconv.Itoa(t.TroopId)
+			if cfg := ezfyCfg.troop(t.TroopId); cfg != nil {
+				name = cfg.Name
+			}
+			return fmt.Sprintf("兵力不足: 「%s」已被其他操作占用, 请刷新后重试", name)
+		}
+		done = append(done, t)
 	}
 	if len(ids) == 0 {
-		return
+		return ""
 	}
-	expr.WriteString(" END")
-	h.DB.Model(&model.EzfyCityTroop{}).Where("city_id = ? AND troop_id IN ?", cityId, ids).
-		Update("count", gorm.Expr(expr.String(), args...))
 	h.DB.Where("city_id = ? AND troop_id IN ? AND count <= 0", cityId, ids).
 		Delete(&model.EzfyCityTroop{})
+	return ""
+}
+
+// restoreTroops 把已经扣掉的兵原样加回去（扣兵中途失败 / 订单写库失败时的回滚）。
+func (h *EzfyHandler) restoreTroops(cityId uint, troops []ezfyUnitGroup) {
+	for _, t := range troops {
+		if t.Count > 0 {
+			h.addTroop(cityId, t.TroopId, t.Count)
+		}
+	}
 }
 
 // 雷达站预警相关常量
@@ -4114,19 +4213,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					}
 					order.Result = strings.TrimSuffix(leftStr, ",")
 					// ---- 守方侦察机战损（扣城内 + 伤兵营） ----
+					// ★ 2026-10-30 改成原子条件扣减：原来「先查 exist 再写绝对值」，
+					//   与同城的返航归队/军工厂完工并发时会互相覆盖（多兵或少兵）。
 					for _, g := range ar.DefenderLosses {
 						if g.Count <= 0 {
 							continue
 						}
-						var exist model.EzfyCityTroop
-						if err := h.DB.Where("city_id = ? AND troop_id = ?", target.ID, g.TroopId).First(&exist).Error; err == nil {
-							remain := exist.Count - g.Count
-							if remain <= 0 {
-								h.DB.Delete(&exist)
-							} else {
-								h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", exist.ID).Update("count", remain)
-							}
-						}
+						h.deductTroopCapped(int64(target.ID), g.TroopId, g.Count)
 						rate := 10
 						if cfg := ezfyCfg.troop(g.TroopId); cfg != nil {
 							rate = cfg.RepairRate
@@ -4783,15 +4876,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if g.Count <= 0 {
 				continue
 			}
-			var exist model.EzfyCityTroop
-			if err := h.DB.Where("city_id = ? AND troop_id = ?", target.ID, g.TroopId).First(&exist).Error; err == nil {
-				remain := exist.Count - g.Count
-				if remain <= 0 {
-					h.DB.Delete(&exist)
-				} else {
-					h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", exist.ID).Update("count", remain)
-				}
-			}
+			// ★ 2026-10-30 原子条件扣减（原来先读再写绝对值，并发会覆盖同城的加兵/扣兵）
+			h.deductTroopCapped(int64(target.ID), g.TroopId, g.Count)
 		}
 		// 守方伤兵入营（按守方自己的修复率口径，与攻方对称）
 		for _, g := range br.DefenderLosses {

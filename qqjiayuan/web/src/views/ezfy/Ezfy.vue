@@ -1442,6 +1442,12 @@ export default {
       // ★ 2026-10-02 派遣(8) 非战斗状态/免战期间由后端返回 cap_unlimited=true → 显示「无上限」；其余显示 troop_cap
       return c.cap_unlimited ? '无上限' : this.fmtN(c.troop_cap)
     },
+    // ★ 2026-10-30 用户规则「除派遣(8)外，出征必须带军官」：
+    //   侦查1/掠夺2/征服3/采集4/运输5/增援6/驻守采集7 一律必选；只有派遣8 不强制。
+    //   （口径与后端 ezfyMustLeadOfficer 完全一致，改一处必须同步另一处）
+    mustLeadOfficer () {
+      return [1, 2, 3, 4, 5, 6, 7].indexOf(parseInt(this.orderType, 10)) >= 0
+    },
     // ★ 2026-10-02 所有出征类型（含运输5）都做携带上限判定；
     //   只有派遣(8)在非战斗状态/免战期间由后端 cap_unlimited=true 放行。
     orderCapApplies () {
@@ -6819,6 +6825,11 @@ export default {
     },
     doOrder () {
       if (!this.selCell) return
+      // ★ 2026-10-30 除派遣(8)外必须带军官 —— 前端先拦一道，省一次白跑的请求
+      if (this.mustLeadOfficer && (!this.orderOfficer || this.orderOfficer === '0')) {
+        this.notify('请选择带队军官')
+        return
+      }
       // ★ 用户反馈「连点会出现多条」→ 防抖：一次点击只下达一条出征命令
       this.once('order', () => api.post('/games/ezfy/order', this.orderBody()).then(r => {
         if (r.code === 0) {
