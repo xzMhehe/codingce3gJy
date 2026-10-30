@@ -78,9 +78,28 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 	h.cfgs()
 	cx, _ := strconv.Atoi(c.Query("x"))
 	cy, _ := strconv.Atoi(c.Query("y"))
+	// ★ 2026-10-30 活动目标每日上限按「当前城市」判定：次数用完后地图上按普通野地展示。
+	//   城市/配额都走**懒加载**：视野里没有活动目标时连一条 COUNT 都不发（避免拖动地图多一次查库）。
+	var actCity model.EzfyCity
+	actCityLoaded := false
+	currentCity := func() *model.EzfyCity {
+		if !actCityLoaded {
+			actCity = h.getOrCreateCity(uid)
+			actCityLoaded = true
+		}
+		return &actCity
+	}
 	if cx == 0 && cy == 0 {
-		city := h.getOrCreateCity(uid)
+		city := currentCity()
 		cx, cy = city.X, city.Y
+	}
+	actDailyChecked, actDailyReached := false, false
+	actDailyBlocked := func() bool {
+		if !actDailyChecked {
+			actDailyReached = h.ezfyActDailyLimitReached(int64(currentCity().ID))
+			actDailyChecked = true
+		}
+		return actDailyReached
 	}
 	// 默认半径 2 → 5×5(复刻 map/index.html)
 	r := 2
@@ -267,7 +286,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				// (活动野地橙、活动寇城品红、特殊城市红, 三种都带活动等级 1~3)
 				// ★ 2026-10-05 名将野地按玩家判定：该玩家已抓到守将 → 该格对其是普通野地，
 				//   不再标活动标记/守将标识（没抓到的玩家照常看到名将野地）。
-				if act := h.ezfyActTargetType(x, y); act > 0 && !h.playerOwnsActWildGeneral(uid, x, y) {
+				if act := h.ezfyActTargetType(x, y); act > 0 && !actDailyBlocked() && !h.playerOwnsActWildGeneral(uid, x, y) {
 					actLevel := ezfyMarkLevelAt(x, y)
 					cell["act_type"] = act
 					cell["act_level"] = actLevel
@@ -418,9 +437,14 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	profile := h.ensureProfile(uid)
 	// 活动目标(活动野地/活动寇城/特殊城市): 守军/奖励/说明走活动配置, 不走普通野地配置表
 	// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家，该坐标对其是普通野地 → 走下面普通野地详情
+	// ★ 2026-10-30 当前城市当日活动攻击次数用完后，详情也按普通野地展示（与地图/战斗同口径）
+	//   先判是不是活动目标，普通野地详情不再多一次配额/城市查询。
 	if act := h.ezfyActTargetType(x, y); act > 0 && !h.playerOwnsActWildGeneral(uid, x, y) {
-		resp.OK(c, h.ezfyActWildlandView(uid, profile.Camp, x, y, act))
-		return
+		curCity := h.getOrCreateCity(uid)
+		if !h.ezfyActDailyLimitReached(int64(curCity.ID)) {
+			resp.OK(c, h.ezfyActWildlandView(uid, profile.Camp, x, y, act))
+			return
+		}
 	}
 	// ★★ 2026-10-05 用户口径 + 服务端权威：**走哪套野地配置一律按地形推断，不再信任客户端传的 type**。
 	//
@@ -1659,12 +1683,24 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if waitMin > 1440 {
 		waitMin = 1440
 	}
+	// ★ 2026-10-30 活动目标每日攻打上限：下单时固化本单是否按活动目标结算。
+	//   达到上限后 ActType 落 0 → 到达时走普通野地/寇城战斗，不再发活动奖励。
+	//   侦查(1)不占次数，但次数用完后也按普通野地回报情报；并发下单由到达时的 id 排名二次卡控。
+	actType := 0
+	if targetType != 3 && (orderType == 1 || orderType == 2 || orderType == 3) {
+		if act := h.ezfyActTargetType(targetX, targetY); act > 0 &&
+			!h.playerOwnsActWildGeneral(uid, targetX, targetY) &&
+			!h.ezfyActDailyLimitReached(int64(city.ID)) {
+			actType = act
+		}
+	}
 	order := model.EzfyOrder{
 		UserID: uid, CityId: int64(city.ID),
 		OrderType: orderType, TargetType: targetType,
+		ActType: actType,
 		TargetX: targetX, TargetY: targetY, TargetId: targetId,
-		Troops:    groupsJSON(validTroops),
-		Officer:   officer,
+		Troops:  groupsJSON(validTroops),
+		Officer: officer,
 		// ★ 2026-10-24 命令同时记带队军官 id：归航/自愈/出征校验按 id 精确关联（同名军官互不误伤）
 		OfficerId: uint(0),
 		StartTime: now, ArriveTime: now + travelSec*1000,
@@ -2049,8 +2085,14 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 	nowMs := time.Now().UnixMilli()
 	for _, o := range orders {
 		tLabel, tText := h.ezfyOrderTimeLabel(&o, nowMs)
+		// ★ 2026-10-30 出征队列同样按订单固化的 ActType 展示「活动」标识
+		actType := 0
+		if o.OrderType == 2 || o.OrderType == 3 {
+			actType = h.ezfyOrderActType(uid, &o)
+		}
 		views = append(views, gin.H{
 			"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
+			"act_type":    actType,
 			"target_type": o.TargetType, "target_x": o.TargetX, "target_y": o.TargetY,
 			"start_time": o.StartTime, "arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
 			"start_text": ezfyFmtTime(o.StartTime), "arrive_text": ezfyFmtTime(o.ArriveTime),
@@ -3446,8 +3488,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家 → 该坐标对其是普通野地，
 	//   跳过活动结算，走下面通用战斗分支（普通野地守军/可占领）。
 	if order.OrderType == 2 || order.OrderType == 3 {
-		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 &&
-			!h.playerOwnsActWildGeneral(uid, order.TargetX, order.TargetY) {
+		act := h.ezfyOrderActType(uid, order)
+		// ★ 2026-10-30 到达时二次卡控活动目标每日上限：并发下单可能同时穿过创建时的读校验，
+		//   这里按订单 id 排名只放行当日前 N 支；超出/已抓到守将 → 落回普通野地结算。
+		if act > 0 && (h.playerOwnsActWildGeneral(uid, order.TargetX, order.TargetY) ||
+			!h.ezfyActOrderWithinDailyLimit(order)) {
+			act = 0
+			order.ActType = 0
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Update("act_type", 0)
+		}
+		if act > 0 {
 			h.processActivityBattle(uid, city, order, now, act)
 			return
 		}
@@ -3830,7 +3880,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// 活动目标: 侦查时按活动守军回报情报(不走普通野地配置表)
 		// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家 → 该坐标对其是普通野地，
 		//   这里与 processArrive 活动结算路由同口径，跳过活动守军走普通野地配置。
-		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 &&
+		// ★ 2026-10-30 以订单固化/当日配额判定后的 ActType 为准：次数用完后侦查也按普通野地回报。
+		if act := h.ezfyOrderActType(uid, order); act > 0 &&
 			!h.playerOwnsActWildGeneral(uid, order.TargetX, order.TargetY) {
 			wildLevel = ezfyActivityLevel(order.TargetX, order.TargetY)
 			defender = ezfyActivityDefender(act, wildLevel, ezfyTerrain(order.TargetX, order.TargetY))

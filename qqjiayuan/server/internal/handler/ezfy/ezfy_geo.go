@@ -999,6 +999,9 @@ const (
 	//   冷却期内不再掉该类。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
 	ezfyActTreasureCooldownSecDef = 7200
 	ezfyActItemCooldownSecDef     = 7200
+	// ★ 2026-10-30 活动目标每城每日攻打上限（默认 50，0 = 不限）：
+	//   用户规则「每个城市每天可以打 50 次，超过后该活动目标按普通野地处理」。
+	ezfyActDailyLimitDef = 50
 	// ★ 2026-10-12 迁城冷却小时数（默认 24）：迁城成功后**该城**要等这么久才能再迁。
 	//   0 = 关闭迁城冷却（合法值，不走 ezfyLimitOr）。
 	ezfyMoveCoolDef = 24

@@ -250,6 +250,11 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = 24 WHERE move_cool_h IS NULL")
+		// ★ 2026-10-30 每城每日活动目标攻打上限（默认 50）：⚠️ 0 合法（= 不限）→ 只补列 + 只回填 NULL。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "act_daily_limit") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN act_daily_limit int DEFAULT 50")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET act_daily_limit = 50 WHERE act_daily_limit IS NULL")
 		// ★ 背包上限默认值当天由 1000 改 5000：把「仍停在旧默认 1000」的行一次性提升（见函数注释）。
 		ezfyBumpBagItemMaxDefault(db)
 		// ★ 2026-10-22 用户规则：商城单次购买上限 15 → 999；商城道具库存全部无限。
@@ -3405,6 +3410,11 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = 24 WHERE move_cool_h IS NULL")
+	// ★ 2026-10-30 每城每日活动目标攻打上限（默认 50）：⚠️ 0 合法（= 不限）→ 只补列 + 只回填 NULL。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "act_daily_limit") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN act_daily_limit int DEFAULT 50")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET act_daily_limit = 50 WHERE act_daily_limit IS NULL")
 	// ★ 2026-10-22 空闲人口恢复满时间（默认 1200 秒）：
 	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "pop_recover_seconds") {
@@ -3726,5 +3736,56 @@ func EnsureEzfyOrderColumns(db *gorm.DB) {
 		if err := db.Exec("ALTER TABLE ezfy_order ADD COLUMN auto_battle int NOT NULL DEFAULT 1 COMMENT '自动战斗 1是 0否'").Error; err != nil {
 			log.Printf("【严重】ezfy_order.auto_battle 补列失败（所有出征订单写不进库，但兵/油照扣）: %v", err)
 		}
+	}
+	// ★ 2026-10-30 活动目标每日上限：订单固化活动类型（-1 存量未知 / 0 普通 / 1~3 活动目标）。
+	//   ⚠️ 新订单必须原样写入 0（次数用完后按普通野地处理），所以 model 上不能挂 gorm default
+	//   （带 default 的零值会被 GORM 跳过、落成库默认 -1）→ 这里补列时给存量行默认 -1。
+	//   通用补列（EnsureEzfySchema）可能已经建出可空列 → 把在途订单的 NULL 回填成 -1
+	//   （只补活动状态，避免每次启动全表扫历史订单；历史单不再参与结算）。
+	if !db.Migrator().HasColumn("ezfy_order", "act_type") {
+		if err := db.Exec("ALTER TABLE ezfy_order ADD COLUMN act_type int NOT NULL DEFAULT -1 COMMENT '活动类型 -1未知 0普通 1活动野地 2活动寇城 3特殊城市'").Error; err != nil {
+			log.Printf("【严重】ezfy_order.act_type 补列失败（活动目标订单写入会报 Unknown column）: %v", err)
+		}
+	}
+	// ★★ 2026-10-30 通用补列（EnsureEzfySchema 的 AutoMigrate）会先按 model 建出**可空**列，
+	//   历史订单 act_type = NULL → GORM 把 NULL 扫进 int 会报
+	//   `converting NULL to int is unsupported`，出征队列 / 军队动态 / 结算整片挂掉。
+	//   所以这里必须把 NULL 一次性回填成 -1 并收紧为 NOT NULL（settings 打标，避免每次启动全表扫）。
+	ezfyOrderActTypeBackfillOnce(db)
+	// ★ 2026-10-30 活动目标每日上限的计数按 (city_id, start_time) 过滤 →
+	//   订单表没这个索引就得每次出征/开地图都全表扫，补一个联合索引。
+	if !db.Migrator().HasIndex("ezfy_order", "idx_city_start") {
+		if err := db.Exec("ALTER TABLE ezfy_order ADD KEY idx_city_start (city_id, start_time)").Error; err != nil {
+			log.Printf("活动目标每日上限：ezfy_order 索引 idx_city_start 创建失败（仅影响查询速度）: %v", err)
+		}
+	}
+}
+
+// ezfyOrderActTypeBackfillOnce 一次性把 ezfy_order.act_type 的 NULL 回填成 -1 并收紧为 NOT NULL。
+//
+// ★★ 为什么需要：`act_type` 有两个建列入口 —— 全新库/全量 seed 走 AutoMigrate（按 model 建，
+// **可空**），多机共享库走 EnsureEzfyOrderColumns 的显式 ALTER（NOT NULL DEFAULT -1）。
+// 前者会让历史订单留 NULL，而 model 里 ActType 是普通 int → GORM 扫描 NULL 直接报错。
+// 只跑一次（settings 标记），避免每次启动都全表扫订单表；表不存在直接跳过。
+func ezfyOrderActTypeBackfillOnce(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_order") {
+		return
+	}
+	const key = "ezfy_order_act_type_backfill_v1"
+	if db.Migrator().HasTable("settings") {
+		var marked int64
+		db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", key).Scan(&marked)
+		if marked > 0 {
+			return
+		}
+	}
+	if err := db.Exec("UPDATE ezfy_order SET act_type = -1 WHERE act_type IS NULL").Error; err != nil {
+		log.Printf("【严重】ezfy_order.act_type 回填失败（订单列表会因 NULL 扫描报错）: %v", err)
+		return // 没回填成功就不收紧约束、也不打标，下次启动再试
+	}
+	// 收紧约束（可空列 → NOT NULL）：防止后续再写进 NULL。
+	db.Exec("ALTER TABLE ezfy_order MODIFY COLUMN act_type int NOT NULL DEFAULT -1 COMMENT '活动类型 -1未知 0普通 1活动野地 2活动寇城 3特殊城市'")
+	if db.Migrator().HasTable("settings") {
+		db.Exec("INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
 	}
 }

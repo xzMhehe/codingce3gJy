@@ -279,15 +279,14 @@
             </el-select>
             <el-input-number v-model.number="alLevel" :min="0" :max="3" controls-position="right" style="width:130px" />
             <el-button type="primary" icon="el-icon-search" @click="alPage = 1; loadActLevels()">查询</el-button>
-            <span class="td-sub">等级填 0 = 不限</span>
+            <span class="td-sub">0 = 全部</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openAlCreate">新增等级配置</el-button>
           </div>
 
           <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
             <template slot="title">
-              维护三类活动目标（活动野地 / 活动寇城 / 特殊城市）每个等级的守军、资源、黄金、声望、必掉宝物、掉落道具。
-              坐标级「活动野地」配置优先于这里；守军留空 = 按内置陆/海默认配比。
+              维护活动野地 / 活动寇城 / 特殊城市的守军与奖励；坐标级活动野地配置优先，守军留空用内置默认。
             </template>
           </el-alert>
 
@@ -436,7 +435,7 @@
             </el-select>
             <el-input-number v-model.number="wcLevel" :min="0" :max="20" controls-position="right" style="width:130px" />
             <el-button type="primary" icon="el-icon-search" @click="wcPage = 1; loadWildCfgs()">查询</el-button>
-            <span class="td-sub">等级填 0 = 不限</span>
+            <span class="td-sub">0 = 全部</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openWcCreate">新增野地类型</el-button>
           </div>

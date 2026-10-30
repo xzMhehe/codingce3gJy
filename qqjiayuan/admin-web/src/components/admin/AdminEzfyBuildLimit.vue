@@ -209,6 +209,11 @@
               <template slot="label">活动目标掉道具冷却(秒)<el-tooltip placement="top" :content="tips.act_item_cooldown_sec"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.act_item_cooldown_sec" :min="0" :max="86400" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-30 活动目标每城每日攻打上限：默认 50，**0 合法 = 不限** → :min="0" -->
+            <el-form-item>
+              <template slot="label">活动目标每日上限(次/城)<el-tooltip placement="top" :content="tips.act_daily_limit"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.act_daily_limit" :min="0" :max="100000" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-10-12 迁城冷却（小时）：默认 24，**0 合法 = 关闭迁城冷却** → :min="0" -->
             <el-form-item>
               <template slot="label">迁城冷却(小时)<el-tooltip placement="top" :content="tips.move_cool_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -647,6 +652,8 @@ export default {
         wild_item_cooldown_sec: 1800,
         // ★ 2026-10-24 活动目标掉落冷却秒数（默认 7200 = 2 小时；**0 合法 = 关闭冷却**）
         act_treasure_cooldown_sec: 7200, act_item_cooldown_sec: 7200,
+        // ★ 2026-10-30 活动目标每城每日攻打上限（默认 50；**0 合法 = 不限**）
+        act_daily_limit: 50,
         // ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭迁城冷却**）
         move_cool_h: 24,
         // ★ 2026-09-28 军校刷新周期（1=按天 2=按小时，默认按小时）
@@ -717,7 +724,8 @@ export default {
         troop: ['troop_max', 'wound_expire_days', 'wound_heal_divisor', 'wound_heal_rate', 'heal_all_diamond'],
         wild: ['wild_troop_mult', 'wild_res_mult', 'gather_wild_bonus_pct',
           'gather_formula_divisor', 'gather_sea_bonus_mult', 'res_prod_mult', 'gold_prod_mult', 'mayor_gain_mult', 'dispatch_period_h',
-          'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_sec', 'act_treasure_cooldown_sec', 'act_item_cooldown_sec', 'move_cool_h'],
+          'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_sec', 'act_treasure_cooldown_sec', 'act_item_cooldown_sec',
+          'act_daily_limit', 'move_cool_h'],
         battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
           'garrison_break_pct', 'battle_round_ms', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base',
           'min_dmg_coeff', 'conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'occupy_protect_h', 'occupy_finalize_h', 'placate_gold',
@@ -821,6 +829,8 @@ export default {
         // ★ 2026-10-24 活动目标掉落冷却（秒）
         act_treasure_cooldown_sec: '活动目标（活动野地、活动寇城、特殊城市）掉落必掉宝物的玩家冷却（秒），默认 7200；0 = 关闭冷却。',
         act_item_cooldown_sec: '活动目标掉落商城道具的玩家冷却（秒），默认 7200；0 = 关闭冷却。',
+        act_daily_limit: '每座城市每天可攻击活动野地、活动寇城、特殊城市的次数，默认 50；' +
+          '达到上限后该城当天的活动目标按普通野地展示和结算，0 = 不限。',
         // ★ 2026-10-12 迁城冷却
         move_cool_h: '迁城后该城市再次迁城需等待的小时数，默认 24；其他城市不受影响，0 = 关闭冷却。',
         // ★ 2026-10-08 新玩家落地洲（★ 2026-10-26 新增「随机洲落」）
@@ -997,6 +1007,9 @@ export default {
               ? 7200 : Number(r.data.act_treasure_cooldown_sec),
             act_item_cooldown_sec: (r.data.act_item_cooldown_sec === undefined || r.data.act_item_cooldown_sec === null)
               ? 7200 : Number(r.data.act_item_cooldown_sec),
+            // ★ 2026-10-30 活动目标每城每日上限：**0 合法 = 不限**，不能用 pos()（会把 0 改回 50）
+            act_daily_limit: (r.data.act_daily_limit === undefined || r.data.act_daily_limit === null)
+              ? 50 : Number(r.data.act_daily_limit),
             // ★ 2026-10-12 迁城冷却：**0 合法 = 关闭迁城冷却**，同样不能用 pos()（会把 0 改回 24）
             move_cool_h: (r.data.move_cool_h === undefined || r.data.move_cool_h === null)
               ? 24 : Number(r.data.move_cool_h),

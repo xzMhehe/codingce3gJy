@@ -586,6 +586,13 @@ type EzfyCfgLimit struct {
 	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyActItemCooldownSec。
 	ActItemCooldownSec int `gorm:"default:7200;comment:活动目标掉道具冷却秒(0=关闭)" json:"act_item_cooldown_sec"`
 
+	// ★ 2026-10-30 用户规则「活动目标每个城市每天可以打 50 次，二战系统配置可调；
+	//   超过后该活动目标按普通野地处理」：
+	//   每座城市每天可发起/结算的活动目标攻击次数上限（默认 50，**0 = 不限**）。
+	//   只统计掠夺(2)/征服(3)，侦查不占次数；按出发城市 + 自然日计数。
+	//   ★ 0 是**合法值**（= 不限）→ 读取端不能用「<=0 回落默认」那套，见 ezfyActDailyLimit。
+	ActDailyLimit int `gorm:"default:50;comment:每城每日活动目标攻击上限(0=不限)" json:"act_daily_limit"`
+
 	// ★ 2026-10-12 用户规则「迁城道具加个冷却时间，针对迁过城的城市冷却 24 小时，二战系统配置可配置迁城冷却」：
 	//   迁城成功后该城要等多少小时才能再迁（默认 24），冷却记在 `ezfy_city.move_cool_until`。
 	//   ★ 0 是**合法值**（= 关闭迁城冷却）→ 读取端不能用 ezfyLimitOr（它把 0 当「未配置」回落默认），
@@ -1628,12 +1635,22 @@ type EzfyPreset struct {
 
 func (EzfyPreset) TableName() string { return "ezfy_preset" }
 
+// EzfyOrder 出征订单。
+//
+// ★ 2026-10-30 ActType 记录本单实际走哪类活动目标结算：
+//
+//	-1 = 补列前的存量订单（按坐标兜底推断，保持原行为）
+//	 0 = 普通目标（含「当日活动攻打次数已用完」后按普通野地处理的单）
+//	 1/2/3 = 活动野地 / 活动寇城 / 特殊城市
+//
+// 出征下单时固化，之后不再按坐标重判 —— 否则次数用完后，在途订单的结算路径会漂移。
 type EzfyOrder struct {
 	ID         uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
 	UserID     uint   `gorm:"index:idx_user;comment:用户ID" json:"user_id"`
 	CityId     int64  `gorm:"comment:城市ID" json:"city_id"`
 	OrderType  int    `gorm:"comment:1侦查 2掠夺 3征服 4采集 5运输 6增援 7派遣" json:"order_type"` // 1侦查 2掠夺 3征服 4采集 5运输 6增援 7派遣
 	TargetType int    `gorm:"comment:1野地 2寇城 3玩家城" json:"target_type"`               // 1野地 2寇城 3玩家城
+	ActType    int    `gorm:"comment:活动类型 -1未知 0普通 1活动野地 2活动寇城 3特殊城市" json:"act_type"`
 	TargetX    int    `gorm:"comment:目标X坐标" json:"target_x"`
 	TargetY    int    `gorm:"comment:目标Y坐标" json:"target_y"`
 	TargetId   int64  `gorm:"comment:目标ID" json:"target_id"`

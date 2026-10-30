@@ -360,6 +360,104 @@ func ezfyActTargetLabel(actType, level int) string {
 	return ezfyActTargetName(actType) + strconv.Itoa(level) + "级"
 }
 
+// ============ 活动目标每日攻打上限（★ 2026-10-30）============
+//
+// 用户规则：每个城市每天最多打 50 次活动目标（管理端可调）；超过后该活动目标
+// 对这座城按普通野地展示/结算，避免脚本反复刷活动资源。
+// 口径：按**出发城市** + **自然日**统计掠夺(2)/征服(3)订单；侦查(1)不占次数。
+
+// ezfyActDailyLimit 每座城市每天的活动目标攻击上限（默认 50，0 = 不限）。
+// ★ 0 是合法值（= 不限），不能用 ezfyLimitOr（它把 0 当未配置回落默认）。
+func ezfyActDailyLimit() int {
+	if !ezfyCfg.ready() {
+		return ezfyActDailyLimitDef
+	}
+	if n := ezfyCfg.limit.ActDailyLimit; n >= 0 {
+		return n
+	}
+	return ezfyActDailyLimitDef
+}
+
+// ezfyActDailyRange 返回 now 所在自然日的 [起, 止) 毫秒时间戳（服务器时区）。
+func ezfyActDailyRange(now int64) (int64, int64) {
+	start := ezfyDayStart(now)
+	end := time.UnixMilli(start).In(time.Local).AddDate(0, 0, 1).UnixMilli()
+	return start, end
+}
+
+// ezfyActDailyAllow 第 rank 次（从 1 开始）是否还在当日配额内。
+func ezfyActDailyAllow(limit int, rank int64) bool {
+	return limit <= 0 || rank <= int64(limit)
+}
+
+// ezfyActDailyUsed 某城今日已创建的活动目标攻击订单数。
+func (h *EzfyHandler) ezfyActDailyUsed(cityID int64) int64 {
+	start, end := ezfyActDailyRange(time.Now().UnixMilli())
+	var n int64
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("city_id = ? AND act_type > 0 AND order_type IN (?, ?) AND start_time >= ? AND start_time < ?",
+			cityID, 2, 3, start, end).
+		Count(&n)
+	return n
+}
+
+// ezfyActDailyLimitReached 该城今日活动目标攻击次数是否已用完。
+func (h *EzfyHandler) ezfyActDailyLimitReached(cityID int64) bool {
+	limit := ezfyActDailyLimit()
+	if limit <= 0 {
+		return false
+	}
+	return h.ezfyActDailyUsed(cityID) >= int64(limit)
+}
+
+// ezfyActDailyOrderRank 该订单是出发城市当日第几支活动攻击队（含自己，从 1 开始）。
+// 用订单 id 排序做「到达时二次卡控」，防止并发下单同时穿过创建时的读校验。
+func (h *EzfyHandler) ezfyActDailyOrderRank(order *model.EzfyOrder) int64 {
+	if order == nil {
+		return 0
+	}
+	start, end := ezfyActDailyRange(order.StartTime)
+	var n int64
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("city_id = ? AND act_type > 0 AND order_type IN (?, ?) AND start_time >= ? AND start_time < ? AND id <= ?",
+			order.CityId, 2, 3, start, end, order.ID).
+		Count(&n)
+	return n
+}
+
+// ezfyActOrderWithinDailyLimit 该订单到达时是否仍可用活动目标结算。
+// ★ 存量订单（ActType = -1，补列前创建）不做配额追溯，保持原有在途战斗行为。
+func (h *EzfyHandler) ezfyActOrderWithinDailyLimit(order *model.EzfyOrder) bool {
+	if order == nil || order.ActType < 0 {
+		return true
+	}
+	limit := ezfyActDailyLimit()
+	if limit <= 0 {
+		return true
+	}
+	return ezfyActDailyAllow(limit, h.ezfyActDailyOrderRank(order))
+}
+
+// ezfyOrderActType 订单实际走哪类活动目标结算/展示。
+// 新订单以 ActType 为准（0 = 当日次数用完后按普通野地处理）；
+// 补列前的存量订单（-1）才按坐标兜底推断，避免部署瞬间让在途活动单变成普通野地。
+func (h *EzfyHandler) ezfyOrderActType(uid uint, order *model.EzfyOrder) int {
+	if order == nil {
+		return 0
+	}
+	if order.ActType >= 0 {
+		return order.ActType
+	}
+	if order.OrderType != 1 && order.OrderType != 2 && order.OrderType != 3 {
+		return 0
+	}
+	act := h.ezfyActTargetType(order.TargetX, order.TargetY)
+	if act > 0 && !h.playerOwnsActWildGeneral(uid, order.TargetX, order.TargetY) {
+		return act
+	}
+	return 0
+}
+
 // playerOwnsActWildGeneral 该玩家是否已拥有此坐标活动野地的守将（名将野地按玩家判定）。
 //
 // ★ 2026-10-05 用户规则：名将野地对没抓到守将的玩家仍是名将野地；只有**已抓到该守将的玩家**，
