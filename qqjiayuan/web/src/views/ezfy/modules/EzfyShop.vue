@@ -648,7 +648,8 @@
             <span class="gray">{{ ezfy.exchangePage }}/{{ ezfy.exchangeTotalPages }}</span>
             <a href="javascript:;" :class="{ gray: ezfy.exchangePage >= ezfy.exchangeTotalPages }" @click="ezfy.sectionPagerGo('exo', 1)">下一页</a>
           </div>
-          <div class="panel-title">我的挂单</div>
+          <!-- ★ 2026-10-30 用户规则：交易所挂单按城隔离 —— 我的挂单只列当前城、上限按本城交易所、下架只能下本城的单 -->
+          <div class="panel-title">本城挂单</div>
           <div class="old-line gray" v-if="ezfy.exchangeSellMax">挂单上限：最多 {{ ezfy.exchangeSellMax }} 单（当前 {{ ezfy.exchangeMTotal }} 单）</div>
           <table class="ezfy-ex-tbl" v-if="ezfy.exchangeMine.length">
             <tr><th>资源</th><th>数量</th><th>总价</th><th>操作</th></tr>
@@ -659,13 +660,14 @@
               <td><a href="javascript:;" @click="ezfy.doExchangeCancel(e)">[下架]</a></td>
             </tr>
           </table>
-          <div class="old-line" v-if="!ezfy.exchangeMine.length">(无在售挂单)</div>
+          <div class="old-line" v-if="!ezfy.exchangeMine.length">(本城无在售挂单)</div>
           <div class="ezfy-pager" v-if="ezfy.exchangeMTotal > ezfy.exchangeMSize">
             <a href="javascript:;" :class="{ gray: ezfy.exchangeMPage <= 1 }" @click="ezfy.sectionPagerGo('exm', -1)">上一页</a>
             <span class="gray">{{ ezfy.exchangeMPage }}/{{ ezfy.exchangeMTotalPages }}</span>
             <a href="javascript:;" :class="{ gray: ezfy.exchangeMPage >= ezfy.exchangeMTotalPages }" @click="ezfy.sectionPagerGo('exm', 1)">下一页</a>
           </div>
           <div class="panel-title">挂单出售</div>
+          <div class="old-line gray">挂单归属当前所在城市，收款/下架退回都在这座城。</div>
           <div class="old-line">
             资源:
             <select v-model="ezfy.sellType" style="width:70px">

@@ -95,9 +95,10 @@
                 ★ 2026-09-25：管理端「野地获取资源倍率」>1 时标出来，让玩家知道为什么比平时多
                 （后端已把倍率乘进 res_min，这里只是加个说明；=1 时不显示，不占版面） -->
                 <span v-if="ezfy.selDetail.res_mult && ezfy.selDetail.res_mult > 1" class="green">（资源倍率×{{ ezfy.selDetail.res_mult }}）</span>，{{ ezfy.resNames.gold }}{{ ezfy.selDetail.gold }}，
-                军功声望+{{ ezfy.selDetail.prestige }}，必定掉落宝物
+                军功声望+{{ ezfy.selDetail.prestige }}
               </div>
-              <div class="old-line" v-if="ezfy.selDetail.jewel">采集可获得：{{ ezfy.selDetail.jewel }}</div>
+              <!-- ★ 2026-10-30 用户规则：掉落宝物/掉落道具**不让玩家知道**（管理后台能看就行）——
+                   原来的「必定掉落宝物 / 采集可获得：珠宝 / 可能获得：道具」全部不再展示。 -->
               <div class="old-line red">活动目标无法占领，战胜只结算奖励(不占附属野地上限)</div>
             </template>
             <!-- 纯海洋: 无野地/守军/出征按钮 -->
@@ -111,10 +112,8 @@
               <div class="old-line">地形：{{ ezfy.selDetail.terrain_name }}</div>
               <div class="old-line" v-if="ezfy.selDetail.type === 3">地块：寇城</div>
               <div class="old-line" v-else>野地等级：{{ ezfy.selDetail.level }}级</div>
-              <!-- ★ 2026-10-09 掉落宝物可读化：后端下发的是结构化 JSON，直接展示是一串花括号
-                   （用户反馈）→ 走 fmtWildDrop 格式化成「防弹衣×1(2%)、青铜军刀×1(10%)」。 -->
-              <!-- ★ 2026-10-11 修复「野地归属描述消失」：归属行原来挂在上面掉落宝物的 v-else 上，
-                   野地一旦配置了掉落宝物就永远走不到它 → 归属描述丢了。改为独立显示，不受宝物影响。 -->
+              <!-- ★ 2026-10-30 用户规则：掉落宝物/掉落道具不让玩家知道（管理后台能看就行），
+                   原来的「掉落宝物：…」两行已删；这里只保留归属与采集资源说明。 -->
               <!-- ★ 2026-10-22 野地归属的玩家名可点：进该玩家统帅页（games/ezfy?cur=playerinfo），
                    与城主名/聊天/排行点玩家名同入口；中立或「我」保持纯文本。 -->
               <div class="old-line">
@@ -125,7 +124,7 @@
               <div class="old-line" v-if="ezfy.selDetail.gather_res">
                 <!-- ★ 2026-09-28 平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
                 <template v-if="ezfy.selDetail.terrain === 1 || ezfy.selDetail.terrain === 9">采集可以获得{{ ezfy.selDetail.gather_res }}，可建立城市。</template>
-                <template v-else>采集可以获得{{ ezfy.selDetail.gather_res }}，可能获得{{ (ezfy.selDetail.treasures || []).join('、') }}。</template>
+                <template v-else>采集可以获得{{ ezfy.selDetail.gather_res }}。</template>
               </div>
             </template>
           </template>

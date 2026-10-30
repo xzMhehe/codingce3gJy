@@ -598,6 +598,9 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 			"unit_price": e.TotalPrice / maxInt64(1, e.EsCount), "mine": e.SellerId == uid})
 	}
 	// 我的挂单(分页)
+	// ★★ 2026-10-30 用户规则「交易所挂单只能看自己城市的」：我的挂单**只列当前所在城**的
+	//   挂单（挂单本来就是从这座城扣的资源，2026-10-07 起每单都记 city_id）。
+	//   跨城的在「卖家挂单」列表里照样能看到（那边的口径不变），但「我的挂单/上限/下架」全按城隔离。
 	mpage, _ := strconv.Atoi(c.DefaultQuery("mpage", "1"))
 	if mpage < 1 {
 		mpage = 1
@@ -609,10 +612,12 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 	if msize > 50 {
 		msize = 50
 	}
+	city := h.getOrCreateCity(uid)
 	var mtotal int64
-	h.DB.Model(&model.EzfyExchange{}).Where("seller_id = ? AND status = 0", uid).Count(&mtotal)
+	h.DB.Model(&model.EzfyExchange{}).
+		Where("seller_id = ? AND status = 0 AND city_id = ?", uid, int64(city.ID)).Count(&mtotal)
 	var mine []model.EzfyExchange
-	h.DB.Where("seller_id = ? AND status = 0", uid).Order("id DESC").
+	h.DB.Where("seller_id = ? AND status = 0 AND city_id = ?", uid, int64(city.ID)).Order("id DESC").
 		Offset((mpage - 1) * msize).Limit(msize).Find(&mine)
 	mineViews := []gin.H{}
 	for _, e := range mine {
@@ -620,7 +625,6 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 			"type_name": ezfyResNames[e.EsType], "count": e.EsCount, "total_price": e.TotalPrice,
 			"currency": e.Currency, "currency_name": ezfyMoneyName(e.Currency)})
 	}
-	city := h.getOrCreateCity(uid)
 	profile := h.ensureProfile(uid)
 	// ★ 2026-10-04 玩家挂单上限 = 交易所等级×2（与 ExchangeSell 卡控同口径，前端展示用）
 	sellMax := h.buildingLevel(city.ID, ezfyBuildingExchange) * 2
@@ -716,8 +720,12 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 		resp.ParamError(c, "需要先建造「交易所」才能挂单出售")
 		return
 	}
+	// ★★ 2026-10-30 用户规则「挂单按城隔离」：上限是**本城**交易所等级×2，
+	//   计数也必须只数**本城**在售挂单 —— 否则 A 城挂满 18 单会把 B 城的名额也占掉
+	//   （资源是按城扣的，名额跨城共摊等于变相限制别的城）。
 	var active int64
-	h.DB.Model(&model.EzfyExchange{}).Where("seller_id = ? AND status = 0", uid).Count(&active)
+	h.DB.Model(&model.EzfyExchange{}).
+		Where("seller_id = ? AND status = 0 AND city_id = ?", uid, int64(city.ID)).Count(&active)
 	if active >= int64(orderLimit) {
 		resp.ParamError(c, fmt.Sprintf("挂单已达上限：交易所%d级 → 最多%d单（当前%d单）。请升级交易所，或等现有挂单成交/下架后再挂",
 			exchangeLv, orderLimit, active))
@@ -857,12 +865,25 @@ func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 		resp.ParamError(c, "订单不存在")
 		return
 	}
-	// ★ 2026-10-07 退回「挂单所在城市」（资源就是从这座城扣的），不是当前所在城。
-	//   老数据 city_id=0 / 城市已不存在时回落到当前城，保持兼容。
-	city := h.getOrCreateCity(uid)
-	if c, ok := h.ezfyExchangeCityOf(uid, e.CityId); ok {
-		city = c
+	// ★★ 2026-10-30 用户规则「只能下架本城市的挂单」：挂单必须属于**当前所在城**。
+	//   切了城就下架不了别城的单（资源退回/上限都是按城的，跨城下架会让口径乱掉）。
+	//   老数据 city_id=0（2026-10-07 之前的单）走回落：视作挂在主城，玩家当前就在主城才允许。
+	curCity := h.getOrCreateCity(uid)
+	if e.CityId > 0 {
+		if e.CityId != int64(curCity.ID) {
+			resp.ParamError(c, "只能下架本城市的挂单")
+			return
+		}
+	} else {
+		if oc, ok := h.ezfyExchangeCityOf(uid, e.CityId); !ok || oc.ID != curCity.ID {
+			resp.ParamError(c, "只能下架本城市的挂单")
+			return
+		}
 	}
+	// ★ 2026-10-07 退回「挂单所在城市」（资源就是从这座城扣的），不是当前所在城。
+	//   ★ 2026-10-30 起挂单必须属于当前城（上面的校验），所以退回城就是当前城。
+	//   老数据 city_id=0 / 城市已不存在时回落到当前城，保持兼容。
+	city := curCity
 	// ★★ 2026-10-09 用户反馈「交易所下架资源会被吃掉」：根因是这里**没先懒结算**就 saveCityRes ——
 	//   city 是「上次落库那一刻」的旧值，saveCityRes 会把这几分钟/几小时的产量一起覆盖掉。
 	//   与 ExchangeSell 同口径：先把产量结算进来，再退回挂单的资源。

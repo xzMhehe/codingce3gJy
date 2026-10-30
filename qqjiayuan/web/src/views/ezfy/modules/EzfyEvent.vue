@@ -8,12 +8,12 @@
         <div class="old-line"><b>【活动玩法】</b>(在【地图】中寻找, 固定位置刷新)：</div>
         <div class="old-line">
           <span class="orange">活动野地</span>【活动】(标记: 活动野地N级)<br/>
-          陆/海随机刷新, 10万~30万守军, 胜利获得大量资源+{{ ezfy.resNames.gold }}(元宝)+必定掉落宝物+大量声望<br/>
+          陆/海随机刷新, 10万~30万守军, 胜利获得大量资源+{{ ezfy.resNames.gold }}(元宝)+大量声望<br/>
           等级越高守军越强, 奖励越丰厚
         </div>
         <div class="old-line">
           <span class="orange">活动寇城</span>【活动寇】(标记: 活动寇N级)<br/>
-          20万~60万守军, 胜利获得巨大资源+{{ ezfy.resNames.gold }}+宝物+声望
+          20万~60万守军, 胜利获得巨大资源+{{ ezfy.resNames.gold }}+声望
         </div>
         <div class="old-line">
           <span class="red">特殊城市</span>【特殊】(标记: 特殊城市N级)<br/>
