@@ -286,9 +286,9 @@
             <div class="of-rows">
               <div class="of-row" v-for="t in ezfy.trainCfgs" :key="'pt' + t.id"
                    :class="{ 'of-off': ezfy.troopCount(t.id) <= 0 }"
-                   :title="t.name + '（现有 ' + ezfy.fmtN(ezfy.troopCount(t.id)) + '，本次最多可派 ' + ezfy.fmtN(ezfy.orderQtyMax(t.id)) + '）' + (ezfy.troopLocked(t.id) ? ' —— 城市正在被敌军攻击(指挥中)，参战部队不能出征' : '')">
+                   :title="t.name + '（' + ezfy.fmtN(ezfy.troopCount(t.id)) + '，本次最多可派 ' + ezfy.fmtN(ezfy.orderQtyMax(t.id)) + '）' + (ezfy.troopLocked(t.id) ? ' —— 城市正在被敌军攻击(指挥中)，参战部队不能出征' : '')">
                 <span class="of-name">{{ t.name }}</span>
-                <span class="of-avail">现有 {{ ezfy.fmtN(ezfy.troopCount(t.id)) }}<span class="red" v-if="ezfy.troopLocked(t.id)"> · 参战部队·指挥中不能出征</span></span>
+                <span class="of-avail">{{ ezfy.fmtN(ezfy.troopCount(t.id)) }}<span class="red" v-if="ezfy.troopLocked(t.id)"> · 参战部队·指挥中不能出征</span></span>
                 <span class="of-ctl">
                   <input type="range" class="of-range" min="0" step="1"
                           :max="ezfy.troopCount(t.id)" :value="ezfy.orderQty(t.id)"
@@ -367,7 +367,7 @@
         <div class="panel" v-if="ezfy.troopView">
           <div class="old-line">
             {{ ezfy.troopView.name }}:
-            <span class="gray">(现有 {{ ezfy.troopCount(ezfy.troopView.id) }})</span>
+            <span class="gray">({{ ezfy.troopCount(ezfy.troopView.id) }})</span>
           </div>
           <div class="old-line">训练/建造需要：</div>
           <table>

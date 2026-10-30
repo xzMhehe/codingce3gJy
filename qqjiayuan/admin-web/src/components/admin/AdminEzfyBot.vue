@@ -257,6 +257,11 @@
                 <el-switch v-model="editForm.attack_wild" :active-value="1" :inactive-value="0" />
                 <el-tooltip placement="top" :content="tips.attackWild"><i class="el-icon-info cfg-tip" /></el-tooltip>
               </el-form-item>
+              <!-- ★ 2026-10-30 出征前自动补集结令（默认开）：补满到「二战系统配置」的集结令单次上限 -->
+              <el-form-item label="自动补集结令">
+                <el-switch v-model="editForm.gather_top_up" :active-value="1" :inactive-value="0" />
+                <el-tooltip placement="top" :content="tips.gatherTopUp"><i class="el-icon-info cfg-tip" /></el-tooltip>
+              </el-form-item>
               <el-form-item label="目标最小兵力">
                 <el-input-number v-model.number="editForm.target_min_troops" :min="0" :step="10000"
                                  controls-position="right" style="width:150px" />
@@ -643,7 +648,7 @@ export default {
       editDlg: false, editLoading: false, editSaving: false, editTab: 'base',
       editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0, freePop: 0,
         atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
-        atk_type: 0, atk_type_eff: 3, chat_on: 0, attack_wild: 0 },
+        atk_type: 0, atk_type_eff: 3, chat_on: 0, attack_wild: 0, gather_top_up: 1 },
       editSnapA: { h: 0, t: 0, ty: 0, aw: 0 },
       // ★ 2026-10-28 多城市：人机名下全部城 + 当前编辑的城（没有主城概念，逐城维护）
       editCities: [], editCityId: 0,
@@ -682,6 +687,7 @@ export default {
         targetMinTroops: '自动选目标时，只打城内兵力不低于该值的玩家城。0 = 不限。',
         window: '人机出征时间段，格式 20:00-22:00,08:00-12:00，支持跨天。留空按 08:00-23:00；全天填 00:00-23:59。',
         attackWild: '开启后人机会征服玩家的附属野地（胜利后放弃，不占领）。',
+        gatherTopUp: '出征前把集结令补满到二战系统配置的单次上限，用于抬高出征兵力。',
         boost: '额外发放启动资源与加速建筑，便于快速成型。',
         // ★ 2026-10-28 编辑页提示统一精简（说明只放在 i 里，正文不再平铺）
         nickname: '同时修改家园昵称与游戏昵称。',
@@ -810,6 +816,8 @@ export default {
       this.editForm = this.blankForm(row)
       this.editSnapA = { h: row.atk_per_hour || 0, t: row.atk_troop || 0, ty: row.atk_type || 0,
         aw: row.attack_wild ? 1 : 0,
+        // ★ 2026-10-30 自动补集结令快照（改了才提交；默认开）
+        gto: row.gather_top_up === undefined || row.gather_top_up === null ? 1 : (row.gather_top_up ? 1 : 0),
         // ★ 2026-10-26 目标最小兵力快照（改了才提交）
         tmin: this.editForm.target_min_troops }
       this.editDlg = true
@@ -826,6 +834,8 @@ export default {
         atk_type: r.atk_type || 0, atk_type_eff: r.atk_type_eff || 3,
         chat_on: r.chat_on === undefined || r.chat_on === null ? 0 : r.chat_on,
         attack_wild: r.attack_wild ? 1 : 0,
+        // ★ 2026-10-30 自动补集结令：默认开（老数据/未下发按 1）
+        gather_top_up: r.gather_top_up === undefined || r.gather_top_up === null ? 1 : (r.gather_top_up ? 1 : 0),
         target_min_troops: r.target_min_troops === undefined || r.target_min_troops === null
           ? 100000 : Number(r.target_min_troops)
       }
@@ -860,6 +870,8 @@ export default {
         atk_type: row.atk_type || 0, atk_type_eff: row.atk_type_eff || 3,
         chat_on: row.chat_on === undefined || row.chat_on === null ? 0 : row.chat_on,
         attack_wild: row.attack_wild ? 1 : 0,
+        // ★ 2026-10-30 自动补集结令：默认开
+        gather_top_up: row.gather_top_up === undefined || row.gather_top_up === null ? 1 : (row.gather_top_up ? 1 : 0),
         target_min_troops: row.target_min_troops === undefined || row.target_min_troops === null
           ? 100000 : Number(row.target_min_troops)
       }
@@ -984,6 +996,9 @@ export default {
         // ★ 2026-10-25 打野地开关（基本信息 tab）：改了才提交（null=不更新；默认 0=不打玩家野地）
         attack_wild: (this.editSnapA.aw ? 1 : 0) === (this.editForm.attack_wild ? 1 : 0)
           ? null : (this.editForm.attack_wild ? 1 : 0),
+        // ★ 2026-10-30 自动补集结令（基本信息 tab）：改了才提交（null=不更新；默认 1=开）
+        gather_top_up: (this.editSnapA.gto ? 1 : 0) === (this.editForm.gather_top_up ? 1 : 0)
+          ? null : (this.editForm.gather_top_up ? 1 : 0),
         // ★ 2026-10-26 目标最小兵力（基本信息 tab）：改了才提交（null=不更新；0=不限）
         //   输入框被清空（undefined/null）时保持原值，不要悄悄变成「不限」。
         target_min_troops: (this.editForm.target_min_troops === undefined || this.editForm.target_min_troops === null)

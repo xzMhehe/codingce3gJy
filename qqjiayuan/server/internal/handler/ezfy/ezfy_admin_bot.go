@@ -167,6 +167,9 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"attack_wild": b.AttackWild,
 			// ★ 2026-10-26 目标最小兵力（按人机分，编辑人机-基本信息可调，默认 100000，0=不限）
 			"target_min_troops": b.TargetMinTroops,
+			// ★ 2026-10-30 出征前自动补集结令（默认开）+ 连续出征未下城次数（阶梯增兵）
+			"gather_top_up":   b.GatherTopUp,
+			"atk_fail_streak": b.AtkFailStreak,
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
 			"next_act_at": nextActOf[b.UserID],
 			"status_text": ezfyBotCityStatusText(b, nextActOf[b.UserID], now),
@@ -729,6 +732,8 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		// ★ 2026-10-26 目标最小兵力（基本信息，按人机分）：自动挑目标时玩家城的最小兵力，
 		//   默认 100000；**0 合法 = 不限**，所以用指针接收（nil=不修改）
 		TargetMinTroops *int64 `json:"target_min_troops"`
+		// ★ 2026-10-30 出征前自动补集结令（基本信息）：1=开（默认）0=关
+		GatherTopUp *int `json:"gather_top_up"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1086,6 +1091,15 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		}
 		ezUpd["target_min_troops"] = *in.TargetMinTroops
 		changes = append(changes, fmt.Sprintf("目标最小兵力→%d", *in.TargetMinTroops))
+	}
+	// ⑬ 出征前自动补集结令（★ 2026-10-30：默认开，关掉后人机背包没有集结令 → 被司令部出征上限卡死）
+	if in.GatherTopUp != nil {
+		if *in.GatherTopUp < 0 || *in.GatherTopUp > 1 {
+			resp.ParamError(c, "自动补集结令需为 0/1（0=关闭 1=开启）")
+			return
+		}
+		ezUpd["gather_top_up"] = *in.GatherTopUp
+		changes = append(changes, fmt.Sprintf("自动补集结令→%s", map[bool]string{true: "开", false: "关"}[*in.GatherTopUp == 1]))
 	}
 	if len(ezUpd) > 0 {
 		h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Updates(ezUpd)

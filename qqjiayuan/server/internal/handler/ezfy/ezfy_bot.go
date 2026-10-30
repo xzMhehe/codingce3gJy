@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/authutil"
@@ -1015,6 +1016,14 @@ func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyB
 	if ezfyCfg.ready() && ezfyCfg.limit.BotTrainThreshold > 0 {
 		keepTroops = ezfyCfg.limit.BotTrainThreshold
 	}
+	// ★★ 2026-10-30 阶梯增兵配套「不够就征兵」：连续出征没打下来时，出征兵力目标已经阶梯加码
+	//   （每多打一次 +50%），征兵线必须跟着抬到同一个值 —— 否则打不动就永远停在固定征兵线，
+	//   出征数量也上不去（线上玩家城有上亿兵，光靠 30~40 万啃不动）。
+	if br := h.ezfyBotOf(city.UserID); br != nil && br.AtkFailStreak > 0 {
+		if want := ezfyBotSteppedWant(ezfyBotAtkTroopOf(br.Level, br.AtkTroop), int64(br.AtkFailStreak)); want > keepTroops {
+			keepTroops = want
+		}
+	}
 	if troopTotal >= keepTroops {
 		return "", "", false
 	}
@@ -1219,15 +1228,37 @@ func (h *EzfyHandler) botLockTargetPlan(b *model.EzfyBot, tgt ezfyBotTargetRow, 
 		if old.Status != 4 {
 			return false // 已有活跃计划 → 不重复锁
 		}
-		return h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", old.ID).Updates(map[string]interface{}{
+		ok := h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", old.ID).Updates(map[string]interface{}{
 			"status": 0, "target_city_id": int64(tgt.CityID),
 			"effect_time": 0, "cool_until": 0, "note": note,
 		}).Error == nil
+		if ok {
+			h.ezfyBotStreakReset(b.UserID) // 新目标周期 → 阶梯增兵计数清零
+		}
+		return ok
 	}
-	return h.DB.Create(&model.EzfyBotTarget{
+	ok := h.DB.Create(&model.EzfyBotTarget{
 		BotUid: b.UserID, TargetUid: tgt.UserID, TargetCityId: int64(tgt.CityID),
 		Status: 0, Note: note,
 	}).Error == nil
+	if ok {
+		h.ezfyBotStreakReset(b.UserID)
+	}
+	return ok
+}
+
+// ezfyBotStreakReset 目标周期结束（占下目标 / 放弃换新）→ 阶梯增兵计数清零（★ 2026-10-30）。
+func (h *EzfyHandler) ezfyBotStreakReset(botUID uint) {
+	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", botUID).Update("atk_fail_streak", 0)
+}
+
+// ezfyBotOf 取该玩家的人机行（不是人机 → nil）。
+func (h *EzfyHandler) ezfyBotOf(uid uint) *model.EzfyBot {
+	var b model.EzfyBot
+	if err := h.DB.Where("user_id = ?", uid).First(&b).Error; err != nil {
+		return nil
+	}
+	return &b
 }
 
 // botMilitary 军事：计划表驱动的「宣战 → 等 24h → 出击」。
@@ -1304,16 +1335,19 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 			var tcity model.EzfyCity
 			if err := h.DB.First(&tcity, p.TargetCityId).Error; err != nil {
 				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+				h.ezfyBotStreakReset(b.UserID) // 目标周期结束 → 阶梯增兵计数清零
 				return "放弃目标", fmt.Sprintf("目标 %d 城市已不存在", p.TargetUid), true
 			}
 			var occ int64
 			h.DB.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", p.TargetCityId).Count(&occ)
 			if occ > 0 {
 				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+				h.ezfyBotStreakReset(b.UserID) // 打下来了 → 阶梯增兵计数清零
 				return "放弃目标", fmt.Sprintf("目标 %s(%d,%d) 已被占领，换新目标", tcity.Name, tcity.X, tcity.Y), true
 			}
 			if !h.isAtWar(b.UserID, p.TargetUid) {
 				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+				h.ezfyBotStreakReset(b.UserID) // 战争结束 → 阶梯增兵计数清零
 				return "放弃目标", fmt.Sprintf("与目标 %d 的战争已结束", p.TargetUid), true
 			}
 			// ★ 2026-10-17 出征时间 > 10 分钟 → 人机先自迁城贴近目标，再出击
@@ -2071,6 +2105,11 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	want := ezfyBotAtkTroopOf(b.Level, b.AtkTroop)
 	if atkType == 1 {
 		want = 1 // 侦察兵
+	} else {
+		// ★★ 2026-10-30 阶梯增兵：连续出征没把目标占下来 → 出征兵力目标每多打一次 +50%（封顶 12 次 = 7 倍）。
+		//   线上玩家城有上亿兵，固定 30~40 万根本啃不动 → 打不下来就一路加码，城内不够就征兵
+		//   （botTrain 的训练目标同步上调，见 botTrain）。侦察(1)只派 1 兵探路，不参与阶梯。
+		want = ezfyBotSteppedWant(want, int64(b.AtkFailStreak))
 	}
 	if want > total {
 		want = total
@@ -2090,11 +2129,32 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	//   否则线上 march_cap_on=1 → createOrder 拒绝 → 人机「有 1 亿兵也打不出去」（只看见休整）。
 	//   超了 → 全兵种等比缩放到上限内（派够上限也够拆目标城）。
 	//   集结令不够 → 烧背包集结令扩额（每个 +10 万，上限 ezfyGatherMax()），createOrder 里真实扣减。
+	// ★★ 2026-10-30 用户规则「人机征服经常败 → 用集结令增加出征兵力」：
+	//   人机没有任何获取道具的途径，背包集结令常年 0 个 → 出征被司令部上限卡到几万兵，
+	//   「单次出征 30~40 万」的配置形同虚设 → 经常带少量兵去送败仗。
+	//   → ① 出征前把背包集结令**补满到「二战系统配置」的集结令单次上限**（gather_max_per_order，
+	//     管理端可调，最多读配置；★ 开关在「人机管理-编辑人机」的「自动补集结令」，默认开）；
+	//     ② 本次出征**按需**烧：只烧「把出征兵力抬到 want」所需的个数
+	//     （每个 +ezfyGatherBonusPer），不盲目全烧 —— 想调人机出征强度：调配置里的集结令上限即可。
 	gather := 0
-	if ezfyMarchCapOn() {
-		gather = h.itemCount(b.UserID, ezfyGatherItemID())
-		if maxG := ezfyGatherMax(); gather > maxG {
-			gather = maxG
+	if ezfyMarchCapOn() && b.GatherTopUp != 0 {
+		maxG := ezfyGatherMax()
+		if maxG > 0 {
+			if have := h.itemCount(b.UserID, ezfyGatherItemID()); have < maxG {
+				h.addItem(b.UserID, ezfyGatherItemID(), maxG-have)
+			}
+			need := 0
+			if baseCap, _ := h.ezfyOrderTroopCap(city.ID, 0, leadName); want > baseCap {
+				if per := ezfyGatherBonusPer(); per > 0 {
+					need = int((want - baseCap + per - 1) / per)
+				} else {
+					need = maxG // 配置异常（每令加成为 0）→ 全上，保底不卡兵
+				}
+				if need > maxG {
+					need = maxG
+				}
+			}
+			gather = need
 		}
 	}
 	cap, unlimited := h.ezfyOrderTroopCap(city.ID, gather, leadName)
@@ -2146,6 +2206,10 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 		//   botMilitary case2 出战前检查拦截并换新目标。原来打一次冷却 12h，频率再高也白搭。
 		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
 		h.botAtkCountInc(b)
+		// ★★ 2026-10-30 阶梯增兵：又出了一次还没占下 → streak+1（下次出征兵力目标 +50%）。
+		//   占下目标 / 换新目标时清零（见 botMilitary case2 放弃目标 / botLockTargetPlan 锁新计划）。
+		h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", b.UserID).
+			Update("atk_fail_streak", gorm.Expr("atk_fail_streak + 1"))
 		return "出击", fmt.Sprintf("%s %s(%d,%d) 派兵 %d 支", ezfyOrderTypeName(atkType), p.Note, tc.X, tc.Y, len(groups)), true
 	}
 	// 失败（免战/兵力不足/队列满）→ 冷却 2 小时后重试
@@ -2420,6 +2484,19 @@ func ezfyBotAtkTroopOf(level int, override int64) int64 {
 		return 400000
 	}
 	return 350000
+}
+
+// ezfyBotSteppedWant 阶梯增兵：连续出征没把目标打下来（streak）→ 出征兵力目标每多打一次 +50%，
+// 封顶 12 次（= 7 倍）。线上玩家城有上亿兵，固定 30~40 万根本啃不动 → 打不下来就一路加码，
+// 城内不够就征兵（botTrain 的训练目标同步上调到这个值）。
+func ezfyBotSteppedWant(base, streak int64) int64 {
+	if streak <= 0 {
+		return base
+	}
+	if streak > 12 {
+		streak = 12
+	}
+	return base * (100 + 50*streak) / 100
 }
 
 // ezfyBotOrderTypeOf 该人机出征类型（ezfy_order.order_type）：

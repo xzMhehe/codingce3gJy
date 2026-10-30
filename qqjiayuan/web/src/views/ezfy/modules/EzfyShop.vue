@@ -667,7 +667,7 @@
             <a href="javascript:;" :class="{ gray: ezfy.exchangeMPage >= ezfy.exchangeMTotalPages }" @click="ezfy.sectionPagerGo('exm', 1)">下一页</a>
           </div>
           <div class="panel-title">挂单出售</div>
-          <div class="old-line gray">挂单归属当前所在城市，收款/下架退回都在这座城。</div>
+          <div class="old-line gray">归属当前城市</div>
           <div class="old-line">
             资源:
             <select v-model="ezfy.sellType" style="width:70px">

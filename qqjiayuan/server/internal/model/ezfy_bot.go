@@ -56,6 +56,14 @@ type EzfyBot struct {
 	//   只影响自动选目标，管理端手动指定目标不受限。
 	TargetMinTroops int64 `gorm:"default:100000;comment:自动挑目标时玩家城最小兵力(0=不限)" json:"target_min_troops"`
 
+	// ★ 2026-10-30 出征前自动补集结令（编辑人机-基本信息可调，默认开）：
+	//   人机没有获取道具的途径，不开就背包常年 0 个 → 出征被司令部上限卡到几万兵。
+	//   补满到「二战系统配置」的集结令单次上限（gather_max_per_order）。
+	GatherTopUp int `gorm:"default:1;comment:出征前自动补集结令(0=关,1=开)" json:"gather_top_up"`
+	// ★ 2026-10-30 连续出征未下城次数（阶梯增兵）：每多打一次还没占下目标，
+	//   出征兵力目标 +50%（封顶 12 次 = 7 倍）；换/占下新目标时清零。不够就征兵（botTrain 目标同步上调）。
+	AtkFailStreak int `gorm:"default:0;comment:连续出征未下城次数(阶梯增兵)" json:"atk_fail_streak"`
+
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
