@@ -748,6 +748,8 @@ export default {
       showPowerRow: -1,
       // ★ 2026-10-14 风云榜中「积分」点击展开明细的行 rank（-1 = 收起），与战力榜同款交互
       showPvpRow: -1,
+      // ★ 2026-10-30 军衔声望榜中「声望」点击展开明细的行 rank（-1 = 收起）：具体声望 + 军衔职位
+      showPrestigeRow: -1,
       // ★ 2026-10-16 风云榜「我的战绩」场次明细（分页倒序，独立表——战报会周期性清理，明细留存）
       pvpDetail: { show: false, loading: false, list: [], total: 0, page: 1, size: 20, week: '' },
       orders: [],
@@ -4398,6 +4400,7 @@ export default {
       this.showPvpRow = -1
       this.showPowerRow = -1
       this.showTreasureRow = -1
+      this.showPrestigeRow = -1
     },
     // ★ 2026-10-16 风云榜「我的战绩」场次明细：就地展开/收起（收起时不重新拉数据）
     togglePvpDetail () {
@@ -7498,14 +7501,24 @@ export default {
       if (!isFinite(v)) return '0'
       return v.toLocaleString('en-US')
     },
-    // ★ 2026-10-30 军衔声望榜：**只有达到 1 亿才**换成「亿」单位（用户要求），
-    //   不足 1 亿保持千分位原样。亿的截断口径复用 fmtProd（Math.floor 向下取整，
-    //   **不四舍五入** —— 1.99亿 显示 1.9亿，绝不会变成 2亿）。
+    // ★ 2026-10-30 军衔声望榜声望显示：≥1 亿 → 亿；≥1 千万 → 千万；不足千万保持千分位。
+    //   一律 Math.floor 向下截断，**不四舍五入**（199,999,999 → 1.9亿；19,999,999 → 1.9千万）。
+    //   ★ 不用 fmtProd：它 ≥1 万就转「万」，5 千万会显示成「5000万」，用户要的是千万级缩。
     fmtYi (n) {
       const v = Number(n || 0)
       if (!isFinite(v)) return '0'
-      if (Math.abs(v) >= 100000000) return this.fmtProd(v)
-      return this.fmtN(v)
+      const sign = v < 0 ? '-' : ''
+      const a = Math.abs(v)
+      const unit = (base, name) => {
+        const q = Math.floor(a / base)
+        const rem = a % base
+        // 余数够「下一量级的十分之一」才补 1 位小数（同样向下截断），否则整数
+        const tenth = base / 10
+        return sign + (rem >= tenth ? q + '.' + Math.floor(rem / tenth) : String(q)) + name
+      }
+      if (a >= 100000000) return unit(100000000, '亿')
+      if (a >= 10000000) return unit(10000000, '千万')
+      return sign + a.toLocaleString('en-US')
     },
     // ★ 宝箱奖池/开箱结果的品质着色（普通/稀有/史诗/传说，给不同颜色区分）
     // ★ 军官装备品质同套配色：初级→灰 / 中级→蓝 / 高级→紫 / 特殊→橙（一眼看出哪个好）

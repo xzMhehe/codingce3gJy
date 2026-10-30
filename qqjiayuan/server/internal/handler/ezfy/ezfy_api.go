@@ -2201,7 +2201,8 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	// 声望榜（★ 2026-10-16 「不参与排名」名单下推到 SQL：管理端「排行榜→军衔声望榜」操作列
 	//   维护的是**这一榜自己**的名单；过滤放在 LIMIT 之前，避免「先截 20 条再筛」缺人）
 	var profiles []model.EzfyProfile
-	prestigeQ := h.DB.Order("prestige DESC")
+	// ★ 2026-10-30 补 id 兜底：声望同分时顺序稳定（原来只按 prestige），翻页/刷新不跳动
+	prestigeQ := h.DB.Order("prestige DESC, id DESC")
 	if exSet := pvpExcludedSet(h.DB, ezfyBoardPrestige); len(exSet) > 0 {
 		ids := make([]uint, 0, len(exSet))
 		for id := range exSet {
@@ -2212,8 +2213,10 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	prestigeQ.Limit(20).Find(&profiles)
 	prestigeRank := []gin.H{}
 	for i, p := range profiles {
+		lv := ezfyProfileRank(&p)
+		r := ezfyRankAt(lv) // 名称/职位一次取（★ 2026-10-30 点击声望展开要看「职位」）
 		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname, "user_id": p.UserID,
-			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
+			"prestige": p.Prestige, "rank_name": r.Name, "rank_post": r.Post})
 	}
 	// 战力榜（★ 2026-10-25 兵种分改为「占用人口 × 数量」口径，完整口径见 ezfy_power.go）
 	//   战力 = 科技战力(用户级, 等级全城共用) + 建筑战力 + 兵种战力；

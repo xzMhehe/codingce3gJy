@@ -60,13 +60,19 @@
               <col style="width: 15%"><col style="width: 35%"><col style="width: 25%"><col style="width: 25%">
             </colgroup>
             <tr><th>名次</th><th>统帅</th><th>声望</th><th>军衔</th></tr>
-            <tr v-for="r in ezfy.rankData.prestige" :key="'rp' + r.rank" :class="ezfy.rankRowCls(r.rank)">
-              <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
-              <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
-              <!-- ★ 2026-10-30 声望 ≥1 亿转「亿」单位（向下截断，不四舍五入）；悬浮看精确值 -->
-              <td :title="'声望 ' + ezfy.fmtN(r.prestige)">{{ ezfy.fmtYi(r.prestige) }}</td>
-              <td>{{ r.rank_name }}<span style="margin-left:4px" v-html="ezfy.rankIcon(ezfy.rankIdByName(r.rank_name))"></span></td>
-            </tr>
+            <!-- ★ 2026-10-30 点击「声望」展开：具体声望（千分位精确值）+ 该军衔对应的职位 -->
+            <template v-for="r in ezfy.rankData.prestige">
+              <tr :key="'rp' + r.rank" :class="ezfy.rankRowCls(r.rank)">
+                <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
+                <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
+                <!-- ★ 声望 ≥1亿→亿 / ≥1千万→千万（向下截断，不四舍五入），点击展开精确值 -->
+                <td><a href="javascript:;" @click="ezfy.showPrestigeRow = ezfy.showPrestigeRow === r.rank ? -1 : r.rank"><b>{{ ezfy.fmtYi(r.prestige) }}</b></a></td>
+                <td>{{ r.rank_name }}<span style="margin-left:4px" v-html="ezfy.rankIcon(ezfy.rankIdByName(r.rank_name))"></span></td>
+              </tr>
+              <tr v-if="ezfy.showPrestigeRow === r.rank" :key="'rpd' + r.rank" class="rank-treasure-row">
+                <td colspan="4" class="gray">具体声望 <b>{{ ezfy.fmtN(r.prestige) }}</b> · 职位 <b>{{ r.rank_post || '—' }}</b></td>
+              </tr>
+            </template>
           </table>
           </template>
 
