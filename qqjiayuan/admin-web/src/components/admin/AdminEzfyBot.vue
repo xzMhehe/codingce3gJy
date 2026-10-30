@@ -19,6 +19,8 @@
           <el-switch v-model="foodFree" :active-value="1" :inactive-value="0" @change="saveConfig" />
           <div class="grow" />
           <el-button type="primary" icon="el-icon-video-play" @click="openActAll">一键立即行动</el-button>
+          <!-- ★ 2026-10-30 人机保护名单：名单里的玩家（按游戏ID）任何自动人机都不攻击 -->
+          <el-button icon="el-icon-circle-check" @click="openPeace">保护名单</el-button>
           <el-button type="primary" icon="el-icon-plus" @click="createDlg = true">生成人机</el-button>
           <el-button type="danger" plain icon="el-icon-delete" :disabled="!list.length" @click="clearAll">清空全部</el-button>
         </div>
@@ -183,6 +185,25 @@
         <el-button @click="actAllDlg = false">取 消</el-button>
         <el-button type="primary" :loading="actAllSaving" @click="doActAll">立即执行</el-button>
       </div>
+    </el-dialog>
+
+    <!-- ★ 2026-10-30 人机保护名单：名单里的玩家，任何自动人机都不攻击（含宣战/野地/反击） -->
+    <el-dialog title="人机保护名单" :visible.sync="peaceDlg" width="520px">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <el-input v-model="peaceUid" size="small" placeholder="输入游戏ID" style="width:240px"
+                  @keyup.enter.native="addPeace" />
+        <el-button type="primary" size="small" :loading="peaceSaving" @click="addPeace">添加</el-button>
+      </div>
+      <el-table :data="peaceList" size="mini" border max-height="320" style="width:100%">
+        <el-table-column prop="game_uid" label="游戏ID" width="160" />
+        <el-table-column prop="nickname" label="昵称" />
+        <el-table-column label="操作" width="80" align="center">
+          <template slot-scope="{ row }">
+            <el-button size="mini" type="danger" plain @click="delPeace(row)">移除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="!peaceList.length" class="gray" style="margin-top:8px">(名单为空)</div>
     </el-dialog>
 
     <!-- 编辑人机（昵称/声望/城市名/人口/建筑/科技/兵种/军官） -->
@@ -644,6 +665,8 @@ export default {
       createDlg: false, createCount: 3, createLevel: 2, createBoost: true, createNickname: '',
       // 一键立即行动（全部人机连跑 N 轮）
       actAllDlg: false, actAllSaving: false, actAllRounds: 5,
+      // ★ 2026-10-30 人机保护名单（按游戏ID录入）
+      peaceDlg: false, peaceUid: '', peaceSaving: false, peaceList: [],
       // 编辑（昵称/声望/城市名/人口/建筑/科技/兵种/军官）
       editDlg: false, editLoading: false, editSaving: false, editTab: 'base',
       editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0, freePop: 0,
@@ -784,6 +807,38 @@ export default {
           this.load()
         } else this.$message.error(r.msg)
       }).catch(() => { this.actAllSaving = false })
+    },
+    // ★ 2026-10-30 人机保护名单（按游戏ID录入 → 人机不攻击该玩家）
+    openPeace () {
+      this.peaceUid = ''
+      this.peaceDlg = true
+      this.loadPeace()
+    },
+    loadPeace () {
+      api.get('/admin/ezfy-bot/peace').then(r => {
+        if (r.code === 0) this.peaceList = r.data.list || []
+      })
+    },
+    addPeace () {
+      const gid = (this.peaceUid || '').trim()
+      if (!gid) return this.$message.warning('请输入游戏ID')
+      this.peaceSaving = true
+      api.post('/admin/ezfy-bot/peace', { game_uid: gid }).then(r => {
+        this.peaceSaving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已添加')
+          this.peaceUid = ''
+          this.loadPeace()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.peaceSaving = false })
+    },
+    delPeace (row) {
+      api.delete('/admin/ezfy-bot/peace/' + row.id).then(r => {
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已移除')
+          this.loadPeace()
+        } else this.$message.error(r.msg)
+      })
     },
     clearAll () {
       this.$confirm('确认清空全部人机？\n将物理删除每个人机的家园账号与二战全部数据，不可恢复。',

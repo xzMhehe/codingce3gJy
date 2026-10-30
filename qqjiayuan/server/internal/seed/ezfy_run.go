@@ -89,6 +89,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyBotTarget{}, // 攻击计划（宣战 24h 时序驱动）
 	&model.EzfyBotLog{},    // 行为日志
 	&model.EzfyBotLock{},   // tick 租约锁（多进程互斥）
+	&model.EzfyBotPeace{},  // ★ 2026-10-30 人机保护名单（不攻击这些玩家）
 	// —— 二战自己用的通用表（不共享家园）——
 	&model.PrivateMessage{}, // 二战的家信/系统通知（不再写家园家信）
 	&model.Setting{},        // 二战自己的系统开关（ezfy_maintenance 等）

@@ -1304,6 +1304,11 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-bot/log/:id/delete", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLogDelete)
 						admin.POST("/ezfy-bot/logs/clear", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLogClear)
 						admin.GET("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfig)
+						// ★ 2026-10-30 人机保护名单（按游戏ID录入，名单里的玩家不被任何自动人机攻击）
+						//   静态段必须注册在 /ezfy-bot/:uid 之前（gin 静态优先，与上面 list/config 同款）
+						admin.GET("/ezfy-bot/peace", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotPeaceList)
+						admin.POST("/ezfy-bot/peace", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotPeaceAdd)
+						admin.DELETE("/ezfy-bot/peace/:id", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotPeaceDel)
 						admin.POST("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfigSet)
 						admin.POST("/ezfy-bot/:uid/toggle", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotToggle)
 						admin.POST("/ezfy-bot/:uid/level", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLevel)

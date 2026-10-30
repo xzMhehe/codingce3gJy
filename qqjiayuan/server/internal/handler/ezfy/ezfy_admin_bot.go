@@ -2023,3 +2023,71 @@ func (h *EzfyAdmin) AdminEzfyBotRelocate(c *gin.Context) {
 	ez.ezfyBotLogCity(uint(uid), int64(ct.ID), "管理端迁城", fmt.Sprintf("迁城 %s → (%d,%d)", old, in.X, in.Y), 1)
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已把「%s」迁至 (%d,%d)", ct.Name, in.X, in.Y)})
 }
+
+// ============ 人机保护名单（★ 2026-10-30）============
+//
+// 用户规则：「输入游戏ID，人机就不攻击这个玩家城市」。
+// 名单按**玩家 user_id** 落库（GameUID/昵称只是管理端展示）；
+// 人机侧目标筛选（botPickTarget / botPickWildTarget）直接 SQL 过滤，
+// 指定玩家 / 手动指定目标 / 被打反击 三条路径由 ezfyBotIsProtected 兜底。
+
+// AdminEzfyBotPeaceList GET /admin/ezfy-bot/peace
+func (h *EzfyAdmin) AdminEzfyBotPeaceList(c *gin.Context) {
+	var list []model.EzfyBotPeace
+	h.DB.Order("id DESC").Find(&list)
+	out := make([]gin.H, 0, len(list))
+	for _, p := range list {
+		out = append(out, gin.H{"id": p.ID, "user_id": p.UserID, "game_uid": p.GameUID,
+			"nickname": p.Nickname, "created_at": p.CreatedAt})
+	}
+	resp.OK(c, gin.H{"list": out, "total": len(out)})
+}
+
+// AdminEzfyBotPeaceAdd POST /admin/ezfy-bot/peace  {game_uid}
+func (h *EzfyAdmin) AdminEzfyBotPeaceAdd(c *gin.Context) {
+	var in struct {
+		GameUID string `json:"game_uid"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	gid := strings.TrimSpace(in.GameUID)
+	if gid == "" {
+		resp.ParamError(c, "请输入游戏ID")
+		return
+	}
+	var p model.EzfyProfile
+	if err := h.DB.Where("game_uid = ?", gid).First(&p).Error; err != nil {
+		resp.ParamError(c, "游戏ID不存在: "+gid)
+		return
+	}
+	if p.IsBot == 1 {
+		resp.ParamError(c, "人机不需要保护")
+		return
+	}
+	var n int64
+	h.DB.Model(&model.EzfyBotPeace{}).Where("user_id = ?", p.UserID).Count(&n)
+	if n > 0 {
+		resp.ParamError(c, "该玩家已在保护名单里")
+		return
+	}
+	if err := h.DB.Create(&model.EzfyBotPeace{
+		UserID: p.UserID, GameUID: gid, Nickname: p.Nickname,
+	}).Error; err != nil {
+		resp.ParamError(c, "添加失败: "+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已保护: %s(%s)", p.Nickname, gid)})
+}
+
+// AdminEzfyBotPeaceDel DELETE /admin/ezfy-bot/peace/:id
+func (h *EzfyAdmin) AdminEzfyBotPeaceDel(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if id <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.DB.Where("id = ?", id).Delete(&model.EzfyBotPeace{})
+	resp.OK(c, gin.H{"msg": "已移出保护名单"})
+}

@@ -151,3 +151,19 @@ type EzfyBotLock struct {
 }
 
 func (EzfyBotLock) TableName() string { return "ezfy_bot_lock" }
+
+// EzfyBotPeace 人机保护名单（★ 2026-10-30）
+//
+// 管理端「人机管理 → 保护名单」按**游戏ID**录入；录入时解析出 user_id。
+// 名单里的玩家：人机**不攻击他的城市、不宣战、不打他的附属野地**（含被打反击）。
+//
+// 只认 user_id 判定（目标筛选全部下推 SQL 到 user_id），GameUID/Nickname 只是管理端展示用。
+type EzfyBotPeace struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_bot_peace_uid;comment:玩家ID" json:"user_id"`
+	GameUID   string    `gorm:"type:varchar(32);comment:游戏ID" json:"game_uid"`
+	Nickname  string    `gorm:"type:varchar(40);comment:昵称(快照)" json:"nickname"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyBotPeace) TableName() string { return "ezfy_bot_peace" }

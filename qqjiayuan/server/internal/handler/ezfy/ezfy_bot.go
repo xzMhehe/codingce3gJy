@@ -1169,6 +1169,10 @@ func (h *EzfyHandler) botRevenge(b *model.EzfyBot, city *model.EzfyCity) bool {
 		if hit.UID == 0 {
 			continue
 		}
+		// ★ 2026-10-30 人机保护名单：名单里的玩家，被人机反击也不行（连计划都不写）
+		if h.ezfyBotIsProtected(hit.UID) {
+			continue
+		}
 		// ★★ 2026-10-17 声望门槛修复：反击 = 主动把攻方纳入攻击目标，同样要过最低声望线。
 		//   此前 botRevenge 直接写入计划不查声望 → 低于最低声望的玩家一打就被人机反打，
 		//   等于把人机当免费复仇器（用户反馈「人机还是会把低于最低声望的纳入目标」根因之一）。
@@ -1365,6 +1369,11 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 			}
 			return h.botAttack(b, city, p, troopTotal)
 		case 0: // 待宣战 → 立即宣战
+			// ★ 2026-10-30 人机保护名单：名单里的玩家连宣战都不发（加名单后旧计划下一轮就被清掉）
+			if h.ezfyBotIsProtected(p.TargetUid) {
+				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+				return "放弃目标", fmt.Sprintf("目标 %d 在人机保护名单里", p.TargetUid), true
+			}
 			code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/war/declare",
 				map[string]interface{}{"target_user_id": p.TargetUid, "city_id": int64(city.ID)})
 			if code == 0 {
@@ -1481,6 +1490,8 @@ JOIN ezfy_city c ON c.id = w.city_id
 LEFT JOIN ezfy_profile p ON p.user_id = c.user_id
 WHERE w.city_id > 0 AND c.is_bot = 0 AND c.user_id > 0 AND c.user_id <> ?
   AND c.id NOT IN (SELECT city_id FROM ezfy_occupy WHERE status = 1)
+  -- ★ 2026-10-30 人机保护名单：名单里的玩家野地也不打
+  AND c.user_id NOT IN (SELECT user_id FROM ezfy_bot_peace)
   AND w.x BETWEEN ? AND ? AND w.y BETWEEN ? AND ?
   AND w.status = 0 AND w.level > 2
   AND NOT EXISTS (SELECT 1 FROM ezfy_order o
@@ -1494,12 +1505,30 @@ ORDER BY RAND() LIMIT 1`,
 	return r, true
 }
 
+// ezfyBotIsProtected 该玩家是否在「人机保护名单」里（★ 2026-10-30，管理端按游戏ID录入）。
+//
+// 名单里的玩家：人机不宣战、不攻击其城市、不打其附属野地、被打也不反击。
+// 目标筛选（botPickTarget/botPickWildTarget）已经把名单下推成 SQL 过滤，这里用于
+// 「按 id 直接指定的路径」（宣战等待期打指定玩家野地 / 手动指定目标 / 被打反击）兜底。
+func (h *EzfyHandler) ezfyBotIsProtected(uid uint) bool {
+	if uid == 0 {
+		return false
+	}
+	var n int64
+	h.DB.Model(&model.EzfyBotPeace{}).Where("user_id = ?", uid).Count(&n)
+	return n > 0
+}
+
 // botPickWildTargetOf 打**指定玩家**的附属野地（★ 2026-10-19 宣战等待期用）。
 //
 // 与 botPickWildTarget 同一套过滤口径，只是归属限定为该玩家本人（`c.user_id = ?`）：
 // 打玩家城要等宣战生效，但附属野地不需要宣战 —— 宣战等待期就先征服目标玩家的野地。
 func (h *EzfyHandler) botPickWildTargetOf(userID uint, city *model.EzfyCity) (ezfyBotWildTarget, bool) {
 	var r ezfyBotWildTarget
+	// ★ 2026-10-30 人机保护名单：名单里的玩家，野地也不打
+	if h.ezfyBotIsProtected(userID) {
+		return r, false
+	}
 	err := h.DB.Raw(`
 SELECT w.id AS id, w.x AS x, w.y AS y, w.level AS level, w.wild_type AS wild_type,
        COALESCE(p.nickname, '') AS owner
@@ -1656,6 +1685,8 @@ WHERE c.is_bot = 0
   --   这样每轮锁定的是**另一个**附近玩家（用户反馈「只盯一个人打，附近的却不打」）。
   AND NOT EXISTS (SELECT 1 FROM ezfy_bot_target bt2
                   WHERE bt2.bot_uid = ? AND bt2.target_uid = c.user_id AND bt2.status IN (0,1,2,3))
+  -- ★ 2026-10-30 人机保护名单：名单里的玩家（管理端按游戏ID录入）一律不攻击
+  AND c.user_id NOT IN (SELECT user_id FROM ezfy_bot_peace)
 ORDER BY p.prestige DESC, COALESCE(t.troops, 0) ASC
 LIMIT 1`,
 		city.UserID, city.X-25, city.X+25, city.Y-25, city.Y+25,
@@ -2068,6 +2099,11 @@ func (h *EzfyHandler) ezfyBotPickRelocateSpot(nearX, nearY int, seaCity ...bool)
 
 // botAttack 出击：按难度默认出兵 30~40 万、带本城军事最高的军官，掠夺目标城。
 func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.EzfyBotTarget, troopTotal int64) (string, string, bool) {
+	// ★ 2026-10-30 人机保护名单兜底：名单里的玩家一律不打（含管理端手动指定目标的路径）。
+	if h.ezfyBotIsProtected(p.TargetUid) {
+		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+		return "放弃目标", fmt.Sprintf("目标 %d 在人机保护名单里", p.TargetUid), true
+	}
 	var troops []model.EzfyCityTroop
 	h.DB.Where("city_id = ? AND count > 0", city.ID).Find(&troops)
 	var total int64

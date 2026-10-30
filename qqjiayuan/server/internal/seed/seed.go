@@ -3125,12 +3125,14 @@ func EnsureEzfyTitleTables(db *gorm.DB) {
 	}
 }
 
-// EnsureEzfyBotTables 幂等补建/更新人机模块四张表（★ 2026-10-17）。
+// EnsureEzfyBotTables 幂等补建/更新人机模块的表（★ 2026-10-17）。
 //
 // 同 hazard：多机共享库的 skip 分支不跑全量 seed → 不补建则人机 tick / 管理端直接报表不存在。
 func EnsureEzfyBotTables(db *gorm.DB) {
+	// ★ 2026-10-30 加人机保护名单（ezfy_bot_peace）：新表只靠 AutoMigrate 建，
+	//   所以必须一起挂在这里（skip 共享库也要建）。
 	if err := db.AutoMigrate(&model.EzfyBot{}, &model.EzfyBotTarget{},
-		&model.EzfyBotLog{}, &model.EzfyBotLock{}); err != nil {
+		&model.EzfyBotLog{}, &model.EzfyBotLock{}, &model.EzfyBotPeace{}); err != nil {
 		log.Printf("[seed] 补建/更新人机表失败: %v", err)
 	}
 }
