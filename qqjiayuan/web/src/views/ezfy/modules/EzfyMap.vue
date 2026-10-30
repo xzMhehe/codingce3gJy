@@ -123,7 +123,10 @@
               </div>
               <div class="old-line" v-if="ezfy.selDetail.gather_res">
                 <!-- ★ 2026-09-28 平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
+                <!-- ★ 2026-10-30 用户规则：**采集**掉落的珠宝必须显示（「可能获得玛瑙项坠、翡翠项链、祖母绿」）；
+                     不展示的只是「战斗掉落宝物 / 掉落道具」，别混为一谈。宝物池由后端按地形下发，空数组时不显示。 -->
                 <template v-if="ezfy.selDetail.terrain === 1 || ezfy.selDetail.terrain === 9">采集可以获得{{ ezfy.selDetail.gather_res }}，可建立城市。</template>
+                <template v-else-if="(ezfy.selDetail.treasures || []).length">采集可以获得{{ ezfy.selDetail.gather_res }}，可能获得{{ ezfy.selDetail.treasures.join('、') }}。</template>
                 <template v-else>采集可以获得{{ ezfy.selDetail.gather_res }}。</template>
               </div>
             </template>
