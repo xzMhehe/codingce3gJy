@@ -5501,7 +5501,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if order.OrderType == 3 {
 				prestigeGain = 500
 			} else {
-				prestigeGain = 200 + int((lootFood+lootSteel+lootOil+lootRare)/10000)
+				// ★★ 2026-10-30 修复「掠夺资源刷声望」：原来 = 200 + 掠夺资源总量/10000，
+				//   而单次掠夺的粮食+钢铁+石油+稀矿在后期是**几十亿**量级 →
+				//   线上实测一场掠夺 +312679 声望（战报「军功声望+312679」），
+				//   有人专门反复掠夺资源多的城刷军衔。声望是军衔晋升的唯一来源，
+				//   这种量级直接让军衔体系失效。
+				//   现在资源只按「开方压缩」给小额加成且**封顶 100** → 单场 200~300，
+				//   与征服玩家城 500 / 寇城 80+20×等级 / 野地 30+10×等级 同一量级。
+				prestigeGain = ezfyLootCityPrestige(lootFood + lootSteel + lootOil + lootRare)
 			}
 		}
 		if prestigeGain > 0 {
@@ -7061,6 +7068,35 @@ func ezfyOfficerBattleExp(enemyDead int64, won bool) int64 {
 		exp = exp * 3 / 2
 	}
 	return exp
+}
+
+// ezfyLootCityPrestige 掠夺**玩家城市**（order_type=2, target_type=3）的军功声望。
+//
+// ★★ 2026-10-30 新增（修复「掠夺资源刷声望」）：
+//
+//	原实现 = 200 + 掠夺资源总量/10000。后期一座城能囤几十亿资源，单次掠夺 30% 就是
+//	十亿级，除以 1 万仍然有 30 万 → 一场掠夺 +312679 声望（线上战报实锤），
+//	有人专门找资源多的城反复掠夺刷军衔。声望是军衔晋升的唯一来源，必须收口。
+//
+// 现在的口径：固定基础 200（打赢掠夺该给的功劳），资源只作为**小额**加成，
+// 且用开方压缩 + 封顶 100：
+//
+//	1 万资源  → +1      100 万资源 → +10
+//	1 亿资源  → +100    更多      → +100（封顶）
+//
+// 单场上限 300，低于「征服玩家城 500」，与「寇城 80+20×等级 / 野地 30+10×等级」
+// 处在同一量级 —— 掠夺仍是稳定收益，但不再能靠资源量刷出声望。
+func ezfyLootCityPrestige(resTotal int64) int {
+	const base = 200
+	const maxBonus = 100
+	if resTotal <= 0 {
+		return base
+	}
+	bonus := int(math.Sqrt(float64(resTotal)) / 100)
+	if bonus > maxBonus {
+		bonus = maxBonus
+	}
+	return base + bonus
 }
 
 // battleStatsTail 战报尾部的战果统计段
