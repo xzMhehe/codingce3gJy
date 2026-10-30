@@ -7498,6 +7498,15 @@ export default {
       if (!isFinite(v)) return '0'
       return v.toLocaleString('en-US')
     },
+    // ★ 2026-10-30 军衔声望榜：**只有达到 1 亿才**换成「亿」单位（用户要求），
+    //   不足 1 亿保持千分位原样。亿的截断口径复用 fmtProd（Math.floor 向下取整，
+    //   **不四舍五入** —— 1.99亿 显示 1.9亿，绝不会变成 2亿）。
+    fmtYi (n) {
+      const v = Number(n || 0)
+      if (!isFinite(v)) return '0'
+      if (Math.abs(v) >= 100000000) return this.fmtProd(v)
+      return this.fmtN(v)
+    },
     // ★ 宝箱奖池/开箱结果的品质着色（普通/稀有/史诗/传说，给不同颜色区分）
     // ★ 军官装备品质同套配色：初级→灰 / 中级→蓝 / 高级→紫 / 特殊→橙（一眼看出哪个好）
     qualityClass (q) {

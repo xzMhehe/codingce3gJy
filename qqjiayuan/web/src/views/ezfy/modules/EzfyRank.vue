@@ -63,7 +63,8 @@
             <tr v-for="r in ezfy.rankData.prestige" :key="'rp' + r.rank" :class="ezfy.rankRowCls(r.rank)">
               <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
               <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
-              <td>{{ r.prestige }}</td>
+              <!-- ★ 2026-10-30 声望 ≥1 亿转「亿」单位（向下截断，不四舍五入）；悬浮看精确值 -->
+              <td :title="'声望 ' + ezfy.fmtN(r.prestige)">{{ ezfy.fmtYi(r.prestige) }}</td>
               <td>{{ r.rank_name }}<span style="margin-left:4px" v-html="ezfy.rankIcon(ezfy.rankIdByName(r.rank_name))"></span></td>
             </tr>
           </table>
@@ -178,7 +179,8 @@
           </template>
 
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
-          <a v-if="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id" href="javascript:;" style="margin-left:6px" @click="ezfy.togglePvpDetail()">{{ ezfy.pvpDetail.show ? '[收回场次明细]' : '[场次明细]' }}</a>
+          <!-- ★ 2026-10-30 「[场次明细]」只属于风云榜：其他榜单（军衔声望/战力/军团/晋升表）不展示 -->
+          <a v-if="ezfy.rankTab === 'pvp' && ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id" href="javascript:;" style="margin-left:6px" @click="ezfy.togglePvpDetail()">{{ ezfy.pvpDetail.show ? '[收回场次明细]' : '[场次明细]' }}</a>
         </div>
     </template>
   </div>

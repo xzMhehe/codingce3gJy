@@ -610,6 +610,9 @@ func Run(db *gorm.DB, staticDir string) {
 		{"ezfy_equipment", "idx_equip_user_officer", "CREATE INDEX idx_equip_user_officer ON ezfy_equipment(user_id, officer_id)"},
 		// 占领占用计数：WHERE city_id=? AND status=1（ezfy_occupy）
 		{"ezfy_occupy", "idx_occupy_city_status", "CREATE INDEX idx_occupy_city_status ON ezfy_occupy(city_id, status)"},
+		// ★ 2026-10-30 军衔维护「玩家军衔维护」/ 排行榜「军衔声望榜」：
+		//   ORDER BY prestige DESC LIMIT n 分页 —— 没索引就是全表 filesort（玩家越多越卡）
+		{"ezfy_profile", "idx_profile_prestige", "CREATE INDEX idx_profile_prestige ON ezfy_profile(prestige)"},
 	}
 	for _, ix := range ezfyIdx {
 		if db.Migrator().HasTable(ix.table) && !db.Migrator().HasIndex(ix.table, ix.name) {

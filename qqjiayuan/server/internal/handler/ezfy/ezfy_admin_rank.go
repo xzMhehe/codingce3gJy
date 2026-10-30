@@ -30,23 +30,37 @@ func (h *EzfyAdmin) AdminEzfyRanks(c *gin.Context) {
 		rows = ezfyDefaultRanks()
 	}
 	// 每个军衔当前有多少玩家
+	//
+	// ★ 2026-10-30 性能：原来把**全表** profile 的两列（prestige/rank）拉回 Go 再分桶，
+	//   玩家越多越慢。现在已晋升的（rank>0）直接在库里按 rank 分组计数，
+	//   只有老玩家（rank=0，靠声望推导）才需要拉 prestige 回来算，量级小得多。
 	type cntAgg struct {
 		RankIdx int
 		Cnt     int64
 	}
-	var profs []model.EzfyProfile
-	h.DB.Select("prestige", "rank").Find(&profs)
 	cnt := map[int]int64{}
-	for _, p := range profs {
-		cnt[ezfyProfileRank(&p)]++
+	var byRank []cntAgg
+	// ⚠️ `rank` 是 MySQL 8 保留字（窗口函数），裸写会 1064 语法错 → 必须加反引号。
+	//   （GORM 的 Find(&model.EzfyProfile{}) 会自动 quote，手写 Select 字符串不会。）
+	h.DB.Model(&model.EzfyProfile{}).Select("`rank` AS rank_idx, COUNT(*) AS cnt").
+		Where("`rank` > 0").Group("`rank`").Scan(&byRank)
+	for _, a := range byRank {
+		cnt[a.RankIdx] += a.Cnt
+	}
+	var legacy []struct{ Prestige int }
+	h.DB.Model(&model.EzfyProfile{}).Select("prestige").Where("`rank` = 0").Find(&legacy)
+	for _, p := range legacy {
+		cnt[ezfyRankIndex(p.Prestige)+1]++
 	}
 	out := make([]gin.H, 0, len(rows))
 	for i, r := range rows {
 		out = append(out, gin.H{
 			"id": r.ID, "level": i + 1, "name": r.Name, "post": r.Post,
 			"need_prestige": r.NeedPrestige, "city_max": r.CityMax, "des": r.Des,
-			"treasures":    ezfyRankTreasureReqs(r.ID), // 该军衔晋升所需宝物（管理端可维护）
-			"player_count": cnt[i],
+			"treasures": ezfyRankTreasureReqs(r.ID), // 该军衔晋升所需宝物（管理端可维护）
+			// ★ 2026-10-30 修 off-by-one：cnt 的键是**军衔等级（1 起）**，原来用 0 起的 i
+			//   取值 → 每个军衔显示的是上一级的玩家数、第一个恒为 0。
+			"player_count": cnt[i+1],
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": len(out),
@@ -139,6 +153,14 @@ func (h *EzfyAdmin) AdminEzfyRankReset(c *gin.Context) {
 // ============ 玩家军衔 ============
 
 // AdminEzfyRankPlayers 玩家军衔列表（含可建城数 / 实际城数）
+//
+// ★★ 2026-10-30 查询卡顿优化（用户反馈「管理系统 → 军衔维护 → 玩家军衔维护 查询卡顿」）：
+//
+//	原实现是**逐行 N+1**：每行 1 次 ezfy_city COUNT + 1 次 ezfy_profile 查询 +
+//	1 次**跨库**家园 users 查询 → 每页 20 行就是 60 条 SQL，切到 100 条/页就是 300 条，
+//	跨库那 100 条尤其慢。
+//	现在全部批量：城市数 1 次 GROUP BY、家园号码 1 次 IN、昵称直接用已查出的 profile，
+//	整页固定 4 条 SQL（count / rows / city agg / home），与页大小无关。
 func (h *EzfyAdmin) AdminEzfyRankPlayers(c *gin.Context) {
 	page, offset, size := pageOf(c, 20)
 	word := strings.TrimSpace(c.Query("word"))
@@ -153,22 +175,52 @@ func (h *EzfyAdmin) AdminEzfyRankPlayers(c *gin.Context) {
 	var total int64
 	q.Count(&total)
 	var rows []model.EzfyProfile
-	q.Order("prestige DESC").Offset(offset).Limit(size).Find(&rows)
+	// ★ 排序补 id 兜底：声望相同的玩家顺序稳定（原来只按 prestige，同分时翻页可能重复/漏行）。
+	//   id 也用 DESC —— 与 idx_profile_prestige(prestige) 索引反向扫描同向，才能消掉 filesort
+	//   （混方向 prestige DESC, id ASC 用不上索引，MySQL 8 仍会全表排序）。
+	q.Order("prestige DESC, id DESC").Offset(offset).Limit(size).Find(&rows)
+
+	uids := make([]uint, 0, len(rows))
+	for _, p := range rows {
+		uids = append(uids, p.UserID)
+	}
+	// ① 实际城数：一次 GROUP BY（原来每行一次 COUNT）
+	cityCount := make(map[uint]int64, len(rows))
+	if len(uids) > 0 {
+		var aggs []struct {
+			UserID uint
+			Cnt    int64
+		}
+		h.DB.Model(&model.EzfyCity{}).Select("user_id, COUNT(*) AS cnt").
+			Where("user_id IN ?", uids).Group("user_id").Scan(&aggs)
+		for _, a := range aggs {
+			cityCount[a.UserID] = a.Cnt
+		}
+	}
+	// ② 家园号码：一次 IN 批量（原来每行跨库一次；昵称直接取已查出的 profile.nickname，
+	//    与 ezfyAdminName 的 nick 口径一致，不再重复查 ezfy_profile）
+	homeNum := make(map[uint]string, len(rows))
+	if len(uids) > 0 {
+		var us []model.User
+		h.home().Select("id, username").Where("id IN ?", uids).Find(&us)
+		for _, u := range us {
+			homeNum[u.ID] = u.Username
+		}
+	}
 
 	out := make([]gin.H, 0, len(rows))
 	for _, p := range rows {
-		var cityCount int64
-		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cityCount)
-		name, homeNum := h.ezfyAdminName(p.UserID)
 		lv := ezfyProfileRank(&p)
 		rank := ezfyRankAt(lv)
+		cc := cityCount[p.UserID]
+		maxCity := ezfyRankCityMaxAt(lv) // ★ 只算一次（原来算两次）
 		out = append(out, gin.H{
 			"user_id": p.UserID, "game_uid": p.GameUID,
-			"nickname": p.Nickname, "player_name": name, "home_num": homeNum,
+			"nickname": p.Nickname, "player_name": p.Nickname, "home_num": homeNum[p.UserID],
 			"prestige": p.Prestige,
 			"rank_id":  rank.ID, "rank_name": rank.Name, "rank_post": rank.Post,
-			"city_max": ezfyRankCityMaxAt(lv), "city_count": cityCount,
-			"over_limit": cityCount > int64(ezfyRankCityMaxAt(lv)),
+			"city_max": maxCity, "city_count": cc,
+			"over_limit": cc > int64(maxCity),
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -849,11 +901,28 @@ func (h *EzfyAdmin) AdminEzfyPrestigeRank(c *gin.Context) {
 		end = len(ranked)
 	}
 	out := make([]gin.H, 0, end-start)
+	// ★ 2026-10-30 性能：本页玩家实际城数改为**一次 GROUP BY** 批量取
+	//   （原来循环里每行一次 COUNT，20 行 20 条 SQL）。
+	pageUIDs := make([]uint, 0, end-start)
+	for _, p := range ranked[start:end] {
+		pageUIDs = append(pageUIDs, p.UserID)
+	}
+	cityCount := make(map[uint]int64, len(pageUIDs))
+	if len(pageUIDs) > 0 {
+		var aggs []struct {
+			UserID uint
+			Cnt    int64
+		}
+		h.DB.Model(&model.EzfyCity{}).Select("user_id, COUNT(*) AS cnt").
+			Where("user_id IN ?", pageUIDs).Group("user_id").Scan(&aggs)
+		for _, a := range aggs {
+			cityCount[a.UserID] = a.Cnt
+		}
+	}
 	for i, p := range ranked[start:end] {
 		lv := ezfyProfileRank(&p)
 		r := ezfyRankAt(lv)
-		var cityCount int64
-		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cityCount)
+		cc := cityCount[p.UserID]
 		out = append(out, gin.H{
 			"rank": start + i + 1, "user_id": p.UserID,
 			"name":        p.Nickname,
@@ -862,7 +931,7 @@ func (h *EzfyAdmin) AdminEzfyPrestigeRank(c *gin.Context) {
 			"rank_name":   r.Name,
 			"rank_post":   r.Post,
 			"city_max":    ezfyRankCityMaxAt(lv),
-			"city_count":  cityCount,
+			"city_count":  cc,
 			"is_excluded": exSet[p.UserID],
 		})
 	}
