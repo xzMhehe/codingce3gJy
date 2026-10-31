@@ -3977,7 +3977,7 @@
             </colgroup>
             <tr><th colspan="6">装备背包</th></tr>
             <!-- ★ 2026-09-29：同一件装备（同 cfg）叠加成一行「名称 ×N」；部位有空余才能 [穿戴]，
-                 没空余（同部位已穿戴）显示「部位已满」不可穿戴。 -->
+                 没空余（同部位已穿戴）显示「已满」不可穿戴。 -->
             <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>数量</th><th>操作</th></tr>
             <template v-for="g in officerBagPaged">
             <tr :key="'db' + g.key">
@@ -3991,7 +3991,7 @@
               <td>{{ g.count }}</td>
               <td>
                 <a v-if="g.canEquip" href="javascript:;" @click="doEquipGroup(g)">[穿戴]</a>
-                <span v-else class="gray">部位已满</span>
+                <span v-else class="gray">已满</span>
               </td>
             </tr>
             <tr v-if="detailRowId === g.first.id" :key="'dtb' + g.key" class="set-card-row">

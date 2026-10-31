@@ -496,8 +496,9 @@
       <div class="panel" v-else-if="ezfy.acadeTab === 'generals'">
         <div class="old-line">名将图鉴(共{{ ezfy.generalOwned.length }}名)</div>
         <table class="ezfy-plain-table">
-          <!-- ★ 2026-10-05 去掉等级/星级列；★ 2026-10-23 加「组合技」列（系统专属战法） -->
-          <tr><th>名称</th><th>军/后/学</th><th>组合技</th><th>状态</th></tr>
+          <!-- ★ 2026-10-05 去掉等级/星级列；★ 2026-10-23 加「组合技」列（系统专属战法）
+               ★ 2026-10-31 去掉「状态」列（图鉴只列已拥有的名将，恒为「已拥有」，纯冗余） -->
+          <tr><th>名称</th><th>军/后/学</th><th>组合技</th></tr>
           <tr v-for="g in ezfy.generalPaged" :key="'gg' + g.id">
             <td>{{ g.name }}</td>
             <td>{{ g.military }}/{{ g.logistics }}/{{ g.learning }}</td>
@@ -505,10 +506,6 @@
               <!-- ★ 2026-10-24 多技能：组合技是数组，逐个列出 -->
               <span v-if="g.combo && g.combo.length" class="green">{{ g.combo.map(c => c.name).join('、') }}</span>
               <span v-else class="gray">—</span>
-            </td>
-            <td>
-              <span v-if="g.owned" class="green">已拥有</span>
-              <span v-else class="gray">未拥有</span>
             </td>
           </tr>
         </table>
@@ -830,7 +827,7 @@
             </td>
             <td>
               <a v-if="g.canEquip" href="javascript:;" @click="ezfy.doEquipGroup(g)">[穿]</a>
-              <span v-else class="gray">部位已满</span>
+              <span v-else class="gray">已满</span>
             </td>
           </tr>
           </template>
