@@ -306,3 +306,75 @@ func TestWolfPackNavyAttackPct(t *testing.T) {
 		t.Fatalf("狼群围猎 不应作用于陆军，得到 +%d%%", got)
 	}
 }
+
+// TestTimedSkillAnnoOncePerRound 间隔发动技能「每回合最多一行、只在发动回合出现、不带回合后缀」。
+//
+// ★★ 2026-10-31 用户反馈（线上战报）：
+//
+//	【守方】拉尔夫·贝克发动【弧形壁垒】！一往无前，全体防御力+150%（持续1回合，每3回合发动1次）
+//	【守方】拉尔夫·贝克发动【弧形壁垒】！铁血激荡，全体防御力+150%     ← 同一个技能两行
+//
+// 原因：timedAnno（间隔发动）和 skillAnno（防御明细里的「军官技能·」项）各播报了一次。
+// 现在统一由 timedAnno 播报，skillAnno 跳过同名技能；后缀也按用户要求去掉。
+func TestTimedSkillAnnoOncePerRound(t *testing.T) {
+	saved := ezfyCfg.troops
+	defer func() { ezfyCfg.troops = saved }()
+	ezfyCfg.troops = map[int]model.EzfyCfgTroop{
+		6: {ID: 6, Name: "重型坦克", Type: 2, Health: 400,
+			AtkSea: 100, AtkGround: 2000, AtkAir: 80, AtkDef: 100, Defence: 100, Speed: 700, AttackRange: 99999},
+	}
+	h := &EzfyHandler{}
+	o := testSkillOfficer("弧形壁垒", "尖兵猛攻")
+	defBonus := 30 * h.officerSkillScale(o)
+	st := ezfyNewBattleState([]ezfyUnitGroup{{TroopId: 6, Count: 1000}},
+		[]ezfyUnitGroup{{TroopId: 6, Count: 1000}},
+		0, defBonus, 0, 0, 0, 0, 0,
+		ezfyBattleBonus{}, ezfyBattleBonus{},
+		ezfyBattleBonus{}, ezfyBattleBonus{}, "", "", "", "",
+		0, 0, 0, 0,
+		nil, nil, nil, nil, nil, 0, nil,
+		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
+		0, 0, 0, 0, ezfyTypeBonus{}, ezfyTypeBonus{})
+	st.DefTimed = h.officerTimedSkills(o)
+	// 模拟线上快照：防御明细里也带「军官技能·弧形壁垒」（重复播报的来源），攻击明细带尖兵猛攻
+	st.DefDefBreak = []ezfyBonusItem{{Name: "军官技能·弧形壁垒", Value: 150}}
+	st.DefSkillBreak = []ezfyBonusItem{{Name: "尖兵猛攻", Value: 150}}
+	st.DefOfficerDesc = "拉尔夫·贝克 Lv.5"
+	ezfyCloseIn(st)
+	st.Step(nil, nil)
+	st.Step(nil, nil)
+
+	arcByRound := map[int]int{}
+	atkByRound := map[int]int{}
+	round := 0
+	for _, ln := range st.Actions {
+		if m := ezfyTestRoundRe.FindStringSubmatch(ln); m != nil {
+			round, _ = strconv.Atoi(m[1])
+			continue
+		}
+		if strings.Contains(ln, "发动【弧形壁垒】") {
+			arcByRound[round]++
+		}
+		if strings.Contains(ln, "发动【尖兵猛攻】") {
+			atkByRound[round]++
+		}
+		// 用户要求：不再提示「持续N回合 / 每M回合发动1次」
+		if strings.Contains(ln, "（持续") || strings.Contains(ln, "每3回合发动1次") {
+			t.Fatalf("播报不该再带回合/间隔后缀：%s", ln)
+		}
+	}
+	// 发动回合（第 1 回合）：只一行
+	if arcByRound[1] != 1 {
+		t.Fatalf("弧形壁垒在第1回合应只播报 1 行，实际 %d 行：\n%s", arcByRound[1], strings.Join(st.Actions, "\n"))
+	}
+	// 未发动回合（第 2 回合）：不播报
+	if arcByRound[2] != 0 {
+		t.Fatalf("弧形壁垒在第2回合（未发动）不该播报，实际 %d 行：\n%s", arcByRound[2], strings.Join(st.Actions, "\n"))
+	}
+	t.Logf("战斗日志（前两回合）：\n%s", strings.Join(st.Actions, "\n"))
+	// 常驻技能（尖兵猛攻）每回合各一行
+	if atkByRound[1] != 1 || atkByRound[2] != 1 {
+		t.Fatalf("尖兵猛攻应每回合各播报 1 行，实际 第1回合=%d 第2回合=%d：\n%s",
+			atkByRound[1], atkByRound[2], strings.Join(st.Actions, "\n"))
+	}
+}

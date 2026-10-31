@@ -1351,7 +1351,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	//   快照里存的是发动回合的满额值 → 不发动就扣掉，等价于「只在发动回合生效」。
 	atkTimedOn := ezfyTimedRoll(st.AtkTimed, st.Round)
 	defTimedOn := ezfyTimedRoll(st.DefTimed, st.Round)
-	st.timedAnno(atkTimedOn, defTimedOn)
+	// ★★ 2026-10-31 播报顺序调整：先「常驻技能」（尖兵猛攻等，skillAnno），
+	//   再「间隔发动技能」（弧形壁垒/火炮压制，timedAnno）—— 与玩家阅读习惯一致
+	//   （原来 timedAnno 在回合标题后就输出，弧形壁垒排在尖兵猛攻前面）。
+	//   ⚠️ 播报本身只保留一处：timedAnno 负责这两类，skillAnno 会跳过同名技能（见下方 ezfyTimedHas）。
 	atkTimedDefOff := ezfyTimedDefOff(st.AtkTimed, st.Round)
 	defTimedDefOff := ezfyTimedDefOff(st.DefTimed, st.Round)
 	atkTimedFlatOff := ezfyTimedAtkFlatOff(st.AtkTimed, st.Round)
@@ -1412,9 +1415,11 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	//   攻/守方的攻击类技能（AtkSkillBreak/DefSkillBreak）逐个写一行带感口号，再带出防御类军官技能
 	//   （弧形壁垒等，明细 Name 带「军官技能·」前缀 → 去掉前缀后发动，说明全体防御力+N%）。
 	//   纯配置/科技/装备来源不播报（无「军官技能·」前缀不碰）。「攻击加成+N%」拆解保持原样。
-	skillAnno := func(side, offName string, off int, wording string, skills []ezfyBonusItem) {
+	// ★★ 2026-10-31 用户反馈「同一个技能同回合出现两行」：**间隔发动类技能（弧形壁垒/火炮压制）
+	//   由 timedAnno 统一播报一次**（且只在发动回合），这里遇到同名技能直接跳过，避免重复。
+	skillAnno := func(side, offName string, off int, wording string, skills []ezfyBonusItem, timed []*ezfyTimedSkill) {
 		for i, s := range skills {
-			if s.Value == 0 {
+			if s.Value == 0 || ezfyTimedHas(timed, s.Name) {
 				continue
 			}
 			idx := (st.Round + i*3 + off*7) % len(ezfySlogans)
@@ -1433,10 +1438,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		}
 		return out
 	}
-	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 0, "攻击力", st.AtkSkillBreak)
-	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 1, "攻击力", st.DefSkillBreak)
-	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 2, "防御力", officerSkillOnly(st.AtkDefBreak))
-	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 3, "防御力", officerSkillOnly(st.DefDefBreak))
+	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 0, "攻击力", st.AtkSkillBreak, st.AtkTimed)
+	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 1, "攻击力", st.DefSkillBreak, st.DefTimed)
+	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 2, "防御力", officerSkillOnly(st.AtkDefBreak), st.AtkTimed)
+	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 3, "防御力", officerSkillOnly(st.DefDefBreak), st.DefTimed)
+	// ★★ 2026-10-31 间隔发动类技能（弧形壁垒/火炮压制）排在常驻技能之后播报，且**只在发动回合**出现，
+	//   每回合同一技能最多一行；不再带「（持续N回合，每M回合发动1次）」后缀（用户要求）。
+	st.timedAnno(atkTimedOn, defTimedOn)
 	all := append(append([]*ezfyFightUnit{}, st.Attackers...), st.Defenders...)
 	// ★★ 2026-10-31 行动顺序改按**有效攻速**（原来只看兵种基础速度）。
 	//   攻速 = 兵种速度 × (1 + 攻速加成)，来源：军官技能 闪电疾攻(空军)/越岛登陆(海军)/坦克冲锋(轻坦·重坦)。

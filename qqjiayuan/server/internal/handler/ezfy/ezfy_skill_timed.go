@@ -179,9 +179,27 @@ func ezfyTimedBreakFilter(items []ezfyBonusItem, list []*ezfyTimedSkill, round i
 	return out
 }
 
+// ezfyTimedHas 该技能名是否属于「每 N 回合发动」类（弧形壁垒 / 火炮压制）。
+//
+// ★★ 2026-10-31 用户反馈「同回合出现两行发动播报」：这类技能由 timedAnno **统一播报一次**
+// （只在发动回合），skillAnno 必须跳过同名技能，否则会和防御明细里的那行重复。
+func ezfyTimedHas(list []*ezfyTimedSkill, name string) bool {
+	for _, s := range list {
+		if s != nil && s.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // timedAnno 技能发动播报：只在**发动回合**写一行，未发动不刷屏。
 //
 // 形如：`【攻方】Stalin发动【弧形壁垒】！军心大振，全体防御力+150%`
+//
+// ★★ 2026-10-31 用户要求：「展示一次就行，去掉『（持续1回合，每3回合发动1次）』，
+//
+//	无论攻守方一次就行，玩家知道每3回合发动一次，不用提示」→ 去掉回合/间隔后缀。
+//	同一回合里同一个技能**只出一行**（skillAnno 会跳过本表里的技能名，见 ezfyTimedHas）。
 func (st *ezfyBattleState) timedAnno(atkOn, defOn []*ezfyTimedSkill) {
 	anno := func(on []*ezfyTimedSkill, side, offDesc string, off int) {
 		for i, s := range on {
@@ -210,12 +228,8 @@ func (st *ezfyBattleState) timedAnno(atkOn, defOn []*ezfyTimedSkill) {
 				continue
 			}
 			idx := (st.Round + i*3 + off*7) % len(ezfySlogans)
-			interval := s.Interval
-			if interval <= 0 {
-				interval = ezfyTimedSkillInterval
-			}
-			st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动【%s】！%s，%s（持续%d回合，每%d回合发动1次）",
-				side, ezfyOfficerShortName(offDesc), s.Name, ezfySlogans[idx], eff, s.durationOf(), interval))
+			st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动【%s】！%s，%s",
+				side, ezfyOfficerShortName(offDesc), s.Name, ezfySlogans[idx], eff))
 		}
 	}
 	anno(atkOn, "【攻方】", st.AtkOfficerDesc, 0)
