@@ -27,7 +27,10 @@ var ezfyTechRenamePairs = [][2]string{
 	{"军训艺术", "动员训练"},
 	{"武器科技", "枪械改良"},
 	{"装甲科技", "均质装甲"},
-	{"弹道学", "炮兵射表"},
+	// ★ 2026-10-31 v2：科技 8 先叫「炮兵射表」，用户觉得「射表」太生僻 → 再改成「增程弹药」。
+	//   两条都保留：从没跑过 v1 的老库会先命中第一条，跑过 v1 的命中第二条，最终都是「增程弹药」。
+	{"弹道学", "增程弹药"},
+	{"炮兵射表", "增程弹药"},
 	{"重工技术", "重型机床"},
 	{"燃烧引擎", "机械增压"},
 	{"建筑技术", "预制构件"},
@@ -43,7 +46,9 @@ var ezfyTechRenamePairs = [][2]string{
 	{"治愈伤兵", "战地医疗"},
 }
 
-const ezfyTechRenameKey = "ezfy_tech_rename_wwii_v1"
+// ezfyTechRenameKey settings 打标键。★ 改过一次名就升一次版本号（v1 → v2），
+// 否则老库打过 v1 的标记不会再跑，新增的映射永远落不了地。
+const ezfyTechRenameKey = "ezfy_tech_rename_wwii_v2"
 
 // alignEzfyTechRename 把 ezfy_cfg_troop.require 里残留的旧科技名换成新名（settings 打标，只跑一次）。
 //

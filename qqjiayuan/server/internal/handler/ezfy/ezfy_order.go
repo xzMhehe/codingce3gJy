@@ -3808,13 +3808,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	officerBonus := h.officerBattleBonus(leadOfficer)
 	// 攻击加成：枪械改良(6)+3%/级 · 重型机床(9)+2%/级
 	// ★ 2026-10-21 动员训练(5) 改为「造兵速度」科技，不再参与战斗攻击加成。
-	// ★ 2026-10-06 炮兵射表(8) 改为**射程加成**（：炮兵射表=射程，不参与攻击加成）
+	// ★ 2026-10-06 增程弹药(8) 改为**射程加成**（：增程弹药=射程，不参与攻击加成）
 	atkBonus := officerBonus + atkTech[6]*3 + atkTech[9]*2
 	// 速度加成：只有机械增压(10)「部队速度」是**全体兵种**通用的；
 	// ★ 2026-10-08 喷气推进(19)「空军速度」是**兵种专属** → 移到下方 atkType（原来错误地加了全军）
 	// ★ 2026-10-31 满级 50%：读配置（不再写死每级 2%）
 	atkSpeedBonus := ezfyTechEffectValueAt(10, atkTech[10])
-	// ★ 2026-10-06 攻方射程加成：炮兵射表(8)+3%/级（射程 = 基础射程 × (1+科技加成)，）
+	// ★ 2026-10-06 攻方射程加成：增程弹药(8)+3%/级（射程 = 基础射程 × (1+科技加成)，）
 	atkRangeBonus := atkTech[8] * 3
 	// ★★ 2026-10-08 兵种专属加成（配置里写明作用兵种的那些科技/军官技能）：
 	//   · 喷气推进(19)「空军速度+3%/级」→ **只加空军**
@@ -3843,7 +3843,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkTechs := ezfyBonusItems(
 		ezfyTechItem("枪械改良", atkTech[6]*3),
 		ezfyTechItem("均质装甲", atkTech[7]*3),
-		ezfyTechItem("炮兵射表", atkTech[8]*3),
+		ezfyTechItem("增程弹药", atkTech[8]*3),
 		ezfyTechItem("重型机床", atkTech[9]*2),
 		ezfyTechItem("机械增压", ezfyTechEffectValueAt(10, atkTech[10])),
 		ezfyTechItem("永备工事", atkTech[16]*2),
@@ -4203,7 +4203,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//	现在与攻方口径对齐：枪械改良+3%/级 · 重型机床+2%/级（重装备攻防）
 		//	＋ 城守军官攻击加成。动员训练(5) 自 2026-10-21 起只加造兵速度，不再进战斗。
 		//	★ 均质装甲(7) 只保留在**防御**加成里（defBonus / defDefBreak），不再重复进攻击。
-		//	★ 守方射程加成 = 炮兵射表(8)*3（与攻方同口径；永备工事只进城防攻防，不进射程 —— 见下方 defRangeBonus）
+		//	★ 守方射程加成 = 增程弹药(8)*3（与攻方同口径；永备工事只进城防攻防，不进射程 —— 见下方 defRangeBonus）
 		// ★★ 2026-10-09 用户规则：**守方攻击不再额外吃「永备工事」(16)** ——
 		//   那是守城方专属的一项，导致满科技的两个号在战报里显示成「攻方 攻击+70% / 守方 攻击+90%」。
 		//   现在两边攻击口径完全一致（枪械改良 + 重型机床 + 带队/城守军官）。
@@ -4223,17 +4223,17 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defTechBreak = ezfyBonusItems(
 			ezfyTechItem("枪械改良", defTech[6]*3),
 			ezfyTechItem("均质装甲", defTech[7]*3),
-			ezfyTechItem("炮兵射表", defTech[8]*3),
+			ezfyTechItem("增程弹药", defTech[8]*3),
 			ezfyTechItem("重型机床", defTech[9]*2),
 			ezfyTechItem("机械增压", ezfyTechEffectValueAt(10, defTech[10])),
 			ezfyTechItem("永备工事", defTech[16]*2),
 			ezfyTechItem("喷气推进", ezfyTechEffectValueAt(19, defTech[19])),
 		)
 		// ★★ 2026-10-08 修复「守方射程加成虚高」（用户反馈「射程加成有问题 守方 50%？」）：
-		//   原来是 `炮兵射表(8)*3 + 永备工事(16)*2` —— 但永备工事的配置描述是
+		//   原来是 `增程弹药(8)*3 + 永备工事(16)*2` —— 但永备工事的配置描述是
 		//   「**城防攻防**+2% / 提高城防设施攻防」，只加城防的攻与防，**与射程无关**；
-		//   攻方那条路径只有炮兵射表(8)*3。两边口径不一致 → 满科技的守方凭空多 20% 射程。
-		//   现在与攻方对齐：**守方射程 = 炮兵射表(8)*3**。
+		//   攻方那条路径只有增程弹药(8)*3。两边口径不一致 → 满科技的守方凭空多 20% 射程。
+		//   现在与攻方对齐：**守方射程 = 增程弹药(8)*3**。
 		//   ★ 永备工事仍保留在守方**攻击**（defAtkBonus）与**防御**（defBonus/defDefBreak）里 —— 那是它的正确作用。
 		defRangeBonus = defTech[8] * 3
 		// ★ 2026-10-06 守方「防御加成」逐项明细（科技/城守属性+技能/装备，
@@ -4604,7 +4604,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
 			// ★★ 2026-10-20 守方用 defSetOfficer（城守或附属野地守军主将），与套装展示同口径。
 			h.officerSkillBattleBonus(leadOfficer), h.officerSkillBattleBonus(defSetOfficer),
-			// ★ 2026-10-06 技能/科技逐项明细（战报展示「军官技能·尖兵突击+N%」「科技·炮兵射表+N%」）
+			// ★ 2026-10-06 技能/科技逐项明细（战报展示「军官技能·尖兵突击+N%」「科技·增程弹药+N%」）
 			atkSkillBreak, defSkillBreak, atkTechs, defTechBreak, defDefBreak,
 			// ★ 2026-10-07 攻方「防御加成」（军官属性+防御技能+装备 Def）
 			atkDefBonus, atkDefBreak,
@@ -6431,7 +6431,7 @@ func (h *EzfyHandler) ezfyWildDefCombatBonus(tech map[int]int, officer *model.Ez
 	b.TechBreak = ezfyBonusItems(
 		ezfyTechItem("枪械改良", tech[6]*3),
 		ezfyTechItem("均质装甲", tech[7]*3),
-		ezfyTechItem("炮兵射表", tech[8]*3),
+		ezfyTechItem("增程弹药", tech[8]*3),
 		ezfyTechItem("重型机床", tech[9]*2),
 		ezfyTechItem("机械增压", ezfyTechEffectValueAt(10, tech[10])),
 		ezfyTechItem("永备工事", tech[16]*2),

@@ -1587,7 +1587,7 @@ type ezfyBattleBonus struct {
 }
 
 // ezfyBonusItem 战报加成拆解的单条明细：名字 + 百分点。
-// 军官技能逐项（如 尖兵突击+90%）、科技逐项（如 炮兵射表+54%）都走这个结构。
+// 军官技能逐项（如 尖兵突击+90%）、科技逐项（如 增程弹药+54%）都走这个结构。
 type ezfyBonusItem struct {
 	Name  string
 	Value int

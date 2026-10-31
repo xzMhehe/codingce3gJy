@@ -563,7 +563,7 @@ type ezfyBattleState struct {
 	//   单独展示「军官技能+N%」；老快照 0 → 属性部分 = 总加成，回退旧格式。
 	AtkOfficerSkill int
 	DefOfficerSkill int
-	// ★ 2026-10-06 拆解明细：军官技能 / 科技**逐项**（战报展示「军官技能·尖兵突击+N%」「科技·炮兵射表+N%」，
+	// ★ 2026-10-06 拆解明细：军官技能 / 科技**逐项**（战报展示「军官技能·尖兵突击+N%」「科技·增程弹药+N%」，
 	//   多个分开展示）。新战场快照里存这些；老快照为 nil → 回退旧格式合并展示。
 	AtkSkillBreak []ezfyBonusItem
 	DefSkillBreak []ezfyBonusItem
@@ -670,7 +670,7 @@ type ezfyBattleState struct {
 //	供拆解单独展示「军官技能+N%」；0 → 属性部分=总加成，回退旧格式）
 //
 // atkSkills/defSkills: 技能**逐项**明细（战报展示「军官技能·尖兵突击+N%」；nil → 回退合并展示）
-// atkTechs/defTechs: 攻击加成里科技**逐项**明细（战报展示「科技·炮兵射表+N%」；nil → 回退合并展示）
+// atkTechs/defTechs: 攻击加成里科技**逐项**明细（战报展示「科技·增程弹药+N%」；nil → 回退合并展示）
 // defDefBreak: 守方「防御加成」逐项明细（Name 带前缀：城墙/科技·/军官·/军官技能·/装备；nil → 不展示防御段）
 // atkDefBonus: 攻方「防御加成」总和（军官属性+防御技能+装备 Def；0 = 无防御来源，被打时不吃防御减伤）
 // atkDefBreak: 攻方「防御加成」逐项明细（Name 带前缀：军官·/军官技能·/装备；nil → 不展示攻方防御段）
@@ -737,7 +737,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	// ★ 2026-10-06 守方攻击加成单独列出：城防/守城部队行动时也吃科技+军官技能加成，
 	//   攻守双方的「加成伤害」都能在开场加成行里一眼看出来
 	// ★ 2026-10-06 射程加成也显示在加成行（「回合射程加成也要体现出来」，
-	//   炮兵射表=射程）；为 0 时不显示，老战报格式不变
+	//   增程弹药=射程）；为 0 时不显示，老战报格式不变
 	atkRangeTxt, defRangeTxt := "", ""
 	if atkRangeBonus > 0 {
 		atkRangeTxt = fmt.Sprintf(" 射程+%d%%", atkRangeBonus)
@@ -828,7 +828,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		effAtk, atkAtkSrc, atkDefBonus, atkDefSrc, atkDefTypeTxt, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt)
 	defBonusLine := fmt.Sprintf("战斗加成: 守方 攻击+%d%%%s 防御+%d%%%s%s 速度+%d%%%s%s%s%s",
 		st.DefAtkBonus, defAtkSrc, effDef, defDefSrc, defDefTypeTxt, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
-	// ★ 2026-10-08 攻/守方科技逐项单列（罗列）：如「科技·炮兵射表+30% 科技·均质装甲+15%」
+	// ★ 2026-10-08 攻/守方科技逐项单列（罗列）：如「科技·增程弹药+30% 科技·均质装甲+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
 	atkTechTxt := ezfyBonusItemsDesc(atkTechs)
@@ -1040,7 +1040,7 @@ func ezfyDefSrcTxt(items []ezfyBonusItem) string {
 // ezfyBonusBreakdown 「攻击加成+N%」的来源拆解（军官属性/军官技能/科技/装备），写进战报行动日志。
 // ★ 2026-10-06 支持**逐项展开**：给了 skills/techs 明细就走逐项展示
 //
-//	（「军官技能·尖兵突击+90%」「科技·炮兵射表+54%」，多个分开展示）；
+//	（「军官技能·尖兵突击+90%」「科技·增程弹药+54%」，多个分开展示）；
 //	明细为 nil（老战场快照）回退旧格式合并展示（军官技能+N% / 科技+N%）。
 //
 // 只要任一来源非零就展示（PVP 里一方军官没攻击技能/没设城守时，科技加成也照常列出，
@@ -1276,7 +1276,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	defDefBonusAll := defBonus - defTimedDefOff
 	atkSpeedBonus := st.AtkSpeedBonus + st.AtkEquip.Move + comboOfKind(atkAct, ezfyComboSpeed)
 	defSpeedBonus := st.DefSpeedBonus + st.DefEquip.Move + comboOfKind(defAct, ezfyComboSpeed)
-	// ★ 射程同理（炮兵射表那套之外，组合技可以再给一截）
+	// ★ 射程同理（增程弹药那套之外，组合技可以再给一截）
 	atkRangeBonusAll := st.AtkRangeBonus + comboOfKind(atkAct, ezfyComboRange)
 	defRangeBonusAll := st.DefRangeBonus + comboOfKind(defAct, ezfyComboRange)
 	// ★ 2026-10-06 「攻击加成」来源拆解（军官属性/军官技能/科技/装备），写进每行行动日志，
@@ -2567,7 +2567,7 @@ func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 // 只为战报科技行展示用；未收录的科技不追加描述。
 var ezfyTechEffectDesc = map[string]string{
 	"枪械改良": "部队攻击", "均质装甲": "部队防御",
-	"炮兵射表": "射程加成", "重型机床": "重装备攻防", "机械增压": "部队速度",
+	"增程弹药": "射程加成", "重型机床": "重装备攻防", "机械增压": "部队速度",
 	"永备工事": "城防攻防", "参谋作业": "携带上限", "无线电侦听": "情报",
 	"喷气推进": "空军速度", "标准化装卸": "部队负重", "野战口粮": "军队耗粮",
 	"战地征用": "掠夺资源", "战地医疗": "伤兵恢复", "野战仓储": "资源容量",

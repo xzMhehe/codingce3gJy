@@ -26,7 +26,7 @@ func TestEzfyWildDefCombatBonusTech(t *testing.T) {
 	if b.DefSpeedBonus != 50 { // 机械增压 10 级 × 5% = 50（2026-10-31 满级 50%）
 		t.Fatalf("守方速度加成 = %d, 期望 50", b.DefSpeedBonus)
 	}
-	if b.DefRangeBonus != 30 { // 炮兵射表 30
+	if b.DefRangeBonus != 30 { // 增程弹药 30
 		t.Fatalf("守方射程加成 = %d, 期望 30", b.DefRangeBonus)
 	}
 	if b.DefHealTech != 20 { // 战地医疗 20
@@ -120,7 +120,7 @@ func TestEzfyWildDefBonusWiring(t *testing.T) {
 		"h.officerBattleEquipBonus(officer)",
 		`ezfyTechItem("枪械改良"`,
 		`ezfyTechItem("均质装甲"`,
-		`ezfyTechItem("炮兵射表"`,
+		`ezfyTechItem("增程弹药"`,
 		`ezfyTechItem("重型机床"`,
 		`ezfyTechItem("机械增压"`,
 		`ezfyTechItem("永备工事"`,

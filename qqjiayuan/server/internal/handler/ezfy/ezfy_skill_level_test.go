@@ -245,14 +245,14 @@ func TestBonusBreakdownDetail(t *testing.T) {
 			// 逐项展开：技能/科技各拆成具体名字
 			"逐项", 252, 150, 352, 0, "冥王",
 			[]ezfyBonusItem{{Name: "尖兵突击", Value: 90}, {Name: "火炮控制", Value: 60}},
-			[]ezfyBonusItem{{Name: "枪械改良", Value: 40}, {Name: "炮兵射表", Value: 54}},
-			"(军官·冥王+102% 军官技能·尖兵突击+90% 军官技能·火炮控制+60% 科技·枪械改良+40% 科技·炮兵射表+54%)",
+			[]ezfyBonusItem{{Name: "枪械改良", Value: 40}, {Name: "增程弹药", Value: 54}},
+			"(军官·冥王+102% 军官技能·尖兵突击+90% 军官技能·火炮控制+60% 科技·枪械改良+40% 科技·增程弹药+54%)",
 		},
 		{
 			// 科技有值但全 0（明细里 value=0 不展示）
 			"技能明细零项", 252, 150, 352, 0, "冥王",
 			[]ezfyBonusItem{{Name: "尖兵突击", Value: 150}},
-			[]ezfyBonusItem{{Name: "炮兵射表", Value: 0}},
+			[]ezfyBonusItem{{Name: "增程弹药", Value: 0}},
 			"(军官·冥王+102% 军官技能·尖兵突击+150%)",
 		},
 		{
@@ -408,7 +408,7 @@ func TestDefenderAtkTechMatchesAttacker(t *testing.T) {
 //	否则就会出现「列表里列了、回合里不生效」的假展示。
 //
 // 科技 ID 对照：5 动员训练(造兵速度，不参与战斗) · 6 枪械改良(攻) · 7 均质装甲(防) ·
-// 8 炮兵射表(射程) · 9 重型机床(重装备攻防) · 10 机械增压(速度) · 16 永备工事(城防攻防) · 19 喷气推进(空军速度)
+// 8 增程弹药(射程) · 9 重型机床(重装备攻防) · 10 机械增压(速度) · 16 永备工事(城防攻防) · 19 喷气推进(空军速度)
 func TestFourTechCategoriesWired(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
 	// ★ 速度只列**通用**那部分（机械增压 10「部队速度」）；喷气推进(19)是「空军速度」，
@@ -427,7 +427,7 @@ func TestFourTechCategoriesWired(t *testing.T) {
 		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7)，永备工事(16) 也只对城防生效
 		{"防御", "defBonus = defTech[7]*3 + defTech[9]*2"},
 		{"速度(通用)", "defSpeedBonus = ezfyTechEffectValueAt(10, defTech[10])"},
-		// ★ 射程只吃炮兵射表(8)（2026-10-08 修掉虚高）
+		// ★ 射程只吃增程弹药(8)（2026-10-08 修掉虚高）
 		{"射程", "defRangeBonus = defTech[8] * 3"},
 	}
 	for _, c := range atkCases {

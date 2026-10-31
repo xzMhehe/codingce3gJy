@@ -7,7 +7,7 @@ import (
 
 var (
 	testBuildings = map[string]int{"军工厂": 14, "停机坪": 18, "航海协会": 19, "围墙": 7}
-	testTechs     = map[string]int{"枪械改良": 6, "炮兵射表": 8, "动员训练": 5, "合金冶炼": 2}
+	testTechs     = map[string]int{"枪械改良": 6, "增程弹药": 8, "动员训练": 5, "合金冶炼": 2}
 )
 
 // TestParseRequireText 文本解析：半角/全角括号都要吃，名字必须命中建筑或科技。

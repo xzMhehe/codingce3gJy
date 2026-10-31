@@ -812,7 +812,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			leadOfficer = o
 		}
 	}
-	// ★ 2026-10-06 炮兵射表(8) 改为**射程加成**（：炮兵射表=射程，不参与攻击加成）
+	// ★ 2026-10-06 增程弹药(8) 改为**射程加成**（：增程弹药=射程，不参与攻击加成）
 	// ★ 2026-10-21 动员训练(5) 改为造兵速度科技，不再参与战斗攻击加成。
 	atkBonus := h.officerBattleBonus(leadOfficer) +
 		atkTech[6]*3 + atkTech[9]*2
@@ -833,7 +833,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkTechs := ezfyBonusItems(
 		ezfyTechItem("枪械改良", atkTech[6]*3),
 		ezfyTechItem("均质装甲", atkTech[7]*3),
-		ezfyTechItem("炮兵射表", atkTech[8]*3),
+		ezfyTechItem("增程弹药", atkTech[8]*3),
 		ezfyTechItem("重型机床", atkTech[9]*2),
 		ezfyTechItem("机械增压", ezfyTechEffectValueAt(10, atkTech[10])),
 		ezfyTechItem("永备工事", atkTech[16]*2),
@@ -928,7 +928,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	} else {
 		// 活动守军无城墙/无科技 → 只有守将的加成；攻方装备六项加成照常生效；
 		// 守方阵营: 活动野地=盟军、活动寇/特殊城市=轴心国
-		// ★ 2026-10-06 攻方射程加成 = 炮兵射表(8)*3；活动守军无科技，射程/守方攻击加成取守将加成(0 兜底)
+		// ★ 2026-10-06 攻方射程加成 = 增程弹药(8)*3；活动守军无科技，射程/守方攻击加成取守将加成(0 兜底)
 		st := ezfyNewBattleState(attacker, defender, atkBonus, defBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			atkTech[8]*3, 0,
 			atkEquip, ezfyBattleBonus{},
