@@ -508,13 +508,19 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	// 已训练数量(城内部队), 供兵种详情页显示「现有:N」
 	for _, t := range allTroops {
 		f, s, o, r := h.trainCostWithActivity(t.Food, t.Steel, t.Oil, t.Rare)
+		// ★ 2026-10-31 攻速独立配置：老库 atk_speed=0 → 展示成 speed（与战斗结算同口径）。
+		atkSpeed := t.AtkSpeed
+		if atkSpeed <= 0 {
+			atkSpeed = t.Speed
+		}
 		cfgViews = append(cfgViews, gin.H{
 			"id": t.ID, "name": ezfyCfg.troopName(t.ID, camp), "type": t.Type,
 			// ★ 2026-10-28 基础兵种名（不带阵营色彩）：司令部「进攻/防守目标」下拉用它 ——
 			//   选的是**敌方兵种类型**，用阵营名（虎式重型坦克）去指代敌方同类兵种会让人对不上，
 			//   与战场指挥室 target_options 同口径（那边 2026-10-05 就统一成基础名了）。
 			"base_name": t.Name,
-			"health": t.Health, "defence": t.Defence, "speed": t.Speed, "attack_range": t.AttackRange,
+			"health": t.Health, "defence": t.Defence, "speed": t.Speed, "atk_speed": atkSpeed,
+			"attack_range": t.AttackRange,
 			"carry": t.Carry, "pop": t.Pop, "require": t.Require,
 			"atk_sea": t.AtkSea, "atk_ground": t.AtkGround, "atk_air": t.AtkAir, "atk_def": t.AtkDef,
 			"food_keep": t.FoodKeep, "oil_keep": t.OilKeep,

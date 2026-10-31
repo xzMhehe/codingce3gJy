@@ -63,6 +63,9 @@ func seedEzfy(db *gorm.DB) {
 	// ★ 2026-10-22 新增兵种「海军轰炸机」一次性对齐（对海/训练时间/阵营全名）：
 	//   batchKeep 是 DoNothing，已部署过的库补不进去，靠 settings 打标只对齐一次。
 	alignEzfyNavalBomber(db)
+	// ★★ 2026-10-31 兵种新增独立「攻速」atk_speed：老库补列后按 speed 回填一次。
+	//   0 = 跟随速度（引擎兼容老数据），管理端可单独调攻速。
+	ezfyTroopAtkSpeedFix(db)
 	// ★★ 2026-10-31 城墙去掉「远程射程+NN%」文案（老库 batchKeep 改不到，一次性对齐）
 	ezfyWallRangeTextDrop(db)
 	// ★★ 2026-10-31 军官技能改名（前两字保留、后两字迭代）：技能名是**判定字面量 + 落库数据**，

@@ -404,7 +404,7 @@
               <td>射程：</td><td>{{ ezfy.troopView.attack_range }}</td>
             </tr>
             <tr>
-              <td>攻速：</td><td>{{ ezfy.troopView.speed }}</td>
+              <td>攻速：</td><td>{{ ezfy.troopView.atk_speed || ezfy.troopView.speed }}</td>
               <td>负重：</td><td>{{ ezfy.troopView.carry }}</td>
             </tr>
             <tr>

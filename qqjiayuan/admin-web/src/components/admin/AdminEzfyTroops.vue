@@ -74,6 +74,7 @@
             <el-table-column label="对防" width="65" align="center"><template slot-scope="{row}">{{ row.atk_def }}</template></el-table-column>
             <el-table-column prop="defence" label="防御" width="65" align="center" />
             <el-table-column prop="speed" label="速度" width="65" align="center" />
+            <el-table-column prop="atk_speed" label="攻速" width="65" align="center" />
             <el-table-column label="训练(秒)" width="80" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.train_time }}</span></template>
             </el-table-column>
@@ -232,8 +233,10 @@
           <el-col :span="8"><el-form-item label="对防"><el-input-number v-model.number="cfgForm.atk_def" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="防御"><el-input-number v-model.number="cfgForm.defence" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="速度"><el-input-number v-model.number="cfgForm.speed" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="攻速"><el-input-number v-model.number="cfgForm.atk_speed" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="射程"><el-input-number v-model.number="cfgForm.attack_range" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
         </el-row>
+        <div class="td-sub" style="margin:-6px 0 12px 10px">攻速 = 同回合出手先后；填 0 时跟随「速度」。速度仍管每回合移动/行军。</div>
         <el-row :gutter="10">
           <el-col :span="8"><el-form-item label="载量"><el-input-number v-model.number="cfgForm.carry" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="人口"><el-input-number v-model.number="cfgForm.pop" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
@@ -274,7 +277,7 @@ const CFG_KEYS = [
   //   id 只用于拼 URL，后端 ezfyTroopFields 白名单里没有 id，不会被当成可改字段。
   'id',
   'name', 'name_ally', 'name_axis', 'type', 'icon', 'repair_rate',
-  'health', 'atk_ground', 'atk_sea', 'atk_air', 'atk_def', 'defence', 'speed', 'attack_range',
+  'health', 'atk_ground', 'atk_sea', 'atk_air', 'atk_def', 'defence', 'speed', 'atk_speed', 'attack_range',
   'carry', 'pop', 'train_time', 'food_keep', 'oil_keep',
   'food', 'steel', 'oil', 'rare', 'require'
 ]

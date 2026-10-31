@@ -41,18 +41,23 @@ type EzfyCfgBuildingLevel struct {
 func (EzfyCfgBuildingLevel) TableName() string { return "ezfy_cfg_building_level" }
 
 type EzfyCfgTroop struct {
-	ID          int    `gorm:"primaryKey;comment:主键ID" json:"id"`
-	Name        string `gorm:"type:varchar(50);comment:名称" json:"name"`
-	NameAxis    string `gorm:"type:varchar(50);comment:轴心国名称" json:"name_axis"` // 轴心国名称
-	NameAlly    string `gorm:"type:varchar(50);comment:同盟国名称" json:"name_ally"` // 同盟国名称
-	Type        int    `gorm:"default:2;comment:1海军 2陆军 3空军 4城防" json:"type"`   // 1海军 2陆军 3空军 4城防
-	Health      int    `gorm:"comment:耐久" json:"health"`
-	AtkSea      int    `gorm:"comment:攻击海域" json:"atk_sea"`
-	AtkGround   int    `gorm:"comment:攻击陆地" json:"atk_ground"`
-	AtkAir      int    `gorm:"comment:攻击空中" json:"atk_air"`
-	AtkDef      int    `gorm:"comment:攻击防御" json:"atk_def"`
-	Defence     int    `gorm:"comment:防御" json:"defence"`
-	Speed       int    `gorm:"comment:速度" json:"speed"`
+	ID        int    `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Name      string `gorm:"type:varchar(50);comment:名称" json:"name"`
+	NameAxis  string `gorm:"type:varchar(50);comment:轴心国名称" json:"name_axis"` // 轴心国名称
+	NameAlly  string `gorm:"type:varchar(50);comment:同盟国名称" json:"name_ally"` // 同盟国名称
+	Type      int    `gorm:"default:2;comment:1海军 2陆军 3空军 4城防" json:"type"`   // 1海军 2陆军 3空军 4城防
+	Health    int    `gorm:"comment:耐久" json:"health"`
+	AtkSea    int    `gorm:"comment:攻击海域" json:"atk_sea"`
+	AtkGround int    `gorm:"comment:攻击陆地" json:"atk_ground"`
+	AtkAir    int    `gorm:"comment:攻击空中" json:"atk_air"`
+	AtkDef    int    `gorm:"comment:攻击防御" json:"atk_def"`
+	Defence   int    `gorm:"comment:防御" json:"defence"`
+	// Speed 速度：每回合移动距离 / 行军速度的基数。
+	Speed int `gorm:"comment:速度" json:"speed"`
+	// ★★ 2026-10-31 新增：基础攻速（只决定同回合内谁先出手）。
+	//   与 Speed 分开后，管理端可以单独调「攻速」而不影响移动/行军。
+	//   0 = 跟随 Speed（老库/老快照兼容），实际结算见 ezfyStatsOf / effAtkSpeed。
+	AtkSpeed    int    `gorm:"default:0;comment:攻速(0=跟随速度)" json:"atk_speed"`
 	AttackRange int    `gorm:"comment:攻击范围" json:"attack_range"`
 	Carry       int    `gorm:"comment:携带" json:"carry"`
 	Pop         int    `gorm:"comment:人口" json:"pop"`
@@ -70,7 +75,7 @@ type EzfyCfgTroop struct {
 	//   文本 → ID 的转换唯一实现在 internal/ezfyreq（Parse），由种子回填与管理端保存调用。
 	RequireIds string `gorm:"type:varchar(500);comment:需要(结构化: b建筑/t科技+id:等级)" json:"require_ids"`
 	Icon       string `gorm:"type:varchar(50);comment:图标" json:"icon"`
-	RepairRate  int    `gorm:"comment:战损修复率%" json:"repair_rate"` // 战损修复率%
+	RepairRate int    `gorm:"comment:战损修复率%" json:"repair_rate"` // 战损修复率%
 }
 
 func (EzfyCfgTroop) TableName() string { return "ezfy_cfg_troop" }

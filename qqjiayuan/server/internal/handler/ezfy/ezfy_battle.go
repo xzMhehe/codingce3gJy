@@ -288,6 +288,7 @@ type ezfyTroopStats struct {
 	AtkDef      int
 	Defence     int
 	Speed       int
+	AtkSpeed    int // ★ 2026-10-31 基础攻速（出手顺序）；0 = 跟随 Speed（老配置/老快照）
 	AttackRange int
 }
 
@@ -296,10 +297,15 @@ func ezfyStatsOf(troopId int) *ezfyTroopStats {
 	if cfg == nil {
 		return nil
 	}
+	// ★ 2026-10-31 攻速独立配置：老库 atk_speed=0 → 跟随速度（行为与改动前完全一致）。
+	atkSpeed := cfg.AtkSpeed
+	if atkSpeed <= 0 {
+		atkSpeed = cfg.Speed
+	}
 	return &ezfyTroopStats{
 		ID: cfg.ID, Name: cfg.Name, Type: cfg.Type, Health: cfg.Health,
 		AtkSea: cfg.AtkSea, AtkGround: cfg.AtkGround, AtkAir: cfg.AtkAir, AtkDef: cfg.AtkDef,
-		Defence: cfg.Defence, Speed: cfg.Speed, AttackRange: cfg.AttackRange,
+		Defence: cfg.Defence, Speed: cfg.Speed, AtkSpeed: atkSpeed, AttackRange: cfg.AttackRange,
 	}
 }
 
@@ -489,6 +495,8 @@ func (t ezfyTypeBonus) atkSpeedTroopOf(troopID int) int {
 //
 // ★★ 2026-10-31 用户需求：闪电疾攻/越岛登陆/坦克冲锋 由「移动速度」改为「攻速」。
 // 攻速只改出手顺序，不改每回合移动距离（移动仍只看 speedBonus）。
+// ★★ 2026-10-31 二次：兵种配置新增独立基础攻速 atk_speed（0 = 跟随 speed），
+// 管理端可单独调「攻速」而不影响移动/行军。
 // 老快照没有 AtkSpeed/AtkSpeedTroop → 恒等于基础速度，行为与改动前一致。
 func (st *ezfyBattleState) effAtkSpeed(u *ezfyFightUnit, isAtk bool) int {
 	if u == nil || u.cfg == nil {
@@ -498,7 +506,12 @@ func (st *ezfyBattleState) effAtkSpeed(u *ezfyFightUnit, isAtk bool) int {
 	if isAtk {
 		tb = st.AtkType
 	}
-	sp := u.cfg.Speed * (100 + tb.atkSpeedOf(u.cfg.Type) + tb.atkSpeedTroopOf(u.cfg.ID)) / 100
+	// ★ 2026-10-31 基础攻速独立配置：0 = 跟随 Speed（老配置/老快照兼容）。
+	base := u.cfg.AtkSpeed
+	if base <= 0 {
+		base = u.cfg.Speed
+	}
+	sp := base * (100 + tb.atkSpeedOf(u.cfg.Type) + tb.atkSpeedTroopOf(u.cfg.ID)) / 100
 	if sp < 0 {
 		sp = 0
 	}
@@ -2268,16 +2281,18 @@ type ezfyBattleUnitSnap struct {
 	InitialCount int64  `json:"initial_count"`
 	Pos          int    `json:"pos"`
 
-	Type        int    `json:"type"`
-	Name        string `json:"name"`
-	Health      int    `json:"health"`
-	AtkSea      int    `json:"atk_sea"`
-	AtkGround   int    `json:"atk_ground"`
-	AtkAir      int    `json:"atk_air"`
-	AtkDef      int    `json:"atk_def"`
-	Defence     int    `json:"defence"`
-	Speed       int    `json:"speed"`
-	AttackRange int    `json:"attack_range"`
+	Type      int    `json:"type"`
+	Name      string `json:"name"`
+	Health    int    `json:"health"`
+	AtkSea    int    `json:"atk_sea"`
+	AtkGround int    `json:"atk_ground"`
+	AtkAir    int    `json:"atk_air"`
+	AtkDef    int    `json:"atk_def"`
+	Defence   int    `json:"defence"`
+	Speed     int    `json:"speed"`
+	// ★ 2026-10-31 基础攻速（老快照没有 → 0，重建时回退成 Speed）
+	AtkSpeed    int `json:"atk_speed"`
+	AttackRange int `json:"attack_range"`
 }
 
 // ezfyBattleSnapshot 战场快照：指挥室把整场状态存进 ezfy_battle.state，
@@ -2361,7 +2376,8 @@ func ezfyUnitSnapOf(list []*ezfyFightUnit) []ezfyBattleUnitSnap {
 			InitialCount: u.initialCount, Pos: u.pos,
 			Type: u.cfg.Type, Name: u.cfg.Name, Health: u.cfg.Health,
 			AtkSea: u.cfg.AtkSea, AtkGround: u.cfg.AtkGround, AtkAir: u.cfg.AtkAir, AtkDef: u.cfg.AtkDef,
-			Defence: u.cfg.Defence, Speed: u.cfg.Speed, AttackRange: u.cfg.AttackRange,
+			Defence: u.cfg.Defence, Speed: u.cfg.Speed, AtkSpeed: u.cfg.AtkSpeed,
+			AttackRange: u.cfg.AttackRange,
 		})
 	}
 	return out
@@ -2455,11 +2471,16 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 	rebuild := func(list []ezfyBattleUnitSnap, equipHp int) []*ezfyFightUnit {
 		out := []*ezfyFightUnit{}
 		for _, s := range list {
-			// 兵种属性直接取快照（不查配置表），保证中途改配置也不影响本场
+			// 兵种属性直接取快照（不查配置表），保证中途改配置也不影响本场。
+			// ★ 2026-10-31 老快照没有 atk_speed → 回退成 speed（行为与改动前一致）。
+			atkSpeed := s.AtkSpeed
+			if atkSpeed <= 0 {
+				atkSpeed = s.Speed
+			}
 			cfg := &ezfyTroopStats{
 				ID: s.TroopId, Name: s.Name, Type: s.Type, Health: s.Health,
 				AtkSea: s.AtkSea, AtkGround: s.AtkGround, AtkAir: s.AtkAir, AtkDef: s.AtkDef,
-				Defence: s.Defence, Speed: s.Speed, AttackRange: s.AttackRange,
+				Defence: s.Defence, Speed: s.Speed, AtkSpeed: atkSpeed, AttackRange: s.AttackRange,
 			}
 			// ★ 2026-10-08 快照只存基础 Health，重建时按本侧装备生命%重新固化 hp（与创建时同一口径）
 			out = append(out, &ezfyFightUnit{

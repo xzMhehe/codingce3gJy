@@ -582,6 +582,7 @@ const COLS = {
     { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '兵种名', w: 110 }, { k: 'type', n: '兵种类型', w: 90 },
     { k: 'health', n: '生命', w: 70 }, { k: 'atk_ground', n: '对地', w: 70 }, { k: 'atk_sea', n: '对海', w: 70 },
     { k: 'atk_air', n: '对空', w: 70 }, { k: 'defence', n: '防御', w: 70 }, { k: 'speed', n: '速度', w: 70 },
+    { k: 'atk_speed', n: '攻速', w: 70 },
     { k: 'carry', n: '载量', w: 70 }, { k: 'pop', n: '占用人口', w: 90 }, { k: 'train_time', n: '训练(秒)', w: 90 }
   ],
   techs: [
@@ -752,6 +753,7 @@ const FORMS = {
     { k: 'atk_sea', n: '对海攻击', t: 'num' }, { k: 'atk_ground', n: '对地攻击', t: 'num' },
     { k: 'atk_air', n: '对空攻击', t: 'num' }, { k: 'atk_def', n: '对防攻击', t: 'num' },
     { k: 'defence', n: '防御', t: 'num' }, { k: 'speed', n: '速度', t: 'num' },
+    { k: 'atk_speed', n: '攻速', t: 'num' },
     { k: 'attack_range', n: '射程', t: 'num' }, { k: 'carry', n: '运载量', t: 'num' },
     { k: 'pop', n: '占用人口', t: 'num' },
     { k: 'food_keep', n: '耗粮/时/个', t: 'num' }, { k: 'oil_keep', n: '耗油/时/个', t: 'num' },

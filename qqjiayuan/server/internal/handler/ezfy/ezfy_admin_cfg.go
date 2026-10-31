@@ -40,7 +40,7 @@ func (h *EzfyAdmin) ezfyReload() *EzfyHandler {
 var ezfyTroopFields = map[string]string{
 	"name": "string", "name_axis": "string", "name_ally": "string", "type": "int",
 	"health": "int", "atk_sea": "int", "atk_ground": "int", "atk_air": "int", "atk_def": "int",
-	"defence": "int", "speed": "int", "attack_range": "int", "carry": "int", "pop": "int",
+	"defence": "int", "speed": "int", "atk_speed": "int", "attack_range": "int", "carry": "int", "pop": "int",
 	"food_keep": "int", "oil_keep": "int",
 	"food": "int64", "steel": "int64", "oil": "int64", "rare": "int64",
 	"train_time": "int", "require": "string", "icon": "string", "repair_rate": "int",

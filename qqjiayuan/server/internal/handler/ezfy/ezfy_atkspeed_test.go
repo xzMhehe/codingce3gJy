@@ -21,7 +21,9 @@ func stubAtkSpeedTroops(t *testing.T) func() {
 	t.Helper()
 	saved := ezfyCfg.troops
 	ezfyCfg.troops = map[int]model.EzfyCfgTroop{
-		1:  {ID: 1, Name: "步兵", Type: 2, Health: 100, Speed: 300, AttackRange: 99999},
+		1: {ID: 1, Name: "步兵", Type: 2, Health: 100, Speed: 300, AttackRange: 99999},
+		// ★ 2026-10-31 独立攻速用例：移动速度 1400，基础攻速 700 → 出手只看 700。
+		2:  {ID: 2, Name: "摩托化骑兵", Type: 2, Health: 65, Speed: 1400, AtkSpeed: 700, AttackRange: 99999},
 		5:  {ID: 5, Name: "轻型坦克", Type: 2, Health: 200, Speed: 500, AttackRange: 99999},
 		6:  {ID: 6, Name: "重型坦克", Type: 2, Health: 300, Speed: 400, AttackRange: 99999},
 		11: {ID: 11, Name: "轰炸机", Type: 3, Health: 135, Speed: 1000, AttackRange: 99999},
@@ -51,6 +53,7 @@ func TestEffAtkSpeed(t *testing.T) {
 		{5, true, 1000},   // 轻坦 500 × 2（坦克冲锋）
 		{6, true, 800},    // 重坦 400 × 2（坦克冲锋）
 		{1, true, 300},    // 步兵不吃任何攻速
+		{2, true, 700},    // 独立攻速 700（不是移动速度 1400）→ 证明 atk_speed 真的生效
 		{11, false, 1000}, // 守方没有空军攻速
 		{13, false, 1200}, // 守方海军 800 × 1.5（越岛登陆）
 	}
@@ -148,6 +151,41 @@ func TestTypeAtkSpeedTxt(t *testing.T) {
 	// 老快照（无攻速）→ 空串，老战报格式不变
 	if got := ezfyTypeAtkSpeedTxt(ezfyTypeBonus{}, units); got != "" {
 		t.Fatalf("无攻速来源时应为空串，实际 %q", got)
+	}
+}
+
+// TestTroopAtkSpeedSnapshot 基础攻速要随战场快照往返；老快照没有 atk_speed → 回退 speed。
+func TestTroopAtkSpeedSnapshot(t *testing.T) {
+	u := ezfyTestUnit("A1", "步兵", 0, 100)
+	u.cfg.Speed = 1400
+	u.cfg.AtkSpeed = 700
+	st := &ezfyBattleState{
+		Attackers: []*ezfyFightUnit{u},
+		Defenders: []*ezfyFightUnit{ezfyTestUnit("D1", "步兵", 100, 100)},
+		Head:      []string{}, Actions: []string{},
+	}
+	snap := st.Snapshot()
+	if snap.Attackers[0].AtkSpeed != 700 {
+		t.Fatalf("快照应保存基础攻速 700，实际 %d", snap.Attackers[0].AtkSpeed)
+	}
+	rebuilt := ezfyBattleStateFromSnapshot(snap)
+	if got := rebuilt.effAtkSpeed(rebuilt.Attackers[0], true); got != 700 {
+		t.Fatalf("快照重建后攻速应为 700，实际 %d", got)
+	}
+
+	// 老快照（没有 atk_speed 字段）→ 0，重建时回退成 speed（行为与改动前一致）。
+	snap.Attackers[0].AtkSpeed = 0
+	snap.Attackers[0].Speed = 800
+	old := ezfyBattleStateFromSnapshot(snap)
+	if got := old.effAtkSpeed(old.Attackers[0], true); got != 800 {
+		t.Fatalf("老快照应回退 speed=800，实际 %d", got)
+	}
+}
+
+// TestTroopAtkSpeedFieldRegistered 管理端「编辑兵种配置」必须能保存 atk_speed。
+func TestTroopAtkSpeedFieldRegistered(t *testing.T) {
+	if got := ezfyTroopFields["atk_speed"]; got != "int" {
+		t.Fatalf("ezfyTroopFields 缺少 atk_speed（管理端保存会丢字段），实际 %q", got)
 	}
 }
 
