@@ -3306,6 +3306,8 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 	// ★ 2026-10-26 用户规则「系统回收每日上限 默认 0」：把仍停在旧默认 100 万的行一次性改成 0
 	//   （用 settings 打标只跑一次，之后管理员自己调的值不会被顶回）。
 	ezfySysSellDailyLimitDefault0(db)
+	// ★ 2026-10-31 战场初始距离：旧默认 6000 → 0（= 自动：双方最大单兵种最终射程 + 余量）
+	ezfyBattleStartDistAutoFix(db)
 	// ★ 2026-10-22 每城建造队列基础上限（默认 5）：
 	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
 	//   0 无意义（等于全城不能建造），所以统一回落 5；征募告示的临时层数另存 ezfy_city_effect。

@@ -188,6 +188,8 @@ func ezfyTestRunRounds(t *testing.T, atkTB, defTB ezfyTypeBonus,
 		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
 		0, 0, 0, 0, atkTB, defTB)
 	st.AtkTimed, st.DefTimed = atkTimed, defTimed
+	// ★ 2026-10-31 默认初始距离改为「最大射程+余量」，开局不再贴脸 → 拉到接触距离再打
+	ezfyCloseIn(st)
 	st.Step(nil, nil)
 	st.Step(nil, nil)
 	return st.Actions

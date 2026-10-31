@@ -1043,10 +1043,12 @@ const (
 	// ★ 2026-10-13 用户需求「回合战斗公式能维护起来，放到二战系统配置」：
 	//   战斗引擎 ezfy_battle.go 硬编码机制常量配置化（默认值 = 移植前的硬编码值）。
 	ezfyBattleMaxRoundsDef  = 40    // 战斗最大回合数（默认 40）
-	ezfyBattleStartDistDef  = 6000  // 战场初始距离（默认 6000）
+	ezfyBattleStartDistDef  = 6000  // 战场初始距离**兜底值**（双方都没射程时才用；默认距离改为「最大射程+余量」）
 	ezfyBattleRetreatMaxDef = 10000 // 战斗最大后退距离（默认 10000）
-	ezfyCritBaseBonusPctDef = 50    // 暴击基础伤害加成%（默认 50）
-	ezfyGarrisonBreakPctDef = 50    // 盟军驻军溃败撤退阈值%（默认 50）
+	// ★ 2026-10-31 自动战场距离在「双方最大单兵种射程」之外多留的余量（二战系统配置可调，0 合法）
+	ezfyBattleStartDistMarginDef = 2000
+	ezfyCritBaseBonusPctDef      = 50 // 暴击基础伤害加成%（默认 50）
+	ezfyGarrisonBreakPctDef      = 50 // 盟军驻军溃败撤退阈值%（默认 50）
 	// ★ 2026-10-13 伤害公式系数：伤害 = (攻×攻系数+攻加值)/(防×(100+防加成%)×防系数+防加值)×数量, 再乘攻加成; 最小伤害=数量×最小伤害系数
 	ezfyBattleRoundMsDef = 30000 // 战斗每回合时长（毫秒，默认 30 秒）
 	ezfyAtkCoeffDef      = 5     // 伤害公式攻击系数（默认 5）

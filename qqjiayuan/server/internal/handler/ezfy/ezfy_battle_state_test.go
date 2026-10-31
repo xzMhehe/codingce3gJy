@@ -36,11 +36,30 @@ func ezfyTestUnit(id, name string, pos int, count int64) *ezfyFightUnit {
 	}
 }
 
-// ezfyTestState 攻守各一支部队，初始相距 ezfyBattleStartDistCfg()
+// ezfyCloseIn 把双方拉到接触距离（守方 pos=100），供「只关心伤害/技能口径」的用例使用。
+//
+// ★ 2026-10-31 战场初始距离改为「双方最大单兵种最终射程 + 余量」后，开局**不再贴脸**
+// （最远射程的一方也要推进 2000 才够得着）。这类用例与距离无关，直接拉近，
+// 避免因为空跑回合而拿不到伤害行。
+func ezfyCloseIn(st *ezfyBattleState) *ezfyBattleState {
+	if st == nil {
+		return st
+	}
+	for _, a := range st.Attackers {
+		a.pos = 0
+	}
+	for _, d := range st.Defenders {
+		d.pos = 100
+	}
+	return st
+}
+
+// ezfyTestState 攻守各一支部队，初始相距固定值（不依赖配置，避免管理端改距离把用例带偏）
 func ezfyTestState() *ezfyBattleState {
 	return &ezfyBattleState{
 		Attackers: []*ezfyFightUnit{ezfyTestUnit("A1", "步兵", 0, 100)},
-		Defenders: []*ezfyFightUnit{ezfyTestUnit("D1", "步兵", ezfyBattleStartDistCfg(), 100)},
+		Defenders: []*ezfyFightUnit{ezfyTestUnit("D1", "步兵", ezfyBattleStartDistDef, 100)},
+		StartDist: ezfyBattleStartDistDef,
 		Head:      []string{}, Actions: []string{},
 	}
 }
@@ -154,7 +173,7 @@ func TestBattlePerTroopCommand(t *testing.T) {
 	}
 	st := &ezfyBattleState{
 		Attackers: []*ezfyFightUnit{mk("A1", "步兵", 1, 0, 100), mk("A2", "坦克", 3, 0, 100)},
-		Defenders: []*ezfyFightUnit{mk("D1", "守军", 2, ezfyBattleStartDistCfg(), 100)},
+		Defenders: []*ezfyFightUnit{mk("D1", "守军", 2, ezfyBattleStartDistDef, 100)},
 		Head:      []string{}, Actions: []string{},
 	}
 	// 步兵前进、坦克暂停
@@ -169,7 +188,7 @@ func TestBattlePerTroopCommand(t *testing.T) {
 	// 换成坦克后退、步兵暂停 —— 指令互不影响
 	st2 := &ezfyBattleState{
 		Attackers: []*ezfyFightUnit{mk("A1", "步兵", 1, 2000, 100), mk("A2", "坦克", 3, 2000, 100)},
-		Defenders: []*ezfyFightUnit{mk("D1", "守军", 2, ezfyBattleStartDistCfg(), 100)},
+		Defenders: []*ezfyFightUnit{mk("D1", "守军", 2, ezfyBattleStartDistDef, 100)},
 		Head:      []string{}, Actions: []string{},
 	}
 	st2.Step(map[int]string{1: ezfyCmdHold, 3: ezfyCmdRetreat}, nil)

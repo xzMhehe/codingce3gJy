@@ -41,12 +41,89 @@ func ezfyBattleMaxRoundsCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.BattleMaxRounds, ezfyBattleMaxRoundsDef)
 }
 
-// 战场初始距离（攻方 0，守方 6000，相距 6000）
-func ezfyBattleStartDistCfg() int {
+// ezfyBattleStartDistFixedCfg 手动指定的**固定**战场初始距离；**0 = 自动**（按双方最大射程 + 余量）。
+//
+// ★★ 2026-10-31 用户规则：默认不再是固定 6000，而是
+// `max(攻方最大单兵种最终射程, 守方最大单兵种最终射程) + 余量`
+// （余量见 ezfyBattleStartDistMarginCfg，二战系统配置里可调）。
+// 所以这里**不能用 ezfyLimitOr** —— 它会把 0 当「未配置」打回 6000，而 0 现在是有意义的值。
+func ezfyBattleStartDistFixedCfg() int {
 	if f := ezfyBattleFormulaActive(); f != nil {
-		return ezfyLimitOr(f.BattleStartDist, ezfyBattleStartDistDef)
+		if f.BattleStartDist > 0 {
+			return f.BattleStartDist
+		}
+		return 0
 	}
-	return ezfyLimitOr(ezfyCfg.limit.BattleStartDist, ezfyBattleStartDistDef)
+	if v := ezfyCfg.limit.BattleStartDist; v > 0 {
+		return v
+	}
+	return 0
+}
+
+// ezfyBattleStartDistMarginCfg 自动距离在「最大单兵种射程」之外多留的余量（默认 2000，**0 合法**）。
+//
+// ★ 0 合法：管理员想「贴着最远射程开局」就把余量填 0，这里不能把 0 打回 2000。
+// 只有「limit 整行都没加载」（BattleMaxRounds 也是 0）时才回落默认值。
+func ezfyBattleStartDistMarginCfg() int {
+	l := ezfyCfg.limit
+	if l.BattleMaxRounds <= 0 { // 整行不存在/未加载 → 用默认
+		return ezfyBattleStartDistMarginDef
+	}
+	if l.BattleStartDistMargin < 0 {
+		return 0
+	}
+	return l.BattleStartDistMargin
+}
+
+// startDistOf 战场初始距离（攻方 0，守方 = 该值）。
+//
+// ★ 2026-10-31 StartDist 是新增字段：手搓的战场（单测）与老快照可能为 0，
+// 这时回退到「固定配置值」或历史默认 6000 —— 保证城墙位置/后退边界不会因为
+// 字段缺失而退化成 0（那会让攻方一开局就贴脸拆墙）。
+func (st *ezfyBattleState) startDistOf() int {
+	if st.StartDist > 0 {
+		return st.StartDist
+	}
+	if fixed := ezfyBattleStartDistFixedCfg(); fixed > 0 {
+		return fixed
+	}
+	return ezfyBattleStartDistDef
+}
+
+// ezfyBattleStartDistFor 战场初始距离 = 双方「单兵种最终射程」最大值 + 余量。
+//
+// 单兵种最终射程 = 兵种基础射程 × (1 + 通用射程% + 该兵种专属射程%)，与引擎 rangeD 同口径。
+// 取攻方最大与守方最大中的较大者 —— 保证射程最远的那支部队开局就在射程内，
+// 不会出现「榴弹炮/舰炮要空跑好几个回合才够得着」。
+//
+// 手动固定值（battle_start_dist > 0）优先；双方都没有射程（纯运输/空部队）回落历史默认 6000。
+func ezfyBattleStartDistFor(atkUnits, defUnits []ezfyUnitGroup,
+	atkRangePct, defRangePct int, atkType, defType ezfyTypeBonus) int {
+	if fixed := ezfyBattleStartDistFixedCfg(); fixed > 0 {
+		return fixed
+	}
+	maxRange := 0
+	scan := func(units []ezfyUnitGroup, pct int, tb ezfyTypeBonus) {
+		for _, ug := range units {
+			if ug.Count <= 0 {
+				continue
+			}
+			cfg := ezfyStatsOf(ug.TroopId)
+			if cfg == nil || cfg.AttackRange <= 0 {
+				continue
+			}
+			r := cfg.AttackRange * (100 + pct + tb.rangeOf(cfg.Type)) / 100
+			if r > maxRange {
+				maxRange = r
+			}
+		}
+	}
+	scan(atkUnits, atkRangePct, atkType)
+	scan(defUnits, defRangePct, defType)
+	if maxRange <= 0 {
+		return ezfyBattleStartDistDef
+	}
+	return maxRange + ezfyBattleStartDistMarginCfg()
 }
 
 // 双方后退不能无限制，最多各退 10000。
@@ -515,6 +592,11 @@ type ezfyBattleState struct {
 	// ★ 2026-10-06 射程加成%（：射程 = 兵种基础射程 × (1 + 科技加成)）
 	AtkRangeBonus int
 	DefRangeBonus int
+	// ★★ 2026-10-31 战场初始距离（攻方 0，守方 = StartDist）。
+	//   默认由「双方单兵种最终射程最大值 + 可配置余量」算出（见 ezfyBattleStartDistFor），
+	//   开战前**算一次固化**：战斗中途部队减员/射程变化都不该把城墙挪位置。
+	//   老战场快照没有这个字段（0）→ 由 ezfyBattleStateFromSnapshot 回退到固定配置值。
+	StartDist int
 	AtkEquip      ezfyBattleBonus
 	DefEquip      ezfyBattleBonus
 
@@ -631,6 +713,10 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		AtkType: atkType, DefType: defType,
 		Head: []string{}, Actions: []string{},
 	}
+	// ★★ 2026-10-31 战场初始距离：开战前算一次固化。
+	//   默认 = max(攻方最大单兵种射程, 守方最大单兵种射程) + 余量（二战系统配置可调）；
+	//   管理员填了固定值则用固定值。固化是为了「战斗中途减员/射程变化不挪城墙」。
+	st.StartDist = ezfyBattleStartDistFor(attackerUnits, defenderUnits, atkRangeBonus, defRangeBonus, atkType, defType)
 
 	// —— 开局描述（与拆分层之前完全一致，保证老战报格式不变）——
 	// ★ 2026-10-10 展开首行加「准备回合:」标识（）：军官/科技/装备/套装/
@@ -789,7 +875,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	// ★ 2026-10-09 拆成两行：攻方一行、守方一行（原来是同一行里用 ' | ' 分隔）
 	st.Head = append(st.Head, atkBonusLine)
 	st.Head = append(st.Head, defBonusLine)
-	st.Head = append(st.Head, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", ezfyBattleStartDistCfg()))
+	st.Head = append(st.Head, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", st.StartDist))
 
 	idx := 0
 	for _, ug := range attackerUnits {
@@ -812,7 +898,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 			st.Defenders = append(st.Defenders, &ezfyFightUnit{
 				id: fmt.Sprintf("D%d", idx), cfg: cfg, count: ug.Count,
 				hp:           cfg.Health * (100 + defEquip.Hp) / 100,
-				initialCount: ug.Count, pos: ezfyBattleStartDistCfg()})
+				initialCount: ug.Count, pos: st.StartDist})
 		}
 	}
 	// 一方无兵 → 直接结束（与原实现一致：Rounds = 0）
@@ -1097,7 +1183,7 @@ func (st *ezfyBattleState) siegeWall(atkBonus, atkRangeBonusAll, atkSpeedBonus i
 	if !st.WallEnabled || st.WallHp <= 0 {
 		return
 	}
-	wallPos := ezfyBattleStartDistCfg() // 城墙不动，和守方军队初始位置一样
+	wallPos := st.startDistOf() // 城墙不动，和守方军队初始位置一样
 	for _, unit := range st.Attackers {
 		if !unit.alive() || st.WallHp <= 0 || alreadyHit[unit] {
 			continue
@@ -1357,8 +1443,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 						unit.pos = -ezfyBattleRetreatMaxCfg()
 					}
 				} else {
-					if unit.pos > ezfyBattleStartDistCfg()+ezfyBattleRetreatMaxCfg() {
-						unit.pos = ezfyBattleStartDistCfg() + ezfyBattleRetreatMaxCfg()
+					if unit.pos > st.startDistOf()+ezfyBattleRetreatMaxCfg() {
+						unit.pos = st.startDistOf() + ezfyBattleRetreatMaxCfg()
 					}
 				}
 				dist = ezfyAbs(target.pos - unit.pos)
@@ -2050,6 +2136,8 @@ type ezfyBattleSnapshot struct {
 	DefSpeedBonus   int             `json:"def_speed_bonus"`
 	AtkRangeBonus   int             `json:"atk_range_bonus"`
 	DefRangeBonus   int             `json:"def_range_bonus"`
+	// ★ 2026-10-31 战场初始距离（老快照没有 → 0，由 FromSnapshot 回退到固定配置值）
+	StartDist int `json:"start_dist"`
 	AtkEquip        ezfyBattleBonus `json:"atk_equip"`
 	DefEquip        ezfyBattleBonus `json:"def_equip"`
 	AtkTargets      map[int]int     `json:"atk_targets"`
@@ -2145,6 +2233,7 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkDefBreak:   st.AtkDefBreak,
 		AtkSpeedBonus: st.AtkSpeedBonus, DefSpeedBonus: st.DefSpeedBonus,
 		AtkRangeBonus: st.AtkRangeBonus, DefRangeBonus: st.DefRangeBonus,
+		StartDist:     st.StartDist,
 		AtkEquip: st.AtkEquip, DefEquip: st.DefEquip,
 		AtkTargets: st.AtkTargets, DefTargets: st.DefTargets,
 		AtkMoves: st.AtkMoves, DefMoves: st.DefMoves,
@@ -2188,6 +2277,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkDefBreak:   snap.AtkDefBreak,
 		AtkSpeedBonus: snap.AtkSpeedBonus, DefSpeedBonus: snap.DefSpeedBonus,
 		AtkRangeBonus: snap.AtkRangeBonus, DefRangeBonus: snap.DefRangeBonus,
+		StartDist:     snap.StartDist,
 		AtkEquip: snap.AtkEquip, DefEquip: snap.DefEquip,
 		AtkTargets: snap.AtkTargets, DefTargets: snap.DefTargets,
 		AtkMoves: snap.AtkMoves, DefMoves: snap.DefMoves,
@@ -2224,6 +2314,16 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 	}
 	st.Attackers = rebuild(snap.Attackers, st.AtkEquip.Hp)
 	st.Defenders = rebuild(snap.Defenders, st.DefEquip.Hp)
+	// ★ 2026-10-31 老快照（改造前开打、还没存 start_dist）没有这个字段：
+	//   这些战斗的部队位置是按老距离（固定值/6000）摆的，回退到固定配置或历史默认才对得上，
+	//   不能按新公式重算（那会把城墙挪走、整场战斗的走位全乱）。
+	if st.StartDist <= 0 {
+		if fixed := ezfyBattleStartDistFixedCfg(); fixed > 0 {
+			st.StartDist = fixed
+		} else {
+			st.StartDist = ezfyBattleStartDistDef
+		}
+	}
 	if st.Head == nil {
 		st.Head = []string{}
 	}

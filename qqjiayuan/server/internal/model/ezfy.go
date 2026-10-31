@@ -637,8 +637,12 @@ type EzfyCfgLimit struct {
 	//   战斗引擎 ezfy_battle.go 顶部的 5 个硬编码机制常量全部配置化，管理端可调、保存即热生效。
 	//   默认值 = 移植前的硬编码值（40/6000/10000/50/50），不改默认战斗行为；
 	//   读取端用 ezfyLimitOr 兜底（0 = 未配置/配置错 → 回落默认值）。
-	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`      // 战斗最多多少回合，达到上限按平局（默认 40）
-	BattleStartDist  int `gorm:"default:6000;comment:战场初始距离" json:"battle_start_dist"`     // 战场初始距离（攻方 0，守方 6000，相距 6000，默认 6000）
+	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"` // 战斗最多多少回合，达到上限按平局（默认 40）
+	// ★★ 2026-10-31 战场初始距离语义改为：**0 = 自动**（双方最大单兵种射程 + 余量），>0 = 手动固定。
+	//   旧默认 6000 已废弃（一次性迁移把仍为 6000 的改成 0）。
+	BattleStartDist int `gorm:"default:0;comment:战场初始距离(0=自动:最大射程+余量)" json:"battle_start_dist"`
+	// ★ 2026-10-31 自动距离的余量（默认 2000，**0 合法** = 贴着最远射程开局）
+	BattleStartDistMargin int `gorm:"default:2000;comment:自动战场距离余量" json:"battle_start_dist_margin"`
 	BattleRetreatMax int `gorm:"default:10000;comment:战斗最大后退距离" json:"battle_retreat_max"` // 双方各自最多后退多少（默认 10000）
 	CritBaseBonusPct int `gorm:"default:50;comment:暴击基础伤害加成%" json:"crit_base_bonus_pct"`  // 装备无暴击伤害(crit_dmg=0)时的兜底暴击倍率%（默认 50）
 	GarrisonBreakPct int `gorm:"default:50;comment:盟军驻军溃败撤退阈值%" json:"garrison_break_pct"` // 盟军驻军战：守方兵力跌破初始的此比例% 即判败撤退（默认 50）
@@ -985,8 +989,9 @@ type EzfyCfgBattleFormula struct {
 	//   0 = 关闭，只显示加成总百分比（明细原始数据仍在战场快照 JSON 里，可事后对账）。
 	ShowBattleBonusDetail int `gorm:"default:1;comment:展示战斗加成明细(1=展示 0=关闭)" json:"show_battle_bonus_detail"`
 	// 战斗机制
-	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`
-	BattleStartDist  int `gorm:"default:6000;comment:战场初始距离" json:"battle_start_dist"`
+	BattleMaxRounds int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`
+	// ★ 2026-10-31 同 EzfyCfgLimit：**0 = 自动**（双方最大单兵种射程 + 系统配置里的余量），>0 = 固定值
+	BattleStartDist  int `gorm:"default:0;comment:战场初始距离(0=自动)" json:"battle_start_dist"`
 	BattleRetreatMax int `gorm:"default:10000;comment:战斗最大后退距离" json:"battle_retreat_max"`
 	CritBaseBonusPct int `gorm:"default:50;comment:暴击基础伤害加成%" json:"crit_base_bonus_pct"`
 	GarrisonBreakPct int `gorm:"default:50;comment:盟军驻军溃败撤退阈值%" json:"garrison_break_pct"`

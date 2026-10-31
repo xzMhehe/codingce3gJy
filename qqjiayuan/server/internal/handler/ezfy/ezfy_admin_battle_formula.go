@@ -28,7 +28,8 @@ var ezfyBattleFormulaRules = []struct {
 	max   int
 }{
 	{"战斗最大回合数", func(f *model.EzfyCfgBattleFormula) *int { return &f.BattleMaxRounds }, ezfyBattleMaxRoundsDef, 1, 200},
-	{"战场初始距离", func(f *model.EzfyCfgBattleFormula) *int { return &f.BattleStartDist }, ezfyBattleStartDistDef, 1000, 50000},
+	// ★ 2026-10-31 战场初始距离：0 = 自动（双方最大单兵种最终射程 + 系统配置里的余量），>0 = 固定值
+	{"战场初始距离(0=自动)", func(f *model.EzfyCfgBattleFormula) *int { return &f.BattleStartDist }, 0, 0, 50000},
 	{"战斗最大后退距离", func(f *model.EzfyCfgBattleFormula) *int { return &f.BattleRetreatMax }, ezfyBattleRetreatMaxDef, 1000, 100000},
 	{"暴击基础伤害加成%", func(f *model.EzfyCfgBattleFormula) *int { return &f.CritBaseBonusPct }, ezfyCritBaseBonusPctDef, 1, 500},
 	{"盟军驻军溃败阈值%", func(f *model.EzfyCfgBattleFormula) *int { return &f.GarrisonBreakPct }, ezfyGarrisonBreakPctDef, 1, 100},

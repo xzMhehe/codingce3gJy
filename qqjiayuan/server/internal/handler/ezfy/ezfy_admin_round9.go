@@ -103,8 +103,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
 		ReconSuccessPct: ezfyReconSuccessPctDef,
 		// ★ 2026-10-13 回合战斗公式（管理端可调，默认值 = 移植前的硬编码值）
-		BattleMaxRounds: ezfyBattleMaxRoundsDef, BattleStartDist: ezfyBattleStartDistDef,
-		BattleRetreatMax: ezfyBattleRetreatMaxDef, CritBaseBonusPct: ezfyCritBaseBonusPctDef,
+		// ★ 2026-10-31 战场初始距离默认改为「自动」= 双方最大单兵种射程 + 余量（0 = 自动）
+		BattleMaxRounds: ezfyBattleMaxRoundsDef, BattleStartDist: 0,
+		BattleStartDistMargin: ezfyBattleStartDistMarginDef,
+		BattleRetreatMax:      ezfyBattleRetreatMaxDef, CritBaseBonusPct: ezfyCritBaseBonusPctDef,
 		GarrisonBreakPct: ezfyGarrisonBreakPctDef,
 		BattleRoundMs:    ezfyBattleRoundMsDef, AtkCoeff: ezfyAtkCoeffDef, AtkBase: ezfyAtkBaseDef,
 		DefCoeff: ezfyDefCoeffDef, DefBase: ezfyDefBaseDef, MinDmgCoeff: ezfyMinDmgCoeffDef,
@@ -280,8 +282,13 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.BattleMaxRounds <= 0 {
 		lim.BattleMaxRounds = ezfyBattleMaxRoundsDef
 	}
-	if lim.BattleStartDist <= 0 {
-		lim.BattleStartDist = ezfyBattleStartDistDef
+	// ★ 2026-10-31 战场初始距离 **0 = 自动**（双方最大射程 + 余量），不能再把 0 打回 6000。
+	//   余量同理：0 = 贴着最远射程开局，是合法配置。
+	if lim.BattleStartDist < 0 {
+		lim.BattleStartDist = 0
+	}
+	if lim.BattleStartDistMargin < 0 {
+		lim.BattleStartDistMargin = 0
 	}
 	if lim.BattleRetreatMax <= 0 {
 		lim.BattleRetreatMax = ezfyBattleRetreatMaxDef
@@ -490,9 +497,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-24：出征速度加成（百分比，0 = 无加成，节假日调高让队伍走快点）
 		MarchSpeedBonus *float64 `json:"march_speed_bonus"`
 		// ★ 2026-10-13 回合战斗公式：数值项（0 无意义 → 回落默认，见下方校验兜底）
-		BattleMaxRounds  *int `json:"battle_max_rounds"`
-		BattleStartDist  *int `json:"battle_start_dist"`
-		BattleRetreatMax *int `json:"battle_retreat_max"`
+		BattleMaxRounds *int `json:"battle_max_rounds"`
+		// ★ 2026-10-31 战场初始距离：**0 = 自动**（双方最大单兵种射程 + 余量），>0 = 固定值
+		BattleStartDist *int `json:"battle_start_dist"`
+		// ★ 2026-10-31 自动距离余量（0 合法 = 贴着最远射程开局）
+		BattleStartDistMargin *int `json:"battle_start_dist_margin"`
+		BattleRetreatMax      *int `json:"battle_retreat_max"`
 		CritBaseBonusPct *int `json:"crit_base_bonus_pct"`
 		GarrisonBreakPct *int `json:"garrison_break_pct"`
 		// ★ 2026-10-13 回合战斗公式·伤害系数 + 每回合时长
@@ -603,8 +613,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
 		ReconSuccessPct: ezfyReconSuccessPctDef,
 		// ★ 2026-10-13 回合战斗公式（默认值 = 移植前的硬编码值）
-		BattleMaxRounds: ezfyBattleMaxRoundsDef, BattleStartDist: ezfyBattleStartDistDef,
-		BattleRetreatMax: ezfyBattleRetreatMaxDef, CritBaseBonusPct: ezfyCritBaseBonusPctDef,
+		// ★ 2026-10-31 战场初始距离默认改为「自动」（0 = 双方最大射程 + 余量）
+		BattleMaxRounds: ezfyBattleMaxRoundsDef, BattleStartDist: 0,
+		BattleStartDistMargin: ezfyBattleStartDistMarginDef,
+		BattleRetreatMax:      ezfyBattleRetreatMaxDef, CritBaseBonusPct: ezfyCritBaseBonusPctDef,
 		GarrisonBreakPct: ezfyGarrisonBreakPctDef,
 		BattleRoundMs:    ezfyBattleRoundMsDef, AtkCoeff: ezfyAtkCoeffDef, AtkBase: ezfyAtkBaseDef,
 		DefCoeff: ezfyDefCoeffDef, DefBase: ezfyDefBaseDef, MinDmgCoeff: ezfyMinDmgCoeffDef,
@@ -1331,11 +1343,19 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		lim.BattleMaxRounds = *in.BattleMaxRounds
 	}
 	if in.BattleStartDist != nil {
-		if *in.BattleStartDist < 1000 || *in.BattleStartDist > 50000 {
-			resp.ParamError(c, "战场初始距离需要在 1000~50000 之间")
+		// ★ 2026-10-31 0 = 自动（双方最大单兵种射程 + 余量）；>0 = 固定值
+		if *in.BattleStartDist < 0 || *in.BattleStartDist > 50000 {
+			resp.ParamError(c, "战场初始距离需要 0~50000（0 = 自动：双方最大射程 + 余量）")
 			return
 		}
 		lim.BattleStartDist = *in.BattleStartDist
+	}
+	if in.BattleStartDistMargin != nil {
+		if *in.BattleStartDistMargin < 0 || *in.BattleStartDistMargin > 20000 {
+			resp.ParamError(c, "自动战场距离余量需要 0~20000（0 = 贴着最远射程开局）")
+			return
+		}
+		lim.BattleStartDistMargin = *in.BattleStartDistMargin
 	}
 	if in.BattleRetreatMax != nil {
 		if *in.BattleRetreatMax < 1000 || *in.BattleRetreatMax > 100000 {
@@ -1682,6 +1702,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		{"bot_atk_windows", "varchar(120) DEFAULT ''", "''"},
 		// ★ 2026-10-26 采集宝物播报开关（**默认关**；0 合法，只回填 NULL）
 		{"loot_broadcast_on", "int DEFAULT 0", "0"},
+		// ★ 2026-10-31 自动战场距离余量（0 合法 = 无余量，只回填 NULL）
+		{"battle_start_dist_margin", "int DEFAULT 2000", "2000"},
 	} {
 		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
 			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " " + c.ddl)
@@ -1752,6 +1774,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-10-22 系统回收手续费 / 每日每种资源上限（0 = 不限，必须显式写否则 0 会被 GORM 吞掉）
 		"sys_sell_fee":         lim.SysSellFee,
 		"sys_sell_daily_limit": lim.SysSellDailyLimit,
+		// ★ 2026-10-31 战场初始距离 0 = 自动 / 余量 0 = 无余量 —— 都是「0 合法」，必须显式写
+		"battle_start_dist":        lim.BattleStartDist,
+		"battle_start_dist_margin": lim.BattleStartDistMargin,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比，同样用 map 显式写
 		"convene_food_cost": lim.ConveneFoodCost,
 		"convene_pop_pct":   lim.ConvenePopPct,

@@ -30,7 +30,9 @@ func TestCounterKillUsesEffectiveHp(t *testing.T) {
 	atkHp := baseHp * (100 + atkLifeBonus) / 100 // 233
 	defHp := baseHp                              // 守方无生命加成
 
-	st := ezfyNewBattleState([]ezfyUnitGroup{{TroopId: 11, Count: 200000}},
+	// ★ 2026-10-31 默认初始距离改为「最大射程+余量」，开局不再贴脸 → 本用例只关心
+	//   伤害/消灭换算，直接把双方拉到接触距离（否则 3 回合走不到，拿不到伤害行）。
+	st := ezfyCloseIn(ezfyNewBattleState([]ezfyUnitGroup{{TroopId: 11, Count: 200000}},
 		[]ezfyUnitGroup{{TroopId: 11, Count: 200000}},
 		634, 395, 575, 60, 50, // atkBonus, defBonus, defAtkBonus, atkSpeed, defSpeed
 		30, 50, // atkRange, defRange
@@ -42,7 +44,7 @@ func TestCounterKillUsesEffectiveHp(t *testing.T) {
 		355, nil,
 		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
 		5, 6, 1, 2, // 双方都有「绝地反击」：攻方前 5 回合 / 守方前 6 回合
-		ezfyTypeBonus{}, ezfyTypeBonus{})
+		ezfyTypeBonus{}, ezfyTypeBonus{}))
 	for i := 0; i < 3 && !st.Done; i++ {
 		st.Step(nil, nil)
 	}

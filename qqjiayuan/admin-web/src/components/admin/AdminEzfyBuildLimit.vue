@@ -247,7 +247,11 @@
             </el-form-item>
             <el-form-item>
               <template slot="label">战场初始距离<el-tooltip placement="top" :content="tips.battle_start_dist"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-              <el-input-number v-model.number="form.battle_start_dist" :min="1000" :max="50000" :step="100" controls-position="right" style="width:180px" />
+              <el-input-number v-model.number="form.battle_start_dist" :min="0" :max="50000" :step="100" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">自动距离余量<el-tooltip placement="top" :content="tips.battle_start_dist_margin"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.battle_start_dist_margin" :min="0" :max="20000" :step="100" controls-position="right" style="width:180px" />
             </el-form-item>
             <el-form-item>
               <template slot="label">战斗最大后退距离<el-tooltip placement="top" :content="tips.battle_retreat_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -635,7 +639,7 @@ export default {
         // ★ 2026-10-28 占领保护期小时数（默认 28，原主人期满才能弃城）+ 占领方处置冷却（默认 24）
         occupy_protect_h: 28, occupy_finalize_h: 24,
         // ★ 2026-10-13 回合战斗公式（默认 = 移植前的硬编码值：40 / 6000 / 10000 / 50 / 50）
-        battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
+        battle_max_rounds: 40, battle_start_dist: 0, battle_start_dist_margin: 2000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50,
         // ★ 2026-10-13 伤害公式系数 + 每回合时长（默认 = 移植前的硬编码值：30000 / 5 / 1000 / 3 / 10 / 5）
         battle_round_ms: 30000, atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5,
@@ -711,7 +715,7 @@ export default {
       formulaEditId: 0,
       formulaForm: {
         name: '', remark: '', damage_formula: 0, show_battle_bonus_detail: 1,
-        battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
+        battle_max_rounds: 40, battle_start_dist: 0, battle_start_dist_margin: 2000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
         atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5,
       },
@@ -727,7 +731,7 @@ export default {
       // 公式字段定义：表格列 + 弹窗输入共用（tips 复用下面同名的说明文案）
       formulaFields: [
         { key: 'battle_max_rounds', label: '战斗最大回合数', short: '最大回合', min: 1, max: 200, step: 1, tip: 'battle_max_rounds' },
-        { key: 'battle_start_dist', label: '战场初始距离', short: '初始距离', min: 1000, max: 50000, step: 100, tip: 'battle_start_dist' },
+        { key: 'battle_start_dist', label: '战场初始距离', short: '初始距离', min: 0, max: 50000, step: 100, tip: 'battle_start_dist' },
         { key: 'battle_retreat_max', label: '战斗最大后退距离', short: '最大后退', min: 1000, max: 100000, step: 100, tip: 'battle_retreat_max' },
         { key: 'crit_base_bonus_pct', label: '暴击基础伤害加成(%)', short: '暴击加成%', min: 1, max: 500, step: 1, tip: 'crit_base_bonus_pct' },
         { key: 'garrison_break_pct', label: '驻军溃败撤退阈值(%)', short: '驻军溃败%', min: 1, max: 100, step: 1, tip: 'garrison_break_pct' },
@@ -749,7 +753,7 @@ export default {
           'gather_formula_divisor', 'gather_sea_bonus_mult', 'res_prod_mult', 'gold_prod_mult', 'mayor_gain_mult', 'dispatch_period_h',
           'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_sec', 'act_treasure_cooldown_sec', 'act_item_cooldown_sec',
           'act_daily_limit', 'move_cool_h'],
-        battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
+        battle: ['battle_max_rounds', 'battle_start_dist', 'battle_start_dist_margin', 'battle_retreat_max', 'crit_base_bonus_pct',
           'garrison_break_pct', 'battle_round_ms', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base',
           'min_dmg_coeff', 'conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'occupy_protect_h', 'occupy_finalize_h', 'placate_gold',
           'placate_grievance', 'placate_feelings', 'placate_cooldown_min', 'feelings_recover_seconds', 'feelings_drop_seconds', 'officer_salary_per_level',
@@ -805,7 +809,10 @@ export default {
           '关闭后只显示加成总百分比，原始数据仍完整存档。',
         // ★ 2026-10-13 回合战斗公式（可调，默认 = 移植前的硬编码值）
         battle_max_rounds: '单场战斗最多回合数，打满仍未分胜负按平局处理，默认 40。',
-        battle_start_dist: '战场初始距离：攻方从 0 出发、守方站在该距离处，默认 6000。调小接火更快、回合更少。',
+        battle_start_dist: '战场初始距离：填 0 = 自动（双方单兵种最终射程里最大的 + 自动距离余量）；' +
+          '填大于 0 的数值 = 固定距离（攻方从 0 出发、守方站在该距离处）。',
+        battle_start_dist_margin: '自动距离余量：仅「战场初始距离 = 0（自动）」时生效。' +
+          '自动距离 = 攻守双方单兵种最终射程的最大值 + 本余量，默认 2000；填 0 = 贴着最远射程开局。',
         battle_retreat_max: '双方「后退」指令的最远退距，超出后夹回，默认 10000。',
         crit_base_bonus_pct: '装备仅配置暴击几率、未配置暴击伤害时使用的暴击伤害加成，默认 50（暴击伤害 ×1.5）。',
         garrison_break_pct: '盟军驻军战的溃败撤退阈值：守方剩余兵力跌破初始兵力的该百分比即判负并返航，默认 50。',
@@ -963,6 +970,8 @@ export default {
       api.get('/admin/ezfy-build-limit').then(r => {
         if (r.code === 0) {
           const pos = (v, def) => (v === undefined || v === null || v <= 0) ? def : v
+          // ★ 2026-10-31 「0 合法」字段用这个：0 有意义（战场初始距离 0 = 自动、余量 0 = 无余量）
+          const pos0 = (v, def) => (v === undefined || v === null || v < 0) ? def : v
           const sw = (v) => (v === undefined || v === null) ? 1 : (Number(v) === 0 ? 0 : 1)
           this.form = {
             military_max: r.data.military_max,
@@ -1002,7 +1011,9 @@ export default {
             occupy_finalize_h: pos(r.data.occupy_finalize_h, 24),
             // ★ 2026-10-13 回合战斗公式：0 无意义 → pos 回落各自默认
             battle_max_rounds: pos(r.data.battle_max_rounds, 40),
-            battle_start_dist: pos(r.data.battle_start_dist, 6000),
+            // ★ 2026-10-31 0 = 自动 / 余量 0 合法 → 用 pos0（pos 会把 0 打回默认）
+            battle_start_dist: pos0(r.data.battle_start_dist, 0),
+            battle_start_dist_margin: pos0(r.data.battle_start_dist_margin, 2000),
             battle_retreat_max: pos(r.data.battle_retreat_max, 10000),
             crit_base_bonus_pct: pos(r.data.crit_base_bonus_pct, 50),
             garrison_break_pct: pos(r.data.garrison_break_pct, 50),
@@ -1129,7 +1140,7 @@ export default {
     emptyFormula () {
       return {
         name: '', remark: '', damage_formula: 0, show_battle_bonus_detail: 1,
-        battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
+        battle_max_rounds: 40, battle_start_dist: 0, battle_start_dist_margin: 2000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
         atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5
       }

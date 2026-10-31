@@ -22,7 +22,7 @@ import (
 func ezfyCritTestState(crit, critDmg int) *ezfyBattleState {
 	return &ezfyBattleState{
 		Attackers: []*ezfyFightUnit{ezfyTestUnit("A1", "步兵", 0, 200)},
-		Defenders: []*ezfyFightUnit{ezfyTestUnit("D1", "步兵", ezfyBattleStartDistCfg(), 200)},
+		Defenders: []*ezfyFightUnit{ezfyTestUnit("D1", "步兵", ezfyBattleStartDistDef, 200)},
 		AtkEquip:  ezfyBattleBonus{Crit: crit, CritDmg: critDmg},
 		Head:      []string{}, Actions: []string{},
 	}
