@@ -7644,6 +7644,13 @@ export default {
       const s = this.fmtTime(t)
       return s ? s.slice(0, 16) : ''
     },
+    // ★★ 2026-10-31 战报列表时间**去掉年份**：`2026-10-31 13:49:38` → `10-31 13:49:38`。
+    //   列表一行本来就长，年份占位大；要看完整时间点开战报（正文里是完整时间）。
+    //   ⚠️ 只给战报列表（战斗报告 / 军情警讯）用 —— 邮件/社交/军团/活动仍用 fmtTime（带年份，跨年不混）。
+    fmtReportTime (t) {
+      const s = this.fmtTime(t)
+      return s ? s.slice(5) : ''
+    },
     // ---- 页面内提示 / 确认（替代 alert / confirm / prompt）----
     notify (text, type) {
       const t = String(text === undefined || text === null ? '' : text)

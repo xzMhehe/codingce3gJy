@@ -129,7 +129,7 @@
               <a href="javascript:;" @click="ezfy.openReport(r)">
                 <span v-if="r.is_read === 0" class="red">[新]</span>
                 <span v-if="ezfy.intelTag(r)" class="orange">[{{ ezfy.intelTag(r) }}] </span>{{ ezfy.intelTitle(r) }}</a>
-              <span class="gray">({{ ezfy.fmtTime(r.created_at) }})</span>
+              <span class="gray">({{ ezfy.fmtReportTime(r.created_at) }})</span>
             </div>
             <!-- ★ 2026-10-11 区分「加载中」与「真的没有」：切分区时列表先清空、接口回来前显示「加载中…」，
                  避免「战斗报告(1) 却显示暂无」这种误导。 -->
@@ -162,7 +162,7 @@
                 <span v-if="r.is_read === 0" class="red">[新]</span>
                 <span v-if="ezfy.reportTab === 5 && r.owner_name" class="blue">{{ r.owner_name }}：</span>
                 <span class="orange">[{{ r.type_name }}]</span> {{ r.title }}</a>
-              <span class="gray">({{ ezfy.fmtTime(r.created_at) }})</span>
+              <span class="gray">({{ ezfy.fmtReportTime(r.created_at) }})</span>
             </div>
             <!-- ★ 2026-10-11 同上：加载中 vs 真的没有 -->
             <div class="old-line gray" v-if="!ezfy.reports.length && ezfy.repLoading">(加载中…)</div>
