@@ -699,7 +699,7 @@
              ★★ 2026-10-31 槽位固定（后端按 slot 下发）+ 点技能名展开效果、再点收起：
                遗忘只清空该格，后面的技能不会窜位；离开军官详情自动收起（watch.cur）。 -->
         <div class="old-line" v-for="(s, i) in ezfy.officerSkillSlots" :key="'ds' + i">
-          技能{{ i + 1 }}：<template v-if="s"><a href="javascript:;" @click="ezfy.toggleOfficerSkill(i + 1)">{{ s.name }}</a><span v-if="s.level" class="green"> {{ ezfy.romanSkillLv(s.level) }}</span></template><span v-else class="gray">未学习</span><a href="javascript:;" @click="ezfy.doLearnRandom">[学习]</a><a v-if="s" href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
+          技能{{ i + 1 }}：<template v-if="s"><a href="javascript:;" @click="ezfy.toggleOfficerSkill(i + 1)">{{ s.name }}</a><span v-if="s.level" class="green"> {{ ezfy.romanSkillLv(s.level) }}</span></template><span v-else class="gray">未学习</span> <a href="javascript:;" @click="ezfy.doLearnRandom">[学习]</a><a v-if="s" href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
           <div v-if="s && ezfy.officerSkillOpen === i + 1" class="gray sk-des">效果：{{ s.effect }}<template v-if="s.des">　{{ s.des }}</template></div>
         </div>
         <div class="old-line">
