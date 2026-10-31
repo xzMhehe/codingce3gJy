@@ -240,6 +240,20 @@ var ezfyBotNickPool = []string{
 	"雪线之上", "燃烧海岸", "钢与火", "沉默的炮群", "夜航", "零号阵地",
 }
 
+// ★★ 2026-10-31 人机随机番号：番号只有 1 个字，从军事风格单字里随机取，
+// 而不是所有新造人机都沿用默认「新」（地图上会一片「新」，看不出区别）。
+var ezfyBotBannerPool = []string{
+	"虎", "狼", "鹰", "豹", "狮", "龙", "熊", "鲨", "鹫", "蜂",
+	"雷", "风", "火", "铁", "钢", "锋", "刃", "盾", "剑", "弓",
+	"骑", "战", "勇", "猛", "烈", "霜", "焰", "光", "星", "云",
+	"山", "河", "海", "天", "地", "玄", "赤", "青", "白", "黑",
+}
+
+// ezfyBotPickBanner 随机取一个人机番号（1 个字，必然通过 ezfyBannerValid）。
+func ezfyBotPickBanner() string {
+	return ezfyBotBannerPool[mathrand.Intn(len(ezfyBotBannerPool))]
+}
+
 // 难度档参数：发育节奏 / 兵力目标 / 攻击性
 //
 //	grow：两次行动间隔（分钟，含抖动）
@@ -343,7 +357,7 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 	//   此前 Prestige 固定 0 → 管理端显示「军衔中尉、声望 30」不一致；现在军衔与声望对应。
 	botRank := ezfyRankAt(9)
 	if err := h.DB.Create(&model.EzfyProfile{
-		UserID: uid, GameUID: int64(uid), Nickname: nick, Banner: "新",
+		UserID: uid, GameUID: int64(uid), Nickname: nick, Banner: ezfyBotPickBanner(),
 		Prestige: botRank.NeedPrestige, Camp: camp, Rank: botRank.ID, IsBot: 1,
 	}).Error; err != nil {
 		return rollback(fmt.Errorf("建二战档案失败: %w", err))
@@ -527,6 +541,41 @@ func (h *EzfyHandler) ezfyBotGatherBackfill() {
 	}
 	h.DB.Exec("INSERT IGNORE INTO ezfy_bot_lock (name, owner, expire_at, updated_at) VALUES (?, 'gather-backfill', 1, NOW())",
 		ezfyBotGatherMark)
+}
+
+// ezfyBotBannerMark 存量人机「随机番号」的数据库标记（借用 ezfy_bot_lock 的 name 主键）。
+const ezfyBotBannerMark = "ezfy_bot_banner_v1"
+
+// ezfyBotBannerOnce 进程内只补一次（防同进程并发/重复跑）。
+var ezfyBotBannerOnce sync.Once
+
+// ezfyBotBannerBackfill 存量人机一次性补随机番号。
+//
+// ★★ 2026-10-31 番号功能上线前出生的人机，profile 里都是默认「新」，
+// 地图上会一片「新」、看不出区别；这里把「空/新」换成随机单字。
+// 管理端后来设置过的番号不动（只改空值和默认值）。
+//
+// ⚠️ 与集结令补发同理：光靠 sync.Once 每次重启都会重跑，可能把管理端手工改的番号冲掉，
+// 所以补完落一条 DB 标记，之后重启不再执行。
+func (h *EzfyHandler) ezfyBotBannerBackfill() {
+	var marked int64
+	h.DB.Model(&model.EzfyBotLock{}).Where("name = ?", ezfyBotBannerMark).Count(&marked)
+	if marked > 0 {
+		return
+	}
+	var uids []uint
+	h.DB.Model(&model.EzfyBot{}).Select("user_id").Find(&uids)
+	for _, uid := range uids {
+		var cur string
+		h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Pluck("banner", &cur)
+		if cur != "" && cur != ezfyDefaultBanner {
+			continue
+		}
+		h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+			Update("banner", ezfyBotPickBanner())
+	}
+	h.DB.Exec("INSERT IGNORE INTO ezfy_bot_lock (name, owner, expire_at, updated_at) VALUES (?, 'banner-backfill', 1, NOW())",
+		ezfyBotBannerMark)
 }
 
 // ============ 调度层：租约锁 + tick ============

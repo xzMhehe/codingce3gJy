@@ -46,6 +46,23 @@ func TestBannerValid(t *testing.T) {
 	}
 }
 
+// TestBotBannerPool 人机随机番号：词库里每个候选都必须是合法的 1 个字。
+func TestBotBannerPool(t *testing.T) {
+	if len(ezfyBotBannerPool) == 0 {
+		t.Fatal("人机番号词库不能为空")
+	}
+	for _, b := range ezfyBotBannerPool {
+		if !ezfyBannerValid(b) {
+			t.Errorf("人机番号 %q 不是合法的 1 个字", b)
+		}
+	}
+	for i := 0; i < 200; i++ {
+		if b := ezfyBotPickBanner(); !ezfyBannerValid(b) {
+			t.Fatalf("随机取到的番号 %q 不合法", b)
+		}
+	}
+}
+
 // TestMapCellShowsBanner 地图格第一行要用城主的番号（默认 新），不是统一「城市」。
 func TestMapCellShowsBanner(t *testing.T) {
 	back, err := os.ReadFile("ezfy_order.go")

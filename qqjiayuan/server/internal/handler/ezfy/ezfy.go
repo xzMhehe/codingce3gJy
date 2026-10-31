@@ -170,6 +170,8 @@ func (h *EzfyHandler) cfgs() {
 	ezfyRankNoJewelOnce.Do(func() { ezfyMigrateRankNoJewel(h.DB) })
 	// ★ 2026-10-17 存量人机一次性补足 5000 集结令（新生成的人机在 ezfyBotProvision 里直接发）
 	ezfyBotGatherOnce.Do(func() { h.ezfyBotGatherBackfill() })
+	// ★★ 2026-10-31 存量人机一次性随机番号（新生成的在 ezfyBotProvision 里直接随机）
+	ezfyBotBannerOnce.Do(func() { h.ezfyBotBannerBackfill() })
 	// ★★ 2026-10-10 永久移除「宝物签到误发 → 装备表」的一次性迁移（原 ezfyMigrateTreasureBag）。
 	//
 	//   事故：它用 sync.Once 包裹，而 sync.Once 只对**进程内**有效 —— 每次重启 / 重新部署后
