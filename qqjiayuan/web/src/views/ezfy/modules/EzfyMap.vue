@@ -61,7 +61,7 @@
             <a href="javascript:;" @click="ezfy.loadMap()">回到本城</a>
           </div>
           <div class="old-line gray">
-            城=城市 寇=寇城 墟=废墟 海=海洋 括号内为等级; 点格子进入目标详情
+            寇=寇城 墟=废墟 海=海洋
           </div>
           <div class="old-line gray">
             <span class="orange">活动</span>=活动野地 <span style="color:#ff00ff">活动寇</span>=活动寇城
@@ -111,7 +111,6 @@
               <div class="old-line">【{{ ezfy.selDetail.type === 3 ? '寇城' : ezfy.selDetail.terrain_name }}({{ ezfy.selDetail.level }}级)】({{ ezfy.selCell.x }},{{ ezfy.selCell.y }})</div>
               <div class="old-line">地形：{{ ezfy.selDetail.terrain_name }}</div>
               <div class="old-line" v-if="ezfy.selDetail.type === 3">地块：寇城</div>
-              <div class="old-line" v-else>野地等级：{{ ezfy.selDetail.level }}级</div>
               <!-- ★ 2026-10-30 用户规则：掉落宝物/掉落道具不让玩家知道（管理后台能看就行），
                    原来的「掉落宝物：…」两行已删；这里只保留归属与采集资源说明。 -->
               <!-- ★ 2026-10-22 野地归属的玩家名可点：进该玩家统帅页（games/ezfy?cur=playerinfo），
