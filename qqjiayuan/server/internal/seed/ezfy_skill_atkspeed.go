@@ -66,6 +66,16 @@ func ezfySkillWolfPackFix(db *gorm.DB) {
 		"ezfy 军官技能：狼群围猎 效果/描述已改为「海军对海攻击」")
 }
 
+// ezfySkillArcBarrierMaxFix 把「弧形壁垒(2)」文案改成**满级每回合发动**版。
+//
+// ★★ 2026-10-31 用户口径：弧形壁垒未满级每 3 回合发动 1 回合，满级后每回合发动
+// （普通军官 5 级 / 名将 6 级，实现见 ezfyTimedIntervalFor）。
+// 上一版文案已打标，必须用新 key 才落得到已部署的库。
+func ezfySkillArcBarrierMaxFix(db *gorm.DB) {
+	ezfySkillTextSync(db, "ezfy_skill_arc_max_20261031", []int{2},
+		"ezfy 军官技能：弧形壁垒 描述已改为「满级每回合发动」")
+}
+
 // ezfySkillGoldenInsightFix 把「黄金洞察(11)」的文案一次性改成**侦察/情报等级**版。
 //
 // ★★ 2026-10-31 用户需求：「黄金眼效果不对，它应该就是提高侦察等级的 —— 带队侦查时叠加侦察等级，

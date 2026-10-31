@@ -136,6 +136,8 @@ func TestOfficerDetailFrontendWiring(t *testing.T) {
 		"ezfy.toggleOfficerCombo(",        // 特殊技能点击展开/收起
 		"ezfy.officerSkillOpen === i + 1", // 只展开被点的那一格
 		"ezfy.officerComboOpen === cs.id", // 只展开被点的那个组合技
+		"ezfy.romanSkillLv(s.level)",      // 玩家端技能等级用罗马数字（Lv.V）
+		"ezfy.romanSkillLv(cs.level)",     // 组合技/特殊技能等级同样用罗马数字
 	} {
 		if !strings.Contains(acade, want) {
 			t.Fatalf("EzfyAcademy.vue 缺详情页交互/文案：%s", want)
@@ -149,6 +151,7 @@ func TestOfficerDetailFrontendWiring(t *testing.T) {
 		"resetOfficerExpand", // 离开详情收起
 		"if (o === 'officerdetail' && n !== 'officerdetail')", // watch.cur 里复位
 		"const slot = Number(s.slot) || (i + 1)",              // 按槽位渲染（不按下标）
+		"romanSkillLv (n)",                                    // 技能等级 → 罗马数字（Lv.V）
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("Ezfy.vue 缺技能槽位/展开复位逻辑：%s", want)

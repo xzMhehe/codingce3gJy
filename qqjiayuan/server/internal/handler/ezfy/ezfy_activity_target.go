@@ -138,11 +138,16 @@ func generalSkillLevel(g *model.EzfyCfgGeneral) int {
 	if g == nil {
 		return 1
 	}
-	cap := 5
-	if g.Kind == 2 {
-		cap = 6
+	return ezfySkillLevelOf(g.Level, generalSkillCap(g))
+}
+
+// generalSkillCap 守将技能等级上限：名将(kind=2) 6 级，普通守将 5 级。
+// 与 generalSkillLevel 同一口径；间隔发动技能用它判断「是否满级」。
+func generalSkillCap(g *model.EzfyCfgGeneral) int {
+	if g != nil && g.Kind == 2 {
+		return 6
 	}
-	return ezfySkillLevelOf(g.Level, cap)
+	return 5
 }
 func generalSkillScale(g *model.EzfyCfgGeneral) int { return generalSkillLevel(g) }
 func generalCounterRounds(g *model.EzfyCfgGeneral) int {
@@ -257,7 +262,7 @@ func generalTypeBonus(g *model.EzfyCfgGeneral, b ezfyTypeBonus) ezfyTypeBonus {
 // ★ 2026-09-29 修复：活动野地原来「守方加成恒为 0」，导致配了守将也看不出守方厉害
 //
 //	（战斗加成里 守方 防御+0% 速度+0%）。现在按守将有效学识给防御。
-//	无科技/城墙/装备：防御 = (有效学识+1)/2 + 弧形壁垒+30（每3回合发动1回合）。
+//	无科技/城墙/装备：防御 = (有效学识+1)/2 + 弧形壁垒+30（未满级每3回合/满级每回合发动）。
 //
 // ★ 2026-10-06 守将技能随等级自动升级：弧形壁垒 ×技能倍率（属性部分 ezfyAttrToBonus 不加倍）。
 //
@@ -902,7 +907,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		}
 		for _, s := range generalSkillList(defGeneral) {
 			if eff := ezfySkillEffectTextAt(s, lv); eff != "" {
-				parts = append(parts, s+"(Lv."+strconv.Itoa(lv)+" "+eff+")")
+				parts = append(parts, s+"(Lv."+ezfyRomanLevel(lv)+" "+eff+")")
 			}
 		}
 		defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level)
@@ -959,7 +964,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			//   原来这里传空表 → 守将的兵种技能全被丢掉，且 ezfyActWildDefBonus 已不再
 			//   返回「全兵种速度」标量（改按兵种下发）→ 不接这一档守将速度会变 0（回归）。
 			atkType, generalTypeBonus(defGeneral, ezfyTypeBonus{}))
-		// ★★ 2026-10-31 普通军官「每3回合发动1回合」技能（弧形壁垒 / 火炮压制）：
+		// ★★ 2026-10-31 间隔发动技能（弧形壁垒未满级每3回合/满级每回合；火炮压制每3回合）：
 		//   与普通出征同口径 —— 快照存满额，引擎按回合扣减（见 ezfy_skill_timed.go）。
 		st.AtkTimed = h.officerTimedSkills(leadOfficer)
 		st.DefTimed = generalTimedSkills(defGeneral)

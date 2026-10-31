@@ -46,7 +46,9 @@ const (
 	// ★ 第九轮：取消训练手续费（%），按常见游戏取 10%
 	ezfyCancelTrainFeePct = 10
 	// ★ 第九轮：军官忠诚 —— 派遣不再扣，只有打败仗才扣（见 ezfy_battle.go）
-	ezfyLoyaltyOnDefeat = 3 // 败仗基础扣忠心
+	// ★★ 2026-10-31 用户需求：败仗扣忠心 = 基础 1 点 + 按战损比例追加，总计最高 6 点。
+	ezfyLoyaltyOnDefeat    = 1 // 败仗基础扣忠心
+	ezfyLoyaltyOnDefeatMax = 6 // 败仗扣忠心上限（全灭时拿满）
 	// ★ 建筑图纸道具：升级到 10 级及以上必需。cfg_id 按名字解析（见 ezfyBlueprintItemID）。
 	// ★ 司令部兵种战斗配置「防守」第四种状态：不参战（界面文案「避战」；被攻击时防御战斗兵种不含它）。
 	//   ⚠️ -1 只表示「避战」，**不是**后退 —— 后退是下面的 ezfyDefMoveBack(-2)。

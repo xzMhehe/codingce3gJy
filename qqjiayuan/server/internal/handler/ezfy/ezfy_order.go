@@ -4143,7 +4143,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					}
 					for _, s := range generalSkillList(defGeneral) {
 						if eff := ezfySkillEffectTextAt(s, officerLv); eff != "" {
-							descParts = append(descParts, s+"(Lv."+strconv.Itoa(officerLv)+" "+eff+")")
+							descParts = append(descParts, s+"(Lv."+ezfyRomanLevel(officerLv)+" "+eff+")")
 						}
 					}
 					defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level)
@@ -5743,25 +5743,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		order.ReturnTime = now + travel
 		// ★ 2026-10-09 ：战报里不再单独列「攻方/守方伤兵入营」两行
 		//   （尾部「回收比例」已汇总两方占比）。伤兵数量去伤兵营看。
-		// ★ 军官忠诚：只有**打败仗**才掉，且按战损比例合理计算（基础 3 点，全灭 10 点）
-		//   平局不算败仗，不掉忠诚。
+		// ★★ 2026-10-31 用户需求：败仗扣忠诚**固定 -3**（原来按战损比例在 3~9 之间浮动，
+		//   全灭一次掉 9 点，玩家反馈太重）。平局不算败仗，不掉忠诚。
 		if leadOfficer != nil && !draw {
-			var myDead, myTotal int64
-			for _, g := range br.AttackerLosses {
-				myDead += g.Count
-			}
-			for _, g := range parseGroups(order.Troops) {
-				myTotal += g.Count
-			}
-			delta := ezfyLoyaltyOnDefeat
-			if myTotal > 0 {
-				delta += int(float64(ezfyLoyaltyOnDefeat*2) * float64(myDead) / float64(myTotal))
-			}
-			if delta > 10 {
-				delta = 10
-			}
-			h.officerLoseLoyalty(uid, city.ID, leadOfficer.Name, delta, "")
-			report += fmt.Sprintf("\n带队军官 %s 因战败忠诚度-%d", leadOfficer.Name, delta)
+			h.officerLoseLoyalty(uid, city.ID, leadOfficer.Name, ezfyLoyaltyOnDefeat, "")
+			report += fmt.Sprintf("\n带队军官 %s 因战败忠诚度-%d", leadOfficer.Name, ezfyLoyaltyOnDefeat)
 		}
 		// ★ 用户规则①：**打输也要给经验**（原来只在 if win 分支给，
 		//   败仗回来军官经验一点不动）。数值已在函数开头按统一口径算好，

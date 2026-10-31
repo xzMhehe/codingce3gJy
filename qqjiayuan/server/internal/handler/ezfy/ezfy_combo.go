@@ -266,13 +266,13 @@ func ezfyComboTxt(c *ezfyComboSkill) string {
 	// ★★ 2026-10-31 战法类型进文案（被动不写发动率）
 	switch c.TriggerType {
 	case ezfyComboTriggerPassive:
-		return fmt.Sprintf("%s Lv.%d（被动 %s）", c.Name, c.Level, ezfyComboValueTxt(c))
+		return fmt.Sprintf("%s Lv.%s（被动 %s）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c))
 	case ezfyComboTriggerCommand:
-		return fmt.Sprintf("%s Lv.%d（指挥 %s，战前 %d%%）", c.Name, c.Level, ezfyComboValueTxt(c), c.ProcPct)
+		return fmt.Sprintf("%s Lv.%s（指挥 %s，战前 %d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c), c.ProcPct)
 	case ezfyComboTriggerPursuit:
-		return fmt.Sprintf("%s Lv.%d（追击 %s，%d%%）", c.Name, c.Level, ezfyComboValueTxt(c), c.ProcPct)
+		return fmt.Sprintf("%s Lv.%s（追击 %s，%d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c), c.ProcPct)
 	}
-	return fmt.Sprintf("%s Lv.%d（%s %s，发动率%d%%）", c.Name, c.Level, ezfyComboKindName(c.Kind), ezfyComboValueTxt(c), c.ProcPct)
+	return fmt.Sprintf("%s Lv.%s（%s %s，发动率%d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboKindName(c.Kind), ezfyComboValueTxt(c), c.ProcPct)
 }
 
 // ezfyComboValueTxt 效果值的可读文案（按类型区分单位）
@@ -347,9 +347,9 @@ func ezfyComboShortTxt(c *ezfyComboSkill) string {
 	// ★★ 2026-10-31 统一成「名称(Lv.N 效果，概率%)」，不再塞「被动/指挥/追击」这类说明文字
 	//   （用户要求回合相关描述简约）。被动必定发动 → 不写概率。
 	if c.TriggerType == ezfyComboTriggerPassive {
-		return fmt.Sprintf("%s(Lv.%d %s)", c.Name, c.Level, ezfyComboShortEffect(c))
+		return fmt.Sprintf("%s(Lv.%s %s)", c.Name, ezfyRomanLevel(c.Level), ezfyComboShortEffect(c))
 	}
-	return fmt.Sprintf("%s(Lv.%d %s，%d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
+	return fmt.Sprintf("%s(Lv.%s %s，%d%%)", c.Name, ezfyRomanLevel(c.Level), ezfyComboShortEffect(c), c.ProcPct)
 }
 
 // ezfyComboShortEffect 只有效果本身，不带技能名（军官行 / 播报共用）

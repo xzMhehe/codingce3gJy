@@ -9,7 +9,8 @@ import "fmt"
 // 玩家实测「弧形壁垒 / 火炮压制 一直在生效」，与文案不符。用户 2026-10-31 要求按文案改。
 //
 // 口径（用户确认）：
-//   · 弧形壁垒：每 3 回合提升防御力，持续 1 回合（第 1、4、7 … 回合发动）
+//   · 弧形壁垒：未满级每 3 回合提升防御力 1 回合（第 1、4、7 … 回合发动）；
+//               ★★ 2026-10-31 用户补充：**满级后每回合发动**（Interval=1）
 //   · 火炮压制：每 3 回合提升**陆军装甲部队**攻击，持续 1 回合
 //               「攻击力」= 本回合 对地/对空/对海/对防 各 +等级数值（10×技能等级）
 //               装甲部队 = 装甲车(4)/轻型坦克(5)/重型坦克(6)/突击炮(7)/火箭(8)
@@ -44,8 +45,22 @@ type ezfyTimedSkill struct {
 	SpeedTroop map[int]int `json:"speed_troop,omitempty"` // 兵种 ID → 速度%（保留扩展位）
 }
 
-// ezfyTimedSkillInterval 默认间隔：每 3 回合发动 1 回合
+// ezfyTimedSkillInterval 未满级间隔：每 3 回合发动 1 回合
 const ezfyTimedSkillInterval = 3
+
+// ezfyTimedSkillIntervalMax 满级间隔：每回合发动（弧形壁垒）
+const ezfyTimedSkillIntervalMax = 1
+
+// ezfyTimedIntervalFor 按「技能等级 / 该军官的技能上限」决定发动间隔。
+//
+// ★★ 2026-10-31 用户口径：弧形壁垒 **未满级每 3 回合一次，满级每回合一次**。
+// 满级 = 技能等级达到该军官上限（普通军官 5 级 / 名将 6 级，见 ezfyOfficerSkillCap）。
+func ezfyTimedIntervalFor(level, cap int) int {
+	if cap > 0 && level >= cap {
+		return ezfyTimedSkillIntervalMax
+	}
+	return ezfyTimedSkillInterval
+}
 
 // procOn 第 round 回合是否**是发动回合**：第 1、1+N、1+2N … 回合
 // （战斗开始第一回合就能吃到，和「绝地逆袭第1回合」的节奏一致）

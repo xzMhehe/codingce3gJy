@@ -899,7 +899,8 @@ func (h *EzfyHandler) learnRandomSkill(city *model.EzfyCity, officerId int64) (s
 	// ★★ 2026-10-31 写进**第一个空槽**（不是简单 append）：槽位固定，遗忘后学新技能
 	//   会填回空出来的那一格，界面不会「整段前移」。
 	h.saveOfficerSkills(o, ezfySkillSlotsAppend(officerSkillSlotsRaw(o), sk.Name))
-	return "", fmt.Sprintf("学会技能【%s】Lv.%d", sk.Name, h.officerSkillLevel(o))
+	// ★ 2026-10-31 玩家端技能等级用罗马数字（Lv.V）；军官等级不变
+	return "", fmt.Sprintf("学会技能【%s】Lv.%s", sk.Name, ezfyRomanLevel(h.officerSkillLevel(o)))
 }
 
 // ezfySkillSlotsAppend 把新技能放进**第一个空槽**；没有空槽且未满则追加；已满返回原样。
@@ -1864,6 +1865,30 @@ func ezfySkillLevelOf(level, cap int) int {
 	return lv
 }
 
+// ezfyRomanLevel 技能等级 → 罗马数字（★ 2026-10-31 玩家端展示用：Lv.V 而不是 Lv.5）。
+// 只用于**技能等级**；军官等级仍是阿拉伯数字。管理端不走这里。
+// 超出标准罗马数字范围（<1 或 ≥4000）时回落阿拉伯数字，避免展示异常。
+func ezfyRomanLevel(n int) string {
+	if n <= 0 || n >= 4000 {
+		return strconv.Itoa(n)
+	}
+	pairs := []struct {
+		v int
+		s string
+	}{
+		{1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"}, {100, "C"}, {90, "XC"},
+		{50, "L"}, {40, "XL"}, {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"},
+	}
+	var b strings.Builder
+	for _, p := range pairs {
+		for n >= p.v {
+			b.WriteString(p.s)
+			n -= p.v
+		}
+	}
+	return b.String()
+}
+
 // ezfyOfficerSkillCap 军官技能等级上限：名将（军官池名将 GeneralId）最高 6 级，普通军官最高 5 级
 func ezfyOfficerSkillCap(o *model.EzfyOfficer) int {
 	if o != nil && o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId) {
@@ -1978,7 +2003,8 @@ func (h *EzfyHandler) officerTypeBonus(o *model.EzfyOfficer, b ezfyTypeBonus) ez
 //
 // ★★ 2026-10-31 按配置文案落地（用户要求）：
 //
-//	弧形壁垒 → 每 3 回合提升防御力，持续 1 回合（+30%×技能等级）
+//	弧形壁垒 → 未满级每 3 回合提升防御力 1 回合（+30%×技能等级）；
+//	            ★ 2026-10-31 用户补充：**满级后每回合发动**（见 ezfyTimedIntervalFor）
 //	火炮压制 → 每 3 回合提升陆军装甲部队攻击，持续 1 回合（+10×技能等级，对地/对空/对海/对防）
 //
 // 引擎侧：战场快照里这两项仍是**满额**（= 发动回合的加成），
@@ -1989,11 +2015,12 @@ func (h *EzfyHandler) officerTimedSkills(o *model.EzfyOfficer) []*ezfyTimedSkill
 	}
 	scale := h.officerSkillScale(o)
 	lv := h.officerSkillLevel(o)
+	arcInterval := ezfyTimedIntervalFor(lv, ezfyOfficerSkillCap(o))
 	out := []*ezfyTimedSkill{}
 	for _, s := range officerSkills(o) {
 		switch s {
 		case "弧形壁垒":
-			out = append(out, &ezfyTimedSkill{Name: s, Level: lv, Interval: ezfyTimedSkillInterval, Duration: 1,
+			out = append(out, &ezfyTimedSkill{Name: s, Level: lv, Interval: arcInterval, Duration: 1,
 				Def: 30 * scale})
 		case "火炮压制":
 			m := map[int]int{}
@@ -2014,11 +2041,12 @@ func generalTimedSkills(g *model.EzfyCfgGeneral) []*ezfyTimedSkill {
 	}
 	scale := generalSkillScale(g)
 	lv := generalSkillLevel(g)
+	arcInterval := ezfyTimedIntervalFor(lv, generalSkillCap(g))
 	out := []*ezfyTimedSkill{}
 	for _, s := range generalSkillList(g) {
 		switch s {
 		case "弧形壁垒":
-			out = append(out, &ezfyTimedSkill{Name: s, Level: lv, Interval: ezfyTimedSkillInterval, Duration: 1,
+			out = append(out, &ezfyTimedSkill{Name: s, Level: lv, Interval: arcInterval, Duration: 1,
 				Def: 30 * scale})
 		case "火炮压制":
 			m := map[int]int{}
@@ -2102,7 +2130,7 @@ func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 		switch s {
 		case "弧形壁垒":
 			// ★ 2026-10-31 这里是**发动回合的满额值**：引擎在非发动回合会扣掉
-			//   （弧形壁垒=每3回合发动1回合，见 officerTimedSkills）。
+			//   （弧形壁垒未满级每3回合、满级每回合，见 officerTimedSkills）。
 			bonus += 30 * scale
 		}
 		// ★★ 2026-10-31 弹幕覆盖**不再算防御加成** —— 按文案它是「城防攻击范围+10%」，
@@ -2167,7 +2195,7 @@ func (h *EzfyHandler) officerBattleDesc(o *model.EzfyOfficer, atkBase int, atkLa
 	lv := h.officerSkillLevel(o)
 	for _, s := range officerSkills(o) {
 		if eff := ezfySkillEffectTextAt(s, lv); eff != "" {
-			parts = append(parts, s+"(Lv."+strconv.Itoa(lv)+" "+eff+")")
+			parts = append(parts, s+"(Lv."+ezfyRomanLevel(lv)+" "+eff+")")
 		}
 	}
 	if len(parts) > 0 {
@@ -2305,7 +2333,7 @@ func (h *EzfyHandler) officerGoOutByID(officerID uint, goOut bool) {
 	}
 	if goOut {
 		// ★ 第九轮用户规则：**派遣/出征不掉忠心**（原来每次 -5，归零就离职，玩家很反感）。
-		//   只有打了败仗才掉，且掉的量按战损合理计算（见 officerLoseLoyalty / 战斗结算）。
+		//   只有打了败仗才掉，且按战损比例扣 1~6 点（见 officerLoseLoyalty / 战斗结算）。
 		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", officerID).Update("status", 1)
 		return
 	}
@@ -2314,7 +2342,8 @@ func (h *EzfyHandler) officerGoOutByID(officerID uint, goOut bool) {
 
 // officerLoseLoyalty 扣军官忠心（归零自动离职）。
 //
-// 只在**打败仗**时调用；delta 由战损程度算出来（见 ezfy_order.go 的败仗结算）。
+// 只在**打败仗**时调用；delta 由战损程度算出：基础 1 点 + 按战损比例追加，总计最高 6 点
+// （见 ezfy_order.go 的败仗结算 / ezfyLoyaltyOnDefeat、ezfyLoyaltyOnDefeatMax）。
 func (h *EzfyHandler) officerLoseLoyalty(uid uint, cityId uint, name string, delta int, reason string) {
 	if name == "" || delta <= 0 {
 		return

@@ -55,6 +55,24 @@ func TestEzfySkillLevelOf(t *testing.T) {
 	}
 }
 
+// TestEzfyRomanLevel 玩家端技能等级展示：罗马数字（Lv.V），军官等级仍用阿拉伯数字。
+func TestEzfyRomanLevel(t *testing.T) {
+	cases := []struct {
+		in   int
+		want string
+	}{
+		{1, "I"}, {2, "II"}, {3, "III"}, {4, "IV"}, {5, "V"}, {6, "VI"},
+		{9, "IX"}, {10, "X"}, {11, "XI"}, {20, "XX"},
+		// 超出标准范围（<1 / ≥4000）回落阿拉伯数字，避免展示异常
+		{0, "0"}, {-1, "-1"}, {4000, "4000"},
+	}
+	for _, c := range cases {
+		if got := ezfyRomanLevel(c.in); got != c.want {
+			t.Fatalf("ezfyRomanLevel(%d) = %q，期望 %q", c.in, got, c.want)
+		}
+	}
+}
+
 // TestSkillBattleBonusScaled 攻击类技能加成必须乘倍率。
 //
 // ★ 2026-10-08 起：通用段只剩「尖兵猛攻 30*scale」；火炮压制(10)/四指阵列·狼群围猎(15)

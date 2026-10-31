@@ -19,8 +19,8 @@ import (
 //  4. 狼群围猎：海军**对海攻击**+15%/级（攻击方与目标都必须是海军兵种；同日二次修订定稿）
 //  5. 弹幕覆盖：只对**城防单位**的**攻击范围**加成（不是防御、不是全兵种）
 
-// testSkillOfficer 构造一个带指定技能的军官（Level 90 → 技能 3 级 = 倍率 3）
-func testSkillOfficer(skills ...string) *model.EzfyOfficer {
+// testSkillOfficerAtLevel 构造指定等级的带技能军官（每 30 级 +1 技能等级）
+func testSkillOfficerAtLevel(level int, skills ...string) *model.EzfyOfficer {
 	raw := "["
 	for i, s := range skills {
 		if i > 0 {
@@ -29,7 +29,12 @@ func testSkillOfficer(skills ...string) *model.EzfyOfficer {
 		raw += `"` + s + `"`
 	}
 	raw += "]"
-	return &model.EzfyOfficer{Name: "测试军官", Level: 90, Skill: raw}
+	return &model.EzfyOfficer{Name: "测试军官", Level: level, Skill: raw}
+}
+
+// testSkillOfficer 构造一个带指定技能的军官（Level 90 → 技能 3 级 = 倍率 3）
+func testSkillOfficer(skills ...string) *model.EzfyOfficer {
+	return testSkillOfficerAtLevel(90, skills...)
 }
 
 // TestOfficerSkillTimedProc 第 1、4、7 … 回合发动，其余回合不发动。
@@ -54,6 +59,89 @@ func TestOfficerSkillTimedProc(t *testing.T) {
 				t.Fatalf("%s 第%d回合不应发动", s.Name, r)
 			}
 		}
+	}
+}
+
+// TestArcBarrierMaxLevelEveryRound ★★ 2026-10-31 用户补充口径：
+// 弧形壁垒**未满级每 3 回合发动 1 回合，满级后每回合发动**。
+//
+//	普通军官满级 = 150 级（技能 5 级上限）；名将满级 = 180 级（技能 6 级上限）。
+//	火炮压制不受影响，仍是每 3 回合发动。
+func TestArcBarrierMaxLevelEveryRound(t *testing.T) {
+	h := &EzfyHandler{}
+
+	// ① 普通军官满级（150 级 → 5 级）：弧形壁垒每回合发动，火炮压制仍 3 回合
+	maxOfficer := testSkillOfficerAtLevel(150, "弧形壁垒", "火炮压制")
+	var arc, artillery *ezfyTimedSkill
+	for _, s := range h.officerTimedSkills(maxOfficer) {
+		switch s.Name {
+		case "弧形壁垒":
+			arc = s
+		case "火炮压制":
+			artillery = s
+		}
+	}
+	if arc == nil || artillery == nil {
+		t.Fatalf("应返回弧形壁垒/火炮压制，得到 %+v", h.officerTimedSkills(maxOfficer))
+	}
+	if arc.Interval != ezfyTimedSkillIntervalMax {
+		t.Fatalf("满级弧形壁垒应每回合发动，Interval=%d", arc.Interval)
+	}
+	for r := 1; r <= 6; r++ {
+		if !arc.procOn(r) {
+			t.Fatalf("满级弧形壁垒第%d回合应发动", r)
+		}
+	}
+	if off := ezfyTimedDefOff([]*ezfyTimedSkill{arc}, 2); off != 0 {
+		t.Fatalf("满级弧形壁垒第2回合不应扣减，得到 +%d%%", off)
+	}
+	if artillery.Interval != ezfyTimedSkillInterval {
+		t.Fatalf("火炮压制不应随满级加速，Interval=%d", artillery.Interval)
+	}
+
+	// ② 普通军官未满级（120 级 → 4 级）：仍每 3 回合发动
+	notMax := testSkillOfficerAtLevel(120, "弧形壁垒")
+	if lv := h.officerSkillLevel(notMax); lv != 4 {
+		t.Fatalf("120 级技能应为 4 级，得到 %d", lv)
+	}
+	if got := h.officerTimedSkills(notMax)[0].Interval; got != ezfyTimedSkillInterval {
+		t.Fatalf("未满级弧形壁垒应每 3 回合发动，Interval=%d", got)
+	}
+
+	// ③ 名将满级（180 级 → 6 级）
+	gMax := &model.EzfyCfgGeneral{Name: "测试名将", Level: 180, Kind: 2, Skill: `["弧形壁垒"]`}
+	if lv := generalSkillLevel(gMax); lv != 6 {
+		t.Fatalf("180 级名将技能应为 6 级，得到 %d", lv)
+	}
+	if got := generalTimedSkills(gMax)[0].Interval; got != ezfyTimedSkillIntervalMax {
+		t.Fatalf("满级名将弧形壁垒应每回合发动，Interval=%d", got)
+	}
+	// 未满级名将（150 级 → 5 级，上限 6）仍 3 回合
+	gNotMax := &model.EzfyCfgGeneral{Name: "测试名将", Level: 150, Kind: 2, Skill: `["弧形壁垒"]`}
+	if got := generalTimedSkills(gNotMax)[0].Interval; got != ezfyTimedSkillInterval {
+		t.Fatalf("未满级名将弧形壁垒应每 3 回合发动，Interval=%d", got)
+	}
+}
+
+// TestArcBarrierMaxLevelSameDamageEachRound 战斗引擎侧：满级弧形壁垒在第 2 回合仍然生效。
+//
+// 用同一份满额防御加成（Def=150、defBonus=150）跑两场，只差 Interval：
+// 第 1 回合两边都发动（伤害相同），第 2 回合满级仍生效 → 伤害应低于「每 3 回合」那场。
+func TestArcBarrierMaxLevelSameDamageEachRound(t *testing.T) {
+	mk := func(interval int) []*ezfyTimedSkill {
+		return []*ezfyTimedSkill{{Name: "弧形壁垒", Level: 5, Interval: interval, Duration: 1, Def: 150}}
+	}
+	const defBonus = 150
+	maxDmg := ezfyTestAtkDamageByRound(ezfyTestRunRounds(t, ezfyTypeBonus{}, ezfyTypeBonus{}, nil, mk(1), defBonus))
+	slowDmg := ezfyTestAtkDamageByRound(ezfyTestRunRounds(t, ezfyTypeBonus{}, ezfyTypeBonus{}, nil, mk(3), defBonus))
+	if maxDmg[1] == 0 || maxDmg[2] == 0 || slowDmg[1] == 0 || slowDmg[2] == 0 {
+		t.Fatalf("两场两回合都要有攻方伤害行，得到 满级=%+v 未满级=%+v", maxDmg, slowDmg)
+	}
+	if maxDmg[1] != slowDmg[1] {
+		t.Fatalf("第1回合两边都发动，伤害应一致：满级=%d 未满级=%d", maxDmg[1], slowDmg[1])
+	}
+	if maxDmg[2] >= slowDmg[2] {
+		t.Fatalf("第2回合满级仍生效，伤害应低于未满级：满级=%d 未满级=%d", maxDmg[2], slowDmg[2])
 	}
 }
 

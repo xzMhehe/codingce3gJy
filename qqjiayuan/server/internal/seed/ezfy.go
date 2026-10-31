@@ -82,6 +82,8 @@ func seedEzfy(db *gorm.DB) {
 	ezfySkillGoldenInsightFix(db)
 	// ★★ 2026-10-31 狼群围猎(8) 改为「海军对海攻击」（攻击方与目标都必须是海军兵种）。
 	ezfySkillWolfPackFix(db)
+	// ★★ 2026-10-31 弧形壁垒(2) 满级后每回合发动（未满级仍每 3 回合）：描述再一次对齐。
+	ezfySkillArcBarrierMaxFix(db)
 
 	// —— 科技：主表每次对齐；等级表**保护 effect_value**（见 seedEzfyTechLevels） ——
 	//

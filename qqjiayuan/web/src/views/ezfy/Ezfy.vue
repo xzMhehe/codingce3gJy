@@ -8292,7 +8292,7 @@ export default {
       })
     },
     // ★ 2026-10-25 学技能改为「随机学一个」：不再传 skill_id（后端从技能池随机挑未学的），
-    //   成功后用后端返回的文案告诉玩家随机到了哪个技能（如「学会技能【尖兵猛攻】Lv.6」）。
+    //   成功后用后端返回的文案告诉玩家随机到了哪个技能（如「学会技能【尖兵猛攻】Lv.VI」）。
     doLearnRandom () {
       const id = this.officerDetail.officer.id
       api.post('/games/ezfy/officers/' + id + '/skill', { op: 'learn' }).then(r => {
@@ -8310,6 +8310,25 @@ export default {
         this.officerSkillOpen = 0
         this.loadOfficerDetail(id)
       })
+    },
+    // ★★ 2026-10-31 玩家端「军官技能等级」统一用罗马数字展示（Lv.V），管理端不受影响。
+    //   只转技能等级，军官等级仍用阿拉伯数字；超出标准范围时回落原数字。
+    romanSkillLv (n) {
+      const num = Number(n)
+      if (!isFinite(num) || num <= 0 || num >= 4000) return String(n == null ? '' : n)
+      const pairs = [
+        [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+        [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+      ]
+      let v = Math.floor(num)
+      let out = ''
+      for (const [k, sym] of pairs) {
+        while (v >= k) {
+          out += sym
+          v -= k
+        }
+      }
+      return out
     },
     // ★★ 2026-10-31 技能/特殊技能「点一下展开效果、再点收起」（同时只展开一个）
     //   离开军官详情自动收起（见 watch.cur → resetOfficerExpand）。
