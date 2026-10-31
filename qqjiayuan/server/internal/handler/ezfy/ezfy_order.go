@@ -1406,7 +1406,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	//   出征到其它地形时在出征前卡控提示（按目标坐标地形判定，覆盖野地/寇城/城市）。
 	// ★ 2026-10-20 新增渔场/矿礁，同属海野，海军也可出征。
 	if ezfyHasNavalTroops(validTroops) && !ezfyNavalTargetAllowed(targetX, targetY) {
-		return "海军部队只能出征岛屿/海底森林/渔场/矿礁/沿海平原"
+		return "海军部队只能出征岛屿/海森/渔场/矿礁/海平"
 	}
 	total := int64(0)
 	for _, t := range validTroops {

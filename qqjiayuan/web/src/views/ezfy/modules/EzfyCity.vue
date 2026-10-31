@@ -57,7 +57,7 @@
           <!-- ★ 2026-09-25 去掉内联 font-size:14px，改为继承全站统一字号（--fs） -->
           <!-- ★ 2026-10-24 文案简化：内陆城市→陆城；沿海城市→海城 -->
           <div class="gray">
-            <b>平原</b> → 陆城; <b>沿海平原</b> → 海城<br/>
+            <b>平原</b> → 陆城; <b>海平</b> → 海城<br/>
             <!-- 沿海城市(可建航海协会、训练海军)。其他地形(含海洋)不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。 -->
           </div>
         </div>
@@ -296,7 +296,7 @@
             使用【高级迁城计划】：持有 {{ ezfy.moveItemCounts.high }} 个
           </div>
           <div class="old-line gray">
-            仅陆地城市可用，请确认您输入的坐标是未被占领的陆地平原，沿海平原无法直接迁移城市
+            仅陆地城市可用，请确认您输入的坐标是未被占领的陆地平原，海平无法直接迁移城市
           </div>
           <div class="old-line">
             横坐标 x：<input v-model="ezfy.moveX" type="number" style="width:80px"/>
@@ -306,7 +306,7 @@
           <hr/>
           <div class="old-line">
             使用【沿海迁城计划】：持有 {{ ezfy.moveItemCounts.sea }} 个
-            <span class="gray">(沿海城市专用，迁移到沿海平原)</span>
+            <span class="gray">(沿海城市专用，迁移到海平)</span>
           </div>
           <div class="old-line">
             迁入大洲：
@@ -315,7 +315,7 @@
             </select>
             <button @click="ezfy.doMoveCity('sea')">按大洲迁城</button>
           </div>
-          <div class="old-line gray">或指定坐标（必须是未被占领的沿海平原）：</div>
+          <div class="old-line gray">或指定坐标（必须是未被占领的海平）：</div>
           <div class="old-line">
             横坐标 x：<input v-model="ezfy.moveX2" type="number" style="width:80px"/>
             纵坐标 y：<input v-model="ezfy.moveY2" type="number" style="width:80px"/>

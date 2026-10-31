@@ -728,10 +728,10 @@ func seedEzfyMoveItems(db *gorm.DB) {
 			Description: "在市政厅→城市迁移使用: 仅陆地城市可用, 选择一个大洲, 城市随机迁移到该洲内未被占领的平原"},
 		{ID: 1021, Name: "高级迁城计划", ItemType: 17, Param1: 1,
 			PriceGold: 0, PriceDiamond: 30, Stock: -1, Category: "迁城道具",
-			Description: "在市政厅→城市迁移使用: 仅陆地城市可用, 指定坐标迁移城市, 目标必须是未被占领的陆地平原(沿海平原不可)"},
+			Description: "在市政厅→城市迁移使用: 仅陆地城市可用, 指定坐标迁移城市, 目标必须是未被占领的陆地平原(海平不可)"},
 		{ID: 1022, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
 			PriceGold: 0, PriceDiamond: 30, Stock: -1, Category: "迁城道具",
-			Description: "在市政厅→城市迁移使用: 沿海城市专用, 选择大洲或指定坐标, 城市迁移到未被占领的沿海平原"},
+			Description: "在市政厅→城市迁移使用: 沿海城市专用, 选择大洲或指定坐标, 城市迁移到未被占领的海平"},
 	}
 	for _, it := range rows {
 		var count int64

@@ -11,6 +11,7 @@ package ezfy
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"strconv"
@@ -454,8 +455,18 @@ func (h *EzfyAdmin) ezfyBotPurgeOne(uid uint) error {
 	if _, err := h.ezfyPurgePlayerData(uid, ids); err != nil {
 		return err
 	}
+	// ★ 2026-10-31 单人删除也兜底清一次人机专属表：tick / 批量行动可能与删除并发，
+	//   在 purge 事务之后又插回计划(botLockTargetPlan)、日志(ezfyBotLog)、城市槽(botSyncCityStates)。
+	//   此前只有「清空全部」末尾做整表清扫，单删会留下看不见的孤儿行。
+	h.DB.Exec("DELETE FROM ezfy_bot_target WHERE bot_uid = ? OR target_uid = ?", uid, uid)
+	h.DB.Exec("DELETE FROM ezfy_bot_log WHERE bot_uid = ?", uid)
+	h.DB.Exec("DELETE FROM ezfy_bot_city WHERE bot_uid = ?", uid)
 	// 家园账号（只删带 is_bot=1 的，防误删真人）
-	h.home().Exec("DELETE FROM users WHERE id = ? AND is_bot = 1", uid)
+	// ★ 跨库（二战库/家园库）无法同事务：这里失败只记日志。不能返回错误 —— 二战数据已经删了，
+	//   接口报失败会让人以为没删掉，重试又因 ezfy_bot 已不存在而永远清不了家园号。
+	if err := h.home().Exec("DELETE FROM users WHERE id = ? AND is_bot = 1", uid).Error; err != nil {
+		log.Printf("[ezfy] 人机删除：家园账号清理失败 uid=%d: %v", uid, err)
+	}
 	return nil
 }
 

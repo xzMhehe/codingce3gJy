@@ -1226,7 +1226,7 @@ export default {
       tiles: [], tileTotal: 0, tilePage: 1, tileSize: 5, loadingTile: false,
       tileX: 250, tileY: 250, tileCell: null, tileWord: '', tileMarkFilter: -1,
       tileForm: { terrain: 0, mark_kind: 0, mark_level: 1, des: '' },
-      terrainNames: { 1: '平原', 2: '草原', 3: '森林', 4: '盆地', 5: '丘陵', 6: '沼泽', 7: '岛屿', 8: '海洋', 9: '沿海平原', 10: '渔场', 11: '矿礁' },
+      terrainNames: { 1: '平原', 2: '草原', 3: '森林', 4: '盆地', 5: '丘陵', 6: '沼泽', 7: '岛屿', 8: '海洋', 9: '海平', 10: '渔场', 11: '矿礁' },
       wildDlg: false, wf: emptyWild(), wildCfgMatch: null,
       wcDlg: false, wc: emptyWc(),
       // ★ 2026-10-05 野地类型列表「宝物/道具掉落」详情弹窗

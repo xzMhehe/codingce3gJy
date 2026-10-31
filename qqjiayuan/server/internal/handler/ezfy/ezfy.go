@@ -2411,7 +2411,7 @@ func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string
 	}
 	// ★ 航海协会：只有沿海城市（沿海平原）能建，内陆城市一律不行
 	if buildingId == 19 && !h.isSeaCity(city) {
-		return "航海协会只能建在沿海城市(沿海平原上的城市)"
+		return "航海协会只能建在沿海城市(海平上的城市)"
 	}
 	// ★ 2026-10-22 建造队列上限（军事区/资源区共用；征募告示可临时增加）
 	if msg := h.ezfyBuildQueueFullMsg(city.ID); msg != "" {
@@ -2932,7 +2932,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	}
 	// 海军(type 1)只能在沿海城市训练(用户规则: 内陆城市不能训练海军)
 	if cfg.Type == 1 && !h.isSeaCity(city) {
-		return "海军只能在沿海城市(建在沿海平原上的城市)训练, 内陆城市无法训练海军"
+		return "海军只能在沿海城市(建在海平上的城市)训练, 内陆城市无法训练海军"
 	}
 	if msg := h.ezfyTroopRequireMsg(cfg, blv, tech); msg != "" {
 		return msg
@@ -5534,7 +5534,7 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	// ★ 用户规则：只能建在「平原」或「沿海平原」上；海城只能建在沿海平原
 	terr := ezfyTerrainEx(req.X, req.Y)
 	if terr != 1 && terr != ezfyTerrainCoastalPlain {
-		resp.ParamError(c, "只能在平原或沿海平原上建造新城（海城需要沿海平原）")
+		resp.ParamError(c, "只能在平原或海平上建造新城（海城需要海平）")
 		return
 	}
 	// ★★ 2026-10-09 用户规则：「坐标必须是自己的附属野地（平原、沿海平原）」——
@@ -5608,7 +5608,7 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	kind := "平原"
 	extra := ""
 	if isSea {
-		kind = "沿海平原"
+		kind = "海平"
 		extra = "\n该城为【沿海城市】: 可建造航海协会并训练海军。"
 	}
 	h.addReport(uid, 5, "新城建成",

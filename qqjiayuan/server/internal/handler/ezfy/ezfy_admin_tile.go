@@ -225,7 +225,7 @@ func (h *EzfyAdmin) AdminEzfyMapTileDelete(c *gin.Context) {
 func ezfyCheckTileVals(vals map[string]interface{}) string {
 	if t, ok := vals["terrain"].(int); ok && t != 0 {
 		if t < 1 || t > 11 {
-			return "地形只能是 1~11（1平原…8海洋 9沿海平原 10渔场 11矿礁），0 = 不覆盖"
+			return "地形只能是 1~11（1平原…8海洋 9海平 10渔场 11矿礁），0 = 不覆盖"
 		}
 	}
 	if k, ok := vals["mark_kind"].(int); ok && k != 0 {

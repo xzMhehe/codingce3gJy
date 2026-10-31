@@ -493,7 +493,7 @@ func (h *EzfyHandler) checkMoveTarget(x, y int, needCoastal bool) string {
 	}
 	t := ezfyTerrainEx(x, y)
 	if t != 1 && t != ezfyTerrainCoastalPlain {
-		return "只能迁移到平原或沿海平原"
+		return "只能迁移到平原或海平"
 	}
 	var n int64
 	h.DB.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", x, y).Count(&n)
@@ -502,10 +502,10 @@ func (h *EzfyHandler) checkMoveTarget(x, y int, needCoastal bool) string {
 	}
 	isCoastal := t == ezfyTerrainCoastalPlain
 	if needCoastal && !isCoastal {
-		return "沿海迁城只能迁移到沿海平原"
+		return "沿海迁城只能迁移到海平"
 	}
 	if !needCoastal && isCoastal {
-		return "该坐标是沿海平原, 请使用沿海迁城计划"
+		return "该坐标是海平, 请使用沿海迁城计划"
 	}
 	return ""
 }
@@ -595,7 +595,7 @@ func (h *EzfyHandler) EzfyApplyMove(cityId uint, x, y int) string {
 	}
 	t := ezfyTerrainEx(x, y)
 	if t != 1 && t != ezfyTerrainCoastalPlain {
-		return "只能迁移到平原或沿海平原"
+		return "只能迁移到平原或海平"
 	}
 	var n int64
 	h.DB.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", x, y).Count(&n)
@@ -750,7 +750,7 @@ func (h *EzfyHandler) EzfyMoveOneCityCoastalC(cityId uint, continent, fallback i
 		x, y, ok = h.findFreePosInContinentExceptC(fallback, true, excluded, ctx)
 	}
 	if !ok {
-		return 0, 0, "目标洲(及备用洲)内找不到可用沿海平原"
+		return 0, 0, "目标洲(及备用洲)内找不到可用海平"
 	}
 	if msg := h.EzfyApplyMove(ct.ID, x, y); msg != "" {
 		return 0, 0, msg

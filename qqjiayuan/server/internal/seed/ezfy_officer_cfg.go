@@ -107,7 +107,7 @@ var ezfyEzfyCfgEquipment = []model.EzfyCfgEquipment{
 	{ID: 30, Name: "黑曜石戒指", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(盆地/森林),三属性+5"},
 	{ID: 31, Name: "琥珀项链", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(盆地/沼泽/山地),三属性+5"},
 	{ID: 32, Name: "铂金戒指", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(盆地),三属性+5"},
-	{ID: 33, Name: "翡翠项链", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(草原/海底森林),三属性+5"},
-	{ID: 34, Name: "祖母绿", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(草原/山地/海底森林),三属性+5"},
-	{ID: 35, Name: "蓝宝石戒指", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(沼泽/海底森林),三属性+5"},
+	{ID: 33, Name: "翡翠项链", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(草原/海森),三属性+5"},
+	{ID: 34, Name: "祖母绿", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(草原/山地/海森),三属性+5"},
+	{ID: 35, Name: "蓝宝石戒指", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(沼泽/海森),三属性+5"},
 }

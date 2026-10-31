@@ -5292,7 +5292,7 @@ export default {
       }
       const contName = this.areaName(type === 'sea' ? this.moveContinentSea : this.moveContinent)
       const where = type === 'low' ? '迁入【' + contName + '】'
-        : (type === 'sea' && !parseInt(this.moveX2) ? '迁入【' + contName + '】的沿海平原' : '迁到指定坐标')
+        : (type === 'sea' && !parseInt(this.moveX2) ? '迁入【' + contName + '】的海平' : '迁到指定坐标')
       if (!await this.ask('确认使用【' + label + '】×1 ' + where + '吗？（当前持有 ' + have + ' 个）')) return
       api.post('/games/ezfy/city/move', body).then(r => {
         if (r.code === 0) {
@@ -5672,7 +5672,7 @@ export default {
     wildOrderArg (w, orderId) {
       return {
         id: orderId || w.gather_order_id,
-        target_name: w.terrain === 8 ? '海底森林' : (w.terrain_name || '野地'),
+        target_name: w.terrain === 8 ? '海森' : (w.terrain_name || '野地'),
         target_x: w.x,
         target_y: w.y
       }
@@ -6370,9 +6370,9 @@ export default {
       if (cell.name === '寇城(废墟)') return '墟'
       if (cell.area_type === 2) return '寇(' + cell.level + ')'
       if (cell.terrain === 8) {
-        // ★ 纯海洋/海底森林分开显示(用户规范): 海洋不带等级, 海野显示海底森林(N级)
+        // ★ 纯海洋/海森分开显示(用户规范): 海洋不带等级, 海野显示海森(N级)
         if (cell.is_ocean) return '海洋'
-        return '海底森林(' + cell.level + ')'
+        return '海森(' + cell.level + ')'
       }
       // 陆地野地按地形名显示(平原/草原/森林/盆地/丘陵/沼泽/岛屿)
       return (cell.terrain_name || '野') + '(' + cell.level + ')'
