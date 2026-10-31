@@ -7214,6 +7214,24 @@ func ezfyLootCityPrestige(resTotal int64) int {
 	return base + bonus
 }
 
+// ezfyPersonalHonor 战报尾部的「个人荣誉」= 军衔声望的开方压缩（**纯展示**，不参与任何结算）。
+//
+// ★★ 2026-10-31 用户反馈「个人荣誉:1333633 获取也太变态了，算法改下，少些」：
+//
+//	原来直接 `prestige / 6` —— 声望是**历史累计**，老玩家存量动辄几百万，
+//	个人荣誉就跟着变成 7 位数，和旁边的「个人战绩 100」完全不是一个量级，看着像刷出来的。
+//	现在改为开方（单调递增、增长极慢）：
+//	  1 万声望 → 100 ／ 100 万 → 1,000 ／ 800 万 → 2,828 ／ 1 亿 → 10,000
+//	即 1 亿声望的个人荣誉也才 1 万，不会再出现百万级。
+//
+// ⚠️ 这个数只出现在战报尾部的展示行，数据库里没有对应字段，改公式不需要迁移存量数据。
+func ezfyPersonalHonor(prestige int) int {
+	if prestige <= 0 {
+		return 0
+	}
+	return int(math.Sqrt(float64(prestige)))
+}
+
 // battleStatsTail 战报尾部的战果统计段
 // (复刻 `参考材料/开发文档/掠夺报告1.txt` 的 个人荣誉/个人战绩/军团战绩/掠夺比例 + [双方兵力];
 // 军功声望与军官经验已在上文正文里输出, 这里不重复)
@@ -7233,7 +7251,7 @@ func (h *EzfyHandler) battleStatsTail(uid uint, prestigeGain, recyclePct int, he
 	}
 	profile := h.ensureProfile(uid)
 	return fmt.Sprintf("\n个人荣誉:%d\n个人战绩:%d\n军团战绩:%d\n掠夺比例:%d%%%s\n[双方兵力]",
-		profile.Prestige/6, prestigeGain, 0, recyclePct, hp)
+		ezfyPersonalHonor(profile.Prestige), prestigeGain, 0, recyclePct, hp)
 }
 
 // ezfyWoundedReportLine 战报里的「攻方伤兵入营」行。
