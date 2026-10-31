@@ -211,7 +211,7 @@ func TestComboProcAndBonuses(t *testing.T) {
 	st4 := build(&ezfyComboSkill{ID: 6, Name: "穿甲火力", Kind: ezfyComboBreak, Level: 10, Value: 80, ProcPct: 35, Rounds: 1})
 	st4.appendComboHead()
 	head4 := strings.Join(st4.Head, "\n")
-	if !strings.Contains(head4, "穿甲火力(Lv.10 破防80%，发动35%)") {
+	if !strings.Contains(head4, "穿甲火力(Lv.10 破防80%，35%)") {
 		t.Fatalf("准备回合缺组合技说明：%v", st4.Head)
 	}
 	if strings.HasPrefix(head4, "【攻方组合技】") { // 必须落在「准备回合:」之后
@@ -271,10 +271,10 @@ func TestComboHeadMergedIntoOfficer(t *testing.T) {
 	if len(st.Head) != 4 {
 		t.Fatalf("应并进已有行、不新增行：%v", st.Head)
 	}
-	if !strings.HasSuffix(st.Head[1], "装甲突击(Lv.10 攻击力+180%，发动40%)") {
+	if !strings.HasSuffix(st.Head[1], "装甲突击(Lv.10 攻击力+180%，40%)") {
 		t.Fatalf("攻方军官行没带上组合技：%s", st.Head[1])
 	}
-	if !strings.HasSuffix(st.Head[2], "纵深防御(Lv.3 防御力+54%，发动35%)") {
+	if !strings.HasSuffix(st.Head[2], "纵深防御(Lv.3 防御力+54%，35%)") {
 		t.Fatalf("守方军官行没带上组合技：%s", st.Head[2])
 	}
 	if !strings.HasPrefix(st.Head[3], "战场初始相距") {

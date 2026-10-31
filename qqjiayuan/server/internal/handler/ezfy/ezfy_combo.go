@@ -344,16 +344,12 @@ func ezfyComboShortTxt(c *ezfyComboSkill) string {
 	if c == nil {
 		return ""
 	}
-	// ★★ 2026-10-31 战法类型进文案：被动不写发动率（必定发动），指挥/追击写类型名
-	switch c.TriggerType {
-	case ezfyComboTriggerPassive:
-		return fmt.Sprintf("%s(Lv.%d %s，被动)", c.Name, c.Level, ezfyComboShortEffect(c))
-	case ezfyComboTriggerCommand:
-		return fmt.Sprintf("%s(Lv.%d %s，指挥 %d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
-	case ezfyComboTriggerPursuit:
-		return fmt.Sprintf("%s(Lv.%d %s，追击 %d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
+	// ★★ 2026-10-31 统一成「名称(Lv.N 效果，概率%)」，不再塞「被动/指挥/追击」这类说明文字
+	//   （用户要求回合相关描述简约）。被动必定发动 → 不写概率。
+	if c.TriggerType == ezfyComboTriggerPassive {
+		return fmt.Sprintf("%s(Lv.%d %s)", c.Name, c.Level, ezfyComboShortEffect(c))
 	}
-	return fmt.Sprintf("%s(Lv.%d %s，发动%d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
+	return fmt.Sprintf("%s(Lv.%d %s，%d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
 }
 
 // ezfyComboShortEffect 只有效果本身，不带技能名（军官行 / 播报共用）
@@ -474,11 +470,13 @@ func (st *ezfyBattleState) comboRoll() {
 			st.DefCounter = true
 		}
 	}
-	anno := func(c *ezfyComboSkill, side, offName, extra string) {
+	anno := func(c *ezfyComboSkill, side, offName string) {
 		// ★★ 2026-10-31 用户要求「简约、官方、二战主题」：去口号与感叹号，
 		//   统一成 `【攻方】某某发动组合技【装甲突击】，全军攻击+180%`。
-		st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】，%s%s",
-			side, offName, c.Name, ezfyComboProcTxt(c), extra))
+		//   ★ 同日再简化：**不再追加括号说明**（「（被动·常驻）」「（指挥·战前生效）」等），
+		//     回合内只报「谁发动了什么、加多少」，战法类型看准备回合/详情即可。
+		st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】，%s",
+			side, offName, c.Name, ezfyComboProcTxt(c)))
 	}
 	roll := func(rts []*ezfyComboRuntime, side, offName string) {
 		for _, rt := range rts {
@@ -496,7 +494,7 @@ func (st *ezfyBattleState) comboRoll() {
 				}
 				rt.Left = ezfyComboWholeBattle
 				applyCounterOnce(rt, c, side)
-				anno(c, side, offName, "（被动·常驻）")
+				anno(c, side, offName)
 				continue
 			case ezfyComboTriggerCommand:
 				// 战前（第 1 回合）掷一次，之后不再掷
@@ -509,7 +507,7 @@ func (st *ezfyBattleState) comboRoll() {
 				// ★ 率土口径：指挥战法**命中后整场生效**（Rounds 只对主动类有意义）
 				rt.Left = ezfyComboWholeBattle
 				applyCounterOnce(rt, c, side)
-				anno(c, side, offName, "（指挥·战前生效）")
+				anno(c, side, offName)
 				continue
 			}
 			// 主动：每回合开始掷骰（原行为）
@@ -524,7 +522,7 @@ func (st *ezfyBattleState) comboRoll() {
 				rt.Left = 1
 			}
 			applyCounterOnce(rt, c, side)
-			anno(c, side, offName, "")
+			anno(c, side, offName)
 		}
 	}
 	roll(st.AtkCombos, "【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc))

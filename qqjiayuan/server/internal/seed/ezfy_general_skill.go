@@ -42,19 +42,19 @@ var ezfyGeneralSkillSeeds = []model.EzfyCfgGeneralSkill{
 	{ID: 5, Name: "筑垒地域", Kind: 5, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 1, Quality: 3, SortNo: 5,
 		Des: "受到伤害-%d%%"},
 	{ID: 6, Name: "穿甲火力", Kind: 6, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 6,
-		Des: "破防%d%%（发动后本回合攻击无视目标 %d%% 防御）"},
+		Des: "破防%d%%"},
 	// —— 治疗 ——
 	{ID: 7, Name: "野战医院", Kind: 7, BaseValue: 6, GrowPerLevel: 6, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 7,
-		Des: "回合治疗%d%%（发动回合结束时恢复本回合已损兵力的 %d%%）"},
+		Des: "回合治疗%d%%"},
 	// —— 连击（追加一击的伤害为原来的 %d%%）——
 	{ID: 8, Name: "波次突击", Kind: 8, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 4, SortNo: 8,
-		Des: "连击（发动后本回合多打一次普攻，这次普攻伤害为原来的 %d%%）"},
+		Des: "连击：追加一次普攻（伤害%d%%）"},
 	// —— 反击回合（★ 次数型：上限仍 5 级，10 级就是 +10 回合，太变态）——
 	{ID: 9, Name: "死守反击", Kind: 9, BaseValue: 1, GrowPerLevel: 1, MaxLevel: 5, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 9,
-		Des: "反击回合+%d（发动后本场战斗的反击回合数增加，与「绝地逆袭」叠加）"},
+		Des: "反击回合+%d"},
 	// —— 持续型（2 回合 → 数值压一档，满级 120%）——
 	{ID: 10, Name: "全线总攻", Kind: 1, BaseValue: 12, GrowPerLevel: 12, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 2, Quality: 4, SortNo: 10,
-		Des: "攻击力+%d%%（发动后持续 2 回合，覆盖面更久）"},
+		Des: "攻击力+%d%%"},
 
 	// ============ 2026-10-31 扩充：按品质各 +6 条 ============
 	//
@@ -69,45 +69,45 @@ var ezfyGeneralSkillSeeds = []model.EzfyCfgGeneralSkill{
 	//
 	// —— 精良（Quality 2）——
 	{ID: 11, Name: "战备动员", Kind: 1, BaseValue: 4, GrowPerLevel: 4, MaxLevel: 10, LevelPerStep: 35, ProcPct: 100, Rounds: 0, Quality: 2, SortNo: 11, TriggerType: 1,
-		Des: "攻击力+%d%%（被动：战斗开始即生效，整场常驻）"},
+		Des: "攻击力+%d%%"},
 	{ID: 12, Name: "铁壁工事", Kind: 2, BaseValue: 4, GrowPerLevel: 4, MaxLevel: 10, LevelPerStep: 35, ProcPct: 100, Rounds: 0, Quality: 2, SortNo: 12, TriggerType: 1,
-		Des: "防御力+%d%%（被动：战斗开始即生效，整场常驻）"},
+		Des: "防御力+%d%%"},
 	{ID: 13, Name: "摩托突进", Kind: 4, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 45, Rounds: 0, Quality: 2, SortNo: 13, TriggerType: 2,
-		Des: "速度+%d%%（指挥：战前掷骰，命中后整场生效）"},
+		Des: "速度+%d%%"},
 	{ID: 14, Name: "装甲奔袭", Kind: 4, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 2, SortNo: 14, TriggerType: 3,
 		Des: "速度+%d%%"},
 	{ID: 15, Name: "远程压制", Kind: 3, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 2, SortNo: 15, TriggerType: 3,
 		Des: "射程+%d%%"},
 	{ID: 16, Name: "侧翼伏击", Kind: 10, BaseValue: 7, GrowPerLevel: 7, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 2, SortNo: 16, TriggerType: 4,
-		Des: "追击（每次普攻命中后概率发动，对被普攻的目标追加一次战法伤害，伤害为普攻的 %d%%）"},
+		Des: "追击伤害%d%%"},
 
 	// —— 稀有（Quality 3）——
 	{ID: 17, Name: "要塞防御", Kind: 2, BaseValue: 5, GrowPerLevel: 5, MaxLevel: 10, LevelPerStep: 35, ProcPct: 100, Rounds: 0, Quality: 3, SortNo: 17, TriggerType: 1,
-		Des: "防御力+%d%%（被动：战斗开始即生效，整场常驻）"},
+		Des: "防御力+%d%%"},
 	{ID: 18, Name: "钢筋掩体", Kind: 5, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 0, Quality: 3, SortNo: 18, TriggerType: 2,
-		Des: "受到伤害-%d%%（指挥：战前掷骰，命中后整场生效）"},
+		Des: "受到伤害-%d%%"},
 	{ID: 19, Name: "空降突击", Kind: 1, BaseValue: 12, GrowPerLevel: 12, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 0, Quality: 3, SortNo: 19, TriggerType: 2,
-		Des: "攻击力+%d%%（指挥：战前掷骰，命中后整场生效）"},
+		Des: "攻击力+%d%%"},
 	{ID: 20, Name: "破甲突击", Kind: 6, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 3, SortNo: 20, TriggerType: 3,
-		Des: "破防%d%%（发动后本回合攻击无视目标 %d%% 防御）"},
+		Des: "破防%d%%"},
 	{ID: 21, Name: "潜航猎杀", Kind: 10, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 21, TriggerType: 4,
-		Des: "追击（每次普攻命中后概率发动，对被普攻的目标追加一次战法伤害，伤害为普攻的 %d%%）"},
+		Des: "追击伤害%d%%"},
 	{ID: 22, Name: "梯次冲锋", Kind: 8, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 22, TriggerType: 3,
-		Des: "连击（发动后本回合多打一次普攻，这次普攻伤害为原来的 %d%%）"},
+		Des: "连击：追加一次普攻（伤害%d%%）"},
 
 	// —— 传说（Quality 4）——
 	{ID: 23, Name: "钢铁洪流", Kind: 1, BaseValue: 6, GrowPerLevel: 6, MaxLevel: 10, LevelPerStep: 35, ProcPct: 100, Rounds: 0, Quality: 4, SortNo: 23, TriggerType: 1,
-		Des: "攻击力+%d%%（被动：战斗开始即生效，整场常驻）"},
+		Des: "攻击力+%d%%"},
 	{ID: 24, Name: "钳形攻势", Kind: 1, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 45, Rounds: 0, Quality: 4, SortNo: 24, TriggerType: 2,
-		Des: "攻击力+%d%%（指挥：战前掷骰，命中后整场生效）"},
+		Des: "攻击力+%d%%"},
 	{ID: 25, Name: "饱和突击", Kind: 1, BaseValue: 22, GrowPerLevel: 22, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 25, TriggerType: 3,
 		Des: "攻击力+%d%%"},
 	{ID: 26, Name: "纵深突破", Kind: 6, BaseValue: 10, GrowPerLevel: 10, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 26, TriggerType: 3,
-		Des: "破防%d%%（发动后本回合攻击无视目标 %d%% 防御）"},
+		Des: "破防%d%%"},
 	{ID: 27, Name: "乘胜追击", Kind: 10, BaseValue: 10, GrowPerLevel: 10, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 27, TriggerType: 4,
-		Des: "追击（每次普攻命中后概率发动，对被普攻的目标追加一次战法伤害，伤害为普攻的 %d%%）"},
+		Des: "追击伤害%d%%"},
 	{ID: 28, Name: "闪击突进", Kind: 4, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 45, Rounds: 0, Quality: 4, SortNo: 28, TriggerType: 2,
-		Des: "速度+%d%%（指挥：战前掷骰，命中后整场生效）"},
+		Des: "速度+%d%%"},
 }
 
 // ezfyComboLegacyFP 一代「出厂数值」的指纹（base/grow/max/step 全等才算没被人改过）。
@@ -195,6 +195,8 @@ func EnsureEzfyGeneralSkills(db *gorm.DB) {
 	renameEzfyComboBatch2(db)
 	// ★★ 2026-10-31 修正存量：被动/指挥的「持续」必须是 0（整场），早期插入的写成了 1。
 	fixEzfyComboWholeBattleRounds(db)
+	// ★★ 2026-10-31 说明列精简：只写效果本身，去掉「（指挥：战前掷骰…）」这类括号解释。
+	polishEzfyComboDes(db)
 	// 名将默认搭配：只在「一个都没配」时灌（幂等闸门）
 	// ★ 2026-10-24 多技能：combo_skill_ids（JSON 数组）也计入「已配过」闸门
 	var assigned int64
@@ -392,4 +394,37 @@ func fixEzfyComboWholeBattleRounds(db *gorm.DB) {
 	}
 	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
 	log.Printf("ezfy 组合技：%d 条被动/指挥的持续回合已改为 0（整场）", res.RowsAffected)
+}
+
+// polishEzfyComboDes 把组合技的「说明」列精简成一句话（只跑一次）。
+//
+// ★★ 2026-10-31 用户反馈：「（发动后本回合全体部队攻击提升）」「（指挥：战前掷骰，命中后整场生效）」
+// 这类括号说明太啰嗦，回合里/详情里都别展示或只简约展示。
+//
+// 口径：说明只写**效果本身**（`攻击力+%d%%`、`追击伤害%d%%`、`连击：追加一次普攻（伤害%d%%）`），
+// 战法类型/发动率/持续回合由「战法类型」「发动率」「持续」三列承担，不重复写进说明。
+//
+// 判定：只改**说明里还带括号**的行（`des LIKE '%（%'`）—— 管理端自己改成的无括号文案不动。
+func polishEzfyComboDes(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_general_skill") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	const key = "ezfy_combo_des_slim_20261031c"
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", key).Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	done := 0
+	for i := range ezfyGeneralSkillSeeds {
+		s := ezfyGeneralSkillSeeds[i]
+		res := db.Exec("UPDATE ezfy_cfg_general_skill SET des = ? WHERE id = ? AND des LIKE '%（%'", s.Des, s.ID)
+		if res.Error != nil {
+			log.Printf("ezfy 组合技说明精简失败 id=%d: %v（下次启动重试）", s.ID, res.Error)
+			return
+		}
+		done += int(res.RowsAffected)
+	}
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
+	log.Printf("ezfy 组合技说明已精简：%d 条带括号的说明改成只写效果本身", done)
 }

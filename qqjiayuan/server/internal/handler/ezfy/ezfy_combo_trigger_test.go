@@ -67,8 +67,9 @@ func TestComboTriggerPassive(t *testing.T) {
 				t.Fatalf("被动技能只应在第1回合播报一次，实际出现在第%d回合：%s", round, ln)
 			}
 			n++
-			if !strings.Contains(ln, "（被动·常驻）") {
-				t.Fatalf("被动播报应标注「被动·常驻」：%s", ln)
+			// ★ 2026-10-31 用户要求回合内描述简约 → **不再追加括号说明**
+			if strings.Contains(ln, "（被动") || strings.Contains(ln, "（指挥") {
+				t.Fatalf("回合内播报不该再带括号说明：%s", ln)
 			}
 		}
 	}
@@ -97,8 +98,9 @@ func TestComboTriggerCommand(t *testing.T) {
 	if left := st.AtkCombos[0].Left; left <= 0 {
 		t.Fatalf("指挥 Rounds=0 应整场生效，实际 Left=%d", left)
 	}
-	if !strings.Contains(strings.Join(st.Actions, "\n"), "（指挥·战前生效）") {
-		t.Fatalf("指挥发动应标注「指挥·战前生效」：%v", st.Actions)
+	// ★ 2026-10-31 回合内不再标注「（指挥·战前生效）」这类说明
+	if strings.Contains(strings.Join(st.Actions, "\n"), "（指挥") {
+		t.Fatalf("回合内播报不该再带括号说明：%v", st.Actions)
 	}
 	// 0% → 整场不生效
 	st2 := comboTriggerState(t, &ezfyComboSkill{
