@@ -1584,6 +1584,8 @@ func (h *EzfyHandler) CorpsCreate(c *gin.Context) {
 	cp := model.EzfyCorps{Name: name, LeaderUserId: uid, Notice: "", MemberCount: 1}
 	h.DB.Create(&cp)
 	h.DB.Create(&model.EzfyCorpsMember{CorpsId: cp.ID, UserId: uid, IsLeader: 1, Title: "军团长"})
+	// ★ 2026-10-30 军团日志：创建军团（进团）
+	h.corpsLogAdd(cp.ID, uid, 0, ezfyCorpsLogJoin, "", "创建军团")
 	resp.OK(c, gin.H{"msg": "军团创建成功"})
 }
 
@@ -1649,6 +1651,8 @@ func (h *EzfyHandler) applyCorpsMember(uid uint, corpsId uint) (string, gin.H, s
 	}
 	h.DB.Create(&model.EzfyCorpsMember{CorpsId: cp.ID, UserId: uid, IsLeader: 0, Title: "成员"})
 	h.DB.Model(&model.EzfyCorps{}).Where("id = ?", cp.ID).Update("member_count", cp.MemberCount+1)
+	// ★ 2026-10-30 军团日志：直接入团（无需审核）
+	h.corpsLogAdd(cp.ID, uid, 0, ezfyCorpsLogJoin, "", "加入军团")
 	return "加入军团成功", gin.H{"need_review": 0}, ""
 }
 
@@ -1737,6 +1741,8 @@ func (h *EzfyHandler) CorpsApplyHandle(c *gin.Context) {
 		h.DB.Create(&model.EzfyCorpsMember{CorpsId: cp.ID, UserId: a.UserId, IsLeader: 0, Title: "成员"})
 		h.DB.Model(&model.EzfyCorps{}).Where("id = ?", cp.ID).
 			Update("member_count", cp.MemberCount+1)
+		// ★ 2026-10-30 军团日志：审核通过入团（操作人 = 军团长）
+		h.corpsLogAdd(cp.ID, a.UserId, uid, ezfyCorpsLogJoin, "", "审核通过入团")
 	}
 	resp.OK(c, gin.H{"msg": "已通过申请, 该玩家已入团"})
 }
@@ -1782,12 +1788,16 @@ func (h *EzfyHandler) CorpsLeave(c *gin.Context) {
 		// 军团长退出 = 解散
 		h.DB.Where("corps_id = ?", mb.CorpsId).Delete(&model.EzfyCorpsMember{})
 		h.DB.Where("corps_id = ?", mb.CorpsId).Delete(&model.EzfyCorpsChat{})
+		// ★ 2026-10-30 军团日志随军团一起清理（解散后没有「本军团」可看了，留着就是孤儿行）
+		h.DB.Where("corps_id = ?", mb.CorpsId).Delete(&model.EzfyCorpsLog{})
 		h.DB.Delete(&cp)
 		resp.OK(c, gin.H{"msg": "军团长退出, 军团已解散"})
 		return
 	}
 	h.DB.Model(&model.EzfyCorps{}).Where("id = ?", cp.ID).
 		Update("member_count", maxInt(0, cp.MemberCount-1))
+	// ★ 2026-10-30 军团日志：主动退出
+	h.corpsLogAdd(mb.CorpsId, uid, 0, ezfyCorpsLogLeave, "", "主动退出")
 	resp.OK(c, gin.H{"msg": "已退出军团"})
 }
 
@@ -1819,6 +1829,8 @@ func (h *EzfyHandler) CorpsKick(c *gin.Context) {
 	_ = h.DB.First(&cp, leader.CorpsId).Error
 	h.DB.Model(&model.EzfyCorps{}).Where("id = ?", cp.ID).
 		Update("member_count", maxInt(0, cp.MemberCount-1))
+	// ★ 2026-10-30 军团日志：被踢出（操作人 = 军团长）
+	h.corpsLogAdd(leader.CorpsId, req.UserId, uid, ezfyCorpsLogLeave, "", "被踢出军团")
 	resp.OK(c, gin.H{"msg": "已踢出成员"})
 }
 

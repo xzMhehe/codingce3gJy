@@ -94,6 +94,9 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	{"ezfy_corps_member", []string{"user_id"}},
 	{"ezfy_corps_apply", []string{"user_id"}},
 	{"ezfy_corps_mall_log", []string{"user_id"}},
+	// ★ 2026-10-30 军团日志（进团/出团/任命/撤职）：user_id = 被操作的玩家。
+	//   军团**解散**时按 corps_id 整体清（见 ezfyPurgeCorpsOf）；这里清「该玩家作为当事人」的行。
+	{"ezfy_corps_log", []string{"user_id"}},
 	{"ezfy_corps_war", []string{"atk_user_id"}},
 	// 交易行 / 风云榜
 	{"ezfy_exchange", []string{"seller_id", "buyer_id"}},
@@ -185,7 +188,7 @@ func (h *EzfyAdmin) ezfyPurgeCorpsOf(tx *gorm.DB, uid uint) error {
 	if len(corpsIds) == 0 {
 		return nil
 	}
-	for _, t := range []string{"ezfy_corps_member", "ezfy_corps_apply", "ezfy_corps_chat", "ezfy_corps_mall_log"} {
+	for _, t := range []string{"ezfy_corps_member", "ezfy_corps_apply", "ezfy_corps_chat", "ezfy_corps_mall_log", "ezfy_corps_log"} {
 		if err := tx.Exec("DELETE FROM "+t+" WHERE corps_id IN ?", corpsIds).Error; err != nil {
 			return fmt.Errorf("%s: %w", t, err)
 		}

@@ -127,6 +127,12 @@ func (h *EzfyHandler) CorpsSetTitle(c *gin.Context) {
 		resp.ParamError(c, "任命失败："+err.Error())
 		return
 	}
+	// ★ 2026-10-30 军团日志：任命 / 撤职（撤职时把**原职位**记进 title，日志才读得懂）
+	if title == "" {
+		h.corpsLogAdd(cp.ID, req.UserId, uid, ezfyCorpsLogRevoke, mb.Title, "撤销职位")
+	} else {
+		h.corpsLogAdd(cp.ID, req.UserId, uid, ezfyCorpsLogAppoint, title, "任命职位")
+	}
 	p := h.ensureProfile(req.UserId)
 	var u model.User
 	h.home().First(&u, req.UserId)

@@ -1,14 +1,15 @@
 <template>
   <div>
     <template v-if="ezfy.cur === 'corps'">
-        <!-- ★ 2026-09-25 军团页拆成四栏（纯前端 tab，照抄 rank/acade 页 .acade-tab 写法） -->
+        <!-- ★ 2026-09-25 军团页拆成多栏（纯前端 tab，照抄 rank/acade 页 .acade-tab 写法） -->
+        <!-- ★ 2026-10-30 用户要求重排为两行，并把「军团宣战」并入「军团外交」、新增「军团日志」 -->
         <div class="panel">
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'info' }" @click="ezfy.switchCorpsTab('info')">军团信息</a>|
             <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'list' }" @click="ezfy.switchCorpsTab('list')">军团列表</a>|
-            <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'chat' }" @click="ezfy.switchCorpsTab('chat')">军团聊天</a>|
+            <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'chat' }" @click="ezfy.switchCorpsTab('chat')">军团聊天</a><br/>
             <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'diplomacy' }" @click="ezfy.switchCorpsTab('diplomacy')">军团外交</a>|
-            <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'war' }" @click="ezfy.switchCorpsTab('war')">军团宣战</a>|
+            <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'log' }" @click="ezfy.switchCorpsTab('log')">军团日志</a>|
             <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'mall' }" @click="ezfy.switchCorpsTab('mall')">军团商城</a>
           </div>
         </div>
@@ -58,10 +59,17 @@
                 </td>
               </tr>
             </table>
-            <div class="old-line" v-if="ezfy.isLeader && ezfy.corpsMembers.length > 1">
+            <!-- ★ 2026-10-30 成员分页（后端按职位排序：军团长 > 副团长 > 参谋长 > 成员） -->
+            <div class="old-line" v-if="ezfy.corpsMemberTotal > ezfy.corpsMemberSize">
+              <a href="javascript:;" @click="ezfy.corpsMemberGo(-1)">[上一页]</a>
+              {{ ezfy.corpsMemberPage }}/{{ Math.max(1, Math.ceil(ezfy.corpsMemberTotal / ezfy.corpsMemberSize)) }}
+              <a href="javascript:;" @click="ezfy.corpsMemberGo(1)">[下一页]</a>
+              <span class="gray">（共 {{ ezfy.corpsMemberTotal }} 人）</span>
+            </div>
+            <div class="old-line" v-if="ezfy.isLeader && ezfy.corpsMembersAll.length > 1">
               踢人:
               <select v-model="ezfy.kickUserId" class="corps-kick-sel" style="width:30%">
-                <option v-for="m in ezfy.corpsMembers" v-if="!m.is_leader" :key="'kc' + m.user_id" :value="m.user_id">{{ m.name }}</option>
+                <option v-for="m in ezfy.corpsMembersAll" v-if="!m.is_leader" :key="'kc' + m.user_id" :value="m.user_id">{{ m.name }}</option>
               </select>
               <button @click="ezfy.doKick">[踢出]</button>
             </div>
@@ -198,9 +206,8 @@
           <div class="panel" v-else>
             <div class="old-line">你还没有加入军团 <a href="javascript:;" @click="ezfy.switchCorpsTab('info')">[去军团信息]</a></div>
           </div>
-        </template>
-        <!-- ========== ③ 军团宣战 ========== -->
-        <template v-else-if="ezfy.corpsTab === 'war'">
+
+          <!-- ★ 2026-10-30 「军团宣战」并入「军团外交」：宣战记录 + 可宣战军团列表 -->
           <div class="panel" v-if="ezfy.corpsWars && ezfy.corpsWars.in_corps">
             <div class="panel-title">军团宣战</div>
             <table class="ezfy-corps-tbl ezfy-war-tbl">
@@ -228,7 +235,7 @@
               </tr>
             </table>
             <div class="old-line gray" v-if="!(ezfy.corpsWars.wars || []).length">(暂无宣战记录)</div>
-            <!-- ★ 军团长可对「未处于宣战中的军团」发起宣战：复用外交 tab 的军团列表，不重复拉接口 -->
+            <!-- ★ 军团长可对「未处于宣战中的军团」发起宣战：复用上面的军团列表，不重复拉接口 -->
             <template v-if="ezfy.corpsWars.can_manage && ezfy.corpsRelations && ezfy.corpsRelations.corps_list">
               <div class="panel-title">全部军团(可宣战)</div>
               <table class="ezfy-corps-tbl ezfy-war-list-tbl">
@@ -253,7 +260,32 @@
             </div>
             <div class="old-line"><a href="javascript:;" @click="ezfy.loadCorpsWars">[刷新]</a></div>
           </div>
-          <div class="panel" v-else-if="!ezfy.corpsWars"><div class="old-line">正在加载宣战数据…</div></div>
+          <div class="panel" v-else-if="ezfy.corpsWars === null"><div class="old-line">正在加载宣战数据…</div></div>
+        </template>
+
+        <!-- ========== ③ 军团日志（★ 2026-10-30 新增：进团/出团/任命/撤职，时间倒序分页） ========== -->
+        <template v-else-if="ezfy.corpsTab === 'log'">
+          <div class="panel" v-if="ezfy.myCorps">
+            <div class="panel-title">军团日志</div>
+            <table class="ezfy-corps-tbl ezfy-corps-log-tbl">
+              <tr><th>时间</th><th>类型</th><th>玩家</th><th>职位</th><th>说明</th></tr>
+              <tr v-for="l in ezfy.corpsLogs" :key="'cl' + l.id">
+                <td>{{ ezfy.fmtTime(l.ts) }}</td>
+                <td :class="l.kind === 2 ? 'red' : (l.kind >= 3 ? 'orange' : 'green')">{{ l.kind_name }}</td>
+                <td><a href="javascript:;" @click="ezfy.openPlayer(l.user_id)">{{ l.user_name || '—' }}</a></td>
+                <td>{{ l.title || '—' }}</td>
+                <td>{{ l.note }}<span class="gray" v-if="l.actor_id && l.actor_name">（{{ l.actor_name }}）</span></td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-if="ezfy.corpsLogLoaded && !ezfy.corpsLogs.length">(暂无日志)</div>
+            <div class="old-line" v-if="ezfy.corpsLogTotal > ezfy.corpsLogSize">
+              <a href="javascript:;" @click="ezfy.corpsLogGo(-1)">[上一页]</a>
+              {{ ezfy.corpsLogPage }}/{{ Math.max(1, Math.ceil(ezfy.corpsLogTotal / ezfy.corpsLogSize)) }}
+              <a href="javascript:;" @click="ezfy.corpsLogGo(1)">[下一页]</a>
+              <span class="gray">（共 {{ ezfy.corpsLogTotal }} 条）</span>
+            </div>
+            <div class="old-line"><a href="javascript:;" @click="ezfy.loadCorpsLogs(ezfy.corpsLogPage)">[刷新]</a></div>
+          </div>
           <div class="panel" v-else>
             <div class="old-line">你还没有加入军团 <a href="javascript:;" @click="ezfy.switchCorpsTab('info')">[去军团信息]</a></div>
           </div>

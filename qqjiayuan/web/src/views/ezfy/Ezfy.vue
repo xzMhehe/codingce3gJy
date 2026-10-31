@@ -796,6 +796,12 @@ export default {
       corpsList: [],
       myCorps: null,
       corpsMembers: [],
+      // ★ 2026-10-30 成员分页（用户要求）：corpsMembers 只是当前页，
+      //   corpsMembersAll 是全量精简列表（踢人下拉要能选到不在当前页的成员）
+      corpsMembersAll: [],
+      corpsMemberPage: 1,
+      corpsMemberSize: 20,
+      corpsMemberTotal: 0,
       corpsChats: [],
       corpsName: '',
       corpsMsg: '',
@@ -803,7 +809,10 @@ export default {
       // ★ 2026-09-25 军团页拆成「军团信息 / 军团外交 / 军团宣战 / 军团商城」四个子栏，
       //   纯前端 tab 切换（照抄 rank/acade 页的 .acade-tab 写法），数据按需懒加载。
       // ★ 2026-09-30 再加「军团列表 / 军团聊天」独立 tab → 六个。
-      corpsTab: 'info',        // info军团信息 / list军团列表 / chat军团聊天 / diplomacy军团外交 / war军团宣战 / mall军团商城
+      // ★ 2026-10-30 用户要求重排为两行：信息/列表/聊天 + 外交/日志/商城；
+      //   「军团宣战」并入「军团外交」（war tab 不再有，历史调用按 diplomacy 处理），
+      //   新增「军团日志」（进团/出团/任命/撤职）。
+      corpsTab: 'info',        // info军团信息 / list军团列表 / chat军团聊天 / diplomacy军团外交(含宣战) / log军团日志 / mall军团商城
       // ★ 2026-09-30 入团审核：军团的待审申请 / 审核开关 / 我是否已提交申请
       corpsApplies: [],
       myCorpsNeedReview: 0,
@@ -811,6 +820,12 @@ export default {
       corpsPoints: 0,          // 军团总积分（/corps/members 或 /corps/relations 的 my_corps.points）
       corpsRelations: null,    // /corps/relations 全量数据（null=还没拉过）
       corpsWars: null,         // /corps/war 全量数据（null=还没拉过）
+      // ★ 2026-10-30 军团日志（/corps/logs，时间倒序分页）
+      corpsLogs: [],
+      corpsLogPage: 1,
+      corpsLogSize: 20,
+      corpsLogTotal: 0,
+      corpsLogLoaded: false,
       // 军团商城：loaded 标记避免每次切 tab 重复拉（兑换/宣战等操作后才会重新拉）
       corpsMall: { loaded: false, my_points: 0, corps_points: 0, items: [], my_bought: {} },
       mallItems: [],
@@ -1444,11 +1459,14 @@ export default {
       // ★ 2026-10-02 派遣(8) 非战斗状态/免战期间由后端返回 cap_unlimited=true → 显示「无上限」；其余显示 troop_cap
       return c.cap_unlimited ? '无上限' : this.fmtN(c.troop_cap)
     },
-    // ★ 2026-10-30 用户规则「除派遣(8)外，出征必须带军官」：
-    //   侦查1/掠夺2/征服3/采集4/运输5/增援6/驻守采集7 一律必选；只有派遣8 不强制。
+    // ★ 2026-10-30 用户规则「除派遣(8)外，出征必须带军官」→ ★ 2026-10-31 放宽：运输(5) 也免。
+    //   必带 = 侦查1/掠夺2/征服3/采集4/增援6/驻守采集7；免带 = 运输5 / 派遣8。
     //   （口径与后端 ezfyMustLeadOfficer 完全一致，改一处必须同步另一处）
     mustLeadOfficer () {
-      return [1, 2, 3, 4, 5, 6, 7].indexOf(parseInt(this.orderType, 10)) >= 0
+      // ★ 2026-10-31 用户要求「运输、派遣不需要军官」：
+      //   必带 = 侦查1/掠夺2/征服3/采集4/增援6/驻守采集7；免带 = 运输5 / 派遣8。
+      //   与后端 ezfyMustLeadOfficer 同一口径（改这里必须同步后端）。
+      return [1, 2, 3, 4, 6, 7].indexOf(parseInt(this.orderType, 10)) >= 0
     },
     // ★ 2026-10-02 所有出征类型（含运输5）都做携带上限判定；
     //   只有派遣(8)在非战斗状态/免战期间由后端 cap_unlimited=true 放行。
@@ -3038,6 +3056,7 @@ export default {
         //   单纯切 tab 不会重复拉接口（见 switchCorpsTab）。
         this.corpsRelations = null
         this.corpsWars = null
+        this.corpsLogLoaded = false
         this.corpsMall = { loaded: false, my_points: 0, corps_points: 0, items: [], my_bought: {} }
         this.loadCorps()
         this.switchCorpsTab(this.corpsTab)
@@ -4959,18 +4978,51 @@ export default {
           if (this.isLeader && this.corpsTab === 'info') this.loadCorpsApplies()
         }
       })
-      api.get('/games/ezfy/corps/members').then(r => {
-        if (r.code === 0) {
-          this.corpsMembers = r.data.members
-          // ★ 后端下发「我在军团的职位」，副团长也能发军团邮件
-          this.myCorpsTitle = r.data.my_title || ''
-          // ★ 2026-09-25 军团信息 tab 显示军团总积分（新字段 corps_points）
-          this.corpsPoints = r.data.corps_points || 0
-        }
-      })
+      // ★ 2026-10-30 成员改走分页接口（进页回到第 1 页）
+      this.loadCorpsMembers(1)
       api.get('/games/ezfy/corps/chats').then(r => {
         if (r.code === 0) this.corpsChats = r.data.chats
       })
+    },
+    // ★ 2026-10-30 军团成员分页（后端已按职位排序：军团长 > 副团长 > 参谋长 > 成员）
+    //   corpsMembers = 当前页；corpsMembersAll = 全量精简列表（踢人下拉用）
+    loadCorpsMembers (page) {
+      if (page) this.corpsMemberPage = page
+      const p = this.corpsMemberPage || 1
+      return api.get('/games/ezfy/corps/members?page=' + p + '&size=' + this.corpsMemberSize).then(r => {
+        if (r.code !== 0) return
+        this.corpsMembers = r.data.members || []
+        this.corpsMembersAll = r.data.all_members || []
+        this.corpsMemberTotal = r.data.total || 0
+        // ★ 后端下发「我在军团的职位」，副团长也能发军团邮件
+        this.myCorpsTitle = r.data.my_title || ''
+        // ★ 2026-09-25 军团信息 tab 显示军团总积分（新字段 corps_points）
+        this.corpsPoints = r.data.corps_points || 0
+      })
+    },
+    // 成员翻页（-1 上一页 / +1 下一页）
+    corpsMemberGo (d) {
+      const maxPage = Math.max(1, Math.ceil(this.corpsMemberTotal / this.corpsMemberSize))
+      const p = this.corpsMemberPage + d
+      if (p < 1 || p > maxPage) return
+      this.loadCorpsMembers(p)
+    },
+    // ★ 2026-10-30 军团日志（进团/出团/任命/撤职，时间倒序分页）
+    loadCorpsLogs (page) {
+      if (page) this.corpsLogPage = page
+      const p = this.corpsLogPage || 1
+      return api.get('/games/ezfy/corps/logs?page=' + p + '&size=' + this.corpsLogSize).then(r => {
+        if (r.code !== 0) return
+        this.corpsLogs = r.data.logs || []
+        this.corpsLogTotal = r.data.total || 0
+        this.corpsLogLoaded = true
+      })
+    },
+    corpsLogGo (d) {
+      const maxPage = Math.max(1, Math.ceil(this.corpsLogTotal / this.corpsLogSize))
+      const p = this.corpsLogPage + d
+      if (p < 1 || p > maxPage) return
+      this.loadCorpsLogs(p)
     },
     loadOrders () {
       api.get('/games/ezfy/orders').then(r => {
@@ -6828,7 +6880,7 @@ export default {
     },
     doOrder () {
       if (!this.selCell) return
-      // ★ 2026-10-30 除派遣(8)外必须带军官 —— 前端先拦一道，省一次白跑的请求
+      // ★ 2026-10-30 除派遣(8)外必须带军官 → ★ 2026-10-31 运输(5) 也免（口径见 mustLeadOfficer）
       if (this.mustLeadOfficer && (!this.orderOfficer || this.orderOfficer === '0')) {
         this.notify('请选择带队军官')
         return
@@ -7068,6 +7120,8 @@ export default {
     // ---- ★ 2026-09-25 军团外交 / 军团宣战 / 军团商城 ----
     // 切子栏：只在数据还没拉过时才请求（避免每次切 tab 重复打接口）
     switchCorpsTab (tab) {
+      // ★ 2026-10-30 「军团宣战」已并入「军团外交」：历史调用/旧状态一律落到 diplomacy
+      if (tab === 'war') tab = 'diplomacy'
       this.corpsTab = tab
       if (tab === 'info') {
         this.loadCorps()
@@ -7075,11 +7129,11 @@ export default {
       } else if (tab === 'list' || tab === 'chat') {
         this.loadCorps()
       } else if (tab === 'diplomacy') {
+        // 外交 tab 现在同时承载「关系标记」和「宣战」（两张表在同一页）
         if (!this.corpsRelations) this.loadCorpsRelations()
-      } else if (tab === 'war') {
         if (!this.corpsWars) this.loadCorpsWars()
-        // 宣战 tab 复用外交的军团列表（[宣战] 入口），没拉过就补一次
-        if (!this.corpsRelations) this.loadCorpsRelations()
+      } else if (tab === 'log') {
+        if (!this.corpsLogLoaded) this.loadCorpsLogs(1)
       } else if (tab === 'mall') {
         if (!this.corpsMall.loaded) this.loadCorpsMall()
       }

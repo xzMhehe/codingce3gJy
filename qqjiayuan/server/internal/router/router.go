@@ -745,6 +745,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					// 军团任职（军团长任命副团长 / 参谋长）
 					ezfyG.POST("/corps/member/title", ezfyH.CorpsSetTitle)
 					ezfyG.GET("/corps/members", ezfyH.CorpsMembers)
+					// ★ 2026-10-30 军团日志（进团/出团/任命/撤职，时间倒序分页）
+					ezfyG.GET("/corps/logs", ezfyH.CorpsLogs)
 					// 军团外交 / 军团宣战 / 军团商城（★ 2026-09-25 ）
 					// 外交关系标记 + 军团宣战（宣战后 12 小时生效、48 小时整场结束）
 					ezfyG.GET("/corps/relations", ezfyH.CorpsRelations)

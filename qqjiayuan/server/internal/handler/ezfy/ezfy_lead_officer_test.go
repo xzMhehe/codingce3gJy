@@ -5,17 +5,56 @@ import (
 	"testing"
 )
 
-// TestMustLeadOfficerTypes 出征类型「是否必须带军官」口径（★ 2026-10-30 用户规则）：
-// 除派遣(8)外，出征（侦查/掠夺/征服/采集/运输/增援/驻守采集）一律必须带一名带队军官。
+// TestMustLeadOfficerTypes 出征类型「是否必须带军官」口径
+// （★ 2026-10-30 用户规则，★ 2026-10-31 调整：运输(5) 也改成**可带可不带**）：
+//
+//	必带 = 侦查/掠夺/征服/采集/增援/驻守采集；运输(5)/派遣(8) 选填 ——
+//	★ 「选填」= 不强制，但传了军官仍要生效（不是禁止带）。
 func TestMustLeadOfficerTypes(t *testing.T) {
-	must := []int{1, 2, 3, 4, 5, 6, 7}
+	must := []int{1, 2, 3, 4, 6, 7}
 	for _, ot := range must {
 		if !ezfyMustLeadOfficer(ot) {
 			t.Fatalf("%s(%d) 必须带军官，但 ezfyMustLeadOfficer 返回 false", ezfyOrderTypeName(ot), ot)
 		}
 	}
-	if ezfyMustLeadOfficer(8) {
-		t.Fatal("派遣(8) 是唯一例外，不该强制带军官")
+	// ★ 2026-10-31 用户要求「运输、派遣不需要军官（可带可不带）」
+	for _, ot := range []int{5, 8} {
+		if ezfyMustLeadOfficer(ot) {
+			t.Fatalf("%s(%d) 不该强制带军官（运输/派遣是可带可不带）", ezfyOrderTypeName(ot), ot)
+		}
+	}
+}
+
+// TestOptionalOfficerStillAllowed 运输/派遣是「**可带可不带**」，不是「不能带」：
+//
+//	UI 必须给「(可选)」提示、军官下拉不能被订单类型禁用、且保留「未指定」空选项。
+func TestOptionalOfficerStillAllowed(t *testing.T) {
+	mapVue := strings.ReplaceAll(readFrontFile(t,
+		"../../../../web/src/views/ezfy/modules/EzfyMap.vue"), "\r\n", "\n")
+	if !strings.Contains(mapVue, "(可选，随军调往目标城)") || !strings.Contains(mapVue, ">(可选)<") {
+		t.Fatal("运输/派遣 的指挥军官应显示「(可选)」，别让玩家以为不能带")
+	}
+	if strings.Contains(mapVue, `:disabled="ezfy.orderType`) ||
+		strings.Contains(mapVue, `:disabled="!ezfy.mustLeadOfficer`) {
+		t.Fatal("军官下拉不能被订单类型禁用 —— 运输/派遣是「可带可不带」")
+	}
+	if !strings.Contains(mapVue, `<option value="0">未指定</option>`) {
+		t.Fatal("军官下拉缺少「未指定」空选项（不带军官时必须能选它）")
+	}
+}
+
+// TestMustLeadOfficerFrontendSync 前端 mustLeadOfficer 必须与后端同一口径：
+//
+//	★ 2026-10-31 用户要求「运输、派遣不需要军官」→ 前端数组也必须是 [1,2,3,4,6,7]，
+//	否则会出现「前端拦着不让发 / 后端其实允许」的不一致。
+func TestMustLeadOfficerFrontendSync(t *testing.T) {
+	vue := strings.ReplaceAll(readFrontFile(t,
+		"../../../../web/src/views/ezfy/Ezfy.vue"), "\r\n", "\n")
+	if !strings.Contains(vue, "return [1, 2, 3, 4, 6, 7].indexOf(parseInt(this.orderType, 10)) >= 0") {
+		t.Fatal("前端 mustLeadOfficer 数组必须与后端一致（运输5/派遣8 免军官）")
+	}
+	if strings.Contains(vue, "return [1, 2, 3, 4, 5, 6, 7].indexOf") {
+		t.Fatal("前端 mustLeadOfficer 仍把运输(5) 算成必带军官")
 	}
 }
 

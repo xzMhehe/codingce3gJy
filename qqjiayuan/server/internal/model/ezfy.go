@@ -1907,6 +1907,28 @@ type EzfyCorpsMember struct {
 
 func (EzfyCorpsMember) TableName() string { return "ezfy_corps_member" }
 
+// EzfyCorpsLog 军团日志（★ 2026-10-30 用户需求：新增「军团日志」记录进团/出团/任命）
+//
+//	用户端「军团日志」tab 按时间倒序分页展示；只增不删（军团解散时随军团一起清理）。
+//	Kind：1 进团 / 2 出团 / 3 任命 / 4 撤职（撤职单独一类，展示更好读）。
+type EzfyCorpsLog struct {
+	ID      uint `gorm:"primaryKey;comment:主键ID" json:"id"`
+	CorpsId uint `gorm:"index:idx_corpslog_corps;comment:军团ID" json:"corps_id"`
+	// UserId 被操作的玩家（进团/出团的那个人；任命/撤职的当事人）
+	UserId uint `gorm:"comment:被操作玩家ID" json:"user_id"`
+	// ActorId 操作人（0 = 本人/系统，如主动退出、审核通过时=军团长）
+	ActorId uint `gorm:"comment:操作人ID(0=本人/系统)" json:"actor_id"`
+	// Kind 1进团 2出团 3任命 4撤职
+	Kind int `gorm:"comment:1进团 2出团 3任命 4撤职" json:"kind"`
+	// Title 任命/撤职时的职位（副团长 / 参谋长）
+	Title string `gorm:"type:varchar(20);comment:职位(任命/撤职时)" json:"title"`
+	// Note 备注：加入 / 审核通过 / 主动退出 / 被踢出 / 解散军团 …（简短中文，直接展示）
+	Note      string    `gorm:"type:varchar(30);comment:备注" json:"note"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyCorpsLog) TableName() string { return "ezfy_corps_log" }
+
 // EzfyCorpsRelation 军团外交关系（军团长标记；友好/敌对均双向各写一条）
 //
 // ★ 2026-09-25 「军团之间可标记友好/敌对，双向记录，友好敌对都可以宣战」。

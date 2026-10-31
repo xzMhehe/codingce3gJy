@@ -1245,22 +1245,41 @@ func (h *EzfyHandler) EquipSell(c *gin.Context) {
 }
 
 // CorpsMembers 军团成员列表
+//
+// ★★ 2026-10-30 用户要求：成员**分页** + **按职位排序**。
+//   - 排序：军团长 > 副团长 > 参谋长 > 普通成员（权重见 ezfyCorpsTitleWeight），
+//     同职位按个人军团积分高→低、再按加入早→晚（职位存中文，只能 Go 里排）。
+//   - 分页：默认每页 20（`?page=&size=`，size 上限 100），另下发 `all_members`
+//     （全量精简 id/名字/职位）——「踢人」下拉必须能选到不在当前页的成员。
 func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var mb model.EzfyCorpsMember
 	if err := h.DB.Where("user_id = ?", uid).First(&mb).Error; err != nil {
-		resp.OK(c, gin.H{"members": []gin.H{}, "in_corps": false})
+		resp.OK(c, gin.H{"members": []gin.H{}, "all_members": []gin.H{}, "in_corps": false,
+			"total": 0, "page": 1, "size": 20})
 		return
 	}
 	var members []model.EzfyCorpsMember
-	h.DB.Where("corps_id = ?", mb.CorpsId).Order("is_leader DESC, id ASC").Find(&members)
+	h.DB.Where("corps_id = ?", mb.CorpsId).Find(&members)
+	ezfyCorpsMembersSorted(members) // 按职位排序（唯一实现）
+	// 分页：成员表按页展示；越界页给空列表，不报错
+	page, offset, size := pageOf(c, 20)
+	total := len(members)
+	pageMembers := []model.EzfyCorpsMember{}
+	if offset < total {
+		end := offset + size
+		if end > total {
+			end = total
+		}
+		pageMembers = members[offset:end]
+	}
 	// ★ 第九轮：军团长可任命副团长/参谋长；军团长与副团长都能发军团邮件
 	canManage := mb.IsLeader == 1
 	canMail := canManage || mb.Title == ezfyCorpsTitleVice
-	views := []gin.H{}
 	// ★ 2026-10-03 优化 /corps/members 到 1s 内：原来每个成员都单独查 2 次
 	//   （ensureProfile + First(user)），成员一多就是 2N 次 DB 查询。
 	//   改成按人批量拉 profile 和 user 各一次，N 再大也只有 2 次查询。
+	//   ★ 2026-10-30 分页后仍按**全量**批量取名字（all_members 的踢人下拉要用）。
 	userIDs := make([]uint, 0, len(members))
 	for _, m := range members {
 		userIDs = append(userIDs, m.UserId)
@@ -1282,7 +1301,8 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 			userMap[users[i].ID] = users[i]
 		}
 	}
-	for _, m := range members {
+	views := []gin.H{}
+	for _, m := range pageMembers {
 		p := profMap[m.UserId]
 		u := userMap[m.UserId]
 		// ★ 2026-09-25 「军团页展示个人军团积分」：每项带 points
@@ -1291,13 +1311,22 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p)),
 			"points": m.Points})
 	}
+	// 全量精简列表（踢人下拉；不含军团长自己，前端另有过滤）
+	allViews := make([]gin.H, 0, len(members))
+	for _, m := range members {
+		p := profMap[m.UserId]
+		u := userMap[m.UserId]
+		allViews = append(allViews, gin.H{"user_id": m.UserId, "name": ezfyNickOf(p, &u),
+			"is_leader": m.IsLeader, "title": m.Title})
+	}
 	// ★ 军团总积分（军团商城/军团页展示）
 	corpsPoints := int64(0)
 	var cp model.EzfyCorps
 	if err := h.DB.First(&cp, mb.CorpsId).Error; err == nil {
 		corpsPoints = cp.Points
 	}
-	resp.OK(c, gin.H{"members": views, "in_corps": true,
+	resp.OK(c, gin.H{"members": views, "all_members": allViews, "in_corps": true,
+		"total": total, "page": page, "size": size,
 		"can_manage": canManage, "can_mail": canMail,
 		"my_title": mb.Title, "is_leader": mb.IsLeader,
 		"corps_points": corpsPoints})

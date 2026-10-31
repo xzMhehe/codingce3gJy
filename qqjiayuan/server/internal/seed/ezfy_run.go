@@ -61,6 +61,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
 	&model.EzfyCorpsRelation{}, &model.EzfyCorpsWar{}, &model.EzfyCorpsMall{}, &model.EzfyCorpsMallLog{},
 	&model.EzfyCorpsApply{},
+	&model.EzfyCorpsLog{}, // ★ 2026-10-30 军团日志（进团/出团/任命）
 	// —— 道具 / 背包 / 装备 / 军官 ——
 	&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyTreasureSign{},
 	&model.EzfyCityEffect{}, &model.EzfyCityTarget{}, &model.EzfyTask{}, &model.EzfyNotice{},
