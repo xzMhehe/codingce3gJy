@@ -286,28 +286,29 @@ func TestMarchSpeedPerTroopType(t *testing.T) {
 		13: {ID: 13, Name: "驱逐舰", Type: 1, Speed: 1000}, // 海军
 	}
 	h := &EzfyHandler{}
-	tech := map[int]int{10: 5, 19: 10} // 机械增压 5 级(+10%) / 喷气推进 10 级(+30%)
+	// ★ 2026-10-31 机械增压/喷气推进 改为每级 +5%（满级 50%）
+	tech := map[int]int{10: 5, 19: 10} // 机械增压 5 级(+25%) / 喷气推进 10 级(+50%)
 
-	// 纯陆军：只吃机械增压 → 1000×1.10 = 1100
-	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 1, Count: 10}}, tech, nil); got != 1100 {
-		t.Fatalf("纯陆军行军速度应为 1100（只吃机械增压），实际 %d", got)
+	// 纯陆军：只吃机械增压 → 1000×1.25 = 1250
+	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 1, Count: 10}}, tech, nil); got != 1250 {
+		t.Fatalf("纯陆军行军速度应为 1250（只吃机械增压 +25%%），实际 %d", got)
 	}
-	// 纯空军：燃烧 +10% + 喷气 +30% → 1400
-	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 11, Count: 10}}, tech, nil); got != 1400 {
-		t.Fatalf("纯空军行军速度应为 1400（燃烧+喷气），实际 %d", got)
+	// 纯空军：机械增压 +25% + 喷气推进 +50% → 1750
+	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 11, Count: 10}}, tech, nil); got != 1750 {
+		t.Fatalf("纯空军行军速度应为 1750（机械增压+喷气推进），实际 %d", got)
 	}
-	// 混编（陆军 1100 + 空军 1400）→ 取最慢 1100（慢的拖后腿）
-	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 1, Count: 10}, {TroopId: 11, Count: 10}}, tech, nil); got != 1100 {
-		t.Fatalf("混编行军速度应取最慢 1100，实际 %d", got)
+	// 混编（陆军 1250 + 空军 1750）→ 取最慢 1250（慢的拖后腿）
+	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 1, Count: 10}, {TroopId: 11, Count: 10}}, tech, nil); got != 1250 {
+		t.Fatalf("混编行军速度应取最慢 1250，实际 %d", got)
 	}
 	// 军官「越岛战术」（海军速度）带纯陆军 → 不生效（兵种不符）
 	navyOfficer := &model.EzfyOfficer{Name: "N", Level: 150, Skill: `["越岛战术"]`}
-	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 1, Count: 10}}, tech, navyOfficer); got != 1100 {
+	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 1, Count: 10}}, tech, navyOfficer); got != 1250 {
 		t.Fatalf("越岛战术带陆军不该加速，实际 %d", got)
 	}
-	// 同一军官带纯海军 → 生效（通用 +10% + 越岛 50%）→ 1600
-	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 13, Count: 10}}, tech, navyOfficer); got != 1600 {
-		t.Fatalf("越岛战术带海军应加速到 1600，实际 %d", got)
+	// 同一军官带纯海军 → 生效（通用 +25% + 越岛 50%）→ 1750
+	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 13, Count: 10}}, tech, navyOfficer); got != 1750 {
+		t.Fatalf("越岛战术带海军应加速到 1750，实际 %d", got)
 	}
 	// 城防部队不参与（无部队 → 0，调用方回落 300）
 	if got := h.ezfyMarchSpeed(nil, tech, nil); got != 0 {

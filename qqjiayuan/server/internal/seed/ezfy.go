@@ -83,6 +83,9 @@ func seedEzfy(db *gorm.DB) {
 	//   幂等自愈：每次启动比对，一致则零写入；必须在 alignEzfyTechRename 之后（先修文本再转 ID）。
 	backfillEzfyTroopRequireIDs(db)
 	seedEzfyTechLevels(db)
+	// ★ 2026-10-31 机械增压(10)/喷气推进(19) 满级改 50%：等级表的 effect/effect_value
+	//   被 seedEzfyTechLevels 刻意保护（管理端独家维护），改种子文案落不到老库 → 单独一次性迁移。
+	ezfyTechSpeed50Fix(db)
 	// ★ 野地类型管理端可编辑（守军 + 守军军官 officer_id），必须只补缺不覆盖，
 	//   否则每次重启会把管理端/守将补缺的 officer_id 冲回 0（2026-09-24 野地军官需求）。
 	batchKeep(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")

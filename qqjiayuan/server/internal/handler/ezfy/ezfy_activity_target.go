@@ -817,10 +817,11 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkBonus := h.officerBattleBonus(leadOfficer) +
 		atkTech[6]*3 + atkTech[9]*2
 	// 速度：机械增压(10)「部队速度」= 通用；喷气推进(19)「空军速度」= 兵种专属（见下方 atkType）
-	atkSpeedBonus := atkTech[10] * 2
+	// ★ 2026-10-31 满级 50%：读配置（不再写死每级 2%）
+	atkSpeedBonus := ezfyTechEffectValueAt(10, atkTech[10])
 	// ★ 2026-10-08 兵种专属加成（与普通出征同口径）：喷气推进只加空军 + 军官兵种技能
 	atkType := ezfyTypeBonus{Speed: map[int]int{}}
-	if v := atkTech[19] * 3; v > 0 {
+	if v := ezfyTechEffectValueAt(19, atkTech[19]); v > 0 {
 		atkType.Speed[ezfyTroopTypeAir] += v
 	}
 	atkType = h.officerTypeBonus(leadOfficer, atkType)
@@ -834,9 +835,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		ezfyTechItem("均质装甲", atkTech[7]*3),
 		ezfyTechItem("炮兵射表", atkTech[8]*3),
 		ezfyTechItem("重型机床", atkTech[9]*2),
-		ezfyTechItem("机械增压", atkTech[10]*2),
+		ezfyTechItem("机械增压", ezfyTechEffectValueAt(10, atkTech[10])),
 		ezfyTechItem("永备工事", atkTech[16]*2),
-		ezfyTechItem("喷气推进", atkTech[19]*3),
+		ezfyTechItem("喷气推进", ezfyTechEffectValueAt(19, atkTech[19])),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 	// ★ 2026-10-07 攻方「防御加成」（出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def，

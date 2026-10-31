@@ -109,11 +109,11 @@ func TestSpeedSkillBonusScaled(t *testing.T) {
 	// 行军速度必须走按兵种的 ezfyMarchSpeed（机械增压通用 + 喷气推进/军官技能按兵种）
 	march := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyMarchSpeed(")
 	for _, want := range []string{
-		"techMap[10] * 2",                 // 机械增压：通用（全体兵种）
-		"tb.Speed[ezfyTroopTypeAir] += v", // 喷气推进：只空军
-		"h.officerTypeBonus(lead, tb)",    // 军官速度技能：按兵种
-		"tb.speedOf(cfg.Type)",            // 按兵种取专属加成
-		"tb.speedTroopOf(cfg.ID)",         // 坦克突袭：按兵种 ID（只轻坦/重坦）
+		"ezfyTechEffectValueAt(10, techMap[10])", // 机械增压：通用（全体兵种），★ 2026-10-31 起读配置
+		"tb.Speed[ezfyTroopTypeAir] += v",        // 喷气推进：只空军
+		"h.officerTypeBonus(lead, tb)",           // 军官速度技能：按兵种
+		"tb.speedOf(cfg.Type)",                   // 按兵种取专属加成
+		"tb.speedTroopOf(cfg.ID)",                // 坦克突袭：按兵种 ID（只轻坦/重坦）
 	} {
 		if !strings.Contains(march, want) {
 			t.Fatalf("行军速度未按兵种接入科技/军官速度加成（缺 %s）：\n%s", want, march)
@@ -417,7 +417,8 @@ func TestFourTechCategoriesWired(t *testing.T) {
 		{"攻击", "atkBonus := officerBonus + atkTech[6]*3 + atkTech[9]*2"},
 		// ★★ 2026-10-09 永备工事(16) 移出通用防御 → 只对城防单位生效（atkType.Def[4]）
 		{"防御", "atkDefBonus += atkTech[7]*3 + atkTech[9]*2"},
-		{"速度(通用)", "atkSpeedBonus := atkTech[10] * 2"},
+		// ★ 2026-10-31 机械增压满级改 50% → 速度改读配置（ezfyTechEffectValueAt）
+		{"速度(通用)", "atkSpeedBonus := ezfyTechEffectValueAt(10, atkTech[10])"},
 		{"射程", "atkRangeBonus := atkTech[8] * 3"},
 	}
 	defCases := []struct{ name, want string }{
@@ -425,7 +426,7 @@ func TestFourTechCategoriesWired(t *testing.T) {
 		{"攻击", "defAtkBonus = defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)"},
 		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7)，永备工事(16) 也只对城防生效
 		{"防御", "defBonus = defTech[7]*3 + defTech[9]*2"},
-		{"速度(通用)", "defSpeedBonus = defTech[10] * 2"},
+		{"速度(通用)", "defSpeedBonus = ezfyTechEffectValueAt(10, defTech[10])"},
 		// ★ 射程只吃炮兵射表(8)（2026-10-08 修掉虚高）
 		{"射程", "defRangeBonus = defTech[8] * 3"},
 	}

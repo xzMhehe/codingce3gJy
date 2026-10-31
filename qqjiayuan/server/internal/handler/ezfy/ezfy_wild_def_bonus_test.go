@@ -23,8 +23,8 @@ func TestEzfyWildDefCombatBonusTech(t *testing.T) {
 	if b.DefAtkBonus != 50 { // 武器 30 + 重工 20
 		t.Fatalf("守方攻击加成 = %d, 期望 50", b.DefAtkBonus)
 	}
-	if b.DefSpeedBonus != 20 { // 机械增压 20
-		t.Fatalf("守方速度加成 = %d, 期望 20", b.DefSpeedBonus)
+	if b.DefSpeedBonus != 50 { // 机械增压 10 级 × 5% = 50（2026-10-31 满级 50%）
+		t.Fatalf("守方速度加成 = %d, 期望 50", b.DefSpeedBonus)
 	}
 	if b.DefRangeBonus != 30 { // 炮兵射表 30
 		t.Fatalf("守方射程加成 = %d, 期望 30", b.DefRangeBonus)
@@ -32,8 +32,8 @@ func TestEzfyWildDefCombatBonusTech(t *testing.T) {
 	if b.DefHealTech != 20 { // 战地医疗 20
 		t.Fatalf("守方伤兵回收科技 = %d, 期望 20", b.DefHealTech)
 	}
-	if b.Type.Speed[ezfyTroopTypeAir] != 30 { // 喷气推进只加空军
-		t.Fatalf("守方空军速度 = %d, 期望 30", b.Type.Speed[ezfyTroopTypeAir])
+	if b.Type.Speed[ezfyTroopTypeAir] != 50 { // 喷气推进只加空军（10 级 × 5% = 50）
+		t.Fatalf("守方空军速度 = %d, 期望 50", b.Type.Speed[ezfyTroopTypeAir])
 	}
 	if b.Type.Def[ezfyTroopTypeCity] != 20 { // 永备工事只加城防单位
 		t.Fatalf("守方城防防御 = %d, 期望 20", b.Type.Def[ezfyTroopTypeCity])
@@ -113,7 +113,7 @@ func TestEzfyWildDefBonusWiring(t *testing.T) {
 	for _, want := range []string{
 		"tech[7]*3 + tech[9]*2",
 		"tech[6]*3 + tech[9]*2",
-		"tech[10] * 2",
+		"ezfyTechEffectValueAt(10, tech[10])", // ★ 2026-10-31 满级 50%：读配置
 		"tech[8] * 3",
 		"h.officerGuardBonus(officer)",
 		"h.officerBattleBonus(officer)",

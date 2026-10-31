@@ -984,10 +984,11 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 			spdBonus = append(spdBonus, fmt.Sprintf("运输站×%.1f倍", m))
 		}
 	}
-	if t := techMap[10] * 2; t > 0 && len(valid) > 0 {
+	// ★ 2026-10-31 满级 50%：读配置（与 ezfyMarchSpeed 同源，避免「清单写的」≠「实际算的」）
+	if t := ezfyTechEffectValueAt(10, techMap[10]); t > 0 && len(valid) > 0 {
 		spdBonus = append(spdBonus, fmt.Sprintf("机械增压+%d%%", t))
 	}
-	if t := techMap[19] * 3; t > 0 && ezfyHasAirTroops(valid) {
+	if t := ezfyTechEffectValueAt(19, techMap[19]); t > 0 && ezfyHasAirTroops(valid) {
 		spdBonus = append(spdBonus, fmt.Sprintf("喷气推进+%d%%", t))
 	}
 	loadPct := techMap[13] * 2 // 科技13「标准化装卸」：负重 +2%/级
@@ -2763,9 +2764,12 @@ func ezfyStationOrderType(orderType int) bool {
 // 出征预览(/order/preview)与真正下单(createOrder)共用本函数，保证「看到的耗时」=「实际的耗时」。
 // 没有任何可出征部队（如纯运输资源）→ 返回 0，调用方回落到旧默认速度 300。
 func (h *EzfyHandler) ezfyMarchSpeed(troops []ezfyUnitGroup, techMap map[int]int, lead *model.EzfyOfficer) int {
-	gen := techMap[10] * 2 // 机械增压：部队速度（通用）
+	// ★ 2026-10-31 机械增压/喷气推进 满级改 50% → 不再写死每级 2%/3%，
+	//   改为读配置（ezfy_cfg_tech_level.effect_value，缺省按 ezfyTechEffectPer 每级 5%）。
+	//   这样管理端「科技管理 → 等级配置 → 效果数值」一改，行军与战斗速度立刻同源生效。
+	gen := ezfyTechEffectValueAt(10, techMap[10]) // 机械增压：部队速度（通用）
 	tb := ezfyTypeBonus{Speed: map[int]int{}}
-	if v := techMap[19] * 3; v > 0 { // 喷气推进：只加空军
+	if v := ezfyTechEffectValueAt(19, techMap[19]); v > 0 { // 喷气推进：只加空军
 		tb.Speed[ezfyTroopTypeAir] += v
 	}
 	tb = h.officerTypeBonus(lead, tb) // 军官速度技能：按兵种
@@ -3808,7 +3812,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkBonus := officerBonus + atkTech[6]*3 + atkTech[9]*2
 	// 速度加成：只有机械增压(10)「部队速度」是**全体兵种**通用的；
 	// ★ 2026-10-08 喷气推进(19)「空军速度」是**兵种专属** → 移到下方 atkType（原来错误地加了全军）
-	atkSpeedBonus := atkTech[10] * 2
+	// ★ 2026-10-31 满级 50%：读配置（不再写死每级 2%）
+	atkSpeedBonus := ezfyTechEffectValueAt(10, atkTech[10])
 	// ★ 2026-10-06 攻方射程加成：炮兵射表(8)+3%/级（射程 = 基础射程 × (1+科技加成)，）
 	atkRangeBonus := atkTech[8] * 3
 	// ★★ 2026-10-08 兵种专属加成（配置里写明作用兵种的那些科技/军官技能）：
@@ -3818,7 +3823,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//   ★ 原来它们被无差别算进 atkBonus / atkSpeedBonus（全军受益）——
 	//     用户反馈「空军速度只加空军，有些科技是特定兵种」。
 	atkType := ezfyTypeBonus{Speed: map[int]int{}, Def: map[int]int{}}
-	if v := atkTech[19] * 3; v > 0 {
+	if v := ezfyTechEffectValueAt(19, atkTech[19]); v > 0 {
 		atkType.Speed[ezfyTroopTypeAir] += v
 	}
 	// ★★ 2026-10-09 永备工事「只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」
@@ -3840,9 +3845,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		ezfyTechItem("均质装甲", atkTech[7]*3),
 		ezfyTechItem("炮兵射表", atkTech[8]*3),
 		ezfyTechItem("重型机床", atkTech[9]*2),
-		ezfyTechItem("机械增压", atkTech[10]*2),
+		ezfyTechItem("机械增压", ezfyTechEffectValueAt(10, atkTech[10])),
 		ezfyTechItem("永备工事", atkTech[16]*2),
-		ezfyTechItem("喷气推进", atkTech[19]*3),
+		ezfyTechItem("喷气推进", ezfyTechEffectValueAt(19, atkTech[19])),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 	// ★ 装备六项战斗加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
@@ -4163,7 +4168,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defBonus = defTech[7]*3 + defTech[9]*2
 		// 速度：只有机械增压(10)「部队速度」是全体兵种通用；喷气推进(19)「空军速度」是兵种专属
 		// （★ 2026-10-08 移到下方 defType —— 原来错误地给全军加速）
-		defSpeedBonus = defTech[10] * 2
+		// ★ 2026-10-31 满级 50%：读配置（不再写死每级 2%）
+		defSpeedBonus = ezfyTechEffectValueAt(10, defTech[10])
 		// 城守: 守城防御 +10% 及 防御/掩体/生命/鼓舞技能
 		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
 		defBonus += h.officerGuardBonus(cityGuard)
@@ -4178,7 +4184,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 2026-10-08 守方兵种专属加成：喷气推进(19)只加空军 + 城守军官的兵种技能
 		//   （火炮控制=陆军 / 四指编队=空军 / 狼群战术=海军 / 坦克突袭·闪电袭击·越岛战术=陆·空·海速度）
 		defType = ezfyTypeBonus{Speed: map[int]int{}, Def: map[int]int{}}
-		if v := defTech[19] * 3; v > 0 {
+		if v := ezfyTechEffectValueAt(19, defTech[19]); v > 0 {
 			defType.Speed[ezfyTroopTypeAir] += v
 		}
 		// ★★ 2026-10-09 永备工事「只对城防单位生效」→ 挂在城防(4) 的**兵种专属防御**上，
@@ -4219,9 +4225,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			ezfyTechItem("均质装甲", defTech[7]*3),
 			ezfyTechItem("炮兵射表", defTech[8]*3),
 			ezfyTechItem("重型机床", defTech[9]*2),
-			ezfyTechItem("机械增压", defTech[10]*2),
+			ezfyTechItem("机械增压", ezfyTechEffectValueAt(10, defTech[10])),
 			ezfyTechItem("永备工事", defTech[16]*2),
-			ezfyTechItem("喷气推进", defTech[19]*3),
+			ezfyTechItem("喷气推进", ezfyTechEffectValueAt(19, defTech[19])),
 		)
 		// ★★ 2026-10-08 修复「守方射程加成虚高」（用户反馈「射程加成有问题 守方 50%？」）：
 		//   原来是 `炮兵射表(8)*3 + 永备工事(16)*2` —— 但永备工事的配置描述是
@@ -6401,15 +6407,15 @@ func (h *EzfyHandler) ezfyWildDefCombatBonus(tech map[int]int, officer *model.Ez
 	}
 	// 防御：与玩家城守军一致，不含城墙（城墙只守城，不守野地）。
 	b.DefBonus = tech[7]*3 + tech[9]*2 + h.officerGuardBonus(officer)
-	// 速度：机械增压(10) 全体 +2%/级；喷气推进(19) 只加空军 +3%/级。
-	b.DefSpeedBonus = tech[10] * 2
+	// 速度：机械增压(10) 全体 + 喷气推进(19) 只加空军 —— ★ 2026-10-31 满级 50%，读配置
+	b.DefSpeedBonus = ezfyTechEffectValueAt(10, tech[10])
 	// 伤兵回收：战地医疗(21) + 军官「机械改造」5%/级（野地守军损失写回订单，
 	// 这里保留与城守同一口径，战报/后续扩展不会因为漏算而出现 0）。
 	b.DefHealTech = ezfyTechEffectValueAt(21, tech[21])
 	if h.officerHasSkill(officer, "机械改造") {
 		b.DefHealTech += 5 * h.officerSkillScale(officer)
 	}
-	if v := tech[19] * 3; v > 0 {
+	if v := ezfyTechEffectValueAt(19, tech[19]); v > 0 {
 		b.Type.Speed[ezfyTroopTypeAir] += v
 	}
 	if v := tech[16] * 2; v > 0 {
@@ -6427,9 +6433,9 @@ func (h *EzfyHandler) ezfyWildDefCombatBonus(tech map[int]int, officer *model.Ez
 		ezfyTechItem("均质装甲", tech[7]*3),
 		ezfyTechItem("炮兵射表", tech[8]*3),
 		ezfyTechItem("重型机床", tech[9]*2),
-		ezfyTechItem("机械增压", tech[10]*2),
+		ezfyTechItem("机械增压", ezfyTechEffectValueAt(10, tech[10])),
 		ezfyTechItem("永备工事", tech[16]*2),
-		ezfyTechItem("喷气推进", tech[19]*3),
+		ezfyTechItem("喷气推进", ezfyTechEffectValueAt(19, tech[19])),
 	)
 	b.DefRangeBonus = tech[8] * 3
 	b.DefBreak = ezfyBonusItems(
