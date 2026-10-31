@@ -315,7 +315,7 @@ const (
 // ezfyTypeBonus 兵种专属加成：key = 兵种 type，value = 百分点。
 //
 // ★★ 2026-10-08 配置里「喷气推进=空军速度+3%」「火炮压制=陆军装甲攻击+10」
-// 「四指阵列=空军对空攻击+15%」「狼群围猎=海军攻击力+15%」这类科技/军官技能**只作用于特定兵种**，
+// 「四指阵列=空军对空攻击+15%」「狼群围猎=海军对海攻击+15%」这类科技/军官技能**只作用于特定兵种**，
 // 不能像通用加成那样直接进 AtkBonus/AtkSpeedBonus（那会变成全兵种生效 —— 用户反馈「空军速度只加空军」）。
 // ★★ 2026-10-31 坦克冲锋/闪电疾攻/越岛登陆 由「速度」改为**攻速**（AtkSpeed/AtkSpeedTroop）。
 // 引擎按 `unit.cfg.Type` 取对应兵种的值再叠加。
@@ -678,7 +678,7 @@ type ezfyBattleState struct {
 	DefSpeedBonus int
 	// ★★ 2026-10-08 兵种专属加成（配置里写明作用兵种的那些科技/军官技能）：
 	//   喷气推进「空军速度+5%」/ 火炮压制「装甲部队攻击+10」/ 四指阵列「空军对空攻击+15%」/
-	//   狼群围猎「海军攻击力+15%」/ 闪电疾攻·越岛登陆·坦克冲锋「攻速+10%」—— 只作用于对应兵种。
+	//   狼群围猎「海军对海攻击+15%」/ 闪电疾攻·越岛登陆·坦克冲锋「攻速+10%」—— 只作用于对应兵种。
 	//   原来它们被无差别加进 AtkBonus/AtkSpeedBonus（全兵种生效），用户反馈「空军速度只加空军」。
 	AtkType ezfyTypeBonus
 	DefType ezfyTypeBonus
@@ -1207,11 +1207,11 @@ func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name
 // ★ 2026-10-08 技能发动播报用的「带感口号」池（克制版，不浮夸）。
 //
 //	轮流取 + 攻/守、攻击/防御、回合 三重混合偏移，避免重复枯燥。
-var ezfySlogans = []string{
-	"战意沸腾", "气势如虹", "士气大振", "杀声震天", "锋芒毕露", "势不可挡",
-	"铁血激荡", "锐不可当", "一往无前", "战鼓擂动", "陷阵之志", "气吞万里",
-	"剑锋所指", "热血方刚", "战意高昂", "孤掷一注",
-}
+// ★★ 2026-10-31 原 `ezfySlogans`（战斗口号池）已**整体删除**：
+//   用户要求「回合里面的描述要简约、官方、符合二战背景主题」——
+//   技能/暴击/反击/连击的播报一律改成陈述式（谁 + 发动了什么 + 数值），
+//   不再塞「剑锋所指 / 一往无前 / 气吞万里」这类武侠/率土风口号。
+//   以后若要加风味文案，请保持「军事术语 + 短句」，别回到文学化口号。
 
 // wallDefBonus 当前城墙提供的守城防御加成%（按剩余耐久比例折算）。
 func (st *ezfyBattleState) wallDefBonus() int {
@@ -1414,18 +1414,19 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 
 	// ★ 2026-10-08 技能发动播报：每个生效回合都提示。
 	//   攻/守方的攻击类技能（AtkSkillBreak/DefSkillBreak）逐个写一行带感口号，再带出防御类军官技能
-	//   （弧形壁垒等，明细 Name 带「军官技能·」前缀 → 去掉前缀后发动，说明全体防御力+N%）。
+	//   （弧形壁垒等，明细 Name 带「军官技能·」前缀 → 去掉前缀后发动，说明全军防御+N%）。
 	//   纯配置/科技/装备来源不播报（无「军官技能·」前缀不碰）。「攻击加成+N%」拆解保持原样。
 	// ★★ 2026-10-31 用户反馈「同一个技能同回合出现两行」：**间隔发动类技能（弧形壁垒/火炮压制）
 	//   由 timedAnno 统一播报一次**（且只在发动回合），这里遇到同名技能直接跳过，避免重复。
 	skillAnno := func(side, offName string, off int, wording string, skills []ezfyBonusItem, timed []*ezfyTimedSkill) {
-		for i, s := range skills {
+		for _, s := range skills {
 			if s.Value == 0 || ezfyTimedHas(timed, s.Name) {
 				continue
 			}
-			idx := (st.Round + i*3 + off*7) % len(ezfySlogans)
+			// ★★ 2026-10-31 用户要求「简约、官方、符合二战背景主题」：
+			//   去掉口号与感叹号，统一成 `【守方】某某发动【技能】，全军攻击+150%`。
 			st.Actions = append(st.Actions,
-				fmt.Sprintf("%s%s发动【%s】！%s，全体%s+%d%%", side, offName, s.Name, ezfySlogans[idx], wording, s.Value))
+				fmt.Sprintf("%s%s发动【%s】，全军%s+%d%%", side, offName, s.Name, wording, s.Value))
 		}
 	}
 	// 只挑明细分里确实是「军官技能」的来源（防御/科技/城防/装备等不算技能发动）
@@ -1439,10 +1440,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		}
 		return out
 	}
-	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 0, "攻击力", st.AtkSkillBreak, st.AtkTimed)
-	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 1, "攻击力", st.DefSkillBreak, st.DefTimed)
-	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 2, "防御力", officerSkillOnly(st.AtkDefBreak), st.AtkTimed)
-	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 3, "防御力", officerSkillOnly(st.DefDefBreak), st.DefTimed)
+	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 0, "攻击", st.AtkSkillBreak, st.AtkTimed)
+	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 1, "攻击", st.DefSkillBreak, st.DefTimed)
+	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 2, "防御", officerSkillOnly(st.AtkDefBreak), st.AtkTimed)
+	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 3, "防御", officerSkillOnly(st.DefDefBreak), st.DefTimed)
 	// ★★ 2026-10-31 间隔发动类技能（弧形壁垒/火炮压制）排在常驻技能之后播报，且**只在发动回合**出现，
 	//   每回合同一技能最多一行；不再带「（持续N回合，每M回合发动1次）」后缀（用户要求）。
 	st.timedAnno(atkTimedOn, defTimedOn)
@@ -1635,7 +1636,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			atkFlat := 0
 			equip := st.DefEquip
 			if isAtk {
-				// 攻击加成 = 通用 + 该兵种专属（按文案严格：四指阵列=空军打空军、狼群围猎=海军攻击力%）
+				// 攻击加成 = 通用 + 该兵种专属（按文案严格：四指阵列=空军打空军、狼群围猎=海军打海军）
 				tb := st.AtkType.attackBonusFor(unit.cfg.Type, target.cfg)
 				unitAtkBonus = atkBonus + tb
 				if tb > 0 {
@@ -1737,8 +1738,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			//   一行，读战报时一眼能看到「这一下出了暴击、加了多少伤害」；攻击行里仍保留
 			//   【暴击+N%】标记（多目标级联时能看出具体是哪一下暴击）。
 			if crit {
-				st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动【暴击】！%s，本次攻击伤害+%d%%",
-					side, stName(unit), ezfySlogans[(st.Round*3+11)%len(ezfySlogans)], critBonus))
+				// ★★ 2026-10-31 与技能播报同口径：去掉口号与感叹号，只留结果
+				st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动【暴击】，本次攻击伤害+%d%%",
+					side, stName(unit), critBonus))
 			}
 			// ★ 伤害按「剩余伤害」逐目标结算：先把本次全部伤害打在首选目标上；
 			//   若全歼且伤害还有溢出 → 触发【势不可挡】，溢出伤害继续打下一个存活目标，
@@ -1884,12 +1886,31 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			//   （伤害 = 主攻击的 Value%，只打单体，不做溢出级联，避免一次连击清场）
 			//   ★ 2026-10-24 多技能：多个连击技同时生效时只取**最强**一个触发（避免连击清场）
 			comboSide := defAct
+			comboRts := st.DefCombos
 			if isAtk {
 				comboSide = atkAct
+				comboRts = st.AtkCombos
 			}
+			// ★★ 2026-10-31 【追击】与【连击】不是一回事（用户纠正）：
+			//   · 追击 = **每次普攻命中后**独立掷骰，命中则对被普攻的目标追加一次**战法伤害**
+			//     （只打该目标、目标已死不再追、不溢出、不再连锁）。
+			//   · 连击 = 本回合**多打一次普攻**（走完整普攻结算：可换目标/可溢出），
+			//     这次普攻命中后同样能带出追击。
+			pursue := func() {
+				ps := comboPursuitOf(comboRts)
+				if len(ps) == 0 {
+					return
+				}
+				if pc := comboPursuitRoll(ps); pc != nil {
+					st.comboFollowUp(unit, target, enemies, rangeD, atkFlat, unitAtkBonus, unitDefBonus,
+						defBreakPct, side, enemySide, stName, pc.Name, pc.Value, "追击", true)
+				}
+			}
+			pursue() // 主普攻命中后
 			if cb, ok := comboDoubleBest(comboSide); ok {
 				st.comboFollowUp(unit, target, enemies, rangeD, atkFlat, unitAtkBonus, unitDefBonus,
-					defBreakPct, side, enemySide, stName, cb.Name, cb.Value)
+					defBreakPct, side, enemySide, stName, cb.Name, cb.Value, "连击", false)
+				pursue() // 连击那一次普攻命中后，也能带出追击
 			}
 			// ★ 2026-10-24 城墙是「像单位一样的耐久目标、只能被打」：**没有顺带拆墙**。
 			//   攻方开火只打守军；守军全灭后进入围城阶段（下方 siegeWall）才把墙当目标拆。
@@ -2015,16 +2036,17 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if counterSide == "攻方" {
 					counterOfficer = ezfyOfficerShortName(st.AtkOfficerDesc)
 				}
-				counterSlogan := ezfySlogans[(st.Round*5+2)%len(ezfySlogans)]
 				// ★ 2026-10-09 反击暴击播报 + 行内标记（与普通攻击的暴击口径一致）
 				cbCritTxt := ""
 				if cbCrit {
 					cbCritTxt = fmt.Sprintf("【暴击+%d%%】", cbCritBonus)
-					st.Actions = append(st.Actions, fmt.Sprintf("【%s】%s发动【暴击】！%s，本次反击伤害+%d%%",
-						counterSide, stName(target), ezfySlogans[(st.Round*7+5)%len(ezfySlogans)], cbCritBonus))
+					st.Actions = append(st.Actions, fmt.Sprintf("【%s】%s发动【暴击】，本次反击伤害+%d%%",
+						counterSide, stName(target), cbCritBonus))
 				}
-				line := fmt.Sprintf("【%s】%s发动【绝地逆袭】%s还击%s%s%s！%s，攻击加成+%d%%%s%s",
-					counterSide, counterOfficer, stName(target), actorBare, stName(unit), cbCritTxt, counterSlogan, cbAtk, counterBreak, cbTypeTxt)
+				// ★★ 2026-10-31 与其它播报同口径：去掉口号与感叹号，改成陈述式
+				//   `【守方】某某发动【绝地逆袭】，重型坦克还击攻方轰炸机，攻击加成+0%…`
+				line := fmt.Sprintf("【%s】%s发动【绝地逆袭】，%s还击%s%s%s，攻击加成+%d%%%s%s",
+					counterSide, counterOfficer, stName(target), actorBare, stName(unit), cbCritTxt, cbAtk, counterBreak, cbTypeTxt)
 				// 反击行（方向与常规攻击相反：cur 在行动、target 还击）：
 				//   攻方在打(isAtk=true)、守方反击 → 被还击方是攻方 → 展示攻方防御加成；
 				//   守方在打(isAtk=false)、攻方反击 → 被还击方是守方 → 展示守方防御加成。

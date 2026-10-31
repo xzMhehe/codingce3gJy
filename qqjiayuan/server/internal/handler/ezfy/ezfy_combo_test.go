@@ -193,7 +193,7 @@ func TestComboProcAndBonuses(t *testing.T) {
 	if !strings.Contains(st.Actions[1], "发动组合技【装甲突击】") {
 		t.Fatalf("组合技播报应紧跟回合标题：%v", st.Actions[:2])
 	}
-	if !strings.Contains(st.Actions[1], "全体攻击力+180%") {
+	if !strings.Contains(st.Actions[1], "全军攻击+180%") {
 		t.Fatalf("播报要写清效果（不能只写 +180%%）：%s", st.Actions[1])
 	}
 

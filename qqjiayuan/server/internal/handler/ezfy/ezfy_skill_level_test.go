@@ -556,27 +556,27 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 	}
 	// ③ 军官的六个兵种技能必须按兵种下发（2026-10-31 用户确认的口径）：
 	//   火炮压制 → **陆军装甲部队**（装甲车4/轻坦5/重坦6/突击炮7/火箭8）攻击属性 +10/级；
-	//   四指阵列 → 空军打空军；狼群围猎 → 海军**攻击力%**（不分目标）；
+	//   四指阵列 → 空军打空军；狼群围猎 → 海军打海军（★★ 目标也必须是海军兵种）；
 	//   坦克冲锋 → **只**轻坦5/重坦6 **攻速**；闪电疾攻/越岛登陆 → 空/海**攻速**；
 	//   弹幕覆盖 → **只**城防单位的射程。
 	for _, want := range []string{
-		"b.AtkFlatTroop[id] += 10 * scale",                          // 火炮压制 → 装甲部队（按兵种 ID）
-		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)", // 四指阵列 → 空军打空军
-		"b.Atk[ezfyTroopTypeNavy] += 15 * scale",                    // 狼群围猎 → 海军攻击力%
-		"b.AtkSpeedTroop[id] += 10 * scale",                         // 坦克冲锋 → 只轻坦/重坦攻速
-		"b.AtkSpeed[ezfyTroopTypeAir] += 10 * scale",                // 闪电疾攻 → 空军攻速
-		"b.AtkSpeed[ezfyTroopTypeNavy] += 10 * scale",               // 越岛登陆 → 海军攻速
-		"b.Range[ezfyTroopTypeCity] += 10 * scale",                  // 弹幕覆盖 → 只城防射程
+		"b.AtkFlatTroop[id] += 10 * scale",                            // 火炮压制 → 装甲部队（按兵种 ID）
+		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)",   // 四指阵列 → 空军打空军
+		"b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)", // 狼群围猎 → 海军打海军
+		"b.AtkSpeedTroop[id] += 10 * scale",                           // 坦克冲锋 → 只轻坦/重坦攻速
+		"b.AtkSpeed[ezfyTroopTypeAir] += 10 * scale",                  // 闪电疾攻 → 空军攻速
+		"b.AtkSpeed[ezfyTroopTypeNavy] += 10 * scale",                 // 越岛登陆 → 海军攻速
+		"b.Range[ezfyTroopTypeCity] += 10 * scale",                    // 弹幕覆盖 → 只城防射程
 	} {
 		if !strings.Contains(off, want) {
 			t.Fatalf("军官兵种技能未按兵种下发：%s", want)
 		}
 	}
-	// 旧口径必须消失：火炮压制不再整档给陆军、狼群围猎不再只对海、坦克冲锋不再整档给陆军，
-	// 且三个速度技能已改攻速 → 不得再写 Speed/SpeedTroop。
+	// 旧口径必须消失：火炮压制不再整档给陆军、狼群围猎不再整档给海军（那样打陆/空也吃加成）、
+	// 坦克冲锋不再整档给陆军，且三个速度技能已改攻速 → 不得再写 Speed/SpeedTroop。
 	for _, bad := range []string{
 		"b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale",
-		"b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)",
+		"b.Atk[ezfyTroopTypeNavy] += 15 * scale",
 		"b.Speed[ezfyTroopTypeArmy] += 10 * scale",
 		"b.Speed[ezfyTroopTypeAir] += 10 * scale",
 		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",

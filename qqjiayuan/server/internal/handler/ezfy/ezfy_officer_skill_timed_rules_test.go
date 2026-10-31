@@ -16,7 +16,7 @@ import (
 //  2. 火炮压制：每 3 回合提升**陆军装甲部队**（装甲车4/轻坦5/重坦6/突击炮7/火箭8）攻击，
 //     持续 1 回合；「攻击力」= 本回合 对地/对空/对海/对防 各 +等级数值
 //  3. 坦克冲锋：只生效 轻型坦克(5)、重型坦克(6)
-//  4. 狼群围猎：海军**攻击力**+15%/级（百分比，不是「对海攻击数值」；不分目标）
+//  4. 狼群围猎：海军**对海攻击**+15%/级（攻击方与目标都必须是海军兵种；同日二次修订定稿）
 //  5. 弹幕覆盖：只对**城防单位**的**攻击范围**加成（不是防御、不是全兵种）
 
 // testSkillOfficer 构造一个带指定技能的军官（Level 90 → 技能 3 级 = 倍率 3）
@@ -58,7 +58,7 @@ func TestOfficerSkillTimedProc(t *testing.T) {
 }
 
 // TestOfficerTypeBonusScope 火炮压制只给装甲部队攻击属性；坦克冲锋只给轻坦/重坦速度；
-// 狼群围猎给海军攻击力%（不分目标）；弹幕覆盖只给城防射程。
+// 狼群围猎只给「海军打海军」；弹幕覆盖只给城防射程。
 func TestOfficerTypeBonusScope(t *testing.T) {
 	h := &EzfyHandler{}
 	o := testSkillOfficer("火炮压制", "坦克冲锋", "狼群围猎", "弹幕覆盖", "四指阵列")
@@ -99,12 +99,13 @@ func TestOfficerTypeBonusScope(t *testing.T) {
 		t.Fatalf("坦克冲锋已改攻速，不该再给轻坦加移动速度，得到 +%d", got)
 	}
 
-	// ③ 狼群围猎：海军攻击力% +15×3（不分目标）
-	if got := tb.atkOf(ezfyTroopTypeNavy); got != 15*scale {
-		t.Fatalf("狼群围猎 海军攻击力应为 +%d%%，得到 +%d%%", 15*scale, got)
+	// ③ 狼群围猎：**海军打海军** +15×3（目标也必须是海军兵种）
+	if got := tb.atkVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy); got != 15*scale {
+		t.Fatalf("狼群围猎 海军对海攻击应为 +%d%%，得到 +%d%%", 15*scale, got)
 	}
-	if got := tb.atkVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy); got != 0 {
-		t.Fatalf("狼群围猎 不应再走「对海」目标档，得到 +%d%%", got)
+	// 不再按「海军 type」整档下发（否则打陆/空目标也吃加成）
+	if got := tb.atkOf(ezfyTroopTypeNavy); got != 0 {
+		t.Fatalf("狼群围猎 不应再按海军 type 整档下发，得到 +%d%%", got)
 	}
 
 	// ④ 弹幕覆盖：城防射程 10×3，其它兵种 0
@@ -290,20 +291,25 @@ func TestBarrageRangeOnlyCity(t *testing.T) {
 	}
 }
 
-// TestWolfPackNavyAttackPct 狼群围猎是「海军攻击力%」——打陆军目标也生效（不是只对海）。
+// TestWolfPackNavyAttackPct 狼群围猎是「海军对海攻击」——攻击方和目标都必须是海军兵种。
 func TestWolfPackNavyAttackPct(t *testing.T) {
 	h := &EzfyHandler{}
 	tb := h.officerTypeBonus(testSkillOfficer("狼群围猎"), ezfyTypeBonus{})
-	armyTarget := &ezfyTroopStats{Type: ezfyTroopTypeArmy}
-	if got := tb.attackBonusFor(ezfyTroopTypeNavy, armyTarget); got != 15*3 {
-		t.Fatalf("狼群围猎 海军打陆军也应 +%d%%，得到 +%d%%", 15*3, got)
+	navyTarget := &ezfyTroopStats{Type: ezfyTroopTypeNavy}
+	if got := tb.attackBonusFor(ezfyTroopTypeNavy, navyTarget); got != 15*3 {
+		t.Fatalf("狼群围猎 海军打海军应 +%d%%，得到 +%d%%", 15*3, got)
 	}
-	airTarget := &ezfyTroopStats{Type: ezfyTroopTypeAir}
-	if got := tb.attackBonusFor(ezfyTroopTypeNavy, airTarget); got != 15*3 {
-		t.Fatalf("狼群围猎 海军打空军也应 +%d%%，得到 +%d%%", 15*3, got)
+	// 打陆基/空军目标不生效（用户口径：「目标也是对海军兵种」）
+	for _, ty := range []int{ezfyTroopTypeArmy, ezfyTroopTypeAir, ezfyTroopTypeCity} {
+		if got := tb.attackBonusFor(ezfyTroopTypeNavy, &ezfyTroopStats{Type: ty}); got != 0 {
+			t.Fatalf("狼群围猎 海军打 type%d 不应有加成，得到 +%d%%", ty, got)
+		}
 	}
-	if got := tb.attackBonusFor(ezfyTroopTypeArmy, armyTarget); got != 0 {
-		t.Fatalf("狼群围猎 不应作用于陆军，得到 +%d%%", got)
+	// 非海军兵种进攻不吃（含陆军打海军）
+	for _, ty := range []int{ezfyTroopTypeArmy, ezfyTroopTypeAir, ezfyTroopTypeCity} {
+		if got := tb.attackBonusFor(ty, navyTarget); got != 0 {
+			t.Fatalf("狼群围猎 不应作用于进攻方 type%d，得到 +%d%%", ty, got)
+		}
 	}
 }
 
@@ -311,7 +317,7 @@ func TestWolfPackNavyAttackPct(t *testing.T) {
 //
 // ★★ 2026-10-31 用户反馈（线上战报）：
 //
-//	【守方】拉尔夫·贝克发动【弧形壁垒】！一往无前，全体防御力+150%（持续1回合，每3回合发动1次）
+//	【守方】拉尔夫·贝克发动【弧形壁垒】！一往无前，全体防御力+150%（旧格式：带口号+回合后缀）
 //	【守方】拉尔夫·贝克发动【弧形壁垒】！铁血激荡，全体防御力+150%     ← 同一个技能两行
 //
 // 原因：timedAnno（间隔发动）和 skillAnno（防御明细里的「军官技能·」项）各播报了一次。

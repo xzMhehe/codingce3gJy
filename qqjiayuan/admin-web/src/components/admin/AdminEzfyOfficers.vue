@@ -185,6 +185,13 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="战法类型" width="90" align="center">
+              <template slot-scope="{row}">
+                <el-tag size="mini" :type="row.trigger_type === 4 ? 'warning' : (row.trigger_type === 1 ? 'success' : 'info')">
+                  {{ row.trigger_name || '主动' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="Lv.1 / 每级 / 满级" width="150" align="center">
               <template slot-scope="{row}">
                 <span class="td-mono">{{ row.base_value }} / +{{ row.grow }} / {{ row.value_at_max }}</span>
@@ -932,6 +939,12 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="战法类型">
+          <el-select v-model.number="cf.trigger_type" style="width:100%" placeholder="选择战法类型">
+            <el-option v-for="t in comboTriggers" :key="'ct' + t.v"
+                       :label="t.v + ' · ' + t.n + '（' + t.hint + '）'" :value="t.v" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="效果类型">
           <el-select v-model.number="cf.kind" style="width:100%" placeholder="选择效果类型">
             <el-option v-for="k in comboKinds" :key="'ck' + k.v"
@@ -1090,7 +1103,7 @@ import api from '../../api'
 
 const G_KEYS = ['name', 'level', 'military', 'logistics', 'learning', 'star', 'source', 'get_condition', 'skill', 'des', 'recruit', 'kind', 'weight', 'combo_skill_ids']
 // ★ 2026-10-23 名将组合技能池可改字段
-const C_KEYS = ['name', 'des', 'kind', 'base_value', 'grow_per_level', 'max_level', 'level_per_step', 'proc_pct', 'rounds', 'enabled', 'sort_no']
+const C_KEYS = ['name', 'des', 'kind', 'trigger_type', 'base_value', 'grow_per_level', 'max_level', 'level_per_step', 'proc_pct', 'rounds', 'enabled', 'sort_no']
 const S_KEYS = ['name', 'effect', 'type', 'des']
 // ★ 计谋（消耗信号弹）
 const SC_KEYS = ['name', 'des', 'bullet', 'kind', 'war_minutes', 'war_max_minutes', 'enabled', 'sort_no']
@@ -1126,8 +1139,16 @@ export default {
         { v: 5, n: '受伤减免', hint: '受到的伤害-%' },
         { v: 6, n: '破防', hint: '无视目标 X% 防御' },
         { v: 7, n: '回合治疗', hint: '恢复已损兵力 X%' },
-        { v: 8, n: '连击', hint: '追加一次攻击（伤害 X%）' },
-        { v: 9, n: '反击回合', hint: '反击回合 +N（一次性）' }
+        { v: 8, n: '连击', hint: '本回合多打一次普攻（伤害 X%）' },
+        { v: 9, n: '反击回合', hint: '反击回合 +N（一次性）' },
+        { v: 10, n: '追击', hint: '每次普攻命中后追加战法伤害（只打该目标）' }
+      ],
+      // ★★ 2026-10-31 战法类型（参考率土之滨）：1被动 2指挥 3主动 4追击
+      comboTriggers: [
+        { v: 1, n: '被动', hint: '必定发动，整场常驻（持续填 0）' },
+        { v: 2, n: '指挥', hint: '战前掷一次骰，命中后整场/持续 N 回合（持续填 0 = 整场）' },
+        { v: 3, n: '主动', hint: '每回合开始掷骰（原有行为）' },
+        { v: 4, n: '追击', hint: '每次普攻命中后掷骰，对被普攻目标追加战法伤害' }
       ],
       // 3 玩家军官
       // ★ 2026-10-13 加 general（「类型」检索：-1 全部 / 1 名将 / 0 普通）
@@ -1406,7 +1427,7 @@ export default {
     },
     openComboCreate () {
       this.cf = {
-        name: '', des: '', kind: 1, base_value: 18, grow_per_level: 18, max_level: 10,
+        name: '', des: '', kind: 1, trigger_type: 3, base_value: 18, grow_per_level: 18, max_level: 10,
         level_per_step: 35, proc_pct: 35, rounds: 1, enabled: 1, sort_no: 0
       }
       this.cDlg = true

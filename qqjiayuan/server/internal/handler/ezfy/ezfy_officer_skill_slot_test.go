@@ -105,11 +105,11 @@ func TestOfficerSkillViewBySlot(t *testing.T) {
 	if got := ezfySkillEffectTextAt("尖兵猛攻", 3); got != "攻击力+90%" {
 		t.Fatalf("尖兵猛攻 Lv.3 = %q", got)
 	}
-	// ★ 2026-10-31 口径修正后的效果文案（同日二次修订：坦克冲锋改「攻速」）
+	// ★ 2026-10-31 口径修正后的效果文案（同日二次修订：坦克冲锋改「攻速」、狼群围猎改「对海」）
 	cases := map[string]string{
 		"火炮压制": "装甲部队攻击+30",
 		"坦克冲锋": "坦克攻速+30%",
-		"狼群围猎": "海军攻击力+45%",
+		"狼群围猎": "海军对海攻击+45%",
 		"弹幕覆盖": "城防攻击范围+30%",
 	}
 	for skill, want := range cases {

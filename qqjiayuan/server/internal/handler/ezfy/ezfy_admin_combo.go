@@ -20,7 +20,9 @@ var ezfyGeneralSkillFields = map[string]string{
 	"name": "string", "des": "string", "kind": "int",
 	"base_value": "int", "grow_per_level": "int", "max_level": "int", "level_per_step": "int",
 	"proc_pct": "int", "rounds": "int", "quality": "int",
-	"enabled": "int", "sort_no": "int",
+	// ★★ 2026-10-31 战法类型：1被动 2指挥 3主动 4追击（列 trigger_type）
+	"trigger_type": "int",
+	"enabled":      "int", "sort_no": "int",
 }
 
 // AdminEzfyGeneralSkills GET /admin/ezfy-general-skills —— 组合技能池列表
@@ -65,6 +67,8 @@ func (h *EzfyAdmin) AdminEzfyGeneralSkills(c *gin.Context) {
 			"proc_pct":       s.ProcPct,
 			"rounds":         s.Rounds,
 			"quality":        s.Quality,
+			"trigger_type":   s.TriggerType,
+			"trigger_name":   ezfyComboTriggerName(s.TriggerType),
 			"enabled":        s.Enabled,
 			"sort_no":        s.SortNo,
 			"value_at_max":   ezfyComboValue(s.BaseValue, s.GrowPerLevel, s.MaxLevel, s.MaxLevel),
@@ -96,6 +100,9 @@ func (h *EzfyAdmin) AdminEzfyGeneralSkillCreate(c *gin.Context) {
 	}
 	if _, ok := vals["level_per_step"]; !ok {
 		vals["level_per_step"] = 35 // 名将满级 350 → 10 档吃满
+	}
+	if _, ok := vals["trigger_type"]; !ok {
+		vals["trigger_type"] = ezfyComboTriggerActive // 默认主动（与原行为一致）
 	}
 	if err := h.DB.Model(&model.EzfyCfgGeneralSkill{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "新增失败："+err.Error())

@@ -52,6 +52,20 @@ func ezfySkillAtkSpeedFix(db *gorm.DB) {
 		"ezfy 军官技能：坦克冲锋/闪电疾攻/越岛登陆 效果已改为攻速")
 }
 
+// ezfySkillWolfPackFix 把「狼群围猎(8)」的文案改成**海军打海军**口径。
+//
+// ★★ 2026-10-31 用户反馈两轮：
+//
+//	① 原描述「海军集群突击，攻击力提升且不限攻击目标」读起来像「全军攻击力都提升」→ 已改过一次；
+//	② 随后明确「目标也是对海军兵种」→ 最终口径 = **攻击方海军 + 目标海军**，与四指阵列（空军打空军）同构，
+//	   实现是 `addVsType(海军, 海军, 15%/级)`（见 officerTypeBonus / generalTypeBonus）。
+//
+// 只改文案，数值口径见 handler 侧。
+func ezfySkillWolfPackFix(db *gorm.DB) {
+	ezfySkillTextSync(db, "ezfy_skill_wolfpack_vs_20261031", []int{8},
+		"ezfy 军官技能：狼群围猎 效果/描述已改为「海军对海攻击」")
+}
+
 // ezfySkillGoldenInsightFix 把「黄金洞察(11)」的文案一次性改成**侦察/情报等级**版。
 //
 // ★★ 2026-10-31 用户需求：「黄金眼效果不对，它应该就是提高侦察等级的 —— 带队侦查时叠加侦察等级，

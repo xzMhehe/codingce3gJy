@@ -2361,11 +2361,23 @@ type EzfyCfgGeneralSkill struct {
 	LevelPerStep int `gorm:"default:35;comment:每多少军官等级+1级" json:"level_per_step"`
 	// ProcPct 每回合发动概率%（0~100）
 	ProcPct int `gorm:"default:35;comment:发动概率%" json:"proc_pct"`
-	// Rounds 发动后持续回合（1=只本回合；>1 = 含本回合在内的连续 N 回合）
-	Rounds int `gorm:"default:1;comment:持续回合" json:"rounds"`
+	// Rounds 发动后持续回合：1=只本回合；>1 = 连续 N 回合；**0=整场**（被动/指挥用）。
+	//
+	// ★★ 2026-10-31 默认值 1 → 0：被动/指挥的「整场」要能落库（GORM 对带 default 标签的零值会跳过，
+	//   原来默认 1 导致被动/指挥插进去变成「持续 1 回合」）。主动类由运行时兜底成 1 回合。
+	Rounds int `gorm:"default:0;comment:持续回合(0=整场)" json:"rounds"`
 	// Quality 品质 1普通 2精良 3稀有 4传说（只影响展示色）
 	Quality int `gorm:"default:2;comment:品质1~4" json:"quality"`
-	Enabled int `gorm:"default:1;comment:1=启用 0=下架" json:"enabled"`
+	// ★★ 2026-10-31 新增「战法类型」（参考率土之滨的四类战法，用户需求）：
+	//
+	//	1 被动：战斗开始即生效、**必定发动**（常驻整场，不掷骰）
+	//	2 指挥：**战前掷一次骰**（第 1 回合），命中后持续 Rounds 回合（Rounds=0 → 整场）
+	//	3 主动：**每回合开始**按 ProcPct 掷骰（原有行为，默认值）
+	//	4 追击：**每次普通攻击命中后**按 ProcPct 掷骰，命中则对被攻击目标追加一次 Value% 伤害
+	//
+	// 列名用 trigger_type（`trigger` 是 MySQL 保留字，不能用）。
+	TriggerType int `gorm:"column:trigger_type;default:3;comment:战法类型1被动2指挥3主动4追击" json:"trigger_type"`
+	Enabled     int `gorm:"default:1;comment:1=启用 0=下架" json:"enabled"`
 	SortNo  int `gorm:"default:0;comment:排序" json:"sort_no"`
 }
 

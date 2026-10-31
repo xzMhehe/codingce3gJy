@@ -48,13 +48,66 @@ var ezfyGeneralSkillSeeds = []model.EzfyCfgGeneralSkill{
 		Des: "回合治疗%d%%（发动回合结束时恢复本回合已损兵力的 %d%%）"},
 	// —— 连击（追加一击的伤害为原来的 %d%%）——
 	{ID: 8, Name: "波次突击", Kind: 8, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 4, SortNo: 8,
-		Des: "连击（发动后本回合每次攻击追加一次，追加伤害为原来的 %d%%）"},
+		Des: "连击（发动后本回合多打一次普攻，这次普攻伤害为原来的 %d%%）"},
 	// —— 反击回合（★ 次数型：上限仍 5 级，10 级就是 +10 回合，太变态）——
 	{ID: 9, Name: "死守反击", Kind: 9, BaseValue: 1, GrowPerLevel: 1, MaxLevel: 5, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 9,
 		Des: "反击回合+%d（发动后本场战斗的反击回合数增加，与「绝地逆袭」叠加）"},
 	// —— 持续型（2 回合 → 数值压一档，满级 120%）——
 	{ID: 10, Name: "全线总攻", Kind: 1, BaseValue: 12, GrowPerLevel: 12, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 2, Quality: 4, SortNo: 10,
 		Des: "攻击力+%d%%（发动后持续 2 回合，覆盖面更久）"},
+
+	// ============ 2026-10-31 扩充：按品质各 +6 条 ============
+	//
+	// 命名口径（用户要求）：「二战战争类、著名战役里面的**修饰词**也行，不能就是著名战役」——
+	// 所以不直接用「斯大林格勒/中途岛」这类战役名，而是「钢铁洪流 / 钳形攻势 / 空降突击」这种战争打法词。
+	//
+	// 战法类型（TriggerType，参考率土之滨的四类）：
+	//   1 被动：必定发动、整场常驻（Rounds=0）→ 数值压到主动的 1/4 左右
+	//   2 指挥：战前掷一次，命中后整场（Rounds=0）→ 数值约为主动的 2/3
+	//   3 主动：每回合掷骰（原 10 条同款）
+	//   4 追击：每次普攻命中后掷骰追加一击（Kind=10）→ 数值约为主动的 4 成
+	//
+	// —— 精良（Quality 2）——
+	{ID: 11, Name: "战备动员", Kind: 1, BaseValue: 4, GrowPerLevel: 4, MaxLevel: 10, LevelPerStep: 35, ProcPct: 100, Rounds: 0, Quality: 2, SortNo: 11, TriggerType: 1,
+		Des: "攻击力+%d%%（被动：战斗开始即生效，整场常驻）"},
+	{ID: 12, Name: "铁壁工事", Kind: 2, BaseValue: 4, GrowPerLevel: 4, MaxLevel: 10, LevelPerStep: 35, ProcPct: 100, Rounds: 0, Quality: 2, SortNo: 12, TriggerType: 1,
+		Des: "防御力+%d%%（被动：战斗开始即生效，整场常驻）"},
+	{ID: 13, Name: "摩托突进", Kind: 4, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 45, Rounds: 0, Quality: 2, SortNo: 13, TriggerType: 2,
+		Des: "速度+%d%%（指挥：战前掷骰，命中后整场生效）"},
+	{ID: 14, Name: "装甲奔袭", Kind: 4, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 2, SortNo: 14, TriggerType: 3,
+		Des: "速度+%d%%"},
+	{ID: 15, Name: "远程压制", Kind: 3, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 2, SortNo: 15, TriggerType: 3,
+		Des: "射程+%d%%"},
+	{ID: 16, Name: "侧翼伏击", Kind: 10, BaseValue: 7, GrowPerLevel: 7, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 2, SortNo: 16, TriggerType: 4,
+		Des: "追击（每次普攻命中后概率发动，对被普攻的目标追加一次战法伤害，伤害为普攻的 %d%%）"},
+
+	// —— 稀有（Quality 3）——
+	{ID: 17, Name: "要塞防御", Kind: 2, BaseValue: 5, GrowPerLevel: 5, MaxLevel: 10, LevelPerStep: 35, ProcPct: 100, Rounds: 0, Quality: 3, SortNo: 17, TriggerType: 1,
+		Des: "防御力+%d%%（被动：战斗开始即生效，整场常驻）"},
+	{ID: 18, Name: "钢筋掩体", Kind: 5, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 0, Quality: 3, SortNo: 18, TriggerType: 2,
+		Des: "受到伤害-%d%%（指挥：战前掷骰，命中后整场生效）"},
+	{ID: 19, Name: "空降突击", Kind: 1, BaseValue: 12, GrowPerLevel: 12, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 0, Quality: 3, SortNo: 19, TriggerType: 2,
+		Des: "攻击力+%d%%（指挥：战前掷骰，命中后整场生效）"},
+	{ID: 20, Name: "破甲突击", Kind: 6, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 3, SortNo: 20, TriggerType: 3,
+		Des: "破防%d%%（发动后本回合攻击无视目标 %d%% 防御）"},
+	{ID: 21, Name: "潜航猎杀", Kind: 10, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 21, TriggerType: 4,
+		Des: "追击（每次普攻命中后概率发动，对被普攻的目标追加一次战法伤害，伤害为普攻的 %d%%）"},
+	{ID: 22, Name: "梯次冲锋", Kind: 8, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 22, TriggerType: 3,
+		Des: "连击（发动后本回合多打一次普攻，这次普攻伤害为原来的 %d%%）"},
+
+	// —— 传说（Quality 4）——
+	{ID: 23, Name: "钢铁洪流", Kind: 1, BaseValue: 6, GrowPerLevel: 6, MaxLevel: 10, LevelPerStep: 35, ProcPct: 100, Rounds: 0, Quality: 4, SortNo: 23, TriggerType: 1,
+		Des: "攻击力+%d%%（被动：战斗开始即生效，整场常驻）"},
+	{ID: 24, Name: "钳形攻势", Kind: 1, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 45, Rounds: 0, Quality: 4, SortNo: 24, TriggerType: 2,
+		Des: "攻击力+%d%%（指挥：战前掷骰，命中后整场生效）"},
+	{ID: 25, Name: "饱和突击", Kind: 1, BaseValue: 22, GrowPerLevel: 22, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 25, TriggerType: 3,
+		Des: "攻击力+%d%%"},
+	{ID: 26, Name: "纵深突破", Kind: 6, BaseValue: 10, GrowPerLevel: 10, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 26, TriggerType: 3,
+		Des: "破防%d%%（发动后本回合攻击无视目标 %d%% 防御）"},
+	{ID: 27, Name: "乘胜追击", Kind: 10, BaseValue: 10, GrowPerLevel: 10, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 27, TriggerType: 4,
+		Des: "追击（每次普攻命中后概率发动，对被普攻的目标追加一次战法伤害，伤害为普攻的 %d%%）"},
+	{ID: 28, Name: "闪击突进", Kind: 4, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 45, Rounds: 0, Quality: 4, SortNo: 28, TriggerType: 2,
+		Des: "速度+%d%%（指挥：战前掷骰，命中后整场生效）"},
 }
 
 // ezfyComboLegacyFP 一代「出厂数值」的指纹（base/grow/max/step 全等才算没被人改过）。
@@ -125,12 +178,23 @@ func EnsureEzfyGeneralSkills(db *gorm.DB) {
 		}
 		if err := db.Create(&s).Error; err != nil {
 			log.Printf("【严重】名将组合技能补建失败 id=%d: %v", s.ID, err)
+			continue
+		}
+		// ★★ 2026-10-31 GORM 对「带 default 标签的零值字段」会跳过写入 →
+		//   被动/指挥的 rounds=0（整场）会被写成默认值。这里显式补一次。
+		if s.TriggerType == 1 || s.TriggerType == 2 {
+			db.Model(&model.EzfyCfgGeneralSkill{}).Where("id = ?", s.ID).Update("rounds", 0)
 		}
 	}
 	upgradeLegacyEzfyGeneralSkills(db)
 	// ★★ 2026-10-31 组合技改名（率土风 → 二战风）：表是「按 ID 只补缺、不覆盖」，
 	//   改种子名字落不到老库 → 用 settings 打标一次性改名（只改仍是出厂名的行）。
 	renameEzfyGeneralSkills(db)
+	// ★★ 2026-10-31 二次改名：新增的 18 条最初用了战役名（斯大林格勒/中途岛…），
+	//   用户要求「不能就是著名战役」→ 改成战争打法词。只对**已插入过**的库生效（线上还没插 → 空跑）。
+	renameEzfyComboBatch2(db)
+	// ★★ 2026-10-31 修正存量：被动/指挥的「持续」必须是 0（整场），早期插入的写成了 1。
+	fixEzfyComboWholeBattleRounds(db)
 	// 名将默认搭配：只在「一个都没配」时灌（幂等闸门）
 	// ★ 2026-10-24 多技能：combo_skill_ids（JSON 数组）也计入「已配过」闸门
 	var assigned int64
@@ -244,4 +308,88 @@ func renameEzfyGeneralSkills(db *gorm.DB) {
 	}
 	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
 	log.Printf("ezfy 名将组合技改名：%d 条已换成二战风名字", done)
+}
+
+// renameEzfyComboBatch2 把「2026-10-31 新增的 18 条组合技」从战役名改成战争打法词（只跑一次）。
+//
+// 用户原话：「命名属于二战战争类、著名战役里面的修饰词也行，不能就是著名战役啊」。
+//
+//	11 巴巴罗萨→战备动员   12 铁砧行动→铁壁工事   13 火炬行动→摩托突进   14 沙漠之狐→装甲奔袭
+//	15 中途岛→远程压制     16 瓜岛伏击→侧翼伏击   17 库尔斯克→要塞防御   18 大西洋壁垒→钢筋掩体
+//	19 市场花园→空降突击   20 斯大林格勒→破甲突击 21 潜艇伏击→潜航猎杀   22 诺曼底登陆→梯次冲锋
+//	23 台风行动→钢铁洪流   24 天王星行动→钳形攻势 25 堡垒行动→饱和突击   26 巴格拉季昂→纵深突破
+//	27 硫磺岛→乘胜追击     28 霸王行动→闪击突进
+//
+// ⚠️ 只改「仍然是那批战役名」的行（WHERE id=? AND name=?），管理端改过名字的不碰。
+// 线上库还没插过这批（insert-only 只在缺行时补），所以这条迁移在线上是空跑 —— 留着是为了
+// 开发/测试机（已经按战役名插过一次）也能自愈到最终命名。
+func renameEzfyComboBatch2(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_general_skill") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	const key = "ezfy_general_skill_rename_batch2_20261031"
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", key).Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	renames := []struct {
+		id       int
+		from, to string
+	}{
+		{11, "巴巴罗萨", "战备动员"},
+		{12, "铁砧行动", "铁壁工事"},
+		{13, "火炬行动", "摩托突进"},
+		{14, "沙漠之狐", "装甲奔袭"},
+		{15, "中途岛", "远程压制"},
+		{16, "瓜岛伏击", "侧翼伏击"},
+		{17, "库尔斯克", "要塞防御"},
+		{18, "大西洋壁垒", "钢筋掩体"},
+		{19, "市场花园", "空降突击"},
+		{20, "斯大林格勒", "破甲突击"},
+		{21, "潜艇伏击", "潜航猎杀"},
+		{22, "诺曼底登陆", "梯次冲锋"},
+		{23, "台风行动", "钢铁洪流"},
+		{24, "天王星行动", "钳形攻势"},
+		{25, "堡垒行动", "饱和突击"},
+		{26, "巴格拉季昂", "纵深突破"},
+		{27, "硫磺岛", "乘胜追击"},
+		{28, "霸王行动", "闪击突进"},
+	}
+	done := 0
+	for _, it := range renames {
+		res := db.Exec("UPDATE ezfy_cfg_general_skill SET name = ? WHERE id = ? AND name = ?",
+			it.to, it.id, it.from)
+		if res.Error != nil {
+			log.Printf("ezfy 组合技二次改名失败 id=%d %s→%s: %v（下次启动重试）", it.id, it.from, it.to, res.Error)
+			return
+		}
+		done += int(res.RowsAffected)
+	}
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
+	log.Printf("ezfy 名将组合技二次改名：%d 条战役名已换成战争打法词", done)
+}
+
+// fixEzfyComboWholeBattleRounds 把被动/指挥类组合技的「持续」修正为 0（整场）。
+//
+// ★★ 2026-10-31 踩坑：`rounds` 原来带 `default:1` 标签，GORM 对零值会跳过写入 →
+// 被动/指挥（设计上整场）插进库变成「持续 1 回合」，管理端还显示「1 回合」。
+// 现在模型默认值改成 0 + 插入后显式补写；这条迁移负责把**已经插过的行**改回来。
+func fixEzfyComboWholeBattleRounds(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_general_skill") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	const key = "ezfy_combo_whole_battle_rounds_20261031"
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", key).Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	res := db.Exec("UPDATE ezfy_cfg_general_skill SET rounds = 0 WHERE trigger_type IN (1,2) AND rounds <> 0")
+	if res.Error != nil {
+		log.Printf("ezfy 组合技持续回合修正失败：%v（下次启动重试）", res.Error)
+		return
+	}
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
+	log.Printf("ezfy 组合技：%d 条被动/指挥的持续回合已改为 0（整场）", res.RowsAffected)
 }

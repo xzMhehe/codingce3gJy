@@ -194,7 +194,7 @@ func ezfyTimedHas(list []*ezfyTimedSkill, name string) bool {
 
 // timedAnno 技能发动播报：只在**发动回合**写一行，未发动不刷屏。
 //
-// 形如：`【攻方】Stalin发动【弧形壁垒】！军心大振，全体防御力+150%`
+// 形如：`【攻方】Stalin发动【弧形壁垒】，全军防御+150%`
 //
 // ★★ 2026-10-31 用户要求：「展示一次就行，去掉『（持续1回合，每3回合发动1次）』，
 //
@@ -202,14 +202,14 @@ func ezfyTimedHas(list []*ezfyTimedSkill, name string) bool {
 //	同一回合里同一个技能**只出一行**（skillAnno 会跳过本表里的技能名，见 ezfyTimedHas）。
 func (st *ezfyBattleState) timedAnno(atkOn, defOn []*ezfyTimedSkill) {
 	anno := func(on []*ezfyTimedSkill, side, offDesc string, off int) {
-		for i, s := range on {
+		for _, s := range on {
 			if s == nil {
 				continue
 			}
 			eff := ""
 			switch {
 			case s.Def > 0:
-				eff = fmt.Sprintf("全体防御力+%d%%", s.Def)
+				eff = fmt.Sprintf("全军防御+%d%%", s.Def)
 			case len(s.AtkFlat) > 0:
 				v := 0
 				for _, x := range s.AtkFlat {
@@ -227,9 +227,10 @@ func (st *ezfyBattleState) timedAnno(atkOn, defOn []*ezfyTimedSkill) {
 			default:
 				continue
 			}
-			idx := (st.Round + i*3 + off*7) % len(ezfySlogans)
-			st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动【%s】！%s，%s",
-				side, ezfyOfficerShortName(offDesc), s.Name, ezfySlogans[idx], eff))
+			// ★★ 2026-10-31 与常驻技能同口径：`【守方】某某发动【弧形壁垒】，全军防御+150%`
+			//   （去掉口号与感叹号 —— 简约、官方、二战题材）
+			st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动【%s】，%s",
+				side, ezfyOfficerShortName(offDesc), s.Name, eff))
 		}
 	}
 	anno(atkOn, "【攻方】", st.AtkOfficerDesc, 0)

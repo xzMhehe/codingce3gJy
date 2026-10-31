@@ -77,6 +77,8 @@ func seedEzfy(db *gorm.DB) {
 	ezfySkillAtkSpeedFix(db)
 	// ★★ 2026-10-31 黄金洞察(11) 效果由「战利品」改为「侦察/情报等级」：文案再一次对齐。
 	ezfySkillGoldenInsightFix(db)
+	// ★★ 2026-10-31 狼群围猎(8) 改为「海军对海攻击」（攻击方与目标都必须是海军兵种）。
+	ezfySkillWolfPackFix(db)
 
 	// —— 科技：主表每次对齐；等级表**保护 effect_value**（见 seedEzfyTechLevels） ——
 	//

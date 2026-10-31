@@ -193,7 +193,7 @@ func generalSkillDefBreak(g *model.EzfyCfgGeneral) []ezfyBonusItem {
 // generalTypeBonus 军官池守将的**兵种专属**技能加成（与 officerTypeBonus 同一口径）。
 //
 // ★ 2026-10-31 新增：活动守军/野地守将原来没有兵种专属通道 ——
-// 坦克冲锋（只轻坦/重坦**攻速**）、狼群围猎（海军攻击力%）、弹幕覆盖（城防射程%）
+// 坦克冲锋（只轻坦/重坦**攻速**）、狼群围猎（海军打海军）、弹幕覆盖（城防射程%）
 // 在守将身上全被丢掉。现在按与玩家军官完全相同的规则下发。
 func generalTypeBonus(g *model.EzfyCfgGeneral, b ezfyTypeBonus) ezfyTypeBonus {
 	if b.Atk == nil {
@@ -235,8 +235,8 @@ func generalTypeBonus(g *model.EzfyCfgGeneral, b ezfyTypeBonus) ezfyTypeBonus {
 			}
 		case "四指阵列":
 			b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)
-		case "狼群围猎":
-			b.Atk[ezfyTroopTypeNavy] += 15 * scale
+		case "狼群围猎": // ★★ 2026-10-31 最终口径：海军打海军（目标也必须是海军兵种）
+			b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)
 		case "坦克冲锋": // ★ 2026-10-31 改为**攻速**（只轻坦/重坦），与玩家军官同口径
 			for _, id := range ezfyTankRushTroopIds {
 				b.AtkSpeedTroop[id] += 10 * scale
@@ -954,7 +954,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			generalCounterRounds(defGeneral),
 			h.ensureProfile(uid).Camp, defCamp,
 			// ★ 2026-10-08 兵种专属加成（攻方喷气推进=空军速度+军官兵种技能）
-			// ★★ 2026-10-31 守方（活动守将）也要下发兵种专属技能：狼群围猎=海军攻击力% /
+			// ★★ 2026-10-31 守方（活动守将）也要下发兵种专属技能：狼群围猎=海军打海军 /
 			//   弹幕覆盖=城防射程% / 坦克冲锋·闪电疾攻·越岛登陆=对应兵种速度。
 			//   原来这里传空表 → 守将的兵种技能全被丢掉，且 ezfyActWildDefBonus 已不再
 			//   返回「全兵种速度」标量（改按兵种下发）→ 不接这一档守将速度会变 0（回归）。

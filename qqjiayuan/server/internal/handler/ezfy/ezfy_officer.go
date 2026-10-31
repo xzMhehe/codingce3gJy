@@ -1904,9 +1904,10 @@ func (h *EzfyHandler) officerCounterRounds(o *model.EzfyOfficer) int {
 //	                                   ★ 2026-10-31 用户修订：只给**装甲部队**（原来错给了整个陆军），
 //	                                     且按文案「每3回合提升，持续1回合」→ 改由 officerTimedSkills 下发
 //	四指阵列「空军对空攻击+15%/级」  → 空军 打 **空军**目标 +15%/级
-//	狼群围猎「海军对海攻击+15%/级」  → ★ 2026-10-31 用户修订：**海军攻击力** +15%/级（百分比）
-//	                                   （用户原话「注意是攻击力提高而不是对海攻击数值提高」；
-//	                                     原来只在「海军打海军」时生效，玩家打陆基守军永远看不到效果）
+//	狼群围猎「海军对海攻击+15%/级」  → ★★ 2026-10-31 最终口径（用户两次修订后定稿）：
+//	                                   **海军 打 海军** 目标 +15%/级（AtkVsType[海军][海军]）。
+//	                                   中途曾改成「海军攻击力%（不分目标）」，用户随后纠正
+//	                                   「目标也是对海军兵种」→ 回到按目标生效，与四指阵列同构。
 //	坦克冲锋「陆军速度+10%/级」      → ★ 2026-10-31 用户修订：**只**轻型坦克(5)/重型坦克(6)，
 //	                                   ★★ 2026-10-31 二次修订：改为**攻速**（AtkSpeedTroop），不再加移动/行军速度
 //	闪电疾攻「空军速度+10%/级」      → ★★ 2026-10-31 二次修订：改为**空军攻速**（AtkSpeed[空军]）
@@ -1956,8 +1957,8 @@ func (h *EzfyHandler) officerTypeBonus(o *model.EzfyOfficer, b ezfyTypeBonus) ez
 			}
 		case "四指阵列": // 空军 打 空军
 			b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)
-		case "狼群围猎": // 海军 攻击力%（不分目标）
-			b.Atk[ezfyTroopTypeNavy] += 15 * scale
+		case "狼群围猎": // ★ 2026-10-31 二次修订：**海军打海军**（目标也必须是海军兵种）
+			b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)
 		case "坦克冲锋": // ★ 2026-10-31 改为**攻速**（只轻型坦克/重型坦克），不再加移动速度
 			for _, id := range ezfyTankRushTroopIds {
 				b.AtkSpeedTroop[id] += 10 * scale
@@ -2195,7 +2196,8 @@ func ezfySkillEffectText(skill string) string {
 		// ★★ 2026-10-31 二次修订：速度 → 攻速
 		return "空军攻速+10%"
 	case "狼群围猎":
-		return "海军攻击力+15%"
+		// ★★ 2026-10-31 最终口径：海军打海军（目标也必须是海军兵种）
+		return "海军对海攻击+15%"
 	case "越岛登陆":
 		// ★★ 2026-10-31 二次修订：速度 → 攻速
 		return "海军攻速+10%"
@@ -2251,8 +2253,8 @@ func ezfySkillEffectTextAt(skill string, lv int) string {
 		// ★★ 2026-10-31 二次修订：速度 → **攻速**（只决定出手先后）
 		return "空军攻速+" + strconv.Itoa(10*lv) + "%"
 	case "狼群围猎":
-		// ★ 2026-10-31 改为「海军攻击力」（百分比、不限目标），不再是「对海攻击数值」
-		return "海军攻击力+" + strconv.Itoa(15*lv) + "%"
+		// ★★ 2026-10-31 最终口径：海军打海军（目标也必须是海军兵种）
+		return "海军对海攻击+" + strconv.Itoa(15*lv) + "%"
 	case "越岛登陆":
 		// ★★ 2026-10-31 二次修订：速度 → **攻速**（只决定出手先后）
 		return "海军攻速+" + strconv.Itoa(10*lv) + "%"

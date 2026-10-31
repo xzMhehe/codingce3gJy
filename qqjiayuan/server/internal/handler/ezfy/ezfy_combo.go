@@ -43,7 +43,34 @@ const (
 	ezfyComboHeal    = 7 // 回合治疗%（恢复已损兵力 X%）
 	ezfyComboDouble  = 8 // 连击（追加一次攻击，伤害为原来的 X%）
 	ezfyComboCounter = 9 // 反击回合 +N
+	// ★★ 2026-10-31 追击（配合战法类型 4）：每次普攻命中后掷骰，命中则对被攻击目标追加一次 Value% 伤害。
+	//   与「连击(8)」的区别：连击是**回合级**（本回合每次攻击都追加），追击是**每次攻击独立掷骰**。
+	ezfyComboPursue = 10 // 追击（追加一次攻击，伤害为原来的 X%）
 )
+
+// 战法类型（★ 2026-10-31 新增，参考率土之滨的四类战法；列 ezfy_cfg_general_skill.trigger_type）
+const (
+	ezfyComboTriggerPassive = 1 // 被动：必定发动，整场常驻
+	ezfyComboTriggerCommand = 2 // 指挥：战前掷一次骰，命中后持续 Rounds 回合（0=整场）
+	ezfyComboTriggerActive  = 3 // 主动：每回合开始掷骰（原有行为）
+	ezfyComboTriggerPursuit = 4 // 追击：每次普攻命中后掷骰
+)
+
+// ezfyComboWholeBattle 「整场」的剩余回合数哨兵（被动 / Rounds=0 的指挥）。
+const ezfyComboWholeBattle = 999
+
+// ezfyComboTriggerName 战法类型名（管理端下拉 / 战报播报共用）
+func ezfyComboTriggerName(t int) string {
+	switch t {
+	case ezfyComboTriggerPassive:
+		return "被动"
+	case ezfyComboTriggerCommand:
+		return "指挥"
+	case ezfyComboTriggerPursuit:
+		return "追击"
+	}
+	return "主动"
+}
 
 // ezfyComboKindName 效果类型名（管理端下拉 / 玩家端展示共用）
 func ezfyComboKindName(kind int) string {
@@ -66,6 +93,8 @@ func ezfyComboKindName(kind int) string {
 		return "连击"
 	case ezfyComboCounter:
 		return "反击回合"
+	case ezfyComboPursue:
+		return "追击"
 	}
 	return "未知"
 }
@@ -77,8 +106,10 @@ type ezfyComboSkill struct {
 	Kind    int    `json:"kind"`
 	Level   int    `json:"level"`
 	Value   int    `json:"value"`    // 当前等级效果值（含义随 Kind）
-	ProcPct int    `json:"proc_pct"` // 每回合发动概率%
+	ProcPct int    `json:"proc_pct"` // 发动概率%（含义随 TriggerType）
 	Rounds  int    `json:"rounds"`   // 发动后持续回合
+	// ★★ 2026-10-31 战法类型：1被动 2指挥 3主动 4追击（见 ezfyComboTrigger* 常量）
+	TriggerType int `json:"trigger_type"`
 }
 
 // ezfyComboValue 组合技某等级的效果值 = base + (lv-1)×grow，夹在 [1, 上限] 内。
@@ -143,8 +174,13 @@ func ezfyComboOfGeneralCfg(g *model.EzfyCfgGeneral, officerLevel int) []*ezfyCom
 			maxLv = 10
 		}
 		lv := ezfyComboLevelOf(officerLevel, maxLv, s.LevelPerStep)
+		trig := s.TriggerType
+		if trig < 1 || trig > 4 {
+			trig = ezfyComboTriggerActive // 老数据（列默认 0）按主动处理，行为与改动前一致
+		}
 		rounds := s.Rounds
-		if rounds < 1 {
+		// 主动默认持续 1 回合；被动/指挥的 Rounds=0 表示**整场**（不能被打回 1）
+		if rounds < 1 && trig == ezfyComboTriggerActive {
 			rounds = 1
 		}
 		proc := s.ProcPct
@@ -157,7 +193,7 @@ func ezfyComboOfGeneralCfg(g *model.EzfyCfgGeneral, officerLevel int) []*ezfyCom
 		out = append(out, &ezfyComboSkill{
 			ID: s.ID, Name: s.Name, Kind: s.Kind, Level: lv,
 			Value:   ezfyComboValue(s.BaseValue, s.GrowPerLevel, lv, maxLv),
-			ProcPct: proc, Rounds: rounds,
+			ProcPct: proc, Rounds: rounds, TriggerType: trig,
 		})
 	}
 	return out
@@ -227,6 +263,15 @@ func ezfyComboTxt(c *ezfyComboSkill) string {
 	if c == nil {
 		return ""
 	}
+	// ★★ 2026-10-31 战法类型进文案（被动不写发动率）
+	switch c.TriggerType {
+	case ezfyComboTriggerPassive:
+		return fmt.Sprintf("%s Lv.%d（被动 %s）", c.Name, c.Level, ezfyComboValueTxt(c))
+	case ezfyComboTriggerCommand:
+		return fmt.Sprintf("%s Lv.%d（指挥 %s，战前 %d%%）", c.Name, c.Level, ezfyComboValueTxt(c), c.ProcPct)
+	case ezfyComboTriggerPursuit:
+		return fmt.Sprintf("%s Lv.%d（追击 %s，%d%%）", c.Name, c.Level, ezfyComboValueTxt(c), c.ProcPct)
+	}
 	return fmt.Sprintf("%s Lv.%d（%s %s，发动率%d%%）", c.Name, c.Level, ezfyComboKindName(c.Kind), ezfyComboValueTxt(c), c.ProcPct)
 }
 
@@ -242,6 +287,8 @@ func ezfyComboValueTxt(c *ezfyComboSkill) string {
 		return fmt.Sprintf("恢复已损兵力%d%%", c.Value)
 	case ezfyComboDouble:
 		return fmt.Sprintf("追加攻击(伤害%d%%)", c.Value)
+	case ezfyComboPursue:
+		return fmt.Sprintf("追击伤害%d%%", c.Value)
 	case ezfyComboBreak:
 		return fmt.Sprintf("无视防御%d%%", c.Value)
 	case ezfyComboReduce:
@@ -284,6 +331,8 @@ func ezfyComboEffectTxt(c *ezfyComboSkill) string {
 		return fmt.Sprintf("+连击伤害%d%%", c.Value)
 	case ezfyComboCounter:
 		return fmt.Sprintf("+反击%d回合", c.Value)
+	case ezfyComboPursue:
+		return fmt.Sprintf("+追击伤害%d%%", c.Value)
 	}
 	return fmt.Sprintf("+%d%%", c.Value)
 }
@@ -294,6 +343,15 @@ func ezfyComboEffectTxt(c *ezfyComboSkill) string {
 func ezfyComboShortTxt(c *ezfyComboSkill) string {
 	if c == nil {
 		return ""
+	}
+	// ★★ 2026-10-31 战法类型进文案：被动不写发动率（必定发动），指挥/追击写类型名
+	switch c.TriggerType {
+	case ezfyComboTriggerPassive:
+		return fmt.Sprintf("%s(Lv.%d %s，被动)", c.Name, c.Level, ezfyComboShortEffect(c))
+	case ezfyComboTriggerCommand:
+		return fmt.Sprintf("%s(Lv.%d %s，指挥 %d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
+	case ezfyComboTriggerPursuit:
+		return fmt.Sprintf("%s(Lv.%d %s，追击 %d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
 	}
 	return fmt.Sprintf("%s(Lv.%d %s，发动%d%%)", c.Name, c.Level, ezfyComboShortEffect(c), c.ProcPct)
 }
@@ -322,6 +380,8 @@ func ezfyComboShortEffect(c *ezfyComboSkill) string {
 		return fmt.Sprintf("连击伤害%d%%", c.Value)
 	case ezfyComboCounter:
 		return fmt.Sprintf("反击回合+%d", c.Value)
+	case ezfyComboPursue:
+		return fmt.Sprintf("追击伤害%d%%", c.Value)
 	}
 	return fmt.Sprintf("+%d%%", c.Value)
 }
@@ -333,13 +393,13 @@ func ezfyComboProcTxt(c *ezfyComboSkill) string {
 	}
 	switch c.Kind {
 	case ezfyComboAtk:
-		return fmt.Sprintf("全体攻击力+%d%%", c.Value)
+		return fmt.Sprintf("全军攻击+%d%%", c.Value)
 	case ezfyComboDef:
-		return fmt.Sprintf("全体防御力+%d%%", c.Value)
+		return fmt.Sprintf("全军防御+%d%%", c.Value)
 	case ezfyComboRange:
-		return fmt.Sprintf("全体射程+%d%%", c.Value)
+		return fmt.Sprintf("全军射程+%d%%", c.Value)
 	case ezfyComboSpeed:
-		return fmt.Sprintf("全体移动速度+%d%%", c.Value)
+		return fmt.Sprintf("全军速度+%d%%", c.Value)
 	case ezfyComboReduce:
 		return fmt.Sprintf("受到伤害-%d%%", c.Value)
 	case ezfyComboBreak:
@@ -347,9 +407,11 @@ func ezfyComboProcTxt(c *ezfyComboSkill) string {
 	case ezfyComboHeal:
 		return fmt.Sprintf("回合结束恢复已损兵力%d%%", c.Value)
 	case ezfyComboDouble:
-		return fmt.Sprintf("追加一次攻击（伤害%d%%）", c.Value)
+		return fmt.Sprintf("本回合追加一次普攻（伤害%d%%）", c.Value)
 	case ezfyComboCounter:
 		return fmt.Sprintf("反击回合+%d", c.Value)
+	case ezfyComboPursue:
+		return fmt.Sprintf("追击（对本次普攻目标追加%d%%伤害）", c.Value)
 	}
 	return ezfyComboValueTxt(c)
 }
@@ -390,13 +452,67 @@ func activeCombos(rts []*ezfyComboRuntime) []*ezfyComboSkill {
 //
 // ★ 2026-10-24 多技能：每个技能**独立掷骰**，多个技能可同时发动（播报各一行），
 // 让玩家一眼看到「这回合为什么多了加成」。
+//
+// ★★ 2026-10-31 四类战法（用户需求，参考率土之滨）：
+//
+//	被动(1)：第 1 回合直接生效、整场常驻，不掷骰（播报一次「常驻生效」）
+//	指挥(2)：只在第 1 回合掷一次骰，命中后 Rounds 回合（0 → 整场）
+//	主动(3)：每回合开始掷骰（原行为）
+//	追击(4)：不在这里处理 —— 每次普攻命中后单独掷骰（见 comboPursuitOf / Step 里的追击段）
 func (st *ezfyBattleState) comboRoll() {
+	// 反击回合是「一次性永久加成」，整场只加一次（被动/指挥/主动共用）
+	applyCounterOnce := func(rt *ezfyComboRuntime, c *ezfyComboSkill, side string) {
+		if c.Kind != ezfyComboCounter || rt.Used {
+			return
+		}
+		rt.Used = true
+		if side == "【攻方】" {
+			st.AtkCounterRounds += c.Value
+			st.AtkCounter = true
+		} else {
+			st.DefCounterRounds += c.Value
+			st.DefCounter = true
+		}
+	}
+	anno := func(c *ezfyComboSkill, side, offName, extra string) {
+		// ★★ 2026-10-31 用户要求「简约、官方、二战主题」：去口号与感叹号，
+		//   统一成 `【攻方】某某发动组合技【装甲突击】，全军攻击+180%`。
+		st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】，%s%s",
+			side, offName, c.Name, ezfyComboProcTxt(c), extra))
+	}
 	roll := func(rts []*ezfyComboRuntime, side, offName string) {
 		for _, rt := range rts {
 			if rt == nil || rt.Skill == nil {
 				continue
 			}
 			c := rt.Skill
+			switch c.TriggerType {
+			case ezfyComboTriggerPursuit:
+				continue // 追击按「每次攻击」掷骰，不占回合层
+			case ezfyComboTriggerPassive:
+				// 必定发动：第 1 回合起整场常驻，只播报一次
+				if rt.Left > 0 {
+					continue
+				}
+				rt.Left = ezfyComboWholeBattle
+				applyCounterOnce(rt, c, side)
+				anno(c, side, offName, "（被动·常驻）")
+				continue
+			case ezfyComboTriggerCommand:
+				// 战前（第 1 回合）掷一次，之后不再掷
+				if st.Round > 1 {
+					continue
+				}
+				if c.ProcPct <= 0 || rand.Intn(100) >= c.ProcPct {
+					continue // 指挥没生效
+				}
+				// ★ 率土口径：指挥战法**命中后整场生效**（Rounds 只对主动类有意义）
+				rt.Left = ezfyComboWholeBattle
+				applyCounterOnce(rt, c, side)
+				anno(c, side, offName, "（指挥·战前生效）")
+				continue
+			}
+			// 主动：每回合开始掷骰（原行为）
 			if rt.Left > 0 {
 				continue // 还在持续期内，不重复掷
 			}
@@ -407,24 +523,47 @@ func (st *ezfyBattleState) comboRoll() {
 			if rt.Left < 1 {
 				rt.Left = 1
 			}
-			// 反击回合是「一次性永久加成」，整场只加一次，避免每回合叠上去
-			if c.Kind == ezfyComboCounter && !rt.Used {
-				rt.Used = true
-				if side == "【攻方】" {
-					st.AtkCounterRounds += c.Value
-					st.AtkCounter = true
-				} else {
-					st.DefCounterRounds += c.Value
-					st.DefCounter = true
-				}
-			}
-			idx := (st.Round*3 + len(st.Actions)) % len(ezfySlogans)
-			st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】！%s，%s",
-				side, offName, c.Name, ezfySlogans[idx], ezfyComboProcTxt(c)))
+			applyCounterOnce(rt, c, side)
+			anno(c, side, offName, "")
 		}
 	}
 	roll(st.AtkCombos, "【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc))
 	roll(st.DefCombos, "【守方】", ezfyOfficerShortName(st.DefOfficerDesc))
+}
+
+// comboPursuitOf 该方所有「追击」类技能（**不看 Left**：追击是每次普攻独立掷骰，不按回合常驻）。
+//
+// 返回按效果值从高到低排序 —— 每次攻击只让**最强的一条**掷骰（避免一次普攻触发好几条追击）。
+func comboPursuitOf(rts []*ezfyComboRuntime) []*ezfyComboSkill {
+	out := []*ezfyComboSkill{}
+	for _, rt := range rts {
+		if rt != nil && rt.Skill != nil && rt.Skill.TriggerType == ezfyComboTriggerPursuit {
+			out = append(out, rt.Skill)
+		}
+	}
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j].Value > out[i].Value {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	return out
+}
+
+// comboPursuitRoll 追击掷骰：返回本次攻击要触发的技能（没触发 → nil）。
+//
+// 多个追击技能按效果值从高到低逐个掷，命中即止（同一次普攻最多追加一击）。
+func comboPursuitRoll(list []*ezfyComboSkill) *ezfyComboSkill {
+	for _, c := range list {
+		if c == nil || c.ProcPct <= 0 {
+			continue
+		}
+		if rand.Intn(100) < c.ProcPct {
+			return c
+		}
+	}
+	return nil
 }
 
 // comboOfKind 本回合生效的技能里，指定类型的效果值合计（多个同类技能**叠加**）。
@@ -531,12 +670,21 @@ func ezfyComboHealSide(units []*ezfyFightUnit, pct int) int64 {
 // 只做单体追加（不做「势不可挡」式溢出级联），避免一次连击把对面全清。
 func (st *ezfyBattleState) comboFollowUp(unit, target *ezfyFightUnit, enemies []*ezfyFightUnit,
 	rangeD, atkFlat, atkBonus, defBonus, defBreakPct int, side, enemySide string,
-	nameOf func(*ezfyFightUnit) string, skillName string, dmgPct int) {
+	nameOf func(*ezfyFightUnit) string, skillName string, dmgPct int, label string, strictTarget bool) {
+	if label == "" {
+		label = "连击"
+	}
 	if unit == nil || !unit.alive() || dmgPct <= 0 {
 		return
 	}
 	cur := target
 	if cur == nil || !cur.alive() {
+		// ★★ 2026-10-31 用户纠正「追击、连击不是一个意思」：
+		//   **连击** = 本回合多打一次普攻（可换目标、可溢出）；
+		//   **追击** = 普攻命中后的战法伤害，**只打被普攻的那个目标**，目标已死就不再追。
+		if strictTarget {
+			return
+		}
 		inRange := make([]*ezfyFightUnit, 0, len(enemies))
 		for _, e := range ezfyAliveList(enemies) {
 			if ezfyAbs(e.pos-unit.pos) <= rangeD {
@@ -575,8 +723,10 @@ func (st *ezfyBattleState) comboFollowUp(unit, target *ezfyFightUnit, enemies []
 		killed = cur.count
 	}
 	cur.count -= killed
-	st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】连击%s%s！%s损失%d",
-		side, nameOf(unit), skillName, enemySide, nameOf(cur), enemySide, killed))
+	// ★★ 2026-10-31 陈述式（去感叹号）：
+	//   `【攻方】轰炸机发动组合技【梯次冲锋】连击，守方轰炸机损失7个`
+	st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】%s，%s%s损失%d个",
+		side, nameOf(unit), skillName, label, enemySide, nameOf(cur), killed))
 }
 
 // ezfyComboDes 把池子里的说明模板套上当前等级的效果值。
