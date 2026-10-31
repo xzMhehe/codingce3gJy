@@ -31,13 +31,13 @@ func stubCritTroops(t *testing.T) func() {
 //
 // ★★ 2026-10-09 用户口径：「速度」与「移动距离加成」都是加成**移动速度**的
 // （装备的移动距离% = 移动速度，不是攻速；攻速决定先手，是另一回事）。
-// 汇总行要能看出 速度 = 科技(燃烧引擎) + 装备(移动距离) + 兵种专属(喷气引擎/军官技能)。
+// 汇总行要能看出 速度 = 科技(机械增压) + 装备(移动距离) + 兵种专属(喷气推进/军官技能)。
 func TestBonusLineShowsTypeSpeed(t *testing.T) {
 	defer stubCritTroops(t)()
 	st := ezfyNewBattleState(
 		[]ezfyUnitGroup{{TroopId: 11, Count: 100}}, // 兵种 11 = 空军
 		[]ezfyUnitGroup{{TroopId: 11, Count: 100}},
-		0, 0, 0, 20, 0, // 攻方通用速度 20%（燃烧引擎）
+		0, 0, 0, 20, 0, // 攻方通用速度 20%（机械增压）
 		0, 0,
 		ezfyBattleBonus{}, ezfyBattleBonus{},
 		ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
@@ -57,11 +57,11 @@ func TestBonusLineShowsTypeSpeed(t *testing.T) {
 		t.Fatalf("两行的顺序/前缀不对（应先攻方后守方）：%v", lines)
 	}
 	line := strings.Join(lines, "\n")
-	// 攻方：通用速度 20（燃烧引擎）+ 兵种专属 30（本方就是空军）
+	// 攻方：通用速度 20（机械增压）+ 兵种专属 30（本方就是空军）
 	if !strings.Contains(line, "速度+20%(科技+20) 兵种专属速度(空军+30%)") {
 		t.Fatalf("攻方移动速度拆解不对：\n%s", line)
 	}
-	// 守方：通用 0（没燃烧引擎）→ 不写空拆解；兵种专属只列**本方带了的**空军
+	// 守方：通用 0（没机械增压）→ 不写空拆解；兵种专属只列**本方带了的**空军
 	if !strings.Contains(line, "速度+0% 兵种专属速度(空军+30%)") {
 		t.Fatalf("守方移动速度拆解不对：\n%s", line)
 	}
@@ -74,7 +74,7 @@ func TestBonusLineShowsTypeSpeed(t *testing.T) {
 //
 // ★★ 2026-10-09 用户反馈（原战报）：双方都是航母（海军），战斗加成却写「速度+30%(空军+30%)」——
 //
-//	① 喷气引擎「空军速度」对海军根本不生效，列出来会误导；
+//	① 喷气推进「空军速度」对海军根本不生效，列出来会误导；
 //	② 攻方 30% 里那 10% 是套装「移动距离」，拆解里看不出来（「移动加成也不对」）。
 func TestBonusLineNoIrrelevantTypeSpeed(t *testing.T) {
 	saved := ezfyCfg.troops
@@ -85,7 +85,7 @@ func TestBonusLineNoIrrelevantTypeSpeed(t *testing.T) {
 	st := ezfyNewBattleState(
 		[]ezfyUnitGroup{{TroopId: 16, Count: 100}},
 		[]ezfyUnitGroup{{TroopId: 16, Count: 100}},
-		0, 0, 0, 20, 20, // 燃烧引擎 +20%（双方通用）
+		0, 0, 0, 20, 20, // 机械增压 +20%（双方通用）
 		30, 30,
 		ezfyBattleBonus{Move: 10}, ezfyBattleBonus{}, // 攻方套装「移动距离+10%」
 		ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
@@ -275,8 +275,8 @@ func TestOfficerOilReducePct(t *testing.T) {
 
 // TestMarchSpeedPerTroopType 行军速度按兵种接入科技/军官速度加成。
 //
-// ★★ 2026-10-09 用户确认「行军也按兵种接入」：燃烧引擎(部队速度)=通用；
-// 喷气引擎(空军速度)/军官速度技能(陆·空·海)=只对对应兵种生效；混编取最慢。
+// ★★ 2026-10-09 用户确认「行军也按兵种接入」：机械增压(部队速度)=通用；
+// 喷气推进(空军速度)/军官速度技能(陆·空·海)=只对对应兵种生效；混编取最慢。
 func TestMarchSpeedPerTroopType(t *testing.T) {
 	saved := ezfyCfg.troops
 	defer func() { ezfyCfg.troops = saved }()
@@ -286,11 +286,11 @@ func TestMarchSpeedPerTroopType(t *testing.T) {
 		13: {ID: 13, Name: "驱逐舰", Type: 1, Speed: 1000}, // 海军
 	}
 	h := &EzfyHandler{}
-	tech := map[int]int{10: 5, 19: 10} // 燃烧引擎 5 级(+10%) / 喷气引擎 10 级(+30%)
+	tech := map[int]int{10: 5, 19: 10} // 机械增压 5 级(+10%) / 喷气推进 10 级(+30%)
 
-	// 纯陆军：只吃燃烧引擎 → 1000×1.10 = 1100
+	// 纯陆军：只吃机械增压 → 1000×1.10 = 1100
 	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 1, Count: 10}}, tech, nil); got != 1100 {
-		t.Fatalf("纯陆军行军速度应为 1100（只吃燃烧引擎），实际 %d", got)
+		t.Fatalf("纯陆军行军速度应为 1100（只吃机械增压），实际 %d", got)
 	}
 	// 纯空军：燃烧 +10% + 喷气 +30% → 1400
 	if got := h.ezfyMarchSpeed([]ezfyUnitGroup{{TroopId: 11, Count: 10}}, tech, nil); got != 1400 {

@@ -153,7 +153,7 @@
             </el-form-item>
             <!-- ★★ 2026-10-21 采集新公式 F = 部队总兵力 × 整点小时 × 野地加成% × 后勤 ÷ 2 -->
             <el-alert type="info" :closable="false" show-icon style="margin-bottom:14px"
-              title="采集公式：F = 部队兵力总数 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数（16:59 按 16 小时算；海野产出再 × 海野采集倍率，默认 3）。其中「部队兵力总数」= 出征部队所有兵种数量之和，不同兵种差异只体现在负重" />
+              title="采集公式：F = 部队兵力总数 × 整点小时 × 野地加成% × 军官后勤 ÷ 除数（16:59 按 16 小时算；海野产出再 × 海野采集倍率，默认 3）。其中「部队兵力总数」= 出征部队所有兵种数量之和，不同兵种差异只体现在负重；「军官后勤」= 最终后勤（基础 + 已穿戴装备 + 套装）" />
             <el-form-item>
               <template slot="label">每级野地加成(%)<el-tooltip placement="top" :content="tips.gather_wild_bonus_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.gather_wild_bonus_pct" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
@@ -408,7 +408,7 @@
               <template slot="label">征兵消耗资源<el-tooltip placement="top" :content="tips.recruit_cost_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.recruit_cost_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
-            <!-- ★ 2026-10-21 造兵时间公式：floor(面板 × 250/(250+市长军事) × 10/(10+军训艺术等级))，默认吃市长加成 -->
+            <!-- ★ 2026-10-21 造兵时间公式：floor(面板 × 250/(250+市长军事) × 10/(10+动员训练等级))，默认吃市长加成 -->
             <el-form-item>
               <template slot="label">造兵市长军事加成<el-tooltip placement="top" :content="tips.train_mayor_military_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.train_mayor_military_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
@@ -883,7 +883,7 @@ export default {
         war_require_on: '开 = 掠夺、征服他城需先宣战；关 = 无需宣战。',
         march_cap_on: '开 = 出征兵力受司令部等级上限限制；关 = 不限兵力。',
         recruit_cost_on: '开 = 征兵消耗资源并占用空闲人口；关 = 均不消耗。',
-        train_mayor_military_on: '开 = 造兵时间按「面板时间 × 250/(250+市长军事) × 10/(10+军训艺术等级)」向下取整计算；' +
+        train_mayor_military_on: '开 = 造兵时间按「面板时间 × 250/(250+市长军事) × 10/(10+动员训练等级)」向下取整计算；' +
           '关 = 市长军事按 0 计。已开始的训练队列不受影响。',
         train_mayor_equip_on: '开 = 市长军事含装备与套装加成；关 = 只计军官自身军事。仅在「造兵市长军事加成」开启时生效。',
         food_upkeep_on: '开 = 城内军队每小时扣除粮食；关 = 不扣。',

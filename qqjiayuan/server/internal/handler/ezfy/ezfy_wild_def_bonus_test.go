@@ -17,32 +17,32 @@ func TestEzfyWildDefCombatBonusTech(t *testing.T) {
 	}
 	b := h.ezfyWildDefCombatBonus(tech, nil)
 
-	if b.DefBonus != 50 { // 装甲科技 30 + 重工技术 20
+	if b.DefBonus != 50 { // 均质装甲 30 + 重型机床 20
 		t.Fatalf("守方防御加成 = %d, 期望 50", b.DefBonus)
 	}
 	if b.DefAtkBonus != 50 { // 武器 30 + 重工 20
 		t.Fatalf("守方攻击加成 = %d, 期望 50", b.DefAtkBonus)
 	}
-	if b.DefSpeedBonus != 20 { // 燃烧引擎 20
+	if b.DefSpeedBonus != 20 { // 机械增压 20
 		t.Fatalf("守方速度加成 = %d, 期望 20", b.DefSpeedBonus)
 	}
-	if b.DefRangeBonus != 30 { // 弹道学 30
+	if b.DefRangeBonus != 30 { // 炮兵射表 30
 		t.Fatalf("守方射程加成 = %d, 期望 30", b.DefRangeBonus)
 	}
-	if b.DefHealTech != 20 { // 治愈伤兵 20
+	if b.DefHealTech != 20 { // 战地医疗 20
 		t.Fatalf("守方伤兵回收科技 = %d, 期望 20", b.DefHealTech)
 	}
-	if b.Type.Speed[ezfyTroopTypeAir] != 30 { // 喷气引擎只加空军
+	if b.Type.Speed[ezfyTroopTypeAir] != 30 { // 喷气推进只加空军
 		t.Fatalf("守方空军速度 = %d, 期望 30", b.Type.Speed[ezfyTroopTypeAir])
 	}
-	if b.Type.Def[ezfyTroopTypeCity] != 20 { // 掩体防御只加城防单位
+	if b.Type.Def[ezfyTroopTypeCity] != 20 { // 永备工事只加城防单位
 		t.Fatalf("守方城防防御 = %d, 期望 20", b.Type.Def[ezfyTroopTypeCity])
 	}
 	if len(b.TechBreak) != 7 {
 		t.Fatalf("守方科技明细 %d 项, 期望 7 项（武器/装甲/弹道/重工/燃烧/掩体/喷气）", len(b.TechBreak))
 	}
 	if len(b.DefBreak) != 2 {
-		t.Fatalf("守方防御明细 %d 项, 期望 2 项（装甲科技/重工技术）", len(b.DefBreak))
+		t.Fatalf("守方防御明细 %d 项, 期望 2 项（均质装甲/重型机床）", len(b.DefBreak))
 	}
 	if b.OfficerDesc != "" {
 		t.Fatalf("无军官时不应有军官描述, 实际 %q", b.OfficerDesc)
@@ -118,20 +118,20 @@ func TestEzfyWildDefBonusWiring(t *testing.T) {
 		"h.officerGuardBonus(officer)",
 		"h.officerBattleBonus(officer)",
 		"h.officerBattleEquipBonus(officer)",
-		`ezfyTechItem("武器科技"`,
-		`ezfyTechItem("装甲科技"`,
-		`ezfyTechItem("弹道学"`,
-		`ezfyTechItem("重工技术"`,
-		`ezfyTechItem("燃烧引擎"`,
-		`ezfyTechItem("掩体防御"`,
-		`ezfyTechItem("喷气引擎"`,
+		`ezfyTechItem("枪械改良"`,
+		`ezfyTechItem("均质装甲"`,
+		`ezfyTechItem("炮兵射表"`,
+		`ezfyTechItem("重型机床"`,
+		`ezfyTechItem("机械增压"`,
+		`ezfyTechItem("永备工事"`,
+		`ezfyTechItem("喷气推进"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("附属野地守军加成公式缺少 %q", want)
 		}
 	}
-	// 军训艺术(5) 已改为造兵速度科技，不该再进野地守军战斗加成/战报。
-	if strings.Contains(body, "tech[5]") || strings.Contains(body, `ezfyTechItem("军训艺术"`) {
-		t.Fatal("附属野地守军加成仍在用军训艺术(5)：应改为造兵速度科技，不参与战斗")
+	// 动员训练(5) 已改为造兵速度科技，不该再进野地守军战斗加成/战报。
+	if strings.Contains(body, "tech[5]") || strings.Contains(body, `ezfyTechItem("动员训练"`) {
+		t.Fatal("附属野地守军加成仍在用动员训练(5)：应改为造兵速度科技，不参与战斗")
 	}
 }

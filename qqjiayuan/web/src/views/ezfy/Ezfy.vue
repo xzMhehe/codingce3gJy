@@ -767,7 +767,7 @@ export default {
       reportCounts: {},
       // ★ 自己城市的雷达站等级（决定「来袭/被侦查」预警能不能收到）
       reportRadar: 0,
-      // ★ 2026-09-25：情报等级 = 雷达站 + 侦察技巧（后端算好下发），前端据此提示还差多少
+      // ★ 2026-09-25：情报等级 = 雷达站 + 无线电侦听（后端算好下发），前端据此提示还差多少
       reportRecon: 0, reportIntel: 0,
       dynamics: [],
       // ★ 战场指挥室（军情 → 军队动态 → [指挥]）：每回合 30 秒，前 25 秒可下指令
@@ -882,6 +882,11 @@ export default {
       // ★ 2026-10-25 「技能」页签已去掉：学技能/遗忘挪到「属性」页的技能1~3 三行
       officerDetailTab: 'attr',
       officerRenameInput: '',   // ★ 2026-10-24 怀旧军官详情：名称输入框（点 [改名] 用输入框里的名字）
+      // ★★ 2026-10-31 军官详情「点技能/特殊技能展开效果」的展开态（0 = 全收起）：
+      //   技能用**槽位号**（1/2/3）、特殊技能用 combo id —— 同一时间只展开一个，
+      //   离开军官详情（cur 变了）自动收起（见 watch.cur）。
+      officerSkillOpen: 0,
+      officerComboOpen: 0,
       officerTreasureOpen: false, // ★ 2026-09-28 赏赐宝物：展开的未穿戴宝物列表
       // ★ 2026-10-10 性能（玩家反馈「军官详情非常卡」）：背包装备不再随军官详情下发，
       //   切到装备背包/装备/赏赐宝物时才按需拉 /officers/:id/backpack，切换军官时清空。
@@ -1074,13 +1079,16 @@ export default {
     //   （openPlayer/back/popstate 等）的入口，只有监听 cur 才能全部覆盖。
     cur (n, o) {
       if (o === 'rank' && n !== 'rank') this.resetRankExpand()
+      // ★★ 2026-10-31 离开军官详情 → 技能/特殊技能的展开效果自动收回（用户要求）。
+      //   放 watcher 里（不是 go()）才能覆盖所有出口：返回列表 / 顶部导航 / 浏览器后退。
+      if (o === 'officerdetail' && n !== 'officerdetail') this.resetOfficerExpand()
     },
     inlineTip (n) {
       if (this._tipTimer) { clearTimeout(this._tipTimer); this._tipTimer = null }
       if (n) this._tipTimer = setTimeout(() => { this.inlineTip = null }, 5000)
     },
     // ★ 2026-09-28 随军资源上限跟随所选兵种：兵力变化时防抖重算负重(orderCalc.carry)，
-    //   让 resQtyMax 的上限(=负重×装载技术加成)始终与当前部队一致。
+    //   让 resQtyMax 的上限(=负重×标准化装卸加成)始终与当前部队一致。
     //   没选任何部队(归零)时把随军资源一并清空，配合 orderResDisabled 整块禁用。
     orderTroopTotal (n) {
       if (n <= 0) {
@@ -1144,12 +1152,23 @@ export default {
     },
     // ★ 2026-10-25 军官属性页的 3 个技能槽（固定 3 行：学了显示名字/等级，没学是空槽）
     //   学技能已改为「消耗 1 本技能书随机学一个」，所以三行的 [学习] 完全等价。
-    //   上限按 max(3, 已学数)：老数据万一超过 3 个也不会被藏起来（否则那几条没法遗忘）。
+    // ★★ 2026-10-31 改为按后端下发的**槽位**（{slot,name,effect,des,level}，空槽 name=''）：
+    //   原来按数组下标当槽位 —— 遗忘技能2 后数组前移，技能3 就窜到了第2行（用户反馈）。
+    //   老后端没有 slot 字段 → 仍按下标兜底，行为不变。
+    //   上限按 max(3, 条目数)：老数据万一超过 3 个也不会被藏起来（否则那几条没法遗忘）。
     officerSkillSlots () {
       const list = (this.officerDetail && this.officerDetail.skills) || []
       const n = Math.max(3, list.length)
       const out = []
-      for (let i = 0; i < n; i++) out.push(list[i] || null)
+      for (let i = 0; i < n; i++) out.push(null)
+      list.forEach((s, i) => {
+        if (!s) return
+        const name = String(s.name || '').trim()
+        if (!name) return
+        const slot = Number(s.slot) || (i + 1)
+        const idx = Math.min(Math.max(slot, 1), n) - 1
+        out[idx] = s
+      })
       return out
     },
     // ★ 2026-10-13 开箱结果明细：同名同品质合并成一行 ×N（几十个箱子结果不刷屏），高品质排前
@@ -1473,7 +1492,7 @@ export default {
     orderCapApplies () {
       return true
     },
-    // ★ 2026-09-28 随军资源：负重上限 = 所带兵种负重之和 × 装载技术加成。
+    // ★ 2026-09-28 随军资源：负重上限 = 所带兵种负重之和 × 标准化装卸加成。
     //   直接采用 [计算]（orderCalc.carry，后端 ezfyCarryCapOf 已含科技加成）作为唯一口径，
     //   与出征/运输/采集的负重校验一致；选兵种变化时由 orderTroopTotal watcher 重算。
     orderResCap () {
@@ -1955,7 +1974,7 @@ export default {
     },
     // ★ 资源详情页显示对应科技名（1 种植 / 2 炼钢 / 3 勘探 / 4 冶炼）
     resTechName () {
-      const m = { food: '种植技术', steel: '炼钢技术', oil: '勘探技术', rare: '冶炼技术' }
+      const m = { food: '合成氨工业', steel: '合金冶炼', oil: '深井钻探', rare: '钨矿精选' }
       return m[this.resType] || ''
     },
     // ★ 聊天分页总页数（后端按时间降序返回）
@@ -7929,6 +7948,8 @@ export default {
       this.officerDetailTab = 'attr'
       this.officerBagWord = ''
       this.officerBagPage = 1
+      // ★★ 2026-10-31 技能/特殊技能的展开效果也一起收回（换人后别留着上一个人的展开态）
+      this.resetOfficerExpand()
       // ★ 2026-10-10 切换军官 → 清掉旧军官的懒加载背包（响应「切换哪个获取哪个」）
       this.officerBag = []
       this.officerBagSets = []
@@ -7936,9 +7957,28 @@ export default {
       this.officerBagLoaded = 0
       // ★ 2026-10-01 修复「点击军官有时候空白」：进页先清掉旧军官数据/错误，
       //   加载完成前显示「加载中...」，避免残留上一名军官的详情或白屏
-      this.officerDetail = { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 }
-      this.officerDetailError = ''
+      // ★★ 2026-10-31 性能（玩家反馈「军官详情有点卡顿」）：同一军官再进来时先用**缓存**秒开，
+      //   同时照常发请求后台刷新（与军校各 tab 的 withAcadeCache 同一套路）。
+      const cached = this._officerDetailCache && this._officerDetailCache[id]
+      if (cached && cached.officer && cached.officer.id === id) {
+        this.officerDetail = cached
+        this.officerRenameInput = cached.officer.name || ''
+        this.officerDetailError = ''
+      } else {
+        this.officerDetail = { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 }
+        this.officerDetailError = ''
+      }
       this.loadOfficerDetail(id)
+    },
+    // 军官详情缓存（只留最近 6 名：大号几十名军官不必全常驻内存）
+    cacheOfficerDetail (id, data) {
+      if (!id || !data || !data.officer) return
+      if (!this._officerDetailCache) this._officerDetailCache = {}
+      const c = this._officerDetailCache
+      delete c[id]
+      c[id] = data
+      const keys = Object.keys(c)
+      if (keys.length > 6) delete c[keys[0]]
     },
     // ★ 2026-10-10 性能（详情降载）：背包装备按需拉取，同一军官只拉一次。
     //   装备背包 / 装备(一键穿套装) / 赏赐宝物 三处共用这一份懒加载数据。
@@ -8011,6 +8051,8 @@ export default {
         if (r.code === 0) {
           this.officerDetailError = ''
           this.officerDetail = r.data
+          // ★ 2026-10-31 详情缓存（下次进同一军官秒开，再后台刷新）
+          this.cacheOfficerDetail(id, r.data)
           // ★ 2026-10-24 怀旧军官详情：加载后同步名称输入框（改名直接用输入框的值）
           this.officerRenameInput = (r.data && r.data.officer && r.data.officer.name) || ''
           // ★ 2026-10-04 兜底：接口成功但没带回军官（异常/旧后端）→ 明确提示，
@@ -8232,8 +8274,22 @@ export default {
       const sid = this.skillIdByName(name)
       api.post('/games/ezfy/officers/' + id + '/skill', { op: 'forget', skill_id: sid }).then(r => {
         if (r.code !== 0) this.notify(r.msg || '遗忘失败')
+        // ★ 2026-10-31 遗忘后该格变空 → 展开态也收起（否则空行下面还挂着效果）
+        this.officerSkillOpen = 0
         this.loadOfficerDetail(id)
       })
+    },
+    // ★★ 2026-10-31 技能/特殊技能「点一下展开效果、再点收起」（同时只展开一个）
+    //   离开军官详情自动收起（见 watch.cur → resetOfficerExpand）。
+    resetOfficerExpand () {
+      this.officerSkillOpen = 0
+      this.officerComboOpen = 0
+    },
+    toggleOfficerSkill (slot) {
+      this.officerSkillOpen = (this.officerSkillOpen === slot) ? 0 : slot
+    },
+    toggleOfficerCombo (id) {
+      this.officerComboOpen = (this.officerComboOpen === id) ? 0 : id
     },
     skillIdByName (name) {
       for (const s of this.officerDetail.all_skills) {
@@ -8731,6 +8787,21 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-plain-table td {
   text-align: center;
   vertical-align: middle;
+}
+/* ★★ 2026-10-31 军官详情「已穿戴装备」表（用户反馈「电脑端表格还是太大了」）：
+   这张表只有「名称 / 部位 / 操作」三列短内容，跟着全局 max-width:920px 会铺得很散
+   → 单独收窄到 520px + 紧凑内边距。⚠️ 只缩这一张表，其它表格不动；字号仍是 var(--fs)。 */
+.ezfy-page table.ezfy-eq-worn-tbl {
+  max-width: 520px;
+}
+.ezfy-page table.ezfy-eq-worn-tbl th,
+.ezfy-page table.ezfy-eq-worn-tbl td {
+  padding: 1px 8px 1px 0;
+}
+/* ★ 2026-10-31 技能/特殊技能「点开才显示」的效果行：一行灰字、轻微缩进，不多占行高 */
+.ezfy-page .old-line .sk-des {
+  padding-left: 1.2em;
+  line-height: 1.5;
 }
 /* ★ 2026-10-25 商城「全部」分类分组标题（tr.mall-cat-row）已按用户要求去掉，样式一并删除 */
 /* ★ 战场指挥室：本回合倒计时条（指令期绿色、锁定后红色） */

@@ -812,13 +812,13 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			leadOfficer = o
 		}
 	}
-	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（：弹道学=射程，不参与攻击加成）
-	// ★ 2026-10-21 军训艺术(5) 改为造兵速度科技，不再参与战斗攻击加成。
+	// ★ 2026-10-06 炮兵射表(8) 改为**射程加成**（：炮兵射表=射程，不参与攻击加成）
+	// ★ 2026-10-21 动员训练(5) 改为造兵速度科技，不再参与战斗攻击加成。
 	atkBonus := h.officerBattleBonus(leadOfficer) +
 		atkTech[6]*3 + atkTech[9]*2
-	// 速度：燃烧引擎(10)「部队速度」= 通用；喷气引擎(19)「空军速度」= 兵种专属（见下方 atkType）
+	// 速度：机械增压(10)「部队速度」= 通用；喷气推进(19)「空军速度」= 兵种专属（见下方 atkType）
 	atkSpeedBonus := atkTech[10] * 2
-	// ★ 2026-10-08 兵种专属加成（与普通出征同口径）：喷气引擎只加空军 + 军官兵种技能
+	// ★ 2026-10-08 兵种专属加成（与普通出征同口径）：喷气推进只加空军 + 军官兵种技能
 	atkType := ezfyTypeBonus{Speed: map[int]int{}}
 	if v := atkTech[19] * 3; v > 0 {
 		atkType.Speed[ezfyTroopTypeAir] += v
@@ -830,13 +830,13 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（与普通出征同一口径）
 	// ★ 2026-10-08 补全影响 攻击/防御/射程/速度 的全部攻方科技（与普通出征同口径）
 	atkTechs := ezfyBonusItems(
-		ezfyTechItem("武器科技", atkTech[6]*3),
-		ezfyTechItem("装甲科技", atkTech[7]*3),
-		ezfyTechItem("弹道学", atkTech[8]*3),
-		ezfyTechItem("重工技术", atkTech[9]*2),
-		ezfyTechItem("燃烧引擎", atkTech[10]*2),
-		ezfyTechItem("掩体防御", atkTech[16]*2),
-		ezfyTechItem("喷气引擎", atkTech[19]*3),
+		ezfyTechItem("枪械改良", atkTech[6]*3),
+		ezfyTechItem("均质装甲", atkTech[7]*3),
+		ezfyTechItem("炮兵射表", atkTech[8]*3),
+		ezfyTechItem("重型机床", atkTech[9]*2),
+		ezfyTechItem("机械增压", atkTech[10]*2),
+		ezfyTechItem("永备工事", atkTech[16]*2),
+		ezfyTechItem("喷气推进", atkTech[19]*3),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 	// ★ 2026-10-07 攻方「防御加成」（出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def，
@@ -927,7 +927,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	} else {
 		// 活动守军无城墙/无科技 → 只有守将的加成；攻方装备六项加成照常生效；
 		// 守方阵营: 活动野地=盟军、活动寇/特殊城市=轴心国
-		// ★ 2026-10-06 攻方射程加成 = 弹道学(8)*3；活动守军无科技，射程/守方攻击加成取守将加成(0 兜底)
+		// ★ 2026-10-06 攻方射程加成 = 炮兵射表(8)*3；活动守军无科技，射程/守方攻击加成取守将加成(0 兜底)
 		st := ezfyNewBattleState(attacker, defender, atkBonus, defBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			atkTech[8]*3, 0,
 			atkEquip, ezfyBattleBonus{},
@@ -946,7 +946,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.officerCounterRounds(leadOfficer),
 			generalCounterRounds(defGeneral),
 			h.ensureProfile(uid).Camp, defCamp,
-			// ★ 2026-10-08 兵种专属加成（攻方喷气引擎=空军速度+军官兵种技能）
+			// ★ 2026-10-08 兵种专属加成（攻方喷气推进=空军速度+军官兵种技能）
 			// ★★ 2026-10-31 守方（活动守将）也要下发兵种专属技能：狼群战术=海军攻击力% /
 			//   弹幕支援=城防射程% / 坦克突袭·闪电袭击·越岛战术=对应兵种速度。
 			//   原来这里传空表 → 守将的兵种技能全被丢掉，且 ezfyActWildDefBonus 已不再
@@ -1064,7 +1064,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	detail += troopChangeText(defBefore, defAfter)
 	detail += "[双方兵力]"
 
-	// 攻方战损入伤兵营：兵种修复率% + 治愈伤兵科技（管理端「效果数值」，未配置按 2%/级）+ 机械改造 5%/级
+	// 攻方战损入伤兵营：兵种修复率% + 战地医疗科技（管理端「效果数值」，未配置按 2%/级）+ 机械改造 5%/级
 	// ★ 2026-10-15 机械改造回收率由 10%/级 → **5%/级**（名将满级最高 30%）
 	healTech := ezfyTechEffectValueAt(21, atkTech[21])
 	if h.officerHasSkill(leadOfficer, "机械改造") {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"qqjiayuan/server/internal/ezfyreq"
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
@@ -38,7 +38,7 @@ const (
 	//   采集结算周期不再写死，读取管理端配置 ezfy_cfg_limit.dispatch_period_h（小时，默认 4），
 	//   见 ezfyDispatchPeriod()。
 	ezfyTreasureExtraPct  = 20 // 每期在保底 1 件宝物的基础上, 额外 1 件概率%
-	ezfyCommandCarryPct   = 10 // 指挥艺术: 出征携带上限+%/级
+	ezfyCommandCarryPct   = 10 // 参谋作业: 出征携带上限+%/级
 	ezfyMaxUpgradeSeconds = 10 // 一键满级: 每级升级时间(秒)
 	ezfyDeserterRate      = 30 // 守军战败溃逃比例%
 	ezfyWarDelayHours     = 24 // 宣战生效延迟(小时)
@@ -55,7 +55,7 @@ const (
 	//   （见 ezfyMoveDir），所以 -2 能直接生效，同时不会和「不参与」(-1) 撞车
 	//   （defExcludeSet 只认 -1，-2 的兵种照常参战，只是每回合往后撤）。
 	ezfyDefMoveBack = -2
-	// ★ 2026-09-28 科技 13「装载技术」：部队负重 +2%/级。
+	// ★ 2026-09-28 科技 13「标准化装卸」：部队负重 +2%/级。
 	//   原来这条科技只在 ezfy_cfg_tech.effect 里写着，**代码里从没读过** →
 	//   玩家研到满级负重也不涨，就是反馈的「科技没实际作用」。见 ezfyCarryCapOf。
 	ezfyLoadTechID  = 13
@@ -68,7 +68,9 @@ const (
 	ezfyAcademyBuildingID = 8
 )
 
-var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)
+// ★ 2026-10-31 原 `ezfyRequirePattern`（按名字解析 require 文本）已删除：
+//   兵种「需要条件」现在只按 ID 校验（ezfy_cfg_troop.require_ids），
+//   文本→ID 的唯一解析实现是 internal/ezfyreq（Parse），别在本包再造一份正则。
 
 // 科技研究所需科研中心等级（该科技**固有门槛**，与等级无关）
 var ezfyTechAcademy = map[int]int{
@@ -2216,8 +2218,8 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 			}
 		}
 	}
-	// ★ 原始耗粮（未扣补给技巧）与实扣耗粮都下发：
-	//   用户反馈「补给技巧Lv10 -20% 没实现啊」——其实公式是对的（raw×80%），
+	// ★ 原始耗粮（未扣野战口粮）与实扣耗粮都下发：
+	//   用户反馈「野战口粮Lv10 -20% 没实现啊」——其实公式是对的（raw×80%），
 	//   只是界面只显示「实扣值 + 一个 -20% 标签」，看起来像是没扣。两个值都给出才不歧义。
 	troopFoodRaw := troopFood
 	troopFood = troopFood * int64(100-techSupply*2) / 100
@@ -2730,7 +2732,7 @@ func ezfyFactorySlots(buildings []model.EzfyCityBuilding, queues []model.EzfyTra
 		if c == nil || c.Type == 4 {
 			continue
 		}
-		need := ezfyNeedFactoryLevel(c.Require)
+		need := ezfyNeedFactoryLevelOf(c)
 		best := -1
 		for i := range slots {
 			if !slots[i].Ready || slots[i].Level < need {
@@ -2831,6 +2833,69 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	return h.trainTroopLocked(city, troopId, count, split)
 }
 
+// ezfyTroopRequireMsg 训练前置：建筑/科技等级校验（不满足返回提示文案，满足返回 ""）。
+//
+// ★★ 2026-10-31 起**只认 ID**：读 ezfy_cfg_troop.require_ids（如 "b14:1,t5:1"，b=建筑 t=科技）。
+// 这样建筑/科技改名、管理端改展示文案都不会让门槛失效。
+// 改造前是按 require 文本里的**名字**去 buildingByName / techByName 反查 id，
+// 名字对不上就 continue 跳过 —— 等于这条门槛根本不存在（不报错、不写日志，最难发现）。
+//
+// require 文本只剩两个用途：① 前端展示；② require_ids 为空时的老数据兜底解析
+// （种子启动回填 backfillEzfyTroopRequireIDs 会把 require_ids 补齐）。
+func (h *EzfyHandler) ezfyTroopRequireMsg(cfg *model.EzfyCfgTroop, blv, tech map[int]int) string {
+	if cfg == nil {
+		return ""
+	}
+	refs := ezfyreq.ParseIDs(cfg.RequireIds)
+	if len(refs) == 0 {
+		refs, _ = ezfyreq.Parse(cfg.Require, ezfyCfg.buildingByName, ezfyCfg.techByName)
+		if len(refs) == 0 {
+			// 兼容「只写建筑名、不带括号」的老写法
+			if name := strings.TrimSpace(cfg.Require); name != "" {
+				if bid, ok := ezfyCfg.buildingByName[name]; ok && blv[bid] < 1 {
+					return fmt.Sprintf("需要%s 1级", name)
+				}
+			}
+			return ""
+		}
+	}
+	for _, r := range refs {
+		if r.Kind == ezfyreq.KindBuilding {
+			if blv[r.ID] >= r.Level {
+				continue
+			}
+			name := fmt.Sprintf("建筑%d", r.ID)
+			if b := ezfyCfg.building(r.ID); b != nil {
+				name = b.Name
+			}
+			return fmt.Sprintf("需要%s %d级", name, r.Level)
+		}
+		if tech[r.ID] >= r.Level {
+			continue
+		}
+		name := fmt.Sprintf("科技%d", r.ID)
+		if t := ezfyCfg.tech(r.ID); t != nil {
+			name = t.Name
+		}
+		return fmt.Sprintf("需要科技%s %d级", name, r.Level)
+	}
+	return ""
+}
+
+// ezfyNeedFactoryLevelOf 兵种要求的「军工厂等级」。
+//
+// ★ 2026-10-31 起优先读 require_ids（按建筑 ID = ezfyFactoryBuildingID 取等级），
+// 不再依赖「军工厂」这三个字出现在 require 文本里；老数据（require_ids 为空）才回退解析文本。
+func ezfyNeedFactoryLevelOf(t *model.EzfyCfgTroop) int {
+	if t == nil {
+		return 0
+	}
+	if refs := ezfyreq.ParseIDs(t.RequireIds); len(refs) > 0 {
+		return ezfyreq.BuildingLevel(refs, ezfyFactoryBuildingID)
+	}
+	return ezfyNeedFactoryLevel(t.Require)
+}
+
 // trainTroopLocked 训练/建造城防的真正逻辑。
 //
 // ★★ 2026-10-05 性能（用户反馈「/troops/train 3s」）：改造前本函数 = refreshCity（~15 条串行）
@@ -2865,29 +2930,8 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	if cfg.Type == 1 && !h.isSeaCity(city) {
 		return "海军只能在沿海城市(建在沿海平原上的城市)训练, 内陆城市无法训练海军"
 	}
-	if cfg.Require != "" {
-		matches := ezfyRequirePattern.FindAllStringSubmatch(cfg.Require, -1)
-		if len(matches) > 0 {
-			for _, m := range matches {
-				name := m[1]
-				need, _ := strconv.Atoi(m[2])
-				if bid, ok := ezfyCfg.buildingByName[name]; ok {
-					if blv[bid] < need {
-						return fmt.Sprintf("需要%s %d级", name, need)
-					}
-					continue
-				}
-				if tid, ok := ezfyCfg.techByName[name]; ok {
-					if tech[tid] < need {
-						return fmt.Sprintf("需要科技%s %d级", name, need)
-					}
-				}
-			}
-		} else {
-			if bid, ok := ezfyCfg.buildingByName[cfg.Require]; ok && blv[bid] < 1 {
-				return fmt.Sprintf("需要%s 1级", cfg.Require)
-			}
-		}
+	if msg := h.ezfyTroopRequireMsg(cfg, blv, tech); msg != "" {
+		return msg
 	}
 	// 人口校验：只跟「正在训练、还没出厂」的兵比 —— 已训练完成的部队不占人口（用户规则）
 	// ★ 「征兵资源消耗开关关了的话，征兵不消耗资源，也无需空闲人口」→
@@ -2943,7 +2987,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	//   队列归属记在 EzfyTrainQueue.FactoryId；老队列没有归属时在内存里虚拟分配。
 	needFactory := 0
 	if cfg.Type != 4 {
-		needFactory = ezfyNeedFactoryLevel(cfg.Require)
+		needFactory = ezfyNeedFactoryLevelOf(cfg)
 	}
 	buildings := snap.buildingsOf(h, city.ID)
 	factorySlots := ezfyFactorySlots(buildings, trainQ)
@@ -3000,7 +3044,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	city.Rare -= rare
 	h.saveCityRes(city)
 	now := time.Now().UnixMilli()
-	// ★ 2026-10-21 单个兵训练耗时：floor(初始值 * 250/(250+市长军事) * 10/(10+军训艺术等级))。
+	// ★ 2026-10-21 单个兵训练耗时：floor(初始值 * 250/(250+市长军事) * 10/(10+动员训练等级))。
 	//   军工厂/城防都走同一公式；已有队列的 EndTime 在创建时就定死，不会重算。
 	unitSec := ezfyTrainUnitSeconds(cfg.TrainTime, h.mayorTrainMilitary(city.ID), tech[5])
 	// ★ 免费征兵标记：开关关着建的队列，取消时不退还资源（见 EzfyTrainQueue.FreeTrain）
@@ -4497,7 +4541,8 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if sk == nil {
 			return "没有可学习的技能了"
 		}
-		skills = append(skills, sk.Name)
+		// ★★ 2026-10-31 写进第一个空槽（槽位固定，遗忘后不会整段前移）
+		skills = ezfySkillSlotsAppend(officerSkillSlotsRaw(o), sk.Name)
 		// ★ 2026-10-25 先扣后生效：扣不到就不学（连点并发只有一次生效）
 		if m := h.ezfyTakeItemUse(uid, cfgId); m != "" {
 			return m

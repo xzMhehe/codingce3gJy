@@ -63,14 +63,25 @@ func seedEzfy(db *gorm.DB) {
 	// ★ 2026-10-22 新增兵种「海军轰炸机」一次性对齐（对海/训练时间/阵营全名）：
 	//   batchKeep 是 DoNothing，已部署过的库补不进去，靠 settings 打标只对齐一次。
 	alignEzfyNavalBomber(db)
+	// ★★ 2026-10-31 军官技能文案润色一次性对齐（技能 tab / 军官详情都读这张表）：
+	//   batchKeep 是 insert-only，已部署的库改不到 → 同样用 settings 打标只跑一次。
+	ezfySkillDescPolish(db)
 
 	// —— 科技：主表每次对齐；等级表**保护 effect_value**（见 seedEzfyTechLevels） ——
 	//
-	// ★★ 2026-10-14 线上事故：管理端把「治愈伤兵 Lv.10 效果数值」改成 50，
+	// ★★ 2026-10-14 线上事故：管理端把「战地医疗 Lv.10 效果数值」改成 50，
 	//   下次重启（含 air 热重启）`batch(UpdateAll)` 用 ezfy_cfg_gen.go 里的
 	//   内置默认（EffectValue=20 / Effect="伤兵恢复+20%"）整行覆盖 → 每次重启都变回 20。
 	//   修法：等级表不再无条件 UpdateAll，改为「只补缺 + 只保护 effect_value 一列」。
 	batch(ezfyEzfyCfgTech, "ezfy_cfg_tech")
+	// ★ 2026-10-31 科技改名（规避版权）：兵种 require 里残留的旧科技名一次性替换成新名。
+	//   必须在 batch(ezfy_cfg_tech) 之后 —— 校验是按名字匹配科技 id 的，
+	//   require 不跟着改 → 该科技门槛被静默跳过。settings 打标只跑一次。
+	alignEzfyTechRename(db)
+	// ★ 2026-10-31 require_ids 回填：把兵种 require 文本解析成「b建筑/t科技 + ID + 等级」。
+	//   训练校验只读这一列（按 ID），文本仅展示 —— 从此改名/错别字不会让门槛静默失效。
+	//   幂等自愈：每次启动比对，一致则零写入；必须在 alignEzfyTechRename 之后（先修文本再转 ID）。
+	backfillEzfyTroopRequireIDs(db)
 	seedEzfyTechLevels(db)
 	// ★ 野地类型管理端可编辑（守军 + 守军军官 officer_id），必须只补缺不覆盖，
 	//   否则每次重启会把管理端/守将补缺的 officer_id 冲回 0（2026-09-24 野地军官需求）。
@@ -134,7 +145,7 @@ func seedEzfy(db *gorm.DB) {
 // seedEzfyTechLevels 科技等级配置种子（★ 2026-10-14 起：保护管理端维护的 effect_value）
 //
 // 原实现是 `batch(UpdateAll)` —— 每次启动用 ezfy_cfg_gen.go 的内置默认**整行覆盖**。
-// 管理端在「科技管理 → 等级配置 → 效果数值」里改过的值（如治愈伤兵 Lv.10 = 50）
+// 管理端在「科技管理 → 等级配置 → 效果数值」里改过的值（如战地医疗 Lv.10 = 50）
 // 会在每次重启时被冲回内置默认值，用户反馈「改了 50，每次重启就变回去」。
 //
 // 现在按列拆开写：

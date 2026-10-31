@@ -9,12 +9,12 @@ import (
 
 // ============ 2026-10-09 排查「回合中移动距离还是兵种初始速度」 ============
 //
-// 用用户那份征服报告的真实参数（航母 vs 航母、燃烧引擎+20%、攻方套装移动距离+10%）复现：
+// 用用户那份征服报告的真实参数（航母 vs 航母、机械增压+20%、攻方套装移动距离+10%）复现：
 //
-//	攻方航母 前进 1105 = 850 ×(1 + 20%燃烧引擎 + 10%套装移动距离)
-//	守方航母 前进 1020 = 850 ×(1 + 20%燃烧引擎)
+//	攻方航母 前进 1105 = 850 ×(1 + 20%机械增压 + 10%套装移动距离)
+//	守方航母 前进 1020 = 850 ×(1 + 20%机械增压)
 //
-// 结论：引擎**是**把速度加成算进移动的（喷气引擎是「空军速度」，航母是海军 → 不吃，
+// 结论：引擎**是**把速度加成算进移动的（喷气推进是「空军速度」，航母是海军 → 不吃，
 // 这是玩家以为「速度加成没生效」的真正原因，已改展示口径，见 TestBonusLine* ）。
 
 // ezfyMoveSpeedState 造一个「航母 vs 航母」的战场（参数与用户征服报告一致）
@@ -22,7 +22,7 @@ func ezfyMoveSpeedState() *ezfyBattleState {
 	return ezfyNewBattleState(
 		[]ezfyUnitGroup{{TroopId: 16, Count: 204900}},
 		[]ezfyUnitGroup{{TroopId: 16, Count: 200000}},
-		634, 395, 595, 20, 20, // atkBonus, defBonus, defAtkBonus, atkSpeed(燃烧引擎), defSpeed
+		634, 395, 595, 20, 20, // atkBonus, defBonus, defAtkBonus, atkSpeed(机械增压), defSpeed
 		30, 30,
 		// 攻方套装全量：移动距离+10%
 		ezfyBattleBonus{Dmg: 49, Def: 61, Hp: 73, Move: 10, Crit: 45, CritDmg: 64},
@@ -49,7 +49,7 @@ func ezfyStubCarrier(t *testing.T) func() {
 
 // TestMovementUsesSpeedBonus 回合里的「前进」距离 = 兵种速度 ×(1 + 移动速度加成)。
 //
-// 移动速度加成 = 科技(燃烧引擎) + 装备(移动距离) + 兵种专属(喷气引擎/军官速度技能)。
+// 移动速度加成 = 科技(机械增压) + 装备(移动距离) + 兵种专属(喷气推进/军官速度技能)。
 func TestMovementUsesSpeedBonus(t *testing.T) {
 	defer ezfyStubCarrier(t)()
 	st := ezfyMoveSpeedState()

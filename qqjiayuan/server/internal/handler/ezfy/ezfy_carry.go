@@ -139,14 +139,14 @@ func (h *EzfyHandler) ezfyCarryCap(order *model.EzfyOrder) int64 {
 	return h.ezfyCarryCapOf(parseGroups(order.Troops), uint(order.CityId))
 }
 
-// ezfyCarryCapOf 一组部队的总负重上限（= Σ 兵种 carry × 数量，再乘装载技术加成）
+// ezfyCarryCapOf 一组部队的总负重上限（= Σ 兵种 carry × 数量，再乘标准化装卸加成）
 //
-// ★★ 2026-09-28 修复「装载技术没实际作用」：
+// ★★ 2026-09-28 修复「标准化装卸没实际作用」：
 //
-//	科技 13「装载技术 部队负重+2%」原来只写在 ezfy_cfg_tech.effect 里，
+//	科技 13「标准化装卸 部队负重+2%」原来只写在 ezfy_cfg_tech.effect 里，
 //	**后端从来没有读过这个 tech_id** → 玩家把它研到 10 级，负重一点不涨。
 //	现在在这里统一加成（这是「负重上限」的唯一收敛点，采集/运输/出征全走它）：
-//	    负重上限 = Σ(carry × 数量) × (100 + 装载技术等级 × 2) / 100
+//	    负重上限 = Σ(carry × 数量) × (100 + 标准化装卸等级 × 2) / 100
 //
 // ⚠️ cityId 用来反查玩家（科技等级存用户级 ezfy_user_tech，见 techMap）。
 //

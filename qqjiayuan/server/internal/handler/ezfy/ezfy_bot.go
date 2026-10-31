@@ -1733,13 +1733,18 @@ func (h *EzfyHandler) botOfficerPost(city *model.EzfyCity) (string, string, bool
 	}
 	// ② 技能：带技能的军官 < 3 → 给一个没技能的配 3 个随机技能
 	//   ★ 2026-10-19 用户规则「人机带技能的军官只能有三个」。
+	//   ★★ 2026-10-31 技能数组改成**按槽位**存（空槽 = 空串，如 ["","",""]）→ 判「有技能」
+	//     不能再用 `skill <> '[]'`（全空槽也是非空串），改用「至少有一个非空技能名」。
+	const hasSkillCond = `skill IS NOT NULL AND skill REGEXP '"[^"]+"'`
+	// 没有技能 = NULL / 空串 / 全空槽（如 ["","",""]）。NULL 要单独写，否则 NOT(...) 会变 NULL 不匹配。
+	const noSkillCond = `(skill IS NULL OR skill = '' OR NOT (skill REGEXP '"[^"]+"'))`
 	var skillCnt int64
 	h.DB.Model(&model.EzfyOfficer{}).
-		Where("city_id = ? AND status = 0 AND skill IS NOT NULL AND skill <> '' AND skill <> '[]'", city.ID).
+		Where("city_id = ? AND status = 0 AND "+hasSkillCond, city.ID).
 		Count(&skillCnt)
 	if skillCnt < 3 {
 		var noSkill model.EzfyOfficer
-		if err := h.DB.Where("city_id = ? AND status = 0 AND is_captive = 0 AND (skill IS NULL OR skill = '' OR skill = '[]')",
+		if err := h.DB.Where("city_id = ? AND status = 0 AND is_captive = 0 AND "+noSkillCond,
 			city.ID).Order("military DESC, level DESC").First(&noSkill).Error; err == nil && noSkill.ID > 0 {
 			names := h.ezfyRandomSkills(3)
 			if len(names) > 0 {

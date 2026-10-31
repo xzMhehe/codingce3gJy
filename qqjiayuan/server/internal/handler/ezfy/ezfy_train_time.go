@@ -10,7 +10,7 @@ import "qqjiayuan/server/internal/model"
 //
 //	P = ezfy_cfg_troop.train_time（兵种初始值）
 //	M = 该城现任市长的军事（主开关关掉时按 0 处理）
-//	L = 军训艺术科技等级（全账号共享）
+//	L = 动员训练科技等级（全账号共享）
 //
 // ★ 科技面板仍保留「造兵速度+2%/级」的原数值展示；但本公式按**等级 L**
 // 取 10/(10+L)，所以 10 级时训练时间减半。两者口径不同，改公式时勿把 L 换成效果百分比。
@@ -33,7 +33,7 @@ func ezfyTrainUnitSeconds(panel, military, trainArtLevel int) int64 {
 
 // mayorTrainMilitary 该城现任市长用于造兵计时的军事值。
 //
-//	① 主开关关 → 0（不查库，训练时间只按初始值/军训艺术）；
+//	① 主开关关 → 0（不查库，训练时间只按初始值/动员训练）；
 //	② 装备开关关 → 只取军官自身军事（不含装备/套装）；
 //	③ 装备开关开 → 取 officerEffective（自身 + 装备 + 套装）；
 //	④ 没有市长 → 0。

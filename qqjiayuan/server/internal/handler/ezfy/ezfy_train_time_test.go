@@ -16,7 +16,7 @@ func TestEzfyTrainUnitSeconds(t *testing.T) {
 		{"军事200", 60, 200, 0, 33},
 		{"军事30向下取整", 100, 30, 0, 89},
 		{"面板195军事30", 195, 30, 0, 174},
-		{"军训艺术10级", 60, 0, 10, 30},
+		{"动员训练10级", 60, 0, 10, 30},
 		{"军事100加军训10级", 60, 100, 10, 21},
 		{"图片航母示例", 6650, 384, 10, 1311},
 		{"面板0", 0, 100, 10, 0},
@@ -35,12 +35,12 @@ func TestEzfyTrainUnitSeconds(t *testing.T) {
 	}
 }
 
-// TestEzfyTrainArtTechEffect 军训艺术(5) 只加造兵速度，每级展示值仍保持原来的 2%。
+// TestEzfyTrainArtTechEffect 动员训练(5) 只加造兵速度，每级展示值仍保持原来的 2%。
 func TestEzfyTrainArtTechEffect(t *testing.T) {
 	if got := ezfyTechEffectPrefix[5]; got != "造兵速度" {
-		t.Fatalf("军训艺术效果前缀 = %q, 期望 造兵速度", got)
+		t.Fatalf("动员训练效果前缀 = %q, 期望 造兵速度", got)
 	}
 	if got := ezfyTechEffectPer[5]; got != 2 {
-		t.Fatalf("军训艺术每级加成 = %d, 期望 2", got)
+		t.Fatalf("动员训练每级加成 = %d, 期望 2", got)
 	}
 }

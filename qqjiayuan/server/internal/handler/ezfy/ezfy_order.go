@@ -884,7 +884,7 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		techMap[t.TechId] = t.Level
 	}
 	// ★ 2026-10-29 用户规则：没有「科研中心」建筑的城市不享受科技加成 →
-	//   出征预览的负重（装载技术）与真实出征同口径，出发城没科研中心就按 0 级算。
+	//   出征预览的负重（标准化装卸）与真实出征同口径，出发城没科研中心就按 0 级算。
 	//   （与上面两个 buildingLevel 并行块合并成同一次建筑列表查询代价相同，仍是一次 buildingList）
 	if h.buildingLevel(city.ID, ezfyAcademyBuildingID) <= 0 {
 		techMap = map[int]int{}
@@ -905,7 +905,7 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		}
 		valid = append(valid, t)
 	}
-	// ★ 2026-09-28 负重统一走 ezfyCarryCapOf（含「装载技术」加成）。
+	// ★ 2026-09-28 负重统一走 ezfyCarryCapOf（含「标准化装卸」加成）。
 	//   原来这里手写 `carry += cfg.Carry * count`，与 ezfyCarryCapOf 是**两套实现** ——
 	//   加了科技加成后如果只改一处，出征页预览的负重就会和实际出征时校验的负重对不上。
 	carry := h.ezfyCarryCapOf(valid, city.ID, techMap)
@@ -913,7 +913,7 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	oilCost := h.ezfyOilCost(city, req.OrderType, distance, valid, req.Resources, h.officerOilReducePct(lead))
 
 	var travelSec int64
-	// ★★ 2026-10-09 行军速度按兵种算（燃烧引擎=通用 / 喷气引擎=空军 / 军官速度技能=陆·空·海），
+	// ★★ 2026-10-09 行军速度按兵种算（机械增压=通用 / 喷气推进=空军 / 军官速度技能=陆·空·海），
 	//   与 createOrder 共用 ezfyMarchSpeed，保证预览与实际一致。
 	//   ★ 无可出征部队（如纯运输资源）时回落 300 —— 与 createOrder 同口径（原来预览这里会算成 0）。
 	marchSpeed := h.ezfyMarchSpeed(valid, techMap, lead)
@@ -922,8 +922,8 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	}
 	if distance > 0 {
 		// ★ 2026-10-05 科技/指挥室/带队军官来自上方并行块（零额外查询）；带队军官只查一次
-		//   ★★ 2026-10-16 删除「侦察技巧(科技12)×2%/级」这一级：侦察技巧只加军情情报等级，
-		//   不加速行军。真正加速行军的是 燃烧引擎(科技10，通用) + 喷气引擎(科技19，空军)，
+		//   ★★ 2026-10-16 删除「无线电侦听(科技12)×2%/级」这一级：无线电侦听只加军情情报等级，
+		//   不加速行军。真正加速行军的是 机械增压(科技10，通用) + 喷气推进(科技19，空军)，
 		//   它们已折进上面的 ezfyMarchSpeed，不需要在这里再除一次。
 		travelSec = int64(distance) * 60 * 300 / int64(marchSpeed)
 		// ★★ 2026-10-16 运输站改「速度倍数」（玩家口径，与 cfg 文案「部队行动速度提高1.5~6.0倍
@@ -975,9 +975,9 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		capUnlimited = true
 	}
 	// ★ 2026-10-16 加成可视化（玩家反馈"看不出有没有耗时加成"）：耗时提速清单按**真正生效的
-	//   来源**列 —— 运输站(只按出发城等级、只对己方/盟友基地间订单)、燃烧引擎(科技10，通用)、
-	//   喷气引擎(科技19，只对空军，部队不含空军时不列)。
-	//   ★ 不再列「科技12 侦察技巧」：它只加军情情报等级，不加速行军。
+	//   来源**列 —— 运输站(只按出发城等级、只对己方/盟友基地间订单)、机械增压(科技10，通用)、
+	//   喷气推进(科技19，只对空军，部队不含空军时不列)。
+	//   ★ 不再列「科技12 无线电侦听」：它只加军情情报等级，不加速行军。
 	spdBonus := []string{}
 	if ezfyStationOrderType(req.OrderType) {
 		if m := ezfyStationSpeedMult(stationLv); m > 1 {
@@ -985,12 +985,12 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		}
 	}
 	if t := techMap[10] * 2; t > 0 && len(valid) > 0 {
-		spdBonus = append(spdBonus, fmt.Sprintf("燃烧引擎+%d%%", t))
+		spdBonus = append(spdBonus, fmt.Sprintf("机械增压+%d%%", t))
 	}
 	if t := techMap[19] * 3; t > 0 && ezfyHasAirTroops(valid) {
-		spdBonus = append(spdBonus, fmt.Sprintf("喷气引擎+%d%%", t))
+		spdBonus = append(spdBonus, fmt.Sprintf("喷气推进+%d%%", t))
 	}
-	loadPct := techMap[13] * 2 // 科技13「装载技术」：负重 +2%/级
+	loadPct := techMap[13] * 2 // 科技13「标准化装卸」：负重 +2%/级
 	resp.OK(c, gin.H{
 		"oil_used":    oilCost,
 		"oil_enough":  city.Oil >= oilCost,
@@ -1081,7 +1081,7 @@ func ezfyGatherBonusPer() int64 {
 
 // ezfyOrderTroopCap 本次出征的兵力上限
 //
-//	= 司令部等级 × 1万 × (1 + 指挥艺术科技等级 × 10%)   ← 原版规则（司令部「每次出征上限N人」）
+//	= 司令部等级 × 1万 × (1 + 参谋作业科技等级 × 10%)   ← 原版规则（司令部「每次出征上限N人」）
 //	+ 集结令个数 × ezfyGatherBonusPer()                ← 用户规则：每个集结令 +10 万
 //	+ 出征军官军事 × ezfyOfficerCapPerMil()            ← 2026-09-28 用户规则：军官军事累加上限（可配置）
 //
@@ -1096,7 +1096,7 @@ type ezfyTroopCapReuse struct {
 	lead  *model.EzfyOfficer
 }
 
-// ezfyOrderTroopCap 出征兵力上限：司令部等级 × 1万 × 指挥艺术科技 + 集结令加成 + 军官军事加成。
+// ezfyOrderTroopCap 出征兵力上限：司令部等级 × 1万 × 参谋作业科技 + 集结令加成 + 军官军事加成。
 // ★ 2026-10-05 reuse 可选：调用方已并行取好的 科技map/司令部等级/带队军官 时传入（预览接口），
 //
 //	其余调用方（createOrder 等）不传，函数内部照旧自查。
@@ -1601,7 +1601,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if len(validTroops) == 0 {
 			return "携带资源需要部队来装载(卡车负重最高)"
 		}
-		// ★ 2026-09-28 传 city.ID：负重上限含「装载技术」加成（与出征/采集同一口径）
+		// ★ 2026-09-28 传 city.ID：负重上限含「标准化装卸」加成（与出征/采集同一口径）
 		cap := h.ezfyCarryCapOf(validTroops, city.ID)
 		if total := f + s + o + r + g; total > cap {
 			return fmt.Sprintf("负重不足: 本次要携带%d, 部队负重只有%d(多带卡车可提高)", total, cap)
@@ -1669,15 +1669,15 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	//   的调动生效（运输5/增援·驻守盟友6/派遣8），且**不双向叠加**。
 	station := blv[20]
 	// ★★ 2026-10-09 行军速度按兵种算（与 /order/preview 共用 ezfyMarchSpeed）：
-	//   燃烧引擎(10)=通用、喷气引擎(19)=只空军、军官速度技能=陆/空/海 —— 原来行军完全不吃科技速度，
+	//   机械增压(10)=通用、喷气推进(19)=只空军、军官速度技能=陆/空/海 —— 原来行军完全不吃科技速度，
 	//   且军官速度技能不分兵种一律生效（与「有兵种限制」的配置口径不符）。
 	marchSpeed := h.ezfyMarchSpeed(validTroops, tech, lead)
 	if marchSpeed < 1 {
 		marchSpeed = 300 // 无可出征部队（如纯运输资源）→ 沿用旧默认速度
 	}
 	travelSec := int64(distance) * 60 * 300 / int64(marchSpeed)
-	// ★★ 2026-10-16 删除「侦察技巧(科技12)×2%/级」这一级（与 /order/preview 同口径）：
-	//   侦察技巧只加军情情报等级，不加速行军；加速行军的是 燃烧引擎(10)/喷气引擎(19)，
+	// ★★ 2026-10-16 删除「无线电侦听(科技12)×2%/级」这一级（与 /order/preview 同口径）：
+	//   无线电侦听只加军情情报等级，不加速行军；加速行军的是 机械增压(10)/喷气推进(19)，
 	//   已折进上面的 ezfyMarchSpeed。
 	if ezfyStationOrderType(orderType) {
 		travelSec = int64(float64(travelSec) / ezfyStationSpeedMult(station))
@@ -1819,7 +1819,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	return ""
 }
 
-// ezfyOrderRadarWarn 出征时给**被攻击方**发事前预警（雷达站 + 侦察技巧决定能看到多少）。
+// ezfyOrderRadarWarn 出征时给**被攻击方**发事前预警（雷达站 + 无线电侦听决定能看到多少）。
 //
 // ★ 2026-10-05 从 createOrder 里抽出来：① 让收尾的 6 个写能并行；
 // ② 本段自己的读（目标城 + 情报等级）也不再串在写前面。
@@ -1828,7 +1828,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 //	掠夺(2)/征服(3) → 「军情警报: 敌军来袭!」，细节随情报等级递增
 //
 // ★ 2026-09-25 「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下展示，
-// 不然我只知道有人打我，不知道哪来的」：情报等级 = 雷达站等级 + **侦察技巧科技等级**（合计封顶 10）。
+// 不然我只知道有人打我，不知道哪来的」：情报等级 = 雷达站等级 + **无线电侦听科技等级**（合计封顶 10）。
 // 「出发城市（名称+坐标）」门槛定在 **2 级**，并且够等级时会**写进战报标题**
 // —— 军情警讯列表只显示标题，不点进去也要看得见。
 //
@@ -1844,8 +1844,8 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 	// ★ 2026-09-25 「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下展示，
 	//
 	//	不然我只知道有人打我，不知道哪来的」：
-	//	情报等级 = 雷达站等级 + **侦察技巧科技等级**（合计封顶 10），见 h.ezfyIntelLevel。
-	//	「出发城市（名称+坐标）」门槛定在 **2 级**（雷达站1级 + 侦察技巧1级就能看到），
+	//	情报等级 = 雷达站等级 + **无线电侦听科技等级**（合计封顶 10），见 h.ezfyIntelLevel。
+	//	「出发城市（名称+坐标）」门槛定在 **2 级**（雷达站1级 + 无线电侦听1级就能看到），
 	//	并且够等级时会**写进战报标题** —— 军情警讯列表只显示标题，不点进去也要看得见。
 	//
 	// 注意：这里只发**事前预警**；被掠夺/城破这类**事后结果**报告在 processArrive 里发，
@@ -1865,7 +1865,7 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 				if radar >= 5 {
 					body += fmt.Sprintf("侦查时间: %s\n", time.UnixMilli(order.StartTime).Format("01-02 15:04"))
 				}
-				body += fmt.Sprintf("(情报等级%d: 雷达站等级越高、侦察技巧越高, 情报越详细)", radar)
+				body += fmt.Sprintf("(情报等级%d: 雷达站等级越高、无线电侦听越高, 情报越详细)", radar)
 				// ★ 2026-10-14 「只有名字看不出来，其他玩家有重名的，加坐标辨别」：
 				//   标题里带上**侦查方城市坐标**，重名城一眼可分（体例与「被掠夺报告: X(286,294)」一致）。
 				h.addReport(target.UserID, 6, fmt.Sprintf("被侦查报告: %s(%d,%d)", city.Name, city.X, city.Y), body, "", 0, target.ID)
@@ -1910,9 +1910,9 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 				}
 				// ★ 把「还差什么才能看到出发城市」直接告诉玩家，否则他永远不知道该怎么解锁
 				if radar < 2 {
-					warn += fmt.Sprintf("(情报等级%d 不足: 雷达站+侦察技巧 合计到 2 级才能看到来袭城市与坐标)\n", radar)
+					warn += fmt.Sprintf("(情报等级%d 不足: 雷达站+无线电侦听 合计到 2 级才能看到来袭城市与坐标)\n", radar)
 				}
-				warn += fmt.Sprintf("(情报等级%d = 雷达站%d级 + 侦察技巧%d级)", radar, h.buildingLevel(target.ID, 21), h.techMap(target.ID)[ezfyReconTechID])
+				warn += fmt.Sprintf("(情报等级%d = 雷达站%d级 + 无线电侦听%d级)", radar, h.buildingLevel(target.ID, 21), h.techMap(target.ID)[ezfyReconTechID])
 				title := "军情警报: 敌军来袭!"
 				if originLine != "" {
 					// 列表只显示标题 → 把来源也带上，不点进去就能看到
@@ -2009,12 +2009,12 @@ func (h *EzfyHandler) restoreTroops(cityId uint, troops []ezfyUnitGroup) {
 // 雷达站预警相关常量
 const (
 	ezfyRadarBuildingID   = 21 // 建筑：雷达站（「对敌军入侵进行预警」）
-	ezfyReconTechID       = 12 // 科技：侦察技巧（原来只加行军速度，现在同时加成军情情报）
+	ezfyReconTechID       = 12 // 科技：无线电侦听（原来只加行军速度，现在同时加成军情情报）
 	ezfyIntelMaxLevel     = 10 // 情报等级封顶
 	ezfyReconPlaneTroopID = 9  // ★ 2026-10-14 侦察机兵种 id（侦查只能带它；被侦查城有它且未设「不参与防御」时升空拦截空战）
 )
 
-// ezfyIntelLevel 被攻击方城市的「军情情报等级」= 雷达站等级 + 侦察技巧等级（合计封顶 10）。
+// ezfyIntelLevel 被攻击方城市的「军情情报等级」= 雷达站等级 + 无线电侦听等级（合计封顶 10）。
 //
 // ★ 2026-09-25 「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下
 //
@@ -2022,9 +2022,9 @@ const (
 //
 // 规则：
 //   - **雷达站（建筑 21）= 主渠道**：0 级收不到任何事前预警（保持原规则不变）
-//   - **侦察技巧（科技 12）= 加成**：每 1 级让情报等级 +1 —— 名字本来就叫「侦察」，
+//   - **无线电侦听（科技 12）= 加成**：每 1 级让情报等级 +1 —— 名字本来就叫「侦察」，
 //     原来只加行军速度，现在顺带加成情报，科技终于有用了
-//   - **「出发城市（名称+坐标）」门槛 = 2 级** → 雷达站 1 级 + 侦察技巧 1 级 就能看到；
+//   - **「出发城市（名称+坐标）」门槛 = 2 级** → 雷达站 1 级 + 无线电侦听 1 级 就能看到；
 //     只有雷达站 1 级且没升科技时，正文会明确提示「合计到 2 级才能看到」
 //
 // 逐级解锁：2=出发城市+意图 / 3=预计到达 / 4=统帅 / 5=出发时间 / 7=兵力(模糊) / 9=兵力(精确)
@@ -2750,22 +2750,22 @@ func ezfyStationOrderType(orderType int) bool {
 //
 // 有效速度 = 兵种基础速度 × (1 + 通用速度加成 + **该兵种专属**速度加成)
 //
-//	· 通用：燃烧引擎(10)「部队速度+2%/级」→ 全体兵种
-//	· 兵种专属：喷气引擎(19)「空军速度+3%/级」→ 只加空军；
+//	· 通用：机械增压(10)「部队速度+2%/级」→ 全体兵种
+//	· 兵种专属：喷气推进(19)「空军速度+3%/级」→ 只加空军；
 //	  军官技能 坦克突袭(陆军)/闪电袭击(空军)/越岛战术(海军) → 只加对应兵种
 //
 // ★★ 2026-10-09 用户确认「行军也按兵种接入科技速度」（原来行军完全不吃科技速度，
 // 且军官速度技能无论部队兵种一律 +10% —— 与「有兵种限制」的配置口径不符）：
 //
-//	现在按每支部队各自的兵种算有效速度再取最慢，喷气引擎只在部队含空军时才会真正
+//	现在按每支部队各自的兵种算有效速度再取最慢，喷气推进只在部队含空军时才会真正
 //	缩短行军时间，越岛战术带队纯陆军也不再凭空加速。
 //
 // 出征预览(/order/preview)与真正下单(createOrder)共用本函数，保证「看到的耗时」=「实际的耗时」。
 // 没有任何可出征部队（如纯运输资源）→ 返回 0，调用方回落到旧默认速度 300。
 func (h *EzfyHandler) ezfyMarchSpeed(troops []ezfyUnitGroup, techMap map[int]int, lead *model.EzfyOfficer) int {
-	gen := techMap[10] * 2 // 燃烧引擎：部队速度（通用）
+	gen := techMap[10] * 2 // 机械增压：部队速度（通用）
 	tb := ezfyTypeBonus{Speed: map[int]int{}}
-	if v := techMap[19] * 3; v > 0 { // 喷气引擎：只加空军
+	if v := techMap[19] * 3; v > 0 { // 喷气推进：只加空军
 		tb.Speed[ezfyTroopTypeAir] += v
 	}
 	tb = h.officerTypeBonus(lead, tb) // 军官速度技能：按兵种
@@ -3181,7 +3181,7 @@ type ezfyGatherCalc struct {
 	Hours                  int64   // N：整点小时数（向下取整）；未满一期连续折算时 = floor(连续小时)
 	HoursF                 float64 // N 的精确值：满期=整点整数；停止/收获折算=真实毫秒连续小时
 	WildBonusPct           float64 // R：同资源野地总等级 × 每级加成%
-	Logistics              int     // A：带队军官后勤
+	Logistics              int     // A：带队军官最终后勤（基础 + 装备 + 套装）
 	Divisor                float64 // 公式除数（默认 2）
 	IsSea                  bool    // 目标是否海野（海底森林/岛屿/渔场/矿礁）
 	SeaMult                float64 // 海野采集倍率（仅海野生效，默认 3；陆地恒为 1）
@@ -3214,7 +3214,7 @@ func ezfyGatherTroopCount(raw string) int64 {
 //	      （真实毫秒 ÷ 3600000；★★ 2026-10-21 用户规则「不要按整点卡，
 //	      采集多少就是收获多少」——采 37 分钟就拿 37 分钟的产量）。
 //	R = wildPct（百分比，例如 42 表示 42%）
-//	A = logistics（军官后勤）
+//	A = logistics（带队军官**最终后勤**：基础 + 装备 + 套装，见 gatherLogistics）
 //	seaMult = 海野采集倍率（default 3）：仅海野调用方传 >1 的值；陆地传 1；
 //	          <=0 视为 1（不做海野加成），0 不会把产出清零。
 //
@@ -3271,7 +3271,7 @@ func (h *EzfyHandler) ezfyGatherWildBonusPctFor(order *model.EzfyOrder, wl *mode
 //	    不同兵种的差异只体现在负重，产量贡献一律按数量计）
 //	N = 整点小时数（16:59 按 16 小时算，向下取整）
 //	R = 野地加成%（城市名下同资源野地总等级 × 每级 3%）
-//	A = 带队军官后勤
+//	A = 带队军官最终后勤（基础 + 装备 + 套装；2026-10-31 起吃装备）
 //
 // ★ 2026-10-21 用户规则「海野需要比陆地野地高 3 倍」：
 //
@@ -3307,6 +3307,32 @@ func (h *EzfyHandler) dispatchGatherYieldPartial(order *model.EzfyOrder, wl *mod
 	return h.gatherYieldAt(order, wl, float64(ms)/(3600*1000), ms, env)
 }
 
+// gatherLogistics 带队军官用于采集公式的「最终后勤」= 基础后勤 + 已穿戴装备 + 已穿齐套装。
+//
+// ★★ 2026-10-31 用户规则：采集公式的后勤项（A）改吃**最终后勤**，为后续上「后勤装备」做准备。
+// 原来这里直接取 officer.Logistics（只有基础值），给采集军官穿 +后勤的装备/宝物产量完全不变，
+// 与市长产量（走 officerEffective）的口径也不一致。
+//
+// 性能：批量结算 / 军队动态同一批里同一名军官只解析一次装备 JSON（env.gatherLogs 缓存）。
+func (h *EzfyHandler) gatherLogistics(env *ezfySettleEnv, o *model.EzfyOfficer) int {
+	if o == nil {
+		return 0
+	}
+	if env != nil && env.gatherLogs == nil {
+		env.gatherLogs = map[uint]int{} // 防御：手工构造的 env 没初始化也不 panic
+	}
+	if env != nil && o.ID > 0 {
+		if log, ok := env.gatherLogs[o.ID]; ok {
+			return log
+		}
+	}
+	_, log, _ := h.officerEffective(o)
+	if env != nil && o.ID > 0 {
+		env.gatherLogs[o.ID] = log
+	}
+	return log
+}
+
 // gatherYieldAt 采集产出共用内部实现：hoursF 为计入公式的小时数（整点整数或连续小时，
 // 由调用方决定口径）；fallbackMs>0 且产出不足 1 点时兜底 1 点（驻守过就不空手）。
 func (h *EzfyHandler) gatherYieldAt(order *model.EzfyOrder, wl *model.EzfyWildland, hoursF float64, fallbackMs int64, env *ezfySettleEnv) ezfyGatherCalc {
@@ -3327,7 +3353,8 @@ func (h *EzfyHandler) gatherYieldAt(order *model.EzfyOrder, wl *model.EzfyWildla
 		officer = h.envOfficer(env, uint(order.CityId), order.Officer)
 	}
 	if officer != nil {
-		logistics = officer.Logistics
+		// ★ 2026-10-31 采集后勤 = 最终后勤（基础 + 装备 + 套装），不再是基础值。
+		logistics = h.gatherLogistics(env, officer)
 	}
 	wildPct := h.ezfyGatherWildBonusPctFor(order, wl, resName, env)
 	divisor := ezfyGatherFormulaDivisor()
@@ -3775,17 +3802,17 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 	}
 	officerBonus := h.officerBattleBonus(leadOfficer)
-	// 攻击加成：武器科技(6)+3%/级 · 重工技术(9)+2%/级
-	// ★ 2026-10-21 军训艺术(5) 改为「造兵速度」科技，不再参与战斗攻击加成。
-	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（：弹道学=射程，不参与攻击加成）
+	// 攻击加成：枪械改良(6)+3%/级 · 重型机床(9)+2%/级
+	// ★ 2026-10-21 动员训练(5) 改为「造兵速度」科技，不再参与战斗攻击加成。
+	// ★ 2026-10-06 炮兵射表(8) 改为**射程加成**（：炮兵射表=射程，不参与攻击加成）
 	atkBonus := officerBonus + atkTech[6]*3 + atkTech[9]*2
-	// 速度加成：只有燃烧引擎(10)「部队速度」是**全体兵种**通用的；
-	// ★ 2026-10-08 喷气引擎(19)「空军速度」是**兵种专属** → 移到下方 atkType（原来错误地加了全军）
+	// 速度加成：只有机械增压(10)「部队速度」是**全体兵种**通用的；
+	// ★ 2026-10-08 喷气推进(19)「空军速度」是**兵种专属** → 移到下方 atkType（原来错误地加了全军）
 	atkSpeedBonus := atkTech[10] * 2
-	// ★ 2026-10-06 攻方射程加成：弹道学(8)+3%/级（射程 = 基础射程 × (1+科技加成)，）
+	// ★ 2026-10-06 攻方射程加成：炮兵射表(8)+3%/级（射程 = 基础射程 × (1+科技加成)，）
 	atkRangeBonus := atkTech[8] * 3
 	// ★★ 2026-10-08 兵种专属加成（配置里写明作用兵种的那些科技/军官技能）：
-	//   · 喷气引擎(19)「空军速度+3%/级」→ **只加空军**
+	//   · 喷气推进(19)「空军速度+3%/级」→ **只加空军**
 	//   · 军官兵种技能：火炮控制=陆军装甲攻击 / 四指编队=空军对空攻击 / 狼群战术=海军对海攻击 /
 	//     坦克突袭=陆军速度 / 闪电袭击=空军速度 / 越岛战术=海军速度
 	//   ★ 原来它们被无差别算进 atkBonus / atkSpeedBonus（全军受益）——
@@ -3794,7 +3821,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	if v := atkTech[19] * 3; v > 0 {
 		atkType.Speed[ezfyTroopTypeAir] += v
 	}
-	// ★★ 2026-10-09 掩体防御「只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」
+	// ★★ 2026-10-09 永备工事「只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」
 	//   （用户口径）→ 不再进全军通用防御 `atkDefBonus`，改成挂在城防(4) 的**兵种专属防御**上。
 	//   攻方出征**不能带城防兵**（createOrder 拦 type=4）→ 这一截对攻方实际恒不生效，
 	//   保留是为了与守方口径对称（以后若放开城防出征也能直接生效）。
@@ -3809,29 +3836,29 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（科技名见 ezfy_cfg 种子表）
 	// ★ 2026-10-08 补全影响 攻击/防御/射程/速度 的全部攻方科技（原来只列攻击类 → 看头像显示不全）
 	atkTechs := ezfyBonusItems(
-		ezfyTechItem("武器科技", atkTech[6]*3),
-		ezfyTechItem("装甲科技", atkTech[7]*3),
-		ezfyTechItem("弹道学", atkTech[8]*3),
-		ezfyTechItem("重工技术", atkTech[9]*2),
-		ezfyTechItem("燃烧引擎", atkTech[10]*2),
-		ezfyTechItem("掩体防御", atkTech[16]*2),
-		ezfyTechItem("喷气引擎", atkTech[19]*3),
+		ezfyTechItem("枪械改良", atkTech[6]*3),
+		ezfyTechItem("均质装甲", atkTech[7]*3),
+		ezfyTechItem("炮兵射表", atkTech[8]*3),
+		ezfyTechItem("重型机床", atkTech[9]*2),
+		ezfyTechItem("机械增压", atkTech[10]*2),
+		ezfyTechItem("永备工事", atkTech[16]*2),
+		ezfyTechItem("喷气推进", atkTech[19]*3),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 	// ★ 装备六项战斗加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
 	atkEquip := h.officerBattleEquipBonus(leadOfficer)
 	// ★ 2026-10-07 攻方「防御加成」：出征军官属性(学识)+防御技能(弧形防御/弹幕支援)+装备 Def。
 	//   原引擎攻方被打时防御恒 0 —— 军官带弧形防御 Lv.5「防御力+150%」既不生效也不展示（用户反馈）。
-	//   ★ 2026-10-08 再加**防御科技**（装甲科技/重工技术）：原来只算军官+技能+装备，
+	//   ★ 2026-10-08 再加**防御科技**（均质装甲/重型机床）：原来只算军官+技能+装备，
 	//     不带队军官时防御恒 0 → 玩家有防御科技也显示「防御+0%」（用户反馈）。口径与守方
 	//     防御科技一致（守方 defBonus 用同 7/9 两档）。伤害减伤与该展示共用 atkDefBonus。
-	//   ★★ 2026-10-09 掩体防御(16) 移出通用防御 → 只对**城防单位**生效（见 atkType.Def[4]），
+	//   ★★ 2026-10-09 永备工事(16) 移出通用防御 → 只对**城防单位**生效（见 atkType.Def[4]），
 	//     所以这里不再 `+ atkTech[16]*2`，明细里也不列（否则「列了却不生效」）。
 	atkDefBonus := 0
 	var atkDefBreak []ezfyBonusItem
 	atkDefBonus += atkTech[7]*3 + atkTech[9]*2
 	atkDefBreak = ezfyBonusItems(atkDefBreak,
-		ezfyTechItem("装甲科技", atkTech[7]*3), ezfyTechItem("重工技术", atkTech[9]*2))
+		ezfyTechItem("均质装甲", atkTech[7]*3), ezfyTechItem("重型机床", atkTech[9]*2))
 	if leadOfficer != nil {
 		attr := h.officerGuardAttrBonus(leadOfficer)
 		atkDefBonus += attr
@@ -3871,12 +3898,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-06 守方「防御加成」逐项明细（城墙/科技/军官属性/军官技能/装备，Name 带前缀；被攻击行展示用）
 	var defDefBreak []ezfyBonusItem
 	defRangeBonus := 0
-	// ★ 2026-10-09 PvP 守方「伤兵回收率」的额外加成%（守方治愈伤兵科技 + 城守军官技能·机械改造），
+	// ★ 2026-10-09 PvP 守方「伤兵回收率」的额外加成%（守方战地医疗科技 + 城守军官技能·机械改造），
 	//   case 3 里填；守方战损按「兵种修复率 + 这个值」进伤兵营（守方伤兵也入营 + 吃科技/技能）。
 	defHealTech := 0
 	// ★ 2026-10-09 守方战损入伤兵营的合计（战报里展示「守方伤兵入营」）
 	defRepairedTotal := int64(0)
-	// ★ 2026-10-08 守方**兵种专属**加成（喷气引擎=空军速度、城守的兵种技能；野地/寇城无科技 → 保持空表）
+	// ★ 2026-10-08 守方**兵种专属**加成（喷气推进=空军速度、城守的兵种技能；野地/寇城无科技 → 保持空表）
 	defType := ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
 	wildLevel := 0
 	wildDefCamp := 0 // 野地守军阵营: 1盟军(野地) 2轴心国(寇城), 0无
@@ -4078,7 +4105,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		rnd = rnd * int64(100+lootTech) / 100
 		// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 管理端「二战系统配置 → 野地获取资源倍率」。
-		//   放在**所有既有加成之后**做最后一道放大：掠夺技巧 / 黄金眼照旧生效，倍率再乘上去。
+		//   放在**所有既有加成之后**做最后一道放大：战地征用 / 黄金眼照旧生效，倍率再乘上去。
 		//   只影响这一处（野地/海野/寇城的战斗战利品），不含驻守采集。
 		rnd = ezfyScaleByWildResMult(rnd)
 		lootFood, lootSteel, lootOil, lootRare, lootGold = rnd, rnd, rnd, rnd, rnd
@@ -4125,36 +4152,36 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★★ 2026-10-09 用户规则（「两个号都是满科技，战斗加成理论上应该一样」）：
 		//   守方防御**不再叠加城墙**（建筑7 ×5%/级）—— 原来守方比攻方凭空多一截城墙，
 		//   满科技的两个号在战报里显示成「攻方 防御+70% / 守方 防御+115%」，玩家以为算错了。
-		//   现在与攻方防御同口径（装甲科技 + 掩体防御 + 重工技术 + 城守军官），
+		//   现在与攻方防御同口径（均质装甲 + 永备工事 + 重型机床 + 城守军官），
 		//   攻守科技都满级时两边防御加成完全一致。
 		//   ⚠️ 城墙建筑本身**保留**（它的「城防兵容量」作用不受影响），只是不再进防御加成。
-		// ★ 2026-09-28 重工技术(9)+2%/级：该科技描述是「重装备**攻防**+2%」，攻方那条路径已加，
+		// ★ 2026-09-28 重型机床(9)+2%/级：该科技描述是「重装备**攻防**+2%」，攻方那条路径已加，
 		//   守方这条原来漏了 → 被攻击时这 2%/级 完全不生效。
-		// ★★ 2026-10-09 掩体防御(16) 移出**通用**防御 → 改成只对**城防单位**生效
-		//   （用户口径「掩体防御只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」），
+		// ★★ 2026-10-09 永备工事(16) 移出**通用**防御 → 改成只对**城防单位**生效
+		//   （用户口径「永备工事只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」），
 		//   见下方 defType.Def[ezfyTroopTypeCity]。
 		defBonus = defTech[7]*3 + defTech[9]*2
-		// 速度：只有燃烧引擎(10)「部队速度」是全体兵种通用；喷气引擎(19)「空军速度」是兵种专属
+		// 速度：只有机械增压(10)「部队速度」是全体兵种通用；喷气推进(19)「空军速度」是兵种专属
 		// （★ 2026-10-08 移到下方 defType —— 原来错误地给全军加速）
 		defSpeedBonus = defTech[10] * 2
 		// 城守: 守城防御 +10% 及 防御/掩体/生命/鼓舞技能
 		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
 		defBonus += h.officerGuardBonus(cityGuard)
-		// ★ 2026-10-09 守方「伤兵回收率」的额外加成 = 守方科技·治愈伤兵(21) + 城守军官技能·机械改造。
+		// ★ 2026-10-09 守方「伤兵回收率」的额外加成 = 守方科技·战地医疗(21) + 城守军官技能·机械改造。
 		//   与攻方同口径（攻方见下方 healTech）：兵种修复率 + 科技 + 技能。
-		// ★ 2026-10-14 治愈伤兵按管理端「效果数值」取（原为固定 2%/级），未配置走原公式。
+		// ★ 2026-10-14 战地医疗按管理端「效果数值」取（原为固定 2%/级），未配置走原公式。
 		// ★ 2026-10-15 机械改造回收率由 10%/级 → **5%/级**（名将满级最高 30%）。
 		defHealTech = ezfyTechEffectValueAt(21, defTech[21])
 		if h.officerHasSkill(cityGuard, "机械改造") {
 			defHealTech += 5 * h.officerSkillScale(cityGuard)
 		}
-		// ★ 2026-10-08 守方兵种专属加成：喷气引擎(19)只加空军 + 城守军官的兵种技能
+		// ★ 2026-10-08 守方兵种专属加成：喷气推进(19)只加空军 + 城守军官的兵种技能
 		//   （火炮控制=陆军 / 四指编队=空军 / 狼群战术=海军 / 坦克突袭·闪电袭击·越岛战术=陆·空·海速度）
 		defType = ezfyTypeBonus{Speed: map[int]int{}, Def: map[int]int{}}
 		if v := defTech[19] * 3; v > 0 {
 			defType.Speed[ezfyTroopTypeAir] += v
 		}
-		// ★★ 2026-10-09 掩体防御「只对城防单位生效」→ 挂在城防(4) 的**兵种专属防御**上，
+		// ★★ 2026-10-09 永备工事「只对城防单位生效」→ 挂在城防(4) 的**兵种专属防御**上，
 		//   由战斗引擎按被攻击方的兵种 type 取（普通部队不吃，城防单位吃）。
 		if v := defTech[16] * 2; v > 0 {
 			defType.Def[ezfyTroopTypeCity] = v
@@ -4162,19 +4189,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defType = h.officerTypeBonus(cityGuard, defType)
 		// ★★ 2026-10-08 修正守方**攻击**加成的科技口径（用户反馈「两个号都是满科技，为什么科技加成不一样」）：
 		//
-		//	原来用「装甲科技(7) + 重工技术(9) + 掩体防御(16)」—— 但装甲科技的配置描述是
-		//	**部队防御**，它只该进防御加成，却被当成攻击加成用了；而**军训艺术(5) / 武器科技(6)**
+		//	原来用「均质装甲(7) + 重型机床(9) + 永备工事(16)」—— 但均质装甲的配置描述是
+		//	**部队防御**，它只该进防御加成，却被当成攻击加成用了；而**动员训练(5) / 枪械改良(6)**
 		//	（描述都是「部队攻击」）完全没算 → 守城部队白丢一截攻击加成，
 		//	且【守方科技】行比【攻方科技】少这两项（满科技的两个号列出来却不一样）。
 		//
-		//	现在与攻方口径对齐：武器科技+3%/级 · 重工技术+2%/级（重装备攻防）
-		//	＋ 城守军官攻击加成。军训艺术(5) 自 2026-10-21 起只加造兵速度，不再进战斗。
-		//	★ 装甲科技(7) 只保留在**防御**加成里（defBonus / defDefBreak），不再重复进攻击。
-		//	★ 守方射程加成 = 弹道学(8)*3（与攻方同口径；掩体防御只进城防攻防，不进射程 —— 见下方 defRangeBonus）
-		// ★★ 2026-10-09 用户规则：**守方攻击不再额外吃「掩体防御」(16)** ——
+		//	现在与攻方口径对齐：枪械改良+3%/级 · 重型机床+2%/级（重装备攻防）
+		//	＋ 城守军官攻击加成。动员训练(5) 自 2026-10-21 起只加造兵速度，不再进战斗。
+		//	★ 均质装甲(7) 只保留在**防御**加成里（defBonus / defDefBreak），不再重复进攻击。
+		//	★ 守方射程加成 = 炮兵射表(8)*3（与攻方同口径；永备工事只进城防攻防，不进射程 —— 见下方 defRangeBonus）
+		// ★★ 2026-10-09 用户规则：**守方攻击不再额外吃「永备工事」(16)** ——
 		//   那是守城方专属的一项，导致满科技的两个号在战报里显示成「攻方 攻击+70% / 守方 攻击+90%」。
-		//   现在两边攻击口径完全一致（武器科技 + 重工技术 + 带队/城守军官）。
-		//   掩体防御仍保留在**防御**里（defBonus / defDefBreak）—— 攻守双方都吃，不影响对称性。
+		//   现在两边攻击口径完全一致（枪械改良 + 重型机床 + 带队/城守军官）。
+		//   永备工事仍保留在**防御**里（defBonus / defDefBreak）—— 攻守双方都吃，不影响对称性。
 		// ★ 2026-10-10 修复「装备一样加成不一样」：攻方攻击 = atkBonus + atkEquip.Dmg（装备伤害单独加），
 		//   而守方攻击之前漏加了装备/套装伤害（defEquip.Dmg）。这里先算 defEquip（必须在 defAtkBonus 之前赋值），
 		//   再补进去 —— 守城部队反击时身上装备/套装的「伤害」加成才真实生效。
@@ -4186,31 +4213,31 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defSkillBreak = h.officerSkillsBreak(cityGuard)
 		// ★ 2026-10-08 与【攻方科技】用**同一集合、同一顺序**：
 		//   满科技的两个号现在列出的科技项完全一致，不会再出现「都是满科技、守方却少两项」的困惑。
-		// ★ 2026-10-21 军训艺术(5) 已改为造兵速度科技，战斗/战报不再列出。
+		// ★ 2026-10-21 动员训练(5) 已改为造兵速度科技，战斗/战报不再列出。
 		defTechBreak = ezfyBonusItems(
-			ezfyTechItem("武器科技", defTech[6]*3),
-			ezfyTechItem("装甲科技", defTech[7]*3),
-			ezfyTechItem("弹道学", defTech[8]*3),
-			ezfyTechItem("重工技术", defTech[9]*2),
-			ezfyTechItem("燃烧引擎", defTech[10]*2),
-			ezfyTechItem("掩体防御", defTech[16]*2),
-			ezfyTechItem("喷气引擎", defTech[19]*3),
+			ezfyTechItem("枪械改良", defTech[6]*3),
+			ezfyTechItem("均质装甲", defTech[7]*3),
+			ezfyTechItem("炮兵射表", defTech[8]*3),
+			ezfyTechItem("重型机床", defTech[9]*2),
+			ezfyTechItem("机械增压", defTech[10]*2),
+			ezfyTechItem("永备工事", defTech[16]*2),
+			ezfyTechItem("喷气推进", defTech[19]*3),
 		)
 		// ★★ 2026-10-08 修复「守方射程加成虚高」（用户反馈「射程加成有问题 守方 50%？」）：
-		//   原来是 `弹道学(8)*3 + 掩体防御(16)*2` —— 但掩体防御的配置描述是
+		//   原来是 `炮兵射表(8)*3 + 永备工事(16)*2` —— 但永备工事的配置描述是
 		//   「**城防攻防**+2% / 提高城防设施攻防」，只加城防的攻与防，**与射程无关**；
-		//   攻方那条路径只有弹道学(8)*3。两边口径不一致 → 满科技的守方凭空多 20% 射程。
-		//   现在与攻方对齐：**守方射程 = 弹道学(8)*3**。
-		//   ★ 掩体防御仍保留在守方**攻击**（defAtkBonus）与**防御**（defBonus/defDefBreak）里 —— 那是它的正确作用。
+		//   攻方那条路径只有炮兵射表(8)*3。两边口径不一致 → 满科技的守方凭空多 20% 射程。
+		//   现在与攻方对齐：**守方射程 = 炮兵射表(8)*3**。
+		//   ★ 永备工事仍保留在守方**攻击**（defAtkBonus）与**防御**（defBonus/defDefBreak）里 —— 那是它的正确作用。
 		defRangeBonus = defTech[8] * 3
 		// ★ 2026-10-06 守方「防御加成」逐项明细（科技/城守属性+技能/装备，
-		//   被打行展示「防御加成+N%(科技·装甲科技+30% …)」，与 defBonus 构成同口径）
+		//   被打行展示「防御加成+N%(科技·均质装甲+30% …)」，与 defBonus 构成同口径）
 		// ★ 2026-10-09 城墙项已移除（与 defBonus 同步 —— 守方不再叠加城墙防御）
-		// ★★ 2026-10-09 掩体防御也移除：它只对**城防单位**生效（见 defType.Def），
+		// ★★ 2026-10-09 永备工事也移除：它只对**城防单位**生效（见 defType.Def），
 		//   不算进通用防御 → 不能列在通用明细里（否则「列了却不生效」）。
 		defDefBreak = ezfyBonusItems(
-			ezfyTechItem("科技·装甲科技", defTech[7]*3),
-			ezfyTechItem("科技·重工技术", defTech[9]*2),
+			ezfyTechItem("科技·均质装甲", defTech[7]*3),
+			ezfyTechItem("科技·重型机床", defTech[9]*2),
 		)
 		if cityGuard != nil {
 			defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官·" + cityGuard.Name, Value: h.officerGuardAttrBonus(cityGuard)})
@@ -4228,7 +4255,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 
 	// 侦查: 不战斗只报告情报, 部队随即返航
-	// 报告细节按**侦查方侦察技巧(科技12)等级**分级（见 scoutReportBody 注释）：
+	// 报告细节按**侦查方无线电侦听(科技12)等级**分级（见 scoutReportBody 注释）：
 	//   玩家城市 → 资源/人口民心/建筑/军队/将领/科技/最后在线时间（逐级解锁）
 	//   野地寇城 → 守军情况
 	if order.OrderType == 1 {
@@ -4418,7 +4445,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					AtkSet:          h.officerSetEquipBonus(leadOfficer),
 					AtkSetDesc:      h.officerSetsDesc(leadOfficer),
 					AtkOfficerSkill: h.officerSkillBattleBonus(leadOfficer),
-					// ★ 2026-10-08 兵种专属加成（喷气引擎=空军速度等）
+					// ★ 2026-10-08 兵种专属加成（喷气推进=空军速度等）
 					AtkType: atkType,
 					// ★ 2026-10-31 弧形防御/火炮控制「每3回合发动1回合」在驻军战里同样生效
 					AtkTimed: h.officerTimedSkills(leadOfficer),
@@ -4571,7 +4598,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
 			// ★★ 2026-10-20 守方用 defSetOfficer（城守或附属野地守军主将），与套装展示同口径。
 			h.officerSkillBattleBonus(leadOfficer), h.officerSkillBattleBonus(defSetOfficer),
-			// ★ 2026-10-06 技能/科技逐项明细（战报展示「军官技能·尖兵突击+N%」「科技·弹道学+N%」）
+			// ★ 2026-10-06 技能/科技逐项明细（战报展示「军官技能·尖兵突击+N%」「科技·炮兵射表+N%」）
 			atkSkillBreak, defSkillBreak, atkTechs, defTechBreak, defDefBreak,
 			// ★ 2026-10-07 攻方「防御加成」（军官属性+防御技能+装备 Def）
 			atkDefBonus, atkDefBreak,
@@ -4579,7 +4606,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 			h.officerCounterRounds(leadOfficer), defCounterRounds,
 			h.ensureProfile(uid).Camp, defCamp,
-			// ★ 2026-10-08 兵种专属加成（喷气引擎=空军速度、军官兵种技能）
+			// ★ 2026-10-08 兵种专属加成（喷气推进=空军速度、军官兵种技能）
 			atkType, defType)
 		// ★★ 2026-10-23 名将组合技能（系统专属战法）：攻方带队名将 / 守方城守（或野地守将）。
 		//   普通军官没有 GeneralId → comboSkillsOfOfficer 返回 nil，等于没这功能，不影响老战斗。
@@ -4907,7 +4934,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	for _, g := range losses {
 		deadCount += g.Count
 	}
-	// ★ 2026-10-14 治愈伤兵按管理端「效果数值」取（原为固定 2%/级），未配置走原公式。
+	// ★ 2026-10-14 战地医疗按管理端「效果数值」取（原为固定 2%/级），未配置走原公式。
 	healTech := ezfyTechEffectValueAt(21, atkTech[21])
 	// 带队军官「机械改造」技能: 战后伤兵恢复 +5%/级（★ 2026-10-15 由 10%/级下调，最高 30%）
 	if h.officerHasSkill(leadOfficer, "机械改造") {
@@ -4954,7 +4981,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//
 	//	原来守方战损**只扣兵、不进伤兵营**（仅「攻方获胜」时按 ezfyDeserterRate 进逃兵营）——
 	//	打一场 PvP，守方掉几万兵一个都回不来。现在与攻方同口径：守方战损按
-	//	「兵种修复率 + 守方科技·治愈伤兵 + 城守军官技能·机械改造」进伤兵营（defHealTech）。
+	//	「兵种修复率 + 守方科技·战地医疗 + 城守军官技能·机械改造」进伤兵营（defHealTech）。
 	if order.TargetType == 3 && target != nil {
 		for _, g := range br.DefenderLosses {
 			if g.Count <= 0 {
@@ -4999,7 +5026,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	healLineDef := ezfyHealPctLine(defRepairedTotal, br.DefenderLosses)
 
 	// 携带容量(剩余部队负重)
-	// ★ 2026-09-28 同样统一走 ezfyCarryCapOf（含「装载技术」加成），
+	// ★ 2026-09-28 同样统一走 ezfyCarryCapOf（含「标准化装卸」加成），
 	//   否则掠夺时「能搬走多少」会比部队真实负重少，玩家看到战利品被无理由截断。
 	carry := h.ezfyCarryCapOf(left, city.ID)
 
@@ -5090,7 +5117,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += "\n目标城市处于免战保护期, 无法掠夺资源!"
 		}
 		if order.TargetType == 3 && target != nil {
-			// 玩家城市: 掠夺比例10%+掠夺技巧, 上限50%
+			// 玩家城市: 掠夺比例10%+战地征用, 上限50%
 			lootRate := 10 + atkTech[17]*2
 			if h.officerHasSkill(leadOfficer, "黄金眼") {
 				// ★ 2026-10-06 技能随军官等级自动升级：掠夺率也随等级 ×N
@@ -6346,8 +6373,8 @@ func (h *EzfyHandler) ezfyWildDefOfficersDesc(orders []model.EzfyOrder) string {
 // 科技也没有」：附属野地有玩家守军时，之前只把军官名字写进战报，战斗引擎拿到的
 // defBonus/defAtkBonus/defTechBreak 全是 0。现在与玩家城 case 3 的城守口径一致：
 //
-//	防御 = 装甲科技(7)×3 + 重工技术(9)×2 + 军官学识/防御技能
-//	攻击 = 武器科技(6)×3 + 重工技术(9)×2 + 军官攻击 + 装备伤害
+//	防御 = 均质装甲(7)×3 + 重型机床(9)×2 + 军官学识/防御技能
+//	攻击 = 枪械改良(6)×3 + 重型机床(9)×2 + 军官攻击 + 装备伤害
 //	速度/射程/兵种专属/装备/套装/伤兵回收同样按城守公式计算。
 type ezfyDefenderBonus struct {
 	DefBonus        int
@@ -6374,9 +6401,9 @@ func (h *EzfyHandler) ezfyWildDefCombatBonus(tech map[int]int, officer *model.Ez
 	}
 	// 防御：与玩家城守军一致，不含城墙（城墙只守城，不守野地）。
 	b.DefBonus = tech[7]*3 + tech[9]*2 + h.officerGuardBonus(officer)
-	// 速度：燃烧引擎(10) 全体 +2%/级；喷气引擎(19) 只加空军 +3%/级。
+	// 速度：机械增压(10) 全体 +2%/级；喷气推进(19) 只加空军 +3%/级。
 	b.DefSpeedBonus = tech[10] * 2
-	// 伤兵回收：治愈伤兵(21) + 军官「机械改造」5%/级（野地守军损失写回订单，
+	// 伤兵回收：战地医疗(21) + 军官「机械改造」5%/级（野地守军损失写回订单，
 	// 这里保留与城守同一口径，战报/后续扩展不会因为漏算而出现 0）。
 	b.DefHealTech = ezfyTechEffectValueAt(21, tech[21])
 	if h.officerHasSkill(officer, "机械改造") {
@@ -6391,23 +6418,23 @@ func (h *EzfyHandler) ezfyWildDefCombatBonus(tech map[int]int, officer *model.Ez
 	b.Type = h.officerTypeBonus(officer, b.Type)
 	// 装备/套装六项（伤害→攻击、防御→防御、生命/暴击/移动按引擎口径生效）。
 	b.Equip = h.officerBattleEquipBonus(officer)
-	// 攻击：武器科技/重工技术 + 军官攻击 + 装备伤害。
+	// 攻击：枪械改良/重型机床 + 军官攻击 + 装备伤害。
 	b.OfficerAtkBonus = h.officerBattleBonus(officer)
 	b.DefAtkBonus = tech[6]*3 + tech[9]*2 + b.OfficerAtkBonus + b.Equip.Dmg
 	b.SkillBreak = h.officerSkillsBreak(officer)
 	b.TechBreak = ezfyBonusItems(
-		ezfyTechItem("武器科技", tech[6]*3),
-		ezfyTechItem("装甲科技", tech[7]*3),
-		ezfyTechItem("弹道学", tech[8]*3),
-		ezfyTechItem("重工技术", tech[9]*2),
-		ezfyTechItem("燃烧引擎", tech[10]*2),
-		ezfyTechItem("掩体防御", tech[16]*2),
-		ezfyTechItem("喷气引擎", tech[19]*3),
+		ezfyTechItem("枪械改良", tech[6]*3),
+		ezfyTechItem("均质装甲", tech[7]*3),
+		ezfyTechItem("炮兵射表", tech[8]*3),
+		ezfyTechItem("重型机床", tech[9]*2),
+		ezfyTechItem("机械增压", tech[10]*2),
+		ezfyTechItem("永备工事", tech[16]*2),
+		ezfyTechItem("喷气推进", tech[19]*3),
 	)
 	b.DefRangeBonus = tech[8] * 3
 	b.DefBreak = ezfyBonusItems(
-		ezfyTechItem("科技·装甲科技", tech[7]*3),
-		ezfyTechItem("科技·重工技术", tech[9]*2),
+		ezfyTechItem("科技·均质装甲", tech[7]*3),
+		ezfyTechItem("科技·重型机床", tech[9]*2),
 	)
 	if officer != nil {
 		b.DefBreak = append(b.DefBreak, ezfyBonusItem{Name: "军官·" + officer.Name, Value: h.officerGuardAttrBonus(officer)})
@@ -6818,7 +6845,7 @@ func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, now int64) {
 // addReport 战报写入
 // scoutReportBody 侦查报告正文
 //
-// ★★ 2026-10-02 用户规则重做：报告细节受**侦查方侦察技巧(科技12)等级**卡控，
+// ★★ 2026-10-02 用户规则重做：报告细节受**侦查方无线电侦听(科技12)等级**卡控，
 // 不再让低等级侦察把别人「看个精光」：
 //
 //	<6 级：建筑/科技只能模糊看到有哪些（等级不清晰）；兵种只能模糊看到类别
@@ -6833,7 +6860,7 @@ func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, now int64) {
 // 城市报告格式取自 `参考材料/开发文档/侦察报告1.txt`。
 func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetName string,
 	target *model.EzfyCity, defender []ezfyUnitGroup, wildOwned bool) string {
-	// 侦查方侦察技巧等级（科技12，0-10），决定报告能看清多少细节
+	// 侦查方无线电侦听等级（科技12，0-10），决定报告能看清多少细节
 	scoutLv := h.techMap(uint(order.CityId))[ezfyReconTechID]
 	var b strings.Builder
 	fmt.Fprintf(&b, "公文报告:侦查报告\n我方一支部队对%s[%d，%d]进行了侦查。侦查过程中未受到任何阻拦。\n",
@@ -6898,7 +6925,7 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		levels[cb.BuildingId] = append(levels[cb.BuildingId], cb.Level)
 	}
 	sort.Ints(ids)
-	// ★ 侦察技巧<6级: 只能模糊看到已有的建筑, 建筑等级不清晰
+	// ★ 无线电侦听<6级: 只能模糊看到已有的建筑, 建筑等级不清晰
 	if scoutLv < 6 {
 		b.WriteString("建筑(等级不详): ")
 		for _, id := range ids {
@@ -6960,7 +6987,7 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		}
 	}
 	if scoutLv < 7 {
-		// ★ 侦察技巧<7级: 兵种类型只能模糊查看, 数量无法查清
+		// ★ 无线电侦听<7级: 兵种类型只能模糊查看, 数量无法查清
 		var cats []string
 		if hasDef {
 			cats = append(cats, "城防")
@@ -7009,7 +7036,7 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		}
 	}
 
-	// ★ 侦察技巧≥9级: 才能看到该城所有军官、谁是城守、等级
+	// ★ 无线电侦听≥9级: 才能看到该城所有军官、谁是城守、等级
 	if scoutLv >= 9 {
 		officers := h.officerList(target.ID)
 		offText := ""
@@ -7050,7 +7077,7 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		b.WriteString("科技等级：" + techText + "\n")
 	}
 
-	// ★ 侦察技巧≥10级: 才能看到玩家最后在线时间（取账号最近活跃时间）
+	// ★ 无线电侦听≥10级: 才能看到玩家最后在线时间（取账号最近活跃时间）
 	if scoutLv >= 10 {
 		var owner model.User
 		if err := h.home().First(&owner, target.UserID).Error; err == nil && owner.LastActiveAt != nil {
@@ -7059,7 +7086,7 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 	}
 
 	if scoutLv < 10 {
-		fmt.Fprintf(&b, "（侦察技巧%d级, 部分情报无法查清）\n", scoutLv)
+		fmt.Fprintf(&b, "（无线电侦听%d级, 部分情报无法查清）\n", scoutLv)
 	}
 	b.WriteString("侦查完成。")
 	return b.String()
@@ -7157,7 +7184,7 @@ func (h *EzfyHandler) battleStatsTail(uid uint, prestigeGain, recyclePct int, he
 // ezfyWoundedReportLine 战报里的「攻方伤兵入营」行。
 //
 // ★ 2026-10-09 用户反馈「pvp 伤兵回收比例应该有问题」——实测这一行的数值**是对的**
-// （攻方战损 10697、航母修复率 20% + 满级治愈伤兵 +20% → 4278 = 40%），
+// （攻方战损 10697、航母修复率 20% + 满级战地医疗 +20% → 4278 = 40%），
 // 但战报只写一个数字，玩家拿它跟「兵种详情页的修复率 20%」一对就以为算错了。
 // 这里把**占比**和**修复率的额外加成**一并写出来，一眼能对账。
 //

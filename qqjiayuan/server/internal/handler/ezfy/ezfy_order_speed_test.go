@@ -9,10 +9,10 @@ import (
 //
 // 背景（2026-10-16 玩家反馈「有运输站/科技加成反而变久了」）：
 //
-//  1. **侦察技巧(科技12) 只加军情情报等级，不加速行军**。耗时公式里那级 `tech[12]*2`
+//  1. **无线电侦听(科技12) 只加军情情报等级，不加速行军**。耗时公式里那级 `tech[12]*2`
 //     是原版公式的残留（原版 `ezfy_cfg_tech` 12 号写的是「行军速度+2%」，本项目后来把它的
 //     效果改成了「情报+1级」，两套口径就打架了）。
-//     真正加速行军的是 燃烧引擎(科技10，通用) + 喷气引擎(科技19，空军)，已折进 ezfyMarchSpeed。
+//     真正加速行军的是 机械增压(科技10，通用) + 喷气推进(科技19，空军)，已折进 ezfyMarchSpeed。
 //
 //  2. 运输站(建筑20) 是**倍数**口径（对齐 cfg 文案「部队行动速度提高1.5~6.0倍(己方/盟友基地间)」）：
 //     只按**出发城**等级 → 1级1.5倍 … 10级6.0倍；只对「己方/盟友基地间」的调动生效
@@ -20,7 +20,7 @@ import (
 //
 // 预览(/order/preview) 与下单(createOrder) 必须**同口径**，否则「看到的耗时」≠「实际耗时」。
 
-// TestMarchSpeedIgnoresReconTech —— 耗时公式里不得再出现「侦察技巧(科技12)」那一级
+// TestMarchSpeedIgnoresReconTech —— 耗时公式里不得再出现「无线电侦听(科技12)」那一级
 func TestMarchSpeedIgnoresReconTech(t *testing.T) {
 	bad := []string{"techMap[12]*2", "techMap[12] * 2", "tech[12]*2", "tech[12] * 2"}
 	for _, fn := range []string{
@@ -30,8 +30,8 @@ func TestMarchSpeedIgnoresReconTech(t *testing.T) {
 		body := ezfyFuncBody(t, "ezfy_order.go", fn)
 		for _, b := range bad {
 			if strings.Contains(body, b) {
-				t.Fatalf("%s 里又出现 `%s` —— 侦察技巧(科技12)只加军情情报等级，不加速行军。\n"+
-					"行军速度请走 ezfyMarchSpeed（燃烧引擎10 通用 / 喷气引擎19 空军）。", fn, b)
+				t.Fatalf("%s 里又出现 `%s` —— 无线电侦听(科技12)只加军情情报等级，不加速行军。\n"+
+					"行军速度请走 ezfyMarchSpeed（机械增压10 通用 / 喷气推进19 空军）。", fn, b)
 			}
 		}
 	}
@@ -83,17 +83,17 @@ func TestStationOrderTypeScope(t *testing.T) {
 	}
 }
 
-// TestSpdBonusNamesRealSources —— 「提速」清单要写清来源，且不能把侦察技巧算成提速
+// TestSpdBonusNamesRealSources —— 「提速」清单要写清来源，且不能把无线电侦听算成提速
 func TestSpdBonusNamesRealSources(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) OrderPreview(")
 	if strings.Contains(body, `"科技+%d%%"`) {
-		t.Fatal("「提速」清单里又出现含糊的「科技+%」，请写明 燃烧引擎 / 喷气引擎")
+		t.Fatal("「提速」清单里又出现含糊的「科技+%」，请写明 机械增压 / 喷气推进")
 	}
-	if !strings.Contains(body, `"燃烧引擎+%d%%"`) {
-		t.Fatal("「提速」清单应列出 燃烧引擎（科技10，通用行军速度）")
+	if !strings.Contains(body, `"机械增压+%d%%"`) {
+		t.Fatal("「提速」清单应列出 机械增压（科技10，通用行军速度）")
 	}
-	if !strings.Contains(body, `"喷气引擎+%d%%"`) {
-		t.Fatal("「提速」清单应列出 喷气引擎（科技19，仅部队含空军时）")
+	if !strings.Contains(body, `"喷气推进+%d%%"`) {
+		t.Fatal("「提速」清单应列出 喷气推进（科技19，仅部队含空军时）")
 	}
 	if !strings.Contains(body, `"运输站×%.1f倍"`) {
 		t.Fatal("「提速」清单里运输站要按倍数展示（运输站×N.N倍）")

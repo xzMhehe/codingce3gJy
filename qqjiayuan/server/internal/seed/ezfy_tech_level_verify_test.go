@@ -22,7 +22,7 @@ func TestTechLevelSeedKeepsAdminValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("连库失败: %v", err)
 	}
-	// 模拟管理端把治愈伤兵 Lv.10 改成 50
+	// 模拟管理端把战地医疗 Lv.10 改成 50
 	db.Model(&model.EzfyCfgTechLevel{}).Where("tech_id = ? AND level = ?", 21, 10).
 		Updates(map[string]interface{}{"effect_value": 50, "effect": "伤兵恢复+50%"})
 	// 跑两次种子（= 两次重启）

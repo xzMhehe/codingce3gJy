@@ -357,13 +357,36 @@ func (h *EzfyHandler) ownedGeneralIds(uid uint) map[int]bool {
 	return owned
 }
 
-// officerSkills 解析军官已学技能名
-func officerSkills(o *model.EzfyOfficer) []string {
+// officerSkillSlotsRaw 解析军官技能栏的**原始槽位**（保留空槽 = 空串）。
+//
+// ★★ 2026-10-31 用户反馈「把技能2遗忘了，技能3跑到技能2上面去了」：
+//
+//	原来 Skill 存的是**紧凑数组**，遗忘一个就整段前移 → 界面按数组下标当槽位，
+//	第 3 个技能就窜到了第 2 行。现在数组**按槽位固定长度**存（空槽写空串）：
+//	遗忘只把该槽清空、学习只填**第一个空槽**，槽位天然稳定。
+//
+// ⚠️ 老数据仍是紧凑数组（没有空串）→ 原样返回，行为与之前完全一致。
+func officerSkillSlotsRaw(o *model.EzfyOfficer) []string {
 	out := []string{}
 	if o == nil || o.Skill == "" {
 		return out
 	}
 	_ = json.Unmarshal([]byte(o.Skill), &out)
+	return out
+}
+
+// officerSkills 解析军官已学技能名（**跳过空槽**）。
+//
+// ★★ 2026-10-31 槽位化之后必须过滤空串：所有战斗/属性/展示逻辑都只认「真的学会了」的技能，
+// 空槽只是占位（见 officerSkillSlotsRaw 的注释）。调用方不要改成读原始数组。
+func officerSkills(o *model.EzfyOfficer) []string {
+	raw := officerSkillSlotsRaw(o)
+	out := make([]string, 0, len(raw))
+	for _, s := range raw {
+		if strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
 	return out
 }
 
@@ -873,12 +896,37 @@ func (h *EzfyHandler) learnRandomSkill(city *model.EzfyCity, officerId int64) (s
 		return "没有「军官技能书」，可在商城购买", ""
 	}
 	h.consumeItem(city.UserID, bookId, "军官学技能")
-	skills = append(skills, sk.Name)
-	h.saveOfficerSkills(o, skills)
+	// ★★ 2026-10-31 写进**第一个空槽**（不是简单 append）：槽位固定，遗忘后学新技能
+	//   会填回空出来的那一格，界面不会「整段前移」。
+	h.saveOfficerSkills(o, ezfySkillSlotsAppend(officerSkillSlotsRaw(o), sk.Name))
 	return "", fmt.Sprintf("学会技能【%s】Lv.%d", sk.Name, h.officerSkillLevel(o))
 }
 
+// ezfySkillSlotsAppend 把新技能放进**第一个空槽**；没有空槽且未满则追加；已满返回原样。
+//
+// ★ 2026-10-31 槽位化（见 officerSkillSlotsRaw）：空槽 = 空串占位。
+func ezfySkillSlotsAppend(slots []string, name string) []string {
+	if strings.TrimSpace(name) == "" {
+		return slots
+	}
+	out := make([]string, 0, len(slots)+1)
+	out = append(out, slots...)
+	for i := 0; i < len(out); i++ {
+		if strings.TrimSpace(out[i]) == "" {
+			out[i] = name
+			return out
+		}
+	}
+	if len(out) >= ezfyOfficerMaxSkill {
+		return slots // 已满：不覆盖任何已学技能
+	}
+	return append(out, name)
+}
+
 // forgetSkill 遗忘技能（免费）
+//
+// ★★ 2026-10-31 只把**该槽清空**（写空串），不再把后面的技能整体前移 ——
+// 用户反馈「把技能2遗忘了，技能3上的技能跑到技能2上面来了」。
 func (h *EzfyHandler) forgetSkill(city *model.EzfyCity, officerId int64, skillId int) string {
 	o := h.officerOf(city.ID, officerId)
 	if o == nil {
@@ -888,20 +936,19 @@ func (h *EzfyHandler) forgetSkill(city *model.EzfyCity, officerId int64, skillId
 	if cfg == nil {
 		return "技能不存在"
 	}
-	skills := officerSkills(o)
-	kept := []string{}
+	slots := officerSkillSlotsRaw(o)
 	found := false
-	for _, s := range skills {
-		if s == cfg.Name {
+	for i := range slots {
+		if slots[i] == cfg.Name {
+			slots[i] = ""
 			found = true
-			continue
+			break
 		}
-		kept = append(kept, s)
 	}
 	if !found {
 		return "未学习该技能"
 	}
-	h.saveOfficerSkills(o, kept)
+	h.saveOfficerSkills(o, slots)
 	return ""
 }
 
@@ -1540,7 +1587,7 @@ type ezfyBattleBonus struct {
 }
 
 // ezfyBonusItem 战报加成拆解的单条明细：名字 + 百分点。
-// 军官技能逐项（如 尖兵突击+90%）、科技逐项（如 弹道学+54%）都走这个结构。
+// 军官技能逐项（如 尖兵突击+90%）、科技逐项（如 炮兵射表+54%）都走这个结构。
 type ezfyBonusItem struct {
 	Name  string
 	Value int
@@ -1846,7 +1893,7 @@ func (h *EzfyHandler) officerCounterRounds(o *model.EzfyOfficer) int {
 
 // ★★ 2026-10-09 行军速度也改成**按兵种**生效（见 ezfy_order.go 的 ezfyMarchSpeed）：
 // 原来的 officerSpeedSkillBonus（不分兵种一律 +10%/级）已删除 —— 越岛战术(海军)带队纯陆军
-// 不再凭空加速，与「喷气引擎=空军速度」这类「有兵种限制」的口径统一。
+// 不再凭空加速，与「喷气推进=空军速度」这类「有兵种限制」的口径统一。
 // 战斗内速度与行军速度现在都由 officerTypeBonus 按兵种下发（10%×技能等级，见下方 switch）。
 //
 // officerTypeBonus 军官**兵种专属**技能加成 → 写进 ezfyTypeBonus。
@@ -2130,15 +2177,15 @@ func ezfySkillEffectText(skill string) string {
 	case "绝地反击":
 		return "第1回合反击"
 	case "火炮控制":
-		return "陆军装甲攻击+10"
+		return "装甲部队攻击+10"
 	case "坦克突袭":
-		return "陆军速度+10%"
+		return "坦克速度+10%"
 	case "四指编队":
 		return "空军对空攻击+15%"
 	case "闪电袭击":
 		return "空军速度+10%"
 	case "狼群战术":
-		return "海军对海攻击+15%"
+		return "海军攻击力+15%"
 	case "越岛战术":
 		return "海军速度+10%"
 	case "弹幕支援":
@@ -2150,6 +2197,21 @@ func ezfySkillEffectText(skill string) string {
 	default:
 		return ""
 	}
+}
+
+// ezfySkillDesOf 技能简述（配置表 ezfy_cfg_skill.des，管理端可改）。
+//
+// ★ 2026-10-31 军官详情「点击技能展开」用它显示一句话说明；找不到返回空串（前端只显示效果）。
+func ezfySkillDesOf(name string) string {
+	if name == "" {
+		return ""
+	}
+	for _, s := range ezfyCfg.skills {
+		if s.Name == name {
+			return s.Des
+		}
+	}
+	return ""
 }
 
 // ezfySkillEffectTextAt 技能在某等级(Lv，1/2/3)下的效果文本。
@@ -2167,15 +2229,18 @@ func ezfySkillEffectTextAt(skill string, lv int) string {
 	case "弧形防御":
 		return "防御力+" + strconv.Itoa(30*lv) + "%"
 	case "火炮控制":
-		return "陆军装甲攻击+" + strconv.Itoa(10*lv)
+		// ★ 2026-10-31 作用面收窄到装甲部队（装甲车/轻坦/重坦/突击炮/火箭）
+		return "装甲部队攻击+" + strconv.Itoa(10*lv)
 	case "坦克突袭":
-		return "陆军速度+" + strconv.Itoa(10*lv) + "%"
+		// ★ 2026-10-31 只对轻型坦克/重型坦克生效
+		return "坦克速度+" + strconv.Itoa(10*lv) + "%"
 	case "四指编队":
 		return "空军对空攻击+" + strconv.Itoa(15*lv) + "%"
 	case "闪电袭击":
 		return "空军速度+" + strconv.Itoa(10*lv) + "%"
 	case "狼群战术":
-		return "海军对海攻击+" + strconv.Itoa(15*lv) + "%"
+		// ★ 2026-10-31 改为「海军攻击力」（百分比、不限目标），不再是「对海攻击数值」
+		return "海军攻击力+" + strconv.Itoa(15*lv) + "%"
 	case "越岛战术":
 		return "海军速度+" + strconv.Itoa(10*lv) + "%"
 	case "弹幕支援":
@@ -3101,11 +3166,28 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	h.checkTechDone(&city, cityIdsOf(cities))
 	h.collectTrainQueue(&city, trainQueues)
 	h.calcResource(&city, cityOfficers)
+	// ★★ 2026-10-31 技能栏按**槽位**下发（固定 3 格，空槽 name=""）：
+	//   前端按 slot 渲染「技能1/2/3」，遗忘一个只清空该格，后面的技能不会窜位。
 	skillViews := []gin.H{}
 	lv := h.officerSkillScale(o)
-	for _, s := range officerSkills(o) {
-		// ★ 2026-10-06 已学技能随军官等级自动升级：返回当前技能等级 level 与等级效果文本
-		skillViews = append(skillViews, gin.H{"name": s, "effect": ezfySkillEffectTextAt(s, lv), "level": lv})
+	rawSlots := officerSkillSlotsRaw(o)
+	slotN := ezfyOfficerMaxSkill
+	if len(rawSlots) > slotN {
+		slotN = len(rawSlots) // 老数据万一超 3 个，也不藏起来（否则那几条没法遗忘）
+	}
+	for i := 0; i < slotN; i++ {
+		name := ""
+		if i < len(rawSlots) {
+			name = strings.TrimSpace(rawSlots[i])
+		}
+		v := gin.H{"slot": i + 1, "name": name, "level": lv}
+		if name != "" {
+			// ★ 2026-10-06 已学技能随军官等级自动升级：返回当前等级效果文本
+			// ★ 2026-10-31 再带一句「简述」（技能 tab 的润色文案），前端点击展开时显示
+			v["effect"] = ezfySkillEffectTextAt(name, lv)
+			v["des"] = ezfySkillDesOf(name)
+		}
+		skillViews = append(skillViews, v)
 	}
 	allSkills := []gin.H{}
 	for _, s := range ezfyCfg.skills {

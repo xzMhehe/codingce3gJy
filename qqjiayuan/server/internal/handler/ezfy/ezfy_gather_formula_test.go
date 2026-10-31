@@ -1,6 +1,7 @@
 package ezfy
 
 import (
+	"strings"
 	"testing"
 
 	"qqjiayuan/server/internal/model"
@@ -157,5 +158,32 @@ func TestEzfyWildResLevelsAggregate(t *testing.T) {
 	}
 	if got := ezfyWildResLevels(wls)[res]; got != 14 {
 		t.Fatalf("同资源野地总等级 = %d, want 14", got)
+	}
+}
+
+// ★★ 2026-10-31 用户规则：采集公式的后勤项（A）改吃**最终后勤**（基础 + 装备 + 套装），
+// 为后续出「后勤装备」做准备；不能再直接用军官基础后勤。
+func TestEzfyGatherLogisticsCountsEquipment(t *testing.T) {
+	o := &model.EzfyOfficer{
+		Logistics: 100,
+		Equipment: `[{"slot":"ring","logistics":10},{"slot":"necklace","logistics":5}]`,
+	}
+	h := &EzfyHandler{}
+	if _, log, _ := h.officerEquipBonus(o); log != 15 {
+		t.Fatalf("装备后勤汇总 = %d, want 15", log)
+	}
+	body := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) gatherLogistics(")
+	if !strings.Contains(body, "officerEffective(") {
+		t.Fatalf("gatherLogistics 没有取最终后勤（基础+装备+套装）：\n%s", body)
+	}
+	if !strings.Contains(body, "env.gatherLogs") {
+		t.Fatalf("gatherLogistics 没有复用批次缓存 env.gatherLogs（批量结算会重复解析装备 JSON）：\n%s", body)
+	}
+	yield := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) gatherYieldAt(")
+	if !strings.Contains(yield, "h.gatherLogistics(env, officer)") {
+		t.Fatalf("gatherYieldAt 没有使用最终后勤：\n%s", yield)
+	}
+	if strings.Contains(yield, "logistics = officer.Logistics") {
+		t.Fatalf("gatherYieldAt 仍在用军官基础后勤：\n%s", yield)
 	}
 }

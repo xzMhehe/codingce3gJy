@@ -122,7 +122,7 @@ func TestTechBonusRequiresAcademy(t *testing.T) {
 	if !strings.Contains(lcd, "ezfyTechsPick(") {
 		t.Fatalf("ezfyLoadCityData 没按本城科研中心过滤科技表（所有懒结算都会吃错加成）：\n%s", lcd)
 	}
-	// ⑧ 出征预览的负重（装载技术）也必须按出发城判定
+	// ⑧ 出征预览的负重（标准化装卸）也必须按出发城判定
 	ord := stripGoComments(rawFile(t, "ezfy_order.go"))
 	if !strings.Contains(ord, "h.buildingLevel(city.ID, ezfyAcademyBuildingID)") {
 		t.Fatal("出征预览的负重科技没按出发城的科研中心过滤")

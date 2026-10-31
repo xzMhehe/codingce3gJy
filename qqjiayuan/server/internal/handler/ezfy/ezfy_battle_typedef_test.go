@@ -32,7 +32,7 @@ func TestTypeDefTxtHiddenWhenTroopAbsent(t *testing.T) {
 		}
 	}
 
-	// 速度同理（喷气引擎=空军速度，没带空军就不该展示）
+	// 速度同理（喷气推进=空军速度，没带空军就不该展示）
 	sp := ezfyTypeBonus{Speed: map[int]int{ezfyTroopTypeAir: 30}}
 	if got := ezfyTypeSpeedTxt(sp, map[int]bool{}); got != "" {
 		t.Errorf("没有空军时不应展示兵种专属速度，实际 %q", got)
@@ -46,7 +46,7 @@ func TestTypeDefTxtHiddenWhenTroopAbsent(t *testing.T) {
 //
 // ★★ 2026-10-11 用户口径：「不显示的也不要给防御加成哈」。
 //
-//	掩体防御(16) 改成「只对城防单位生效」后，守方这一截按**被攻击单位的兵种 type** 取
+//	永备工事(16) 改成「只对城防单位生效」后，守方这一截按**被攻击单位的兵种 type** 取
 //	（`st.DefType.defOf(target.cfg.Type)`）：没带城防兵时任何单位都吃不到，
 //	与「战斗加成行不展示这一截」保持一致 —— 不允许「不显示却生效」。
 func TestCityDefBonusOnlyAppliesToCityTroops(t *testing.T) {

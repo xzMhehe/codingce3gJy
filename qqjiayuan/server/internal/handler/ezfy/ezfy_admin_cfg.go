@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"qqjiayuan/server/internal/ezfyreq"
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
 )
@@ -180,6 +181,22 @@ func (h *EzfyAdmin) AdminEzfyTroopCfgUpdate(c *gin.Context) {
 	if len(vals) == 0 {
 		resp.ParamError(c, "无可修改字段")
 		return
+	}
+	// ★★ 2026-10-31 保存 require 文本时**同步重算结构化 ID**（require_ids）。
+	//   训练校验只认 ID，所以这里是「文本 → ID」的唯一写入口：
+	//   名字打错当场报错（否则保存后这条门槛等于没有，且不报错不告警）。
+	if v, ok := vals["require"]; ok {
+		text, _ := v.(string)
+		if !ezfyCfg.ready() {
+			ezfyCfg.load(h.DB)
+		}
+		refs, unknown := ezfyreq.Parse(text, ezfyCfg.buildingByName, ezfyCfg.techByName)
+		if len(unknown) > 0 {
+			resp.ParamError(c, "需要条件里有无法识别的建筑/科技名："+strings.Join(unknown, "、")+
+				"（请填配置表里存在的名字，如「军工厂(5级)枪械改良(3级)」）")
+			return
+		}
+		vals["require_ids"] = ezfyreq.Format(refs)
 	}
 	if err := h.DB.Model(&model.EzfyCfgTroop{}).Where("id = ?", id).Updates(vals).Error; err != nil {
 		resp.ParamError(c, "修改失败："+err.Error())

@@ -5,7 +5,7 @@
           资源详情:<br/>
           名称: {{ ezfy.resNames[ezfy.resType] }}<br/>
           储量: {{ ezfy.resDetail.stock }} / 容纳: {{ ezfy.resDetail.cap }}
-          <span v-if="ezfy.resDetail.store_tech > 0"> [储存技术Lv{{ ezfy.resDetail.store_tech }}: 容量+{{ ezfy.resDetail.store_tech * 2 }}%]</span>
+          <span v-if="ezfy.resDetail.store_tech > 0"> [野战仓储Lv{{ ezfy.resDetail.store_tech }}: 容量+{{ ezfy.resDetail.store_tech * 2 }}%]</span>
           <br/>
           基础产量(每小时): {{ ezfy.resDetail.base }}
           <span v-if="ezfy.resDetail.tech_prod > 0"> [{{ ezfy.resTechName }}Lv{{ ezfy.resDetail.tech_prod }}: +{{ ezfy.resDetail.tech_prod * 10 }}%]</span>
@@ -28,10 +28,10 @@
           <template v-if="ezfy.resType === 'food'">
             军队耗粮: {{ ezfy.fmtBig(ezfy.resDetail.troop_consume_raw !== undefined ? ezfy.resDetail.troop_consume_raw : (ezfy.resDetail.troop_consume || 0)) }}
           <template v-if="ezfy.resDetail.supply_tech > 0">
-            [补给技巧Lv{{ ezfy.resDetail.supply_tech }}: -{{ ezfy.resDetail.supply_tech * 2 }}%
+            [野战口粮Lv{{ ezfy.resDetail.supply_tech }}: -{{ ezfy.resDetail.supply_tech * 2 }}%
             → 实扣 {{ ezfy.fmtBig(ezfy.resDetail.troop_consume || 0) }}]
           </template>
-          <span v-else class="gray"> [补给技巧未研究, 无减免]</span><br/>
+          <span v-else class="gray"> [野战口粮未研究, 无减免]</span><br/>
           </template>
           总产量(每小时): <span :class="{ red: ezfy.resDetail.total < 0 }">{{ ezfy.resDetail.total }}</span><br/>
           <br/>

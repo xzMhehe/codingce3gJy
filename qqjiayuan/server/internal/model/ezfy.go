@@ -64,7 +64,12 @@ type EzfyCfgTroop struct {
 	Rare        int64  `gorm:"comment:稀矿" json:"rare"`
 	TrainTime   int    `gorm:"comment:秒/个" json:"train_time"` // 秒/个
 	Require     string `gorm:"type:varchar(500);comment:需要" json:"require"`
-	Icon        string `gorm:"type:varchar(50);comment:图标" json:"icon"`
+	// ★ 2026-10-31 require 的结构化版本：「b14:1,t5:1」（b=建筑 t=科技，冒号后是等级）。
+	//   训练校验只读这一列；require 文本降级为**纯展示**。
+	//   原因：按名字反查 id 时，名字一改/打错/全角半角不一致就查不到 → 门槛被静默跳过。
+	//   文本 → ID 的转换唯一实现在 internal/ezfyreq（Parse），由种子回填与管理端保存调用。
+	RequireIds string `gorm:"type:varchar(500);comment:需要(结构化: b建筑/t科技+id:等级)" json:"require_ids"`
+	Icon       string `gorm:"type:varchar(50);comment:图标" json:"icon"`
 	RepairRate  int    `gorm:"comment:战损修复率%" json:"repair_rate"` // 战损修复率%
 }
 
@@ -96,7 +101,7 @@ type EzfyCfgTechLevel struct {
 	ResearchTime int    `gorm:"comment:研究时间（秒）" json:"research_time"` // 秒
 	Effect       string `gorm:"type:varchar(255);comment:效果" json:"effect"`
 	// ★ 2026-10-14 效果数值（百分点，**该等级的累计加成**；0 = 未配置 → 走原公式兜底）。
-	//   管理端可直接维护数字（如「治愈伤兵 Lv.10 改成 50」），游戏逻辑/展示读它优先于文案。
+	//   管理端可直接维护数字（如「战地医疗 Lv.10 改成 50」），游戏逻辑/展示读它优先于文案。
 	EffectValue int `gorm:"default:0;comment:效果数值(百分点,该等级累计加成;0=未配置走公式)" json:"effect_value"`
 }
 
@@ -836,8 +841,8 @@ type EzfyCfgLimit struct {
 	SpeedTrainOn int `gorm:"comment:训练一键加速开关（关 = 按钮不展示也无法使用）" json:"speed_train_on"`
 
 	// ★ 2026-10-21 造兵时间市长军事加成开关：1 开（默认）= 训练时间按
-	//   floor(面板 train_time × 250/(250+市长军事) × 10/(10+军训艺术等级)) 计算；
-	//   0 关 = 市长军事按 0 处理，仍吃军训艺术等级。
+	//   floor(面板 train_time × 250/(250+市长军事) × 10/(10+动员训练等级)) 计算；
+	//   0 关 = 市长军事按 0 处理，仍吃动员训练等级。
 	//   ⚠️ 开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol（只回填 NULL）。
 	TrainMayorMilitaryOn int `gorm:"comment:造兵时间市长军事加成开关(1开0关)" json:"train_mayor_military_on"`
 	// ★ 2026-10-21 装备/套装军事是否计入市长军事：1 算（默认，取自身+装备+套装）/ 0 不算（只取军官自身）。

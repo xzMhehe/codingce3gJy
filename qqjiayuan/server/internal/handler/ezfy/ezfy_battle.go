@@ -136,7 +136,7 @@ func ezfyDamageFormulaCfg() int {
 //
 // ★ 2026-10-24 用户需求「回合中具体加成展示加开关」：关闭后行动日志只显示加成总百分比
 //
-//	（如「攻击加成+79%」「防御加成+50%」），不再展开「(军官·菜比+29% 科技·武器科技+30%…)」这类来源明细。
+//	（如「攻击加成+79%」「防御加成+50%」），不再展开「(军官·菜比+29% 科技·枪械改良+30%…)」这类来源明细。
 //	明细原始数据仍在快照里（AtkSkillBreak/AtkTechBreak/DefDefBreak… 整段 JSON 存库），
 //	事后对账/扯皮时可从战场记录还原，不因关闭展示而丢失。
 func ezfyShowBattleBonusDetailCfg() bool {
@@ -237,7 +237,7 @@ const (
 
 // ezfyTypeBonus 兵种专属加成：key = 兵种 type，value = 百分点。
 //
-// ★★ 2026-10-08 配置里「喷气引擎=空军速度+3%」「火炮控制=陆军装甲攻击+10」
+// ★★ 2026-10-08 配置里「喷气推进=空军速度+3%」「火炮控制=陆军装甲攻击+10」
 // 「四指编队=空军对空攻击+15%」「狼群战术=海军对海攻击+15%」「坦克突袭/闪电袭击/越岛战术=
 // 陆/空/海速度+10%」这类科技/军官技能**只作用于特定兵种**，不能像通用加成那样直接进
 // AtkBonus/AtkSpeedBonus（那会变成全兵种生效 —— 用户反馈「空军速度只加空军」）。
@@ -245,7 +245,7 @@ const (
 type ezfyTypeBonus struct {
 	// Atk 攻击加成%（按**攻击方**兵种 type）—— 通用型兵种加成（当前无来源，保留扩展位）
 	Atk map[int]int
-	// Speed 速度加成%（按攻击方兵种 type）—— 喷气引擎(空军速度)/坦克突袭(陆军速度)等
+	// Speed 速度加成%（按攻击方兵种 type）—— 喷气推进(空军速度)/坦克突袭(陆军速度)等
 	Speed map[int]int
 	// ★★ 2026-10-08 按**目标**生效的攻击加成（配置文案「X 对 Y 攻击」的严格口径）：
 	//
@@ -260,9 +260,9 @@ type ezfyTypeBonus struct {
 	AtkFlat map[int]int
 	// ★★ 2026-10-09 按**兵种 type** 生效的**防御**加成。
 	//
-	//	用户口径：「掩体防御只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」——
-	//	所以掩体防御(科技16)不再进全军通用防御，而是挂在城防(4) 上（见 ezfy_order.go 的 defType）。
-	//	key = 兵种 type，value = 防御加成%（目前唯一来源：掩体防御 → 城防）。
+	//	用户口径：「永备工事只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」——
+	//	所以永备工事(科技16)不再进全军通用防御，而是挂在城防(4) 上（见 ezfy_order.go 的 defType）。
+	//	key = 兵种 type，value = 防御加成%（目前唯一来源：永备工事 → 城防）。
 	Def map[int]int
 	// ★★ 2026-10-31 按**具体兵种 ID**（不是 type）生效的加成 —— 配置里点名了兵种的技能要用这一档。
 	//
@@ -296,7 +296,7 @@ func (t ezfyTypeBonus) speedOf(troopType int) int {
 
 // defOf 取某兵种的**专属防御**加成（表为 nil / 未配置 → 0，老战场快照安全）。
 //
-// ★ 2026-10-09 掩体防御改成「只对城防单位生效」后，被攻击方算防御时要按**自己的兵种 type**
+// ★ 2026-10-09 永备工事改成「只对城防单位生效」后，被攻击方算防御时要按**自己的兵种 type**
 // 取这一截（见 Step 里的 unitDefBonus）。
 func (t ezfyTypeBonus) defOf(troopType int) int {
 	if t.Def == nil {
@@ -377,7 +377,7 @@ func (t *ezfyTypeBonus) addVsType(atkType, defType, v int) {
 //
 // ★★ 2026-10-09 用户反馈「虽然都是航母（海军），战斗加成里却写着 空军+30%」：
 //
-//	兵种专属速度（喷气引擎=空军速度、军官速度技能=陆/空/海）只对**对应兵种**生效，
+//	兵种专属速度（喷气推进=空军速度、军官速度技能=陆/空/海）只对**对应兵种**生效，
 //	汇总行把「配置里有的兵种」全列出来会误导 —— 一支纯海军部队看到「空军+30%」，
 //	会以为自己的航母吃到了这 30%。现在只列**本方真正带了**的兵种。
 func ezfyTroopTypesPresent(units []ezfyUnitGroup) map[int]bool {
@@ -398,7 +398,7 @@ func ezfyTroopTypesPresent(units []ezfyUnitGroup) map[int]bool {
 // ★★ 2026-10-09 用户口径：「速度」与「移动距离加成」都是加成**移动速度**的
 // （装备的「移动距离%」= 移动速度，不是攻速）；只有标注「攻击速度/攻速」的才是攻速
 // （攻速决定**先手**）。所以这里展示的是移动速度的**兵种专属**部分，与通用部分
-// （燃烧引擎 + 装备移动距离，见战斗加成行的「速度+N%(科技+X 装备+Y)」）分开列。
+// （机械增压 + 装备移动距离，见战斗加成行的「速度+N%(科技+X 装备+Y)」）分开列。
 //
 // present = 该方实际出现的兵种 type。
 //
@@ -434,8 +434,8 @@ func ezfyTypeSpeedTxt(tb ezfyTypeBonus, present map[int]bool) string {
 
 // ezfyTypeDefTxt 兵种专属**防御**加成 → 「 兵种专属防御(城防+20%)」。
 //
-// ★★ 2026-10-09 用户口径：「掩体防御只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」
-// → 掩体防御从「通用防御加成」里移出来，改成按兵种 type 生效（城防），
+// ★★ 2026-10-09 用户口径：「永备工事只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」
+// → 永备工事从「通用防御加成」里移出来，改成按兵种 type 生效（城防），
 // 这里负责在战斗加成行里展示（写法与「兵种专属速度」一致；该方没有这个兵种就不展示）。
 //
 // ★★ 2026-10-11 用户口径：「假如当前兵种不是城防兵种就别展示，不然容易有歧义」
@@ -486,14 +486,14 @@ type ezfyBattleState struct {
 	//   单独展示「军官技能+N%」；老快照 0 → 属性部分 = 总加成，回退旧格式。
 	AtkOfficerSkill int
 	DefOfficerSkill int
-	// ★ 2026-10-06 拆解明细：军官技能 / 科技**逐项**（战报展示「军官技能·尖兵突击+N%」「科技·弹道学+N%」，
+	// ★ 2026-10-06 拆解明细：军官技能 / 科技**逐项**（战报展示「军官技能·尖兵突击+N%」「科技·炮兵射表+N%」，
 	//   多个分开展示）。新战场快照里存这些；老快照为 nil → 回退旧格式合并展示。
 	AtkSkillBreak []ezfyBonusItem
 	DefSkillBreak []ezfyBonusItem
 	AtkTechBreak  []ezfyBonusItem
 	DefTechBreak  []ezfyBonusItem
 	// ★ 2026-10-06 守方「防御加成」**逐项**明细：城墙 / 科技 / 军官属性 / 军官技能 / 装备，
-	//   被攻击时在攻击行展示「防御加成+N%(城墙+50% 科技·装甲科技+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备+20%)」。
+	//   被攻击时在攻击行展示「防御加成+N%(城墙+50% 科技·均质装甲+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备+20%)」。
 	//   Name 直接带前缀；老快照为 nil → 不展示防御段。攻方没有防御加成，不需要攻方版。
 	DefDefBreak []ezfyBonusItem
 	// ★ 2026-10-07 攻方「防御加成」：原先攻方部队被打时防御加成恒为 0 ——
@@ -506,7 +506,7 @@ type ezfyBattleState struct {
 	AtkSpeedBonus int
 	DefSpeedBonus int
 	// ★★ 2026-10-08 兵种专属加成（配置里写明作用兵种的那些科技/军官技能）：
-	//   喷气引擎「空军速度+3%」/ 火炮控制「陆军装甲攻击+10」/ 四指编队「空军对空攻击+15%」/
+	//   喷气推进「空军速度+3%」/ 火炮控制「陆军装甲攻击+10」/ 四指编队「空军对空攻击+15%」/
 	//   狼群战术「海军对海攻击+15%」/ 坦克突袭「陆军速度+10%」/ 闪电袭击「空军速度+10%」/
 	//   越岛战术「海军速度+10%」—— 这些**只作用于对应兵种**。
 	//   原来它们被无差别加进 AtkBonus/AtkSpeedBonus（全兵种生效），用户反馈「空军速度只加空军」。
@@ -588,7 +588,7 @@ type ezfyBattleState struct {
 //	供拆解单独展示「军官技能+N%」；0 → 属性部分=总加成，回退旧格式）
 //
 // atkSkills/defSkills: 技能**逐项**明细（战报展示「军官技能·尖兵突击+N%」；nil → 回退合并展示）
-// atkTechs/defTechs: 攻击加成里科技**逐项**明细（战报展示「科技·弹道学+N%」；nil → 回退合并展示）
+// atkTechs/defTechs: 攻击加成里科技**逐项**明细（战报展示「科技·炮兵射表+N%」；nil → 回退合并展示）
 // defDefBreak: 守方「防御加成」逐项明细（Name 带前缀：城墙/科技·/军官·/军官技能·/装备；nil → 不展示防御段）
 // atkDefBonus: 攻方「防御加成」总和（军官属性+防御技能+装备 Def；0 = 无防御来源，被打时不吃防御减伤）
 // atkDefBreak: 攻方「防御加成」逐项明细（Name 带前缀：军官·/军官技能·/装备；nil → 不展示攻方防御段）
@@ -651,7 +651,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	// ★ 2026-10-06 守方攻击加成单独列出：城防/守城部队行动时也吃科技+军官技能加成，
 	//   攻守双方的「加成伤害」都能在开场加成行里一眼看出来
 	// ★ 2026-10-06 射程加成也显示在加成行（「回合射程加成也要体现出来」，
-	//   弹道学=射程）；为 0 时不显示，老战报格式不变
+	//   炮兵射表=射程）；为 0 时不显示，老战报格式不变
 	atkRangeTxt, defRangeTxt := "", ""
 	if atkRangeBonus > 0 {
 		atkRangeTxt = fmt.Sprintf(" 射程+%d%%", atkRangeBonus)
@@ -703,8 +703,8 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	}
 	defAtkSrc += ")"
 	// ★★ 2026-10-09 「速度」= **移动速度**（用户口径：速度与「移动距离」都是移动速度加成；
-	//   攻速是另一回事，决定先手）。拆解出通用来源：科技(燃烧引擎) + 装备(移动距离)；
-	//   兵种专属那截（喷气引擎/军官速度技能）另列，且**只列本方真正带了的兵种**。
+	//   攻速是另一回事，决定先手）。拆解出通用来源：科技(机械增压) + 装备(移动距离)；
+	//   兵种专属那截（喷气推进/军官速度技能）另列，且**只列本方真正带了的兵种**。
 	speedSrc := func(tech, equip int) string {
 		parts := []string{}
 		if tech != 0 {
@@ -725,7 +725,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	defPresent := ezfyTroopTypesPresent(defenderUnits)
 	atkSpeedTypeTxt := ezfyTypeSpeedTxt(atkType, atkPresent)
 	defSpeedTypeTxt := ezfyTypeSpeedTxt(defType, defPresent)
-	// ★★ 2026-10-09 兵种专属**防御**单列（掩体防御「只对城防单位生效」→ 不属于通用防御，
+	// ★★ 2026-10-09 兵种专属**防御**单列（永备工事「只对城防单位生效」→ 不属于通用防御，
 	//   放在防御括号后面展示，该方没带城防单位就不显示）。
 	atkDefTypeTxt := ezfyTypeDefTxt(atkType, atkPresent)
 	defDefTypeTxt := ezfyTypeDefTxt(defType, defPresent)
@@ -742,7 +742,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		effAtk, atkAtkSrc, atkDefBonus, atkDefSrc, atkDefTypeTxt, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt)
 	defBonusLine := fmt.Sprintf("战斗加成: 守方 攻击+%d%%%s 防御+%d%%%s%s 速度+%d%%%s%s%s%s",
 		st.DefAtkBonus, defAtkSrc, effDef, defDefSrc, defDefTypeTxt, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
-	// ★ 2026-10-08 攻/守方科技逐项单列（罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
+	// ★ 2026-10-08 攻/守方科技逐项单列（罗列）：如「科技·炮兵射表+30% 科技·均质装甲+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
 	atkTechTxt := ezfyBonusItemsDesc(atkTechs)
@@ -913,7 +913,7 @@ func ezfyDefBonusTxt(label string, items []ezfyBonusItem) string {
 //
 //	原来战斗加成行里攻击有括号、防御只有裸数字，玩家看不出这一截是谁给的。
 //	把 AtkDefBreak / DefDefBreak 的逐项明细按**来源**归类求和：
-//	  城墙 / 军官（属性+技能）/ 科技（含掩体防御等）/ 装备套装
+//	  城墙 / 军官（属性+技能）/ 科技（含永备工事等）/ 装备套装
 //	只列非零项，全零返回空串（老战场快照没有明细时不破坏格式）。
 func ezfyDefSrcTxt(items []ezfyBonusItem) string {
 	wall, officer, tech, equip := 0, 0, 0, 0
@@ -954,7 +954,7 @@ func ezfyDefSrcTxt(items []ezfyBonusItem) string {
 // ezfyBonusBreakdown 「攻击加成+N%」的来源拆解（军官属性/军官技能/科技/装备），写进战报行动日志。
 // ★ 2026-10-06 支持**逐项展开**：给了 skills/techs 明细就走逐项展示
 //
-//	（「军官技能·尖兵突击+90%」「科技·弹道学+54%」，多个分开展示）；
+//	（「军官技能·尖兵突击+90%」「科技·炮兵射表+54%」，多个分开展示）；
 //	明细为 nil（老战场快照）回退旧格式合并展示（军官技能+N% / 科技+N%）。
 //
 // 只要任一来源非零就展示（PVP 里一方军官没攻击技能/没设城守时，科技加成也照常列出，
@@ -1190,7 +1190,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	defDefBonusAll := defBonus - defTimedDefOff
 	atkSpeedBonus := st.AtkSpeedBonus + st.AtkEquip.Move + comboOfKind(atkAct, ezfyComboSpeed)
 	defSpeedBonus := st.DefSpeedBonus + st.DefEquip.Move + comboOfKind(defAct, ezfyComboSpeed)
-	// ★ 射程同理（弹道学那套之外，组合技可以再给一截）
+	// ★ 射程同理（炮兵射表那套之外，组合技可以再给一截）
 	atkRangeBonusAll := st.AtkRangeBonus + comboOfKind(atkAct, ezfyComboRange)
 	defRangeBonusAll := st.DefRangeBonus + comboOfKind(defAct, ezfyComboRange)
 	// ★ 2026-10-06 「攻击加成」来源拆解（军官属性/军官技能/科技/装备），写进每行行动日志，
@@ -1296,7 +1296,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		moveMap := st.DefMoves
 		cmd := ""
 		// ★★ 2026-10-08 速度加成 = 通用加成 + **该兵种专属**加成：
-		//   喷气引擎「空军速度+3%」只对空军生效，坦克突袭/闪电袭击/越岛战术分别只加陆/空/海
+		//   喷气推进「空军速度+3%」只对空军生效，坦克突袭/闪电袭击/越岛战术分别只加陆/空/海
 		//   （原来一律进 atkSpeedBonus → 全军受益，用户反馈「空军速度只加空军」）。
 		// ★★ 2026-10-31 坦克突袭按**兵种 ID** 生效（只轻坦/重坦）→ 追加 SpeedTroop 一档。
 		speedBonus := defSpeedBonus + st.DefType.speedOf(unit.cfg.Type) + st.DefType.speedTroopOf(unit.cfg.ID)
@@ -1449,7 +1449,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				//   战报显示「防御加成+425%(…装备+61%)」实际却按 486% 减伤，显示与伤害对不上。
 				//   直接取 defBonus（= 守方防御明细 DefDefBreak 之和），显示口径与减伤口径一致。
 				// ★★ 2026-10-09 被攻击方（守方）还要加**兵种专属防御**：
-				//   掩体防御「只对城防单位生效」（用户口径）→ 从通用防御里移出，按被攻击方的兵种 type 取。
+				//   永备工事「只对城防单位生效」（用户口径）→ 从通用防御里移出，按被攻击方的兵种 type 取。
 				//   普通部队(陆/海/空)恒为 0，只有城防单位(4) 吃这一截。
 				// ★ 2026-10-24 城墙：征服战里按剩余耐久比例提供 0~等级×5% 的守城防御，
 				//   同样**只对城防兵种生效**（wallBonusFor）；掠夺战 WallEnabled=false → 不生效。
@@ -1722,7 +1722,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					cbFlat = st.DefType.atkFlatOf(target.cfg.Type) + st.DefType.atkFlatTroopOf(target.cfg.ID) - defTimedFlatOff[target.cfg.ID]
 					// ★ 2026-10-07 攻方被守方反击 → 攻方防御加成减伤（原来恒 0）
 					//   ★ 2026-10-09 同上修双算：st.AtkDefBonus 已含 atkEquip.Def
-					//   ★★ 2026-10-09 被还击方（unit）的兵种专属防御也照加（掩体防御只对城防生效）
+					//   ★★ 2026-10-09 被还击方（unit）的兵种专属防御也照加（永备工事只对城防生效）
 					//   ★ 2026-10-31 弧形防御只发动回合生效（atkDefBonusAll 已扣减）
 					cbDef = atkDefBonusAll + st.AtkType.defOf(unit.cfg.Type)
 				} else { // 守方在打 → 被打的是攻方 → 攻方发动反击（被还击方=守方）
@@ -1731,7 +1731,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					cbFlat = st.AtkType.atkFlatOf(target.cfg.Type) + st.AtkType.atkFlatTroopOf(target.cfg.ID) - atkTimedFlatOff[target.cfg.ID]
 					// ★ 2026-10-07 守方被攻方反击 → 守方防御加成（基础+装备）减伤
 					//   ★ 2026-10-09 同上修双算：defBonus 已含 defEquip.Def
-					//   ★★ 2026-10-09 被还击方（unit）的兵种专属防御也照加（城防单位吃掩体防御）
+					//   ★★ 2026-10-09 被还击方（unit）的兵种专属防御也照加（城防单位吃永备工事）
 					cbDef = defDefBonusAll + st.DefType.defOf(unit.cfg.Type)
 				}
 				cbTypeTxt := ""
@@ -2443,7 +2443,7 @@ func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
 // ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成一行，顿号分隔；跳过非正值。
 // ★ 2026-10-08 改回单行顿号分隔（不再每项单独一行），如：
 //
-//	「武器科技+30%（部队攻击）、装甲科技+30%（部队防御）」。
+//	「枪械改良+30%（部队攻击）、均质装甲+30%（部队防御）」。
 //
 // 对科技额外补齐「（效果描述）」，让玩家一眼看出该科技起什么用（对应 ezfy_cfg 科技表 Effect）。
 func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
@@ -2466,9 +2466,9 @@ func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 // ezfyTechEffectDesc 科技名 → 作用说明（取自科技配置表 Effect 的「功能」部分，去掉每级百分比）。
 // 只为战报科技行展示用；未收录的科技不追加描述。
 var ezfyTechEffectDesc = map[string]string{
-	"武器科技": "部队攻击", "装甲科技": "部队防御",
-	"弹道学": "射程加成", "重工技术": "重装备攻防", "燃烧引擎": "部队速度",
-	"掩体防御": "城防攻防", "指挥艺术": "携带上限", "侦察技巧": "情报",
-	"喷气引擎": "空军速度", "装载技术": "部队负重", "补给技巧": "军队耗粮",
-	"掠夺技巧": "掠夺资源", "治愈伤兵": "伤兵恢复", "储存技术": "资源容量",
+	"枪械改良": "部队攻击", "均质装甲": "部队防御",
+	"炮兵射表": "射程加成", "重型机床": "重装备攻防", "机械增压": "部队速度",
+	"永备工事": "城防攻防", "参谋作业": "携带上限", "无线电侦听": "情报",
+	"喷气推进": "空军速度", "标准化装卸": "部队负重", "野战口粮": "军队耗粮",
+	"战地征用": "掠夺资源", "战地医疗": "伤兵恢复", "野战仓储": "资源容量",
 }

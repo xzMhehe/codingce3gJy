@@ -501,7 +501,7 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	// 节日活动·造兵打折: 列表展示的就是打折后的实际消耗
 	discount := h.actPct(ezfyActTrain)
 	// ★ 2026-10-21 兵种详情/训练页展示的训练时间：与建队列同一公式
-	//   （含市长军事/开关 + 军训艺术等级）。市长和科技只查一次，下面所有兵种共用。
+	//   （含市长军事/开关 + 动员训练等级）。市长和科技只查一次，下面所有兵种共用。
 	mayorMil := h.mayorTrainMilitary(city.ID)
 	// ★ 2026-10-29 科技加成按**本城**生效：没有科研中心（建筑 8）的城不吃科技加成 → 用 techMap(city.ID)
 	trainArt := h.techMap(city.ID)[5]
@@ -519,8 +519,9 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 			"atk_sea": t.AtkSea, "atk_ground": t.AtkGround, "atk_air": t.AtkAir, "atk_def": t.AtkDef,
 			"food_keep": t.FoodKeep, "oil_keep": t.OilKeep,
 			"icon": t.Icon, "repair_rate": t.RepairRate,
-			// 「军工厂(N级)」从 require 里解析(复刻 createTroop.html 的「需要军工厂：N级」)
-			"need_factory": ezfyNeedFactoryLevel(t.Require),
+			// 「军工厂(N级)」：优先从 require_ids 的结构化 ID 取（不依赖名字），
+			// 老数据（require_ids 为空）才回退解析 require 文本
+			"need_factory": ezfyNeedFactoryLevelOf(&t),
 			"cost":         gin.H{"food": f, "steel": s, "oil": o, "rare": r},
 			"raw_cost":     gin.H{"food": t.Food, "steel": t.Steel, "oil": t.Oil, "rare": t.Rare},
 			"train_time":   ezfyTrainUnitSeconds(t.TrainTime, mayorMil, trainArt),
@@ -1054,7 +1055,7 @@ var ezfyTechEffectPer = map[int]int{
 // ezfyTechEffectValueAt 科技某等级的**效果数值**（百分点；负数=减益；tech 12 情报是 +1 级/级）。
 //
 // ★ 2026-10-14 用户需求「效果加一列专门是数字的方便维护」：优先读
-// `ezfy_cfg_tech_level.effect_value`（管理端可直接把「治愈伤兵 Lv.10 效果数值」改成 50），
+// `ezfy_cfg_tech_level.effect_value`（管理端可直接把「战地医疗 Lv.10 效果数值」改成 50），
 // 0 / 缺失 → 回退历史公式（ezfyTechEffectPer × 等级），老数据行为完全不变。
 func ezfyTechEffectValueAt(techId, level int) int {
 	if level < 1 {
@@ -1072,7 +1073,7 @@ func ezfyTechEffectTextWithVal(t *model.EzfyCfgTech, level, val int) string {
 	if prefix == "" {
 		return t.Effect
 	}
-	if t.ID == 12 { // 侦察技巧：情报等级
+	if t.ID == 12 { // 无线电侦听：情报等级
 		return fmt.Sprintf("情报+%d级", level)
 	}
 	if val > 0 {
@@ -1094,7 +1095,7 @@ func ezfyTechEffectAt(t *model.EzfyCfgTech, level int) string {
 	if level < 1 {
 		level = 1
 	}
-	if t.ID == 12 { // 侦察技巧：情报等级
+	if t.ID == 12 { // 无线电侦听：情报等级
 		return fmt.Sprintf("情报+%d级", level)
 	}
 	val := ezfyTechEffectValueAt(t.ID, level)
@@ -3994,8 +3995,8 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	}
 	// ★ 军情警讯的可见范围由**自己城市的雷达站**决定：没有雷达站收不到「来袭预警/被侦查」，
 	//   但被掠夺/城破这类事后结果照样会有。这里把雷达等级一并下发，前端据此给提示。
-	// ★ 2026-09-25：同时下发**侦察技巧等级**与**合计情报等级** —— 现在「出发城市+坐标」
-	//   由「雷达站 + 侦察技巧」合计决定，前端要按这两个值告诉玩家还差多少才能看到来袭城市。
+	// ★ 2026-09-25：同时下发**无线电侦听等级**与**合计情报等级** —— 现在「出发城市+坐标」
+	//   由「雷达站 + 无线电侦听」合计决定，前端要按这两个值告诉玩家还差多少才能看到来袭城市。
 	// ★ 2026-10-01 军情按当前城过滤：雷达/情报等级也取**所查看的城市**，不是主城
 	// ★ 2026-10-13 军情警讯（category=1）例外：**逐条**字段才是权威口径（按被打的那座城），
 	//   下面这三个页面级字段只作兜底（军情警讯时 cityId=0 → 落到主城）。
@@ -4016,7 +4017,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 // ★ 2026-10-13 用户纠正：「雷达/侦察/情报等级应该按**被侦查的那座城**算，而不是当前查看城」。
 //
 //	军情警讯是全城视图（category=1 时忽略 city_id），页面级单值没有意义；
-//	而「能不能看到来袭城市与坐标」本来就由**被打的那座城**的 雷达站(建筑21) + 侦察技巧(科技12)
+//	而「能不能看到来袭城市与坐标」本来就由**被打的那座城**的 雷达站(建筑21) + 无线电侦听(科技12)
 //	决定 —— 生成战报时 `ezfyOrderRadarWarn` 已按 `target.ID` 写进标题/正文（够 2 级才写来源）。
 //	这里把**同一口径**逐条下发（每条自带 city_id/radar/recon/intel），
 //	前端就能「哪座城被打、那座城的情报等级够不够」一目了然，不必再看当前查看城。
@@ -4024,7 +4025,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 // 性能：2 条 SQL（我的城市列表 + 这些城市的雷达站/科研中心等级，两个建筑 ID 合并成一次 IN）。
 // 科技等级本身是**账号级**（`ezfy_user_tech` 按 user_id，见 techMap 注释）→ 内存取值；
 // ★ 2026-10-29 用户规则：**没有「科研中心」建筑的城市不享受科技加成** → 逐条按该城的科研中心判定
-// 侦察技巧是否生效（同一份建筑查询里顺手取，不额外打库）。
+// 无线电侦听是否生效（同一份建筑查询里顺手取，不额外打库）。
 // 老行 city_id=0/NULL：按标题里的**城名**反查归属（与 ezfyCityReportCond 第 3 条路同口径）。
 func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
 	if len(views) == 0 {
@@ -4041,7 +4042,7 @@ func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
 		ids = append(ids, int64(c.ID))
 	}
 	// 一次查出这些城市的雷达站(21) + 科研中心(8) 等级（同城多行取最高，与 buildingLevel 一致）。
-	// ★ 2026-10-29 科技加成按**本城**生效：没有科研中心的城不吃科技加成 → 侦察技巧按该城的科研中心判定。
+	// ★ 2026-10-29 科技加成按**本城**生效：没有科研中心的城不吃科技加成 → 无线电侦听按该城的科研中心判定。
 	//   ★ 与雷达站合并成同一条查询，SQL 条数不变。
 	radarByCity := map[int64]int{}
 	academyCity := map[int64]bool{}
@@ -4076,7 +4077,7 @@ func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
 			}
 		}
 		radar := radarByCity[cid]
-		// ★ 2026-10-29 没有科研中心的那座城不享受科技加成 → 侦察技巧按 0 级算
+		// ★ 2026-10-29 没有科研中心的那座城不享受科技加成 → 无线电侦听按 0 级算
 		recon := reconAccount
 		if !academyCity[cid] {
 			recon = 0

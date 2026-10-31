@@ -106,11 +106,11 @@ func TestSpeedSkillBonusScaled(t *testing.T) {
 	if strings.Contains(body, "b.Speed[ezfyTroopTypeArmy] += 10 * scale") {
 		t.Fatalf("坦克突袭不该再给整个陆军加速（只轻坦/重坦）：\n%s", body)
 	}
-	// 行军速度必须走按兵种的 ezfyMarchSpeed（燃烧引擎通用 + 喷气引擎/军官技能按兵种）
+	// 行军速度必须走按兵种的 ezfyMarchSpeed（机械增压通用 + 喷气推进/军官技能按兵种）
 	march := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyMarchSpeed(")
 	for _, want := range []string{
-		"techMap[10] * 2",                 // 燃烧引擎：通用（全体兵种）
-		"tb.Speed[ezfyTroopTypeAir] += v", // 喷气引擎：只空军
+		"techMap[10] * 2",                 // 机械增压：通用（全体兵种）
+		"tb.Speed[ezfyTroopTypeAir] += v", // 喷气推进：只空军
 		"h.officerTypeBonus(lead, tb)",    // 军官速度技能：按兵种
 		"tb.speedOf(cfg.Type)",            // 按兵种取专属加成
 		"tb.speedTroopOf(cfg.ID)",         // 坦克突袭：按兵种 ID（只轻坦/重坦）
@@ -245,14 +245,14 @@ func TestBonusBreakdownDetail(t *testing.T) {
 			// 逐项展开：技能/科技各拆成具体名字
 			"逐项", 252, 150, 352, 0, "冥王",
 			[]ezfyBonusItem{{Name: "尖兵突击", Value: 90}, {Name: "火炮控制", Value: 60}},
-			[]ezfyBonusItem{{Name: "武器科技", Value: 40}, {Name: "弹道学", Value: 54}},
-			"(军官·冥王+102% 军官技能·尖兵突击+90% 军官技能·火炮控制+60% 科技·武器科技+40% 科技·弹道学+54%)",
+			[]ezfyBonusItem{{Name: "枪械改良", Value: 40}, {Name: "炮兵射表", Value: 54}},
+			"(军官·冥王+102% 军官技能·尖兵突击+90% 军官技能·火炮控制+60% 科技·枪械改良+40% 科技·炮兵射表+54%)",
 		},
 		{
 			// 科技有值但全 0（明细里 value=0 不展示）
 			"技能明细零项", 252, 150, 352, 0, "冥王",
 			[]ezfyBonusItem{{Name: "尖兵突击", Value: 150}},
-			[]ezfyBonusItem{{Name: "弹道学", Value: 0}},
+			[]ezfyBonusItem{{Name: "炮兵射表", Value: 0}},
 			"(军官·冥王+102% 军官技能·尖兵突击+150%)",
 		},
 		{
@@ -290,12 +290,12 @@ func TestDefBonusTxt(t *testing.T) {
 			"守方防御加成",
 			[]ezfyBonusItem{
 				{Name: "城墙", Value: 50},
-				{Name: "科技·装甲科技", Value: 30},
+				{Name: "科技·均质装甲", Value: 30},
 				{Name: "军官·冥王", Value: 20},
 				{Name: "军官技能·弧形防御", Value: 60},
 				{Name: "装备套装", Value: 20},
 			},
-			"守方防御加成+180%(城墙+50% 科技·装甲科技+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备套装+20%)",
+			"守方防御加成+180%(城墙+50% 科技·均质装甲+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备套装+20%)",
 		},
 		{
 			"攻方军官防御",
@@ -309,7 +309,7 @@ func TestDefBonusTxt(t *testing.T) {
 		{
 			"明细0项跳过",
 			"守方防御加成",
-			[]ezfyBonusItem{{Name: "城墙", Value: 50}, {Name: "科技·重工技术", Value: 0}},
+			[]ezfyBonusItem{{Name: "城墙", Value: 50}, {Name: "科技·重型机床", Value: 0}},
 			"守方防御加成+50%(城墙+50%)",
 		},
 		{"空明细", "守方防御加成", nil, ""},
@@ -364,37 +364,37 @@ func TestDefBonusInjected(t *testing.T) {
 //
 // ★★ 2026-10-08 用户反馈「两个号都是满科技，为什么科技加成不一样」：
 //
-//	守方原来用「装甲科技(7)+重工技术(9)+掩体防御(16)」算攻击加成 ——
-//	装甲科技的配置描述是「部队防御」，只该进防御加成；而「武器科技(6)」
+//	守方原来用「均质装甲(7)+重型机床(9)+永备工事(16)」算攻击加成 ——
+//	均质装甲的配置描述是「部队防御」，只该进防御加成；而「枪械改良(6)」
 //	（描述是「部队攻击」）完全没算。结果满科技的两个号：【守方科技】行比【攻方科技】
 //	少一项，攻击加成还偏低。
 //
-// ★★ 2026-10-09 用户再次要求「两个号都满科技，加成就该一样」：守方**不再额外吃掩体防御(16)**。
+// ★★ 2026-10-09 用户再次要求「两个号都满科技，加成就该一样」：守方**不再额外吃永备工事(16)**。
 //
 //	那是守城方专属的一项，会让满科技的两个号在战报里显示成「攻方 攻击+70% / 守方 攻击+90%」。
 //
-// ★★ 2026-10-21 军训艺术(5) 改为「造兵速度」科技：攻守双方的攻击计算/战报都不再包含它。
+// ★★ 2026-10-21 动员训练(5) 改为「造兵速度」科技：攻守双方的攻击计算/战报都不再包含它。
 //
-//	现在两边攻击口径完全一致：武器科技(6) + 重工技术(9) + 军官加成。
+//	现在两边攻击口径完全一致：枪械改良(6) + 重型机床(9) + 军官加成。
 func TestDefenderAtkTechMatchesAttacker(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
 	if !strings.Contains(src, "defAtkBonus = defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)") {
-		t.Fatal("守方攻击加成必须与攻方同口径（武器科技6 + 重工技术9 + 军官）")
+		t.Fatal("守方攻击加成必须与攻方同口径（枪械改良6 + 重型机床9 + 军官）")
 	}
 	if strings.Contains(src, "defTech[5]") {
-		t.Fatal("军训艺术(5) 已改为造兵速度科技，不该再进守方攻击加成")
+		t.Fatal("动员训练(5) 已改为造兵速度科技，不该再进守方攻击加成")
 	}
 	if strings.Contains(src, "defAtkBonus = defTech[6]*3 + defTech[9]*2 + defTech[16]*2") {
-		t.Fatal("守方攻击加成不该再额外吃掩体防御(16)：守城方专属项会让满科技的攻守两号加成不一致")
+		t.Fatal("守方攻击加成不该再额外吃永备工事(16)：守城方专属项会让满科技的攻守两号加成不一致")
 	}
 	if strings.Contains(src, "defAtkBonus = defTech[7]*3") {
-		t.Fatal("守方攻击加成不该用装甲科技(7)（描述是「部队防御」，只进防御加成）")
+		t.Fatal("守方攻击加成不该用均质装甲(7)（描述是「部队防御」，只进防御加成）")
 	}
-	if !strings.Contains(src, `ezfyTechItem("武器科技", defTech[6]*3)`) {
-		t.Fatal("【守方科技】行缺武器科技（应与【攻方科技】同集合）")
+	if !strings.Contains(src, `ezfyTechItem("枪械改良", defTech[6]*3)`) {
+		t.Fatal("【守方科技】行缺枪械改良（应与【攻方科技】同集合）")
 	}
-	if strings.Contains(src, `ezfyTechItem("军训艺术"`) {
-		t.Fatal("【守方科技】行不该再列军训艺术（已改为造兵速度科技）")
+	if strings.Contains(src, `ezfyTechItem("动员训练"`) {
+		t.Fatal("【守方科技】行不该再列动员训练（已改为造兵速度科技）")
 	}
 }
 
@@ -407,26 +407,26 @@ func TestDefenderAtkTechMatchesAttacker(t *testing.T) {
 //	这里锁**计算侧** —— 每类科技都要在 ezfy_order.go 的加成表达式里出现，
 //	否则就会出现「列表里列了、回合里不生效」的假展示。
 //
-// 科技 ID 对照：5 军训艺术(造兵速度，不参与战斗) · 6 武器科技(攻) · 7 装甲科技(防) ·
-// 8 弹道学(射程) · 9 重工技术(重装备攻防) · 10 燃烧引擎(速度) · 16 掩体防御(城防攻防) · 19 喷气引擎(空军速度)
+// 科技 ID 对照：5 动员训练(造兵速度，不参与战斗) · 6 枪械改良(攻) · 7 均质装甲(防) ·
+// 8 炮兵射表(射程) · 9 重型机床(重装备攻防) · 10 机械增压(速度) · 16 永备工事(城防攻防) · 19 喷气推进(空军速度)
 func TestFourTechCategoriesWired(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
-	// ★ 速度只列**通用**那部分（燃烧引擎 10「部队速度」）；喷气引擎(19)是「空军速度」，
+	// ★ 速度只列**通用**那部分（机械增压 10「部队速度」）；喷气推进(19)是「空军速度」，
 	//   属兵种专属，见下面的 TestTypeSpecificBonusWired。
 	atkCases := []struct{ name, want string }{
 		{"攻击", "atkBonus := officerBonus + atkTech[6]*3 + atkTech[9]*2"},
-		// ★★ 2026-10-09 掩体防御(16) 移出通用防御 → 只对城防单位生效（atkType.Def[4]）
+		// ★★ 2026-10-09 永备工事(16) 移出通用防御 → 只对城防单位生效（atkType.Def[4]）
 		{"防御", "atkDefBonus += atkTech[7]*3 + atkTech[9]*2"},
 		{"速度(通用)", "atkSpeedBonus := atkTech[10] * 2"},
 		{"射程", "atkRangeBonus := atkTech[8] * 3"},
 	}
 	defCases := []struct{ name, want string }{
-		// ★ 2026-10-09 「攻守加成一致」：守方攻击不再额外吃掩体防御(16)
+		// ★ 2026-10-09 「攻守加成一致」：守方攻击不再额外吃永备工事(16)
 		{"攻击", "defAtkBonus = defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)"},
-		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7)，掩体防御(16) 也只对城防生效
+		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7)，永备工事(16) 也只对城防生效
 		{"防御", "defBonus = defTech[7]*3 + defTech[9]*2"},
 		{"速度(通用)", "defSpeedBonus = defTech[10] * 2"},
-		// ★ 射程只吃弹道学(8)（2026-10-08 修掉虚高）
+		// ★ 射程只吃炮兵射表(8)（2026-10-08 修掉虚高）
 		{"射程", "defRangeBonus = defTech[8] * 3"},
 	}
 	for _, c := range atkCases {
@@ -439,29 +439,29 @@ func TestFourTechCategoriesWired(t *testing.T) {
 			t.Fatalf("守方缺「%s」类科技加成（列了却不生效）：%s", c.name, c.want)
 		}
 	}
-	// ★ 2026-10-21 军训艺术(5) 已改为造兵速度科技，战斗计算/战报都不该再出现。
+	// ★ 2026-10-21 动员训练(5) 已改为造兵速度科技，战斗计算/战报都不该再出现。
 	for _, bad := range []string{"atkTech[5]*2", "defTech[5]*2"} {
 		if strings.Contains(src, bad) {
-			t.Fatalf("军训艺术(5) 不该再参与战斗攻击加成：%s", bad)
+			t.Fatalf("动员训练(5) 不该再参与战斗攻击加成：%s", bad)
 		}
 	}
 }
 
-// TestCoverDefenseOnlyForCityTroops 掩体防御(16) 必须**只对城防单位(4) 生效**。
+// TestCoverDefenseOnlyForCityTroops 永备工事(16) 必须**只对城防单位(4) 生效**。
 //
-// ★★ 2026-10-09 用户口径：「掩体防御 只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」。
+// ★★ 2026-10-09 用户口径：「永备工事 只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」。
 //
 //	所以它不能进全军通用的 defBonus / atkDefBonus，而要挂到 ezfyTypeBonus.Def[城防] 上，
 //	由战斗引擎按**被攻击方的兵种 type** 取 —— 普通部队(陆/海/空)不吃，城防单位才吃。
 func TestCoverDefenseOnlyForCityTroops(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
-	// ① 通用防御里不许再出现掩体防御（否则「列了却对全军生效」）
+	// ① 通用防御里不许再出现永备工事（否则「列了却对全军生效」）
 	for _, bad := range []string{
 		"defBonus = defTech[7]*3 + defTech[16]*2",
 		"atkDefBonus += atkTech[7]*3 + atkTech[16]*2",
 	} {
 		if strings.Contains(src, bad) {
-			t.Fatalf("掩体防御不该再进通用防御：%s", bad)
+			t.Fatalf("永备工事不该再进通用防御：%s", bad)
 		}
 	}
 	// ② 必须挂到城防兵种的专属防御上（攻守双方各一处）
@@ -470,7 +470,7 @@ func TestCoverDefenseOnlyForCityTroops(t *testing.T) {
 		"defType.Def[ezfyTroopTypeCity] = v",
 	} {
 		if !strings.Contains(src, want) {
-			t.Fatalf("掩体防御必须挂到城防(4) 的兵种专属防御上：%s", want)
+			t.Fatalf("永备工事必须挂到城防(4) 的兵种专属防御上：%s", want)
 		}
 	}
 	// ③ 战斗引擎按**被攻击方**兵种 type 取这一截（普攻 + 反击共 4 处）
@@ -487,14 +487,14 @@ func TestCoverDefenseOnlyForCityTroops(t *testing.T) {
 	}
 }
 
-// TestTypeDefBonusOf 兵种专属防御的取值与展示（掩体防御只对城防生效）。
+// TestTypeDefBonusOf 兵种专属防御的取值与展示（永备工事只对城防生效）。
 func TestTypeDefBonusOf(t *testing.T) {
 	tb := ezfyTypeBonus{Def: map[int]int{ezfyTroopTypeCity: 20}}
 	if got := tb.defOf(ezfyTroopTypeCity); got != 20 {
 		t.Fatalf("城防单位应吃 20%% 专属防御，实际 %d", got)
 	}
 	if got := tb.defOf(ezfyTroopTypeArmy); got != 0 {
-		t.Fatalf("普通陆军不该吃掩体防御，实际 %d", got)
+		t.Fatalf("普通陆军不该吃永备工事，实际 %d", got)
 	}
 	// 老战场快照没有 Def 字段 → 返回 0（不能崩）
 	if got := (ezfyTypeBonus{}).defOf(ezfyTroopTypeCity); got != 0 {
@@ -513,7 +513,7 @@ func TestTypeDefBonusOf(t *testing.T) {
 //
 // ★★ 2026-10-08 用户确认：「玩家科技、军官技能有的是全部兵种，有的是指定兵种，不能一起加」。
 //
-//	带兵种的科技：喷气引擎(19)「空军速度+3%/级」；
+//	带兵种的科技：喷气推进(19)「空军速度+3%/级」；
 //	带兵种的军官技能：火炮控制(陆军装甲攻击) / 四指编队(空军对空攻击) / 狼群战术(海军对海攻击) /
 //	坦克突袭(陆军速度) / 闪电袭击(空军速度) / 越岛战术(海军速度)。
 //	它们必须走 ezfyTypeBonus（Atk/Speed 按 troop type 索引），且**不得**出现在通用加成里。
@@ -522,22 +522,22 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 	off := strings.ReplaceAll(rawFile(t, "ezfy_officer.go"), "\r\n", "\n")
 	bat := strings.ReplaceAll(rawFile(t, "ezfy_battle.go"), "\r\n", "\n")
 
-	// ① 喷气引擎（空军速度）→ 只进空军
+	// ① 喷气推进（空军速度）→ 只进空军
 	for _, want := range []string{
 		"atkType.Speed[ezfyTroopTypeAir] += v", // 攻方
 		"defType.Speed[ezfyTroopTypeAir] += v", // 守方
 	} {
 		if !strings.Contains(ord, want) {
-			t.Fatalf("喷气引擎（空军速度）未按兵种下发：%s", want)
+			t.Fatalf("喷气推进（空军速度）未按兵种下发：%s", want)
 		}
 	}
-	// ② 通用速度不得再包含喷气引擎（那是空军专属）
+	// ② 通用速度不得再包含喷气推进（那是空军专属）
 	for _, bad := range []string{
 		"atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3",
 		"defSpeedBonus = defTech[10]*2 + defTech[19]*3",
 	} {
 		if strings.Contains(ord, bad) {
-			t.Fatalf("通用速度不该含喷气引擎(19)（那是空军专属）：%s", bad)
+			t.Fatalf("通用速度不该含喷气推进(19)（那是空军专属）：%s", bad)
 		}
 	}
 	// ③ 军官的六个兵种技能必须按兵种下发（2026-10-31 用户确认的口径）：

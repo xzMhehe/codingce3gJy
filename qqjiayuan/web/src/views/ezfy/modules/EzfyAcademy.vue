@@ -451,13 +451,12 @@
         </div>
       </div>
 
-      <!-- 技能: 复刻 acade/skill.html 的编号列表(带完整说明) -->
+      <!-- 技能: 复刻 acade/skill.html 的编号列表（★ 2026-10-31 文案润色：一行名字+效果，下一行一句话说明） -->
       <div class="panel" v-else-if="ezfy.acadeTab === 'skill'">
         <div class="old-line">军官技能:</div>
         <div class="old-line" v-for="(sk, i) in ezfy.skillData.skills" :key="'sk' + sk.id">
-          {{ i + 1 }}、{{ sk.name }}:{{ sk.des || sk.effect }}<br/>
-          <span class="gray">效果：{{ sk.effect }}</span>
-          <br/>--------------------
+          {{ i + 1 }}、{{ sk.name }}（{{ sk.effect }}）
+          <div class="gray sk-des">{{ sk.des || sk.effect }}</div>
         </div>
         <!-- ★ 2026-10-06 「我的军官」表格去掉：与军官详情里的已学技能重复展示，
              学习/遗忘统一走 军官列表 → 详情 → 属性 tab 的技能1~3（★ 2026-10-25 起学技能=随机） -->
@@ -688,9 +687,12 @@
         <!-- ===== 技能装备区 ===== -->
         <!-- ★ 2026-10-25 技能不再有独立 tab：属性页固定列 3 个技能槽（学了显示名字+等级，
              没学只显示空槽）。[学习] = 消耗 1 本「军官技能书」**随机**学一个技能，
-             所以三行的 [学习] 效果完全一样，不存在「点哪行就学哪个」。 -->
+             所以三行的 [学习] 效果完全一样，不存在「点哪行就学哪个」。
+             ★★ 2026-10-31 槽位固定（后端按 slot 下发）+ 点技能名展开效果、再点收起：
+               遗忘只清空该格，后面的技能不会窜位；离开军官详情自动收起（watch.cur）。 -->
         <div class="old-line" v-for="(s, i) in ezfy.officerSkillSlots" :key="'ds' + i">
-          技能{{ i + 1 }}：<template v-if="s">{{ s.name }}<span v-if="s.level" class="green"> Lv.{{ s.level }}</span></template><a href="javascript:;" @click="ezfy.doLearnRandom">[学习]</a><a v-if="s" href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
+          技能{{ i + 1 }}：<template v-if="s"><a href="javascript:;" @click="ezfy.toggleOfficerSkill(i + 1)">{{ s.name }}</a><span v-if="s.level" class="green"> Lv.{{ s.level }}</span></template><span v-else class="gray">未学习</span><a href="javascript:;" @click="ezfy.doLearnRandom">[学习]</a><a v-if="s" href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
+          <div v-if="s && ezfy.officerSkillOpen === i + 1" class="gray sk-des">效果：{{ s.effect }}<template v-if="s.des">　{{ s.des }}</template></div>
         </div>
         <div class="old-line">
           装备：<a href="javascript:;" @click="ezfy.openOfficerDetailTab('equip')">[查看]</a>
@@ -699,10 +701,14 @@
         <!-- ===== 特殊技能区（名将组合技） ===== -->
         <!-- ★ 2026-10-25 用户要求一行说完：`特殊技能：[铁血军魂]：+攻击力180%`
              （原来是 `+180%` 再单起一行灰色括号说明，信息重复又占行）。
-             effect_text 由后端按 kind 拼（+属性名数值%），值随军官等级成长。 -->
+             effect_text 由后端按 kind 拼（+属性名数值%），值随军官等级成长。
+             ★★ 2026-10-31 点技能名展开效果、再点收起（与技能1~3 同一交互，离开详情自动收起）。 -->
         <template v-if="ezfy.officerDetail.officer.combo_skills && ezfy.officerDetail.officer.combo_skills.length">
           <div class="old-line red" v-for="cs in ezfy.officerDetail.officer.combo_skills" :key="'ocs' + cs.id">
-            特殊技能：[{{ cs.name }}]：{{ cs.effect_text || cs.value_text }}
+            特殊技能：<a href="javascript:;" @click="ezfy.toggleOfficerCombo(cs.id)">[{{ cs.name }}]</a>：{{ cs.effect_text || cs.value_text }}
+            <div v-if="ezfy.officerComboOpen === cs.id" class="gray sk-des">
+              Lv.{{ cs.level }}　发动率 {{ cs.proc_pct }}%　{{ cs.value_text }}<template v-if="cs.des">　{{ cs.des }}</template>
+            </div>
           </div>
         </template>
         </div>
@@ -752,11 +758,13 @@
 
         <!-- 装备 tab（已穿戴 + 一键卸下 + 一键穿套装） -->
         <div v-if="ezfy.officerDetailTab === 'equip'">
-        <table class="ezfy-plain-table">
+        <!-- ★★ 2026-10-31 用户「电脑端表格还是太大了」→ 这张表单独收窄（ezfy-eq-worn-tbl：
+             最宽 520px + 紧凑内边距），不再跟着全局 920px 铺满；字号不动（仍 var(--fs)）。 -->
+        <table class="ezfy-plain-table ezfy-eq-worn-tbl">
           <!-- ★ 2026-10-26 列宽修正（用户「列宽太不美观」）：三列 50/25/25 均衡，
                原来 50/20/30 让只有「—」的操作列最宽、部位列最窄，视觉上很散。 -->
           <colgroup>
-            <col style="width:50%"><col style="width:25%"><col style="width:25%">
+            <col style="width:56%"><col style="width:24%"><col style="width:20%">
           </colgroup>
           <tr><th colspan="3">已穿戴装备
             <a v-if="ezfy.officerDetail.equipped.length" href="javascript:;" @click="ezfy.doUnequipAll">[一键卸下]</a>
@@ -775,7 +783,7 @@
             </td>
             <td>{{ row.slot }}</td>
             <td>
-              <a v-if="row.g" href="javascript:;" @click="ezfy.doUnequip(row.g.first.id)">[卸下]</a>
+              <a v-if="row.g" href="javascript:;" @click="ezfy.doUnequip(row.g.first.id)">[卸]</a>
               <span v-else class="gray">—</span>
             </td>
           </tr>
@@ -821,7 +829,7 @@
               <span v-else class="gray">—</span>
             </td>
             <td>
-              <a v-if="g.canEquip" href="javascript:;" @click="ezfy.doEquipGroup(g)">[穿戴]</a>
+              <a v-if="g.canEquip" href="javascript:;" @click="ezfy.doEquipGroup(g)">[穿]</a>
               <span v-else class="gray">部位已满</span>
             </td>
           </tr>

@@ -257,25 +257,25 @@ var ezfyEzfyCfgBuildingLevel = []model.EzfyCfgBuildingLevel{
 
 var ezfyEzfyCfgTroop = []model.EzfyCfgTroop{
 	{ID: 1, NameAxis: "国防军步兵", NameAlly: "同盟国步兵", Name: "步兵", Type: 2, Health: 100, AtkSea: 10, AtkGround: 18, AtkAir: 9, AtkDef: 18, Defence: 10, Speed: 300, AttackRange: 20, Carry: 50, Pop: 1, FoodKeep: 1, OilKeep: 1, Food: 50, Steel: 70, Oil: 10, Rare: 100, TrainTime: 60, Require: "军工厂(1级)", Icon: "1.png", RepairRate: 7},
-	{ID: 2, NameAxis: "摩托化掷弹兵", NameAlly: "摩托化侦察兵", Name: "摩托化骑兵", Type: 2, Health: 65, AtkSea: 7, AtkGround: 12, AtkAir: 5, AtkDef: 10, Defence: 8, Speed: 1400, AttackRange: 30, Carry: 110, Pop: 2, FoodKeep: 2, OilKeep: 5, Food: 100, Steel: 120, Oil: 30, Rare: 50, TrainTime: 70, Require: "军工厂(1级)勘探技术(1级)军训艺术(1级)", Icon: "2.png", RepairRate: 7},
+	{ID: 2, NameAxis: "摩托化掷弹兵", NameAlly: "摩托化侦察兵", Name: "摩托化骑兵", Type: 2, Health: 65, AtkSea: 7, AtkGround: 12, AtkAir: 5, AtkDef: 10, Defence: 8, Speed: 1400, AttackRange: 30, Carry: 110, Pop: 2, FoodKeep: 2, OilKeep: 5, Food: 100, Steel: 120, Oil: 30, Rare: 50, TrainTime: 70, Require: "军工厂(1级)深井钻探(1级)动员训练(1级)", Icon: "2.png", RepairRate: 7},
 	{ID: 3, NameAxis: "军用运输卡车", NameAlly: "通用运输卡车", Name: "卡车", Type: 2, Health: 120, AtkSea: 6, AtkGround: 5, AtkAir: 5, AtkDef: 10, Defence: 5, Speed: 1150, AttackRange: 20, Carry: 1200, Pop: 2, FoodKeep: 2, OilKeep: 15, Food: 50, Steel: 250, Oil: 50, Rare: 10, TrainTime: 90, Require: "军工厂(2级)", Icon: "3.png", RepairRate: 10},
-	{ID: 4, NameAxis: "半履带装甲车", NameAlly: "装甲运兵车", Name: "装甲车", Type: 2, Health: 220, AtkSea: 10, AtkGround: 16, AtkAir: 24, AtkDef: 14, Defence: 25, Speed: 450, AttackRange: 40, Carry: 210, Pop: 3, FoodKeep: 3, OilKeep: 25, Food: 50, Steel: 500, Oil: 150, Rare: 550, TrainTime: 150, Require: "军工厂(2级)军训艺术(1级)装甲科技(2级)", Icon: "4.png", RepairRate: 10},
-	{ID: 5, NameAxis: "二号轻型坦克", NameAlly: "斯图亚特轻型坦克", Name: "轻型坦克", Type: 2, Health: 160, AtkSea: 22, AtkGround: 28, AtkAir: 16, AtkDef: 25, Defence: 35, Speed: 850, AttackRange: 50, Carry: 80, Pop: 4, FoodKeep: 4, OilKeep: 28, Food: 300, Steel: 750, Oil: 400, Rare: 300, TrainTime: 200, Require: "军工厂(3级)军训艺术(2级)武器科技(1级)装甲科技(2级)", Icon: "5.png", RepairRate: 10},
-	{ID: 6, NameAxis: "虎式重型坦克", NameAlly: "潘兴重型坦克", Name: "重型坦克", Type: 2, Health: 240, AtkSea: 28, AtkGround: 40, AtkAir: 18, AtkDef: 35, Defence: 40, Speed: 700, AttackRange: 60, Carry: 95, Pop: 7, FoodKeep: 7, OilKeep: 52, Food: 500, Steel: 1200, Oil: 600, Rare: 400, TrainTime: 250, Require: "军工厂(6级)军训艺术(4级)武器科技(5级)装甲科技(6级)", Icon: "6.png", RepairRate: 12},
-	{ID: 7, NameAxis: "三号突击炮", NameAlly: "牧师自行突击炮", Name: "突击炮", Type: 2, Health: 140, AtkSea: 36, AtkGround: 32, AtkAir: 22, AtkDef: 50, Defence: 20, Speed: 420, AttackRange: 1500, Carry: 50, Pop: 5, FoodKeep: 5, OilKeep: 36, Food: 250, Steel: 500, Oil: 300, Rare: 750, TrainTime: 180, Require: "军工厂(4级)军训艺术(3级)武器科技(3级)燃烧引擎(4级)", Icon: "7.png", RepairRate: 10},
-	{ID: 8, NameAxis: "六管火箭炮", NameAlly: "BM-13 喀秋莎火箭炮", Name: "火箭", Type: 2, Health: 100, AtkSea: 48, AtkGround: 80, AtkAir: 10, AtkDef: 72, Defence: 20, Speed: 380, AttackRange: 3300, Carry: 100, Pop: 12, FoodKeep: 12, OilKeep: 70, Food: 450, Steel: 1800, Oil: 2700, Rare: 1800, TrainTime: 480, Require: "军工厂(6级)军训艺术(4级)武器科技(6级)弹道学(7级)", Icon: "8.png", RepairRate: 8},
-	{ID: 9, NameAxis: "Fi-156 侦察机", NameAlly: "P-38 侦察机", Name: "侦察机", Type: 3, Health: 55, AtkSea: 8, AtkGround: 5, AtkAir: 10, AtkDef: 7, Defence: 8, Speed: 5000, AttackRange: 10, Carry: 5, Pop: 1, FoodKeep: 1, OilKeep: 20, Food: 50, Steel: 150, Oil: 100, Rare: 50, TrainTime: 75, Require: "军工厂(3级)停机坪(1级)侦察技巧(1级)", Icon: "9.png", RepairRate: 7},
-	{ID: 10, NameAxis: "Bf-109 歼击机", NameAlly: "P-51 野马歼击机", Name: "歼击机", Type: 3, Health: 120, AtkSea: 13, AtkGround: 19, AtkAir: 32, AtkDef: 9, Defence: 21, Speed: 2000, AttackRange: 100, Carry: 10, Pop: 4, FoodKeep: 3, OilKeep: 95, Food: 50, Steel: 300, Oil: 500, Rare: 150, TrainTime: 210, Require: "军工厂(7级)停机坪(4级)武器科技(7级)燃烧引擎(8级)", Icon: "10.png", RepairRate: 7},
-	{ID: 11, NameAxis: "Ju-87 俯冲轰炸机", NameAlly: "B-17 空中堡垒轰炸机", Name: "轰炸机", Type: 3, Health: 135, AtkSea: 30, AtkGround: 33, AtkAir: 25, AtkDef: 22, Defence: 16, Speed: 1750, AttackRange: 100, Carry: 25, Pop: 6, FoodKeep: 5, OilKeep: 125, Food: 100, Steel: 500, Oil: 800, Rare: 250, TrainTime: 240, Require: "停机坪(7级)炼钢技术(7级)燃烧引擎(7级)", Icon: "11.png", RepairRate: 7},
-	{ID: 12, NameAxis: "党卫军敢死队", NameAlly: "空降特战队", Name: "特种兵", Type: 3, Health: 120, AtkSea: 55, AtkGround: 60, AtkAir: 30, AtkDef: 80, Defence: 5, Speed: 2500, AttackRange: 10, Carry: 10, Pop: 10, FoodKeep: 10, OilKeep: 24, Food: 2000, Steel: 700, Oil: 600, Rare: 1500, TrainTime: 180, Require: "军工厂(9级)停机坪(9级)军训艺术(10级)指挥艺术(10级)", Icon: "12.png", RepairRate: 12},
-	{ID: 13, NameAxis: "Z 级驱逐舰", NameAlly: "弗莱彻级驱逐舰", Name: "驱逐舰", Type: 1, Health: 350, AtkSea: 45, AtkGround: 65, AtkAir: 42, AtkDef: 40, Defence: 45, Speed: 1000, AttackRange: 200, Carry: 1000, Pop: 15, FoodKeep: 15, OilKeep: 400, Food: 500, Steel: 2600, Oil: 1500, Rare: 900, TrainTime: 700, Require: "军工厂(8级)航海协会(5级)炼钢技术(4级)重工技术(5级)", Icon: "13.png", RepairRate: 10},
-	{ID: 14, NameAxis: "U 型潜艇", NameAlly: "鲨鱼级潜艇", Name: "潜艇", Type: 1, Health: 200, AtkSea: 92, AtkGround: 18, AtkAir: 14, AtkDef: 25, Defence: 30, Speed: 1700, AttackRange: 70, Carry: 500, Pop: 14, FoodKeep: 14, OilKeep: 420, Food: 300, Steel: 1800, Oil: 1300, Rare: 2000, TrainTime: 520, Require: "军工厂(8级)航海协会(7级)炼钢技术(4级)重工技术(7级)", Icon: "14.png", RepairRate: 10},
-	{ID: 15, NameAxis: "俾斯麦级战列舰", NameAlly: "衣阿华级战列舰", Name: "战列舰", Type: 1, Health: 1500, AtkSea: 120, AtkGround: 85, AtkAir: 73, AtkDef: 110, Defence: 120, Speed: 900, AttackRange: 1800, Carry: 2500, Pop: 40, FoodKeep: 40, OilKeep: 1200, Food: 2000, Steel: 27000, Oil: 11000, Rare: 14500, TrainTime: 4500, Require: "军工厂(9级)航海协会(9级)炼钢技术(6级)重工技术(10级)", Icon: "15.png", RepairRate: 12},
-	{ID: 16, NameAxis: "齐柏林伯爵级航空母舰", NameAlly: "埃塞克斯级航空母舰", Name: "航母", Type: 1, Health: 2200, AtkSea: 100, AtkGround: 95, AtkAir: 110, AtkDef: 90, Defence: 100, Speed: 850, AttackRange: 3100, Carry: 10000, Pop: 55, FoodKeep: 55, OilKeep: 3000, Food: 8500, Steel: 21000, Oil: 8000, Rare: 25000, TrainTime: 4500, Require: "军工厂(10级)航海协会(10级)炼钢技术(10级)重工技术(10级)", Icon: "16.png", RepairRate: 20},
-	{ID: 17, Name: "碉堡", Type: 4, Health: 300, AtkSea: 30, AtkGround: 25, AtkAir: 25, AtkDef: 0, Defence: 70, Speed: 0, AttackRange: 1500, Carry: 0, Pop: 1, FoodKeep: 0, OilKeep: 0, Food: 1200, Steel: 2100, Oil: 400, Rare: 1500, TrainTime: 60, Require: "围墙（1级）装甲科技（1级）", Icon: "17.png", RepairRate: 10},
-	{ID: 18, Name: "榴弹炮", Type: 4, Health: 150, AtkSea: 32, AtkGround: 35, AtkAir: 28, AtkDef: 0, Defence: 40, Speed: 0, AttackRange: 5300, Carry: 0, Pop: 2, FoodKeep: 0, OilKeep: 0, Food: 700, Steel: 3000, Oil: 1400, Rare: 2500, TrainTime: 100, Require: "围墙（3级）武器科技(4级)弹道学(4级)", Icon: "18.png", RepairRate: 13},
-	{ID: 19, Name: "反坦克炮", Type: 4, Health: 230, AtkSea: 55, AtkGround: 53, AtkAir: 40, AtkDef: 0, Defence: 65, Speed: 0, AttackRange: 5200, Carry: 0, Pop: 5, FoodKeep: 0, OilKeep: 0, Food: 1100, Steel: 2200, Oil: 6800, Rare: 3800, TrainTime: 195, Require: "围墙（6级）武器科技(8级)掩体防御（5级）", Icon: "19.png", RepairRate: 7},
-	{ID: 20, Name: "防空炮", Type: 4, Health: 280, AtkSea: 38, AtkGround: 30, AtkAir: 70, AtkDef: 0, Defence: 65, Speed: 0, AttackRange: 2850, Carry: 0, Pop: 5, FoodKeep: 0, OilKeep: 0, Food: 1100, Steel: 3400, Oil: 2200, Rare: 6800, TrainTime: 195, Require: "围墙（6级）武器科技(8级)掩体防御（5级）", Icon: "20.png", RepairRate: 7},
+	{ID: 4, NameAxis: "半履带装甲车", NameAlly: "装甲运兵车", Name: "装甲车", Type: 2, Health: 220, AtkSea: 10, AtkGround: 16, AtkAir: 24, AtkDef: 14, Defence: 25, Speed: 450, AttackRange: 40, Carry: 210, Pop: 3, FoodKeep: 3, OilKeep: 25, Food: 50, Steel: 500, Oil: 150, Rare: 550, TrainTime: 150, Require: "军工厂(2级)动员训练(1级)均质装甲(2级)", Icon: "4.png", RepairRate: 10},
+	{ID: 5, NameAxis: "二号轻型坦克", NameAlly: "斯图亚特轻型坦克", Name: "轻型坦克", Type: 2, Health: 160, AtkSea: 22, AtkGround: 28, AtkAir: 16, AtkDef: 25, Defence: 35, Speed: 850, AttackRange: 50, Carry: 80, Pop: 4, FoodKeep: 4, OilKeep: 28, Food: 300, Steel: 750, Oil: 400, Rare: 300, TrainTime: 200, Require: "军工厂(3级)动员训练(2级)枪械改良(1级)均质装甲(2级)", Icon: "5.png", RepairRate: 10},
+	{ID: 6, NameAxis: "虎式重型坦克", NameAlly: "潘兴重型坦克", Name: "重型坦克", Type: 2, Health: 240, AtkSea: 28, AtkGround: 40, AtkAir: 18, AtkDef: 35, Defence: 40, Speed: 700, AttackRange: 60, Carry: 95, Pop: 7, FoodKeep: 7, OilKeep: 52, Food: 500, Steel: 1200, Oil: 600, Rare: 400, TrainTime: 250, Require: "军工厂(6级)动员训练(4级)枪械改良(5级)均质装甲(6级)", Icon: "6.png", RepairRate: 12},
+	{ID: 7, NameAxis: "三号突击炮", NameAlly: "牧师自行突击炮", Name: "突击炮", Type: 2, Health: 140, AtkSea: 36, AtkGround: 32, AtkAir: 22, AtkDef: 50, Defence: 20, Speed: 420, AttackRange: 1500, Carry: 50, Pop: 5, FoodKeep: 5, OilKeep: 36, Food: 250, Steel: 500, Oil: 300, Rare: 750, TrainTime: 180, Require: "军工厂(4级)动员训练(3级)枪械改良(3级)机械增压(4级)", Icon: "7.png", RepairRate: 10},
+	{ID: 8, NameAxis: "六管火箭炮", NameAlly: "BM-13 喀秋莎火箭炮", Name: "火箭", Type: 2, Health: 100, AtkSea: 48, AtkGround: 80, AtkAir: 10, AtkDef: 72, Defence: 20, Speed: 380, AttackRange: 3300, Carry: 100, Pop: 12, FoodKeep: 12, OilKeep: 70, Food: 450, Steel: 1800, Oil: 2700, Rare: 1800, TrainTime: 480, Require: "军工厂(6级)动员训练(4级)枪械改良(6级)炮兵射表(7级)", Icon: "8.png", RepairRate: 8},
+	{ID: 9, NameAxis: "Fi-156 侦察机", NameAlly: "P-38 侦察机", Name: "侦察机", Type: 3, Health: 55, AtkSea: 8, AtkGround: 5, AtkAir: 10, AtkDef: 7, Defence: 8, Speed: 5000, AttackRange: 10, Carry: 5, Pop: 1, FoodKeep: 1, OilKeep: 20, Food: 50, Steel: 150, Oil: 100, Rare: 50, TrainTime: 75, Require: "军工厂(3级)停机坪(1级)无线电侦听(1级)", Icon: "9.png", RepairRate: 7},
+	{ID: 10, NameAxis: "Bf-109 歼击机", NameAlly: "P-51 野马歼击机", Name: "歼击机", Type: 3, Health: 120, AtkSea: 13, AtkGround: 19, AtkAir: 32, AtkDef: 9, Defence: 21, Speed: 2000, AttackRange: 100, Carry: 10, Pop: 4, FoodKeep: 3, OilKeep: 95, Food: 50, Steel: 300, Oil: 500, Rare: 150, TrainTime: 210, Require: "军工厂(7级)停机坪(4级)枪械改良(7级)机械增压(8级)", Icon: "10.png", RepairRate: 7},
+	{ID: 11, NameAxis: "Ju-87 俯冲轰炸机", NameAlly: "B-17 空中堡垒轰炸机", Name: "轰炸机", Type: 3, Health: 135, AtkSea: 30, AtkGround: 33, AtkAir: 25, AtkDef: 22, Defence: 16, Speed: 1750, AttackRange: 100, Carry: 25, Pop: 6, FoodKeep: 5, OilKeep: 125, Food: 100, Steel: 500, Oil: 800, Rare: 250, TrainTime: 240, Require: "停机坪(7级)合金冶炼(7级)机械增压(7级)", Icon: "11.png", RepairRate: 7},
+	{ID: 12, NameAxis: "党卫军敢死队", NameAlly: "空降特战队", Name: "特种兵", Type: 3, Health: 120, AtkSea: 55, AtkGround: 60, AtkAir: 30, AtkDef: 80, Defence: 5, Speed: 2500, AttackRange: 10, Carry: 10, Pop: 10, FoodKeep: 10, OilKeep: 24, Food: 2000, Steel: 700, Oil: 600, Rare: 1500, TrainTime: 180, Require: "军工厂(9级)停机坪(9级)动员训练(10级)参谋作业(10级)", Icon: "12.png", RepairRate: 12},
+	{ID: 13, NameAxis: "Z 级驱逐舰", NameAlly: "弗莱彻级驱逐舰", Name: "驱逐舰", Type: 1, Health: 350, AtkSea: 45, AtkGround: 65, AtkAir: 42, AtkDef: 40, Defence: 45, Speed: 1000, AttackRange: 200, Carry: 1000, Pop: 15, FoodKeep: 15, OilKeep: 400, Food: 500, Steel: 2600, Oil: 1500, Rare: 900, TrainTime: 700, Require: "军工厂(8级)航海协会(5级)合金冶炼(4级)重型机床(5级)", Icon: "13.png", RepairRate: 10},
+	{ID: 14, NameAxis: "U 型潜艇", NameAlly: "鲨鱼级潜艇", Name: "潜艇", Type: 1, Health: 200, AtkSea: 92, AtkGround: 18, AtkAir: 14, AtkDef: 25, Defence: 30, Speed: 1700, AttackRange: 70, Carry: 500, Pop: 14, FoodKeep: 14, OilKeep: 420, Food: 300, Steel: 1800, Oil: 1300, Rare: 2000, TrainTime: 520, Require: "军工厂(8级)航海协会(7级)合金冶炼(4级)重型机床(7级)", Icon: "14.png", RepairRate: 10},
+	{ID: 15, NameAxis: "俾斯麦级战列舰", NameAlly: "衣阿华级战列舰", Name: "战列舰", Type: 1, Health: 1500, AtkSea: 120, AtkGround: 85, AtkAir: 73, AtkDef: 110, Defence: 120, Speed: 900, AttackRange: 1800, Carry: 2500, Pop: 40, FoodKeep: 40, OilKeep: 1200, Food: 2000, Steel: 27000, Oil: 11000, Rare: 14500, TrainTime: 4500, Require: "军工厂(9级)航海协会(9级)合金冶炼(6级)重型机床(10级)", Icon: "15.png", RepairRate: 12},
+	{ID: 16, NameAxis: "齐柏林伯爵级航空母舰", NameAlly: "埃塞克斯级航空母舰", Name: "航母", Type: 1, Health: 2200, AtkSea: 100, AtkGround: 95, AtkAir: 110, AtkDef: 90, Defence: 100, Speed: 850, AttackRange: 3100, Carry: 10000, Pop: 55, FoodKeep: 55, OilKeep: 3000, Food: 8500, Steel: 21000, Oil: 8000, Rare: 25000, TrainTime: 4500, Require: "军工厂(10级)航海协会(10级)合金冶炼(10级)重型机床(10级)", Icon: "16.png", RepairRate: 20},
+	{ID: 17, Name: "碉堡", Type: 4, Health: 300, AtkSea: 30, AtkGround: 25, AtkAir: 25, AtkDef: 0, Defence: 70, Speed: 0, AttackRange: 1500, Carry: 0, Pop: 1, FoodKeep: 0, OilKeep: 0, Food: 1200, Steel: 2100, Oil: 400, Rare: 1500, TrainTime: 60, Require: "围墙（1级）均质装甲（1级）", Icon: "17.png", RepairRate: 10},
+	{ID: 18, Name: "榴弹炮", Type: 4, Health: 150, AtkSea: 32, AtkGround: 35, AtkAir: 28, AtkDef: 0, Defence: 40, Speed: 0, AttackRange: 5300, Carry: 0, Pop: 2, FoodKeep: 0, OilKeep: 0, Food: 700, Steel: 3000, Oil: 1400, Rare: 2500, TrainTime: 100, Require: "围墙（3级）枪械改良(4级)炮兵射表(4级)", Icon: "18.png", RepairRate: 13},
+	{ID: 19, Name: "反坦克炮", Type: 4, Health: 230, AtkSea: 55, AtkGround: 53, AtkAir: 40, AtkDef: 0, Defence: 65, Speed: 0, AttackRange: 5200, Carry: 0, Pop: 5, FoodKeep: 0, OilKeep: 0, Food: 1100, Steel: 2200, Oil: 6800, Rare: 3800, TrainTime: 195, Require: "围墙（6级）枪械改良(8级)永备工事（5级）", Icon: "19.png", RepairRate: 7},
+	{ID: 20, Name: "防空炮", Type: 4, Health: 280, AtkSea: 38, AtkGround: 30, AtkAir: 70, AtkDef: 0, Defence: 65, Speed: 0, AttackRange: 2850, Carry: 0, Pop: 5, FoodKeep: 0, OilKeep: 0, Food: 1100, Steel: 3400, Oil: 2200, Rare: 6800, TrainTime: 195, Require: "围墙（6级）枪械改良(8级)永备工事（5级）", Icon: "20.png", RepairRate: 7},
 	// ★ 2026-10-22 新增「海军轰炸机」（空军·对海特化，用户需求）：
 	//   数值取自原版兵种表（参考材料/开发文档/兵种.png 第 12 行），
 	//   注意该表「对城墙」列其实就是**对防**(AtkDef) → 40。
@@ -286,31 +286,41 @@ var ezfyEzfyCfgTroop = []model.EzfyCfgTroop{
 	//     轴心国 = Fw 200 秃鹰海军轰炸机（德国福克-沃尔夫 Fw 200「秃鹰」，大西洋反舰轰炸机）
 	//   ★ 只能用新 ID 21：1~20 是老兵种固定 ID，玩家已训部队按 ID 落库，不能挤占；
 	//     展示顺序由 ezfyTroopSortKey 插到 轰炸机(11) 与 特种兵(12) 之间。
-	{ID: 21, NameAxis: "Fw 200 秃鹰海军轰炸机", NameAlly: "TBF 复仇者海军轰炸机", Name: "海军轰炸机", Type: 3, Health: 130, AtkSea: 110, AtkGround: 25, AtkAir: 15, AtkDef: 40, Defence: 21, Speed: 1500, AttackRange: 100, Carry: 50, Pop: 10, FoodKeep: 8, OilKeep: 100, Food: 300, Steel: 1200, Oil: 1600, Rare: 600, TrainTime: 240, Require: "军工厂(8级)停机坪(8级)武器科技(8级)弹道学(6级)", Icon: "21.png", RepairRate: 8},
+	{ID: 21, NameAxis: "Fw 200 秃鹰海军轰炸机", NameAlly: "TBF 复仇者海军轰炸机", Name: "海军轰炸机", Type: 3, Health: 130, AtkSea: 110, AtkGround: 25, AtkAir: 15, AtkDef: 40, Defence: 21, Speed: 1500, AttackRange: 100, Carry: 50, Pop: 10, FoodKeep: 8, OilKeep: 100, Food: 300, Steel: 1200, Oil: 1600, Rare: 600, TrainTime: 240, Require: "军工厂(8级)停机坪(8级)枪械改良(8级)炮兵射表(6级)", Icon: "21.png", RepairRate: 8},
 }
 
+// ★ 2026-10-31 科技名整体改为「二战时期通用技术名词」（规避原版名称的版权风险）：
+//   **只改 name**，id / 数值 / 等级表 tech_id 一律不动（玩家科技等级按 id 落库）。
+//   新名与效果一一对应：1粮食 2钢铁 3石油 4稀矿 5造兵速度 6攻击 7防御 8射程 9重装备
+//   10速度 11建造 12情报 13负重 14容量 15携带 16城防 17掠夺 18耗粮 19空军速度 20城防修复 21伤兵恢复。
+//   ★★ 兵种表 Require 里引用的科技名必须同步：require 文本虽然只用于展示，
+//   但它是 require_ids 的解析来源（internal/ezfyreq 按名字查 id），名字对不上
+//   = 该条门槛写不进结构化 ID（训练校验会少一条）。
+//   线上老库的 ezfy_cfg_troop.require 由 seed/ezfy_tech_rename.go 一次性对齐补齐
+//   （该表是 batchKeep，不会随种子自动覆盖）；随后 backfillEzfyTroopRequireIDs 转成 ID。
+//   科技主表是 UpdateAll，重启即自动生效。
 var ezfyEzfyCfgTech = []model.EzfyCfgTech{
-	{ID: 1, Name: "种植技术", Type: 1, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "粮食产量+10%", Des: "提高农田粮食产量,每级+10%"},
-	{ID: 2, Name: "炼钢技术", Type: 1, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "钢铁产量+10%", Des: "提高炼钢厂钢铁产量,每级+10%"},
-	{ID: 3, Name: "勘探技术", Type: 1, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "石油产量+10%", Des: "提高石油基地产量,每级+10%"},
-	{ID: 4, Name: "冶炼技术", Type: 1, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "稀矿产量+10%", Des: "提高稀矿厂产量,每级+10%"},
-	{ID: 5, Name: "军训艺术", Type: 2, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "造兵速度+2%", Des: "提高造兵速度,每级+2%"},
-	{ID: 6, Name: "武器科技", Type: 2, MaxLevel: 10, PreBuilding: 2, PreTech: 0, PreTechLevel: 0, Effect: "部队攻击+3%", Des: "提高部队攻击力,每级+3%"},
-	{ID: 7, Name: "装甲科技", Type: 2, MaxLevel: 10, PreBuilding: 3, PreTech: 0, PreTechLevel: 0, Effect: "部队防御+3%", Des: "提高部队防御力,每级+3%"},
-	{ID: 8, Name: "弹道学", Type: 2, MaxLevel: 10, PreBuilding: 3, PreTech: 0, PreTechLevel: 0, Effect: "射程加成+3%", Des: "提高火箭/突击炮等远程单位射程,每级+3%"},
-	{ID: 9, Name: "重工技术", Type: 2, MaxLevel: 10, PreBuilding: 3, PreTech: 0, PreTechLevel: 0, Effect: "重装备攻防+2%", Des: "提高重型坦克/海军攻防,每级+2%"},
-	{ID: 10, Name: "燃烧引擎", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "部队速度+2%", Des: "提高部队速度,每级+2%"},
-	{ID: 11, Name: "建筑技术", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "建造时间-2%", Des: "减少建筑建造时间,每级-2%"},
-	{ID: 12, Name: "侦察技巧", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "情报+1级", Des: "每级让军情情报等级+1(配合雷达站,更早看到来袭城市的名字与坐标)"},
-	{ID: 13, Name: "装载技术", Type: 3, MaxLevel: 10, PreBuilding: 5, PreTech: 0, PreTechLevel: 0, Effect: "部队负重+2%", Des: "提高部队负重,每级+2%"},
-	{ID: 14, Name: "储存技术", Type: 3, MaxLevel: 10, PreBuilding: 5, PreTech: 0, PreTechLevel: 0, Effect: "资源容量+2%", Des: "提高各资源容量上限,每级+2%"},
-	{ID: 15, Name: "指挥艺术", Type: 2, MaxLevel: 10, PreBuilding: 6, PreTech: 0, PreTechLevel: 0, Effect: "部队携带+10%", Des: "提高出征携带部队上限,每级+10%"},
-	{ID: 16, Name: "掩体防御", Type: 3, MaxLevel: 10, PreBuilding: 6, PreTech: 0, PreTechLevel: 0, Effect: "城防攻防+2%", Des: "提高城防设施攻防,每级+2%"},
-	{ID: 17, Name: "掠夺技巧", Type: 3, MaxLevel: 10, PreBuilding: 7, PreTech: 0, PreTechLevel: 0, Effect: "掠夺资源+2%", Des: "提高掠夺资源比例,每级+2%"},
-	{ID: 18, Name: "补给技巧", Type: 3, MaxLevel: 10, PreBuilding: 8, PreTech: 0, PreTechLevel: 0, Effect: "军队耗粮-2%", Des: "降低军队粮食消耗,每级-2%"},
-	{ID: 19, Name: "喷气引擎", Type: 3, MaxLevel: 10, PreBuilding: 9, PreTech: 0, PreTechLevel: 0, Effect: "空军速度+3%", Des: "提高空军速度,每级+3%"},
-	{ID: 20, Name: "抢修技术", Type: 3, MaxLevel: 10, PreBuilding: 10, PreTech: 0, PreTechLevel: 0, Effect: "城防修复+2%", Des: "提高城防耐久修复,每级+2%"},
-	{ID: 21, Name: "治愈伤兵", Type: 3, MaxLevel: 10, PreBuilding: 6, PreTech: 0, PreTechLevel: 0, Effect: "伤兵恢复+2%", Des: "提高战后伤兵恢复比例,每级+2%"},
+	{ID: 1, Name: "合成氨工业", Type: 1, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "粮食产量+10%", Des: "以合成氨化肥提高农田粮食产量,每级+10%"},
+	{ID: 2, Name: "合金冶炼", Type: 1, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "钢铁产量+10%", Des: "提高炼钢厂钢铁产量,每级+10%"},
+	{ID: 3, Name: "深井钻探", Type: 1, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "石油产量+10%", Des: "提高石油基地产量,每级+10%"},
+	{ID: 4, Name: "钨矿精选", Type: 1, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "稀矿产量+10%", Des: "提高稀矿厂产量,每级+10%"},
+	{ID: 5, Name: "动员训练", Type: 2, MaxLevel: 10, PreBuilding: 1, PreTech: 0, PreTechLevel: 0, Effect: "造兵速度+2%", Des: "提高造兵速度,每级+2%"},
+	{ID: 6, Name: "枪械改良", Type: 2, MaxLevel: 10, PreBuilding: 2, PreTech: 0, PreTechLevel: 0, Effect: "部队攻击+3%", Des: "提高部队攻击力,每级+3%"},
+	{ID: 7, Name: "均质装甲", Type: 2, MaxLevel: 10, PreBuilding: 3, PreTech: 0, PreTechLevel: 0, Effect: "部队防御+3%", Des: "提高部队防御力,每级+3%"},
+	{ID: 8, Name: "炮兵射表", Type: 2, MaxLevel: 10, PreBuilding: 3, PreTech: 0, PreTechLevel: 0, Effect: "射程加成+3%", Des: "提高火箭/突击炮等远程单位射程,每级+3%"},
+	{ID: 9, Name: "重型机床", Type: 2, MaxLevel: 10, PreBuilding: 3, PreTech: 0, PreTechLevel: 0, Effect: "重装备攻防+2%", Des: "提高重型坦克/海军攻防,每级+2%"},
+	{ID: 10, Name: "机械增压", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "部队速度+2%", Des: "提高部队速度,每级+2%"},
+	{ID: 11, Name: "预制构件", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "建造时间-2%", Des: "减少建筑建造时间,每级-2%"},
+	{ID: 12, Name: "无线电侦听", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "情报+1级", Des: "每级让军情情报等级+1(配合雷达站,更早看到来袭城市的名字与坐标)"},
+	{ID: 13, Name: "标准化装卸", Type: 3, MaxLevel: 10, PreBuilding: 5, PreTech: 0, PreTechLevel: 0, Effect: "部队负重+2%", Des: "提高部队负重,每级+2%"},
+	{ID: 14, Name: "野战仓储", Type: 3, MaxLevel: 10, PreBuilding: 5, PreTech: 0, PreTechLevel: 0, Effect: "资源容量+2%", Des: "提高各资源容量上限,每级+2%"},
+	{ID: 15, Name: "参谋作业", Type: 2, MaxLevel: 10, PreBuilding: 6, PreTech: 0, PreTechLevel: 0, Effect: "部队携带+10%", Des: "提高出征携带部队上限,每级+10%"},
+	{ID: 16, Name: "永备工事", Type: 3, MaxLevel: 10, PreBuilding: 6, PreTech: 0, PreTechLevel: 0, Effect: "城防攻防+2%", Des: "提高城防设施攻防,每级+2%"},
+	{ID: 17, Name: "战地征用", Type: 3, MaxLevel: 10, PreBuilding: 7, PreTech: 0, PreTechLevel: 0, Effect: "掠夺资源+2%", Des: "提高掠夺资源比例,每级+2%"},
+	{ID: 18, Name: "野战口粮", Type: 3, MaxLevel: 10, PreBuilding: 8, PreTech: 0, PreTechLevel: 0, Effect: "军队耗粮-2%", Des: "降低军队粮食消耗,每级-2%"},
+	{ID: 19, Name: "喷气推进", Type: 3, MaxLevel: 10, PreBuilding: 9, PreTech: 0, PreTechLevel: 0, Effect: "空军速度+3%", Des: "提高空军速度,每级+3%"},
+	{ID: 20, Name: "工程抢修", Type: 3, MaxLevel: 10, PreBuilding: 10, PreTech: 0, PreTechLevel: 0, Effect: "城防修复+2%", Des: "提高城防耐久修复,每级+2%"},
+	{ID: 21, Name: "战地医疗", Type: 3, MaxLevel: 10, PreBuilding: 6, PreTech: 0, PreTechLevel: 0, Effect: "伤兵恢复+2%", Des: "提高战后伤兵恢复比例,每级+2%"},
 }
 
 var ezfyEzfyCfgTechLevel = []model.EzfyCfgTechLevel{

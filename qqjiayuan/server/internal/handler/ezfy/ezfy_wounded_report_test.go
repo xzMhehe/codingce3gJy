@@ -10,7 +10,7 @@ import (
 // ★★ 2026-10-09 用户反馈「pvp 伤兵回收比例应该有问题」——用真实战报核对过，数值是对的：
 //
 //	攻方战损 10697；航母 `repair_rate = 20`（兵种基础修复率 20%）
-//	+ 满级「治愈伤兵」科技 10 级 ×2%/级 = +20% → 实际按 40% 回收 → 10697×40% = 4278 ✓
+//	+ 满级「战地医疗」科技 10 级 ×2%/级 = +20% → 实际按 40% 回收 → 10697×40% = 4278 ✓
 //
 // 玩家以为算错，是因为战报只给一个数字、而兵种详情页写的是 20%。这里把占比与加成写出来对账。
 func TestWoundedReportLine(t *testing.T) {
@@ -94,9 +94,9 @@ func TestHealPctLine(t *testing.T) {
 func TestDefSrcTxt(t *testing.T) {
 	// 满科技、无军官 → 只有科技段
 	got := ezfyDefSrcTxt([]ezfyBonusItem{
-		{Name: "科技·装甲科技", Value: 30},
-		{Name: "科技·掩体防御", Value: 20},
-		{Name: "科技·重工技术", Value: 20},
+		{Name: "科技·均质装甲", Value: 30},
+		{Name: "科技·永备工事", Value: 20},
+		{Name: "科技·重型机床", Value: 20},
 	})
 	if want := "(科技+70)"; got != want {
 		t.Fatalf("科技段 = %q，期望 %q", got, want)
@@ -104,7 +104,7 @@ func TestDefSrcTxt(t *testing.T) {
 	// 含城墙/军官/装备 → 按来源归类，顺序固定
 	got = ezfyDefSrcTxt([]ezfyBonusItem{
 		{Name: "城墙", Value: 45},
-		{Name: "科技·装甲科技", Value: 30},
+		{Name: "科技·均质装甲", Value: 30},
 		{Name: "军官·冥王", Value: 20},
 		{Name: "军官技能·弧形防御", Value: 60},
 		{Name: "装备套装", Value: 15},
@@ -113,7 +113,7 @@ func TestDefSrcTxt(t *testing.T) {
 		t.Fatalf("全来源 = %q，期望 %q", got, want)
 	}
 	// 全零 / 空 → 空串（老战场快照没有明细时不破坏格式）
-	if got := ezfyDefSrcTxt([]ezfyBonusItem{{Name: "科技·装甲科技", Value: 0}}); got != "" {
+	if got := ezfyDefSrcTxt([]ezfyBonusItem{{Name: "科技·均质装甲", Value: 0}}); got != "" {
 		t.Fatalf("全零应为空串，实际 %q", got)
 	}
 	if got := ezfyDefSrcTxt(nil); got != "" {
@@ -130,9 +130,9 @@ func TestDefSrcTxt(t *testing.T) {
 func TestBonusLineShowsDefSource(t *testing.T) {
 	defer stubCritTroops(t)()
 	techBreak := []ezfyBonusItem{
-		{Name: "科技·装甲科技", Value: 30},
-		{Name: "科技·掩体防御", Value: 20},
-		{Name: "科技·重工技术", Value: 20},
+		{Name: "科技·均质装甲", Value: 30},
+		{Name: "科技·永备工事", Value: 20},
+		{Name: "科技·重型机床", Value: 20},
 	}
 	st := ezfyNewBattleState(
 		[]ezfyUnitGroup{{TroopId: 11, Count: 100}},

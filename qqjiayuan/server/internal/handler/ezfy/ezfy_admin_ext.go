@@ -972,7 +972,7 @@ func (h *EzfyAdmin) AdminEzfyTroopsCfg(c *gin.Context) {
 // ★ 数量上限 ezfyAdminTroopMax（1 亿）：不是游戏规则，是**防呆**。
 //
 //	线上踩过：管理端输入框里手滑敲成 99999999999，城1 就多了 1000 亿航母，
-//	军队耗粮直接变成 4.4 万亿，玩家以为「补给技巧科技坏了」。
+//	军队耗粮直接变成 4.4 万亿，玩家以为「野战口粮科技坏了」。
 //	真正的病因是脏数据，不是公式 —— 所以在这里卡一道，别再让别人踩。
 func (h *EzfyAdmin) AdminEzfyTroopGrant(c *gin.Context) {
 	var in struct {
@@ -1266,7 +1266,7 @@ func (h *EzfyAdmin) AdminEzfyTrainCreate(c *gin.Context) {
 	ez := h.ezfyH()
 	sec := in.Seconds
 	if sec <= 0 {
-		// ★ 2026-10-21 管理端手动训练也走玩家端同一公式（市长军事/开关 + 军训艺术等级）。
+		// ★ 2026-10-21 管理端手动训练也走玩家端同一公式（市长军事/开关 + 动员训练等级）。
 		// ★ 2026-10-29 科技加成按本城生效（没科研中心不吃加成）→ techMap(城) 而非 techMapOf(玩家)
 		ez.cfgs()
 		sec = ezfyTrainUnitSeconds(cfg.TrainTime, ez.mayorTrainMilitary(uint(in.CityId)), ez.techMap(uint(in.CityId))[5]) * in.Count

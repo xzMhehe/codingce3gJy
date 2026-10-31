@@ -28,8 +28,8 @@ func TestBattleHeadOrder(t *testing.T) {
 		150, 180, // atkOfficerSkill, defOfficerSkill
 		[]ezfyBonusItem{{Name: "尖兵突击", Value: 150}},
 		[]ezfyBonusItem{{Name: "尖兵突击", Value: 180}},
-		[]ezfyBonusItem{{Name: "武器科技", Value: 30}, {Name: "重工技术", Value: 20}},
-		[]ezfyBonusItem{{Name: "装甲科技", Value: 30}, {Name: "掩体防御", Value: 20}},
+		[]ezfyBonusItem{{Name: "枪械改良", Value: 30}, {Name: "重型机床", Value: 20}},
+		[]ezfyBonusItem{{Name: "均质装甲", Value: 30}, {Name: "永备工事", Value: 20}},
 		[]ezfyBonusItem{{Name: "城墙", Value: 45}},
 		355, []ezfyBonusItem{{Name: "军官·Michael·Adams", Value: 144}}, // atkDefBonus, atkDefBreak
 		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
@@ -87,14 +87,14 @@ func TestBattleHeadDefTechOnly(t *testing.T) {
 		0, 0,
 		nil, nil,
 		nil,
-		[]ezfyBonusItem{{Name: "科技·装甲科技", Value: 30}, {Name: "科技·重工技术", Value: 20}},
+		[]ezfyBonusItem{{Name: "科技·均质装甲", Value: 30}, {Name: "科技·重型机床", Value: 20}},
 		nil, 0, nil,
 		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
 		0, 0, 1, 2,
 		ezfyTypeBonus{}, ezfyTypeBonus{})
 
 	atkTech := strings.Contains(strings.Join(st.Head, "\n"), "【攻方科技】")
-	defTech := strings.Contains(strings.Join(st.Head, "\n"), "【守方科技】科技·装甲科技+30%")
+	defTech := strings.Contains(strings.Join(st.Head, "\n"), "【守方科技】科技·均质装甲+30%")
 	if atkTech {
 		t.Fatal("攻方没有科技时不应输出【攻方科技】")
 	}

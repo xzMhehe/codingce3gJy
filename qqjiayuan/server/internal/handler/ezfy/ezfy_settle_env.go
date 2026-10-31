@@ -51,6 +51,11 @@ type ezfySettleEnv struct {
 	// ★ 原 `officerByName` 每支结算都要查一次（算采集后勤加成），批量时纯属重复。
 	officers map[string]*model.EzfyOfficer
 
+	// gatherLogs 本批缓存的「采集用最终后勤」（key = 军官 ID）。
+	// ★★ 2026-10-31 采集后勤改吃最终后勤（基础 + 装备 + 套装）后，装备 JSON 解析
+	//   不便宜 → 同一批里同一名军官只算一次（军队动态每秒预览也复用）。
+	gatherLogs map[uint]int
+
 	treasureLeft     int
 	treasureLeftInit bool
 }
@@ -131,6 +136,7 @@ func (h *EzfyHandler) newSettleEnv(orders []model.EzfyOrder) *ezfySettleEnv {
 		cities:         map[int64]*model.EzfyCity{},
 		cityWildLevels: map[int64]map[string]int{},
 		officers:       map[string]*model.EzfyOfficer{},
+		gatherLogs:     map[uint]int{},
 	}
 	if len(orders) == 0 {
 		return e

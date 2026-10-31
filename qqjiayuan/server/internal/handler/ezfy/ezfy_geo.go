@@ -448,7 +448,7 @@ func ezfyHasNavalTroops(units []ezfyUnitGroup) bool {
 
 // ezfyHasAirTroops 出征部队里是否含有空军兵种（兵种 type=3：侦察机/歼击机/轰炸机/特种兵）。
 //
-// ★ 2026-10-16 出征预览「提速」清单用：喷气引擎(科技19)只加速空军，
+// ★ 2026-10-16 出征预览「提速」清单用：喷气推进(科技19)只加速空军，
 //
 //	部队不含空军时不该把它列出来（否则玩家以为它在生效）。
 func ezfyHasAirTroops(units []ezfyUnitGroup) bool {
@@ -1476,7 +1476,7 @@ func ezfyMarchCapOn() bool {
 
 // ezfyTrainMayorMilitaryOn 造兵时间是否吃市长军事加成（默认开；0 = 关）。
 //
-// ★ 2026-10-21：关掉后训练时间按 floor(面板 × 10/(10+军训艺术等级)) 计算，不查市长、不加成。
+// ★ 2026-10-21：关掉后训练时间按 floor(面板 × 10/(10+动员训练等级)) 计算，不查市长、不加成。
 func ezfyTrainMayorMilitaryOn() bool {
 	if !ezfyCfg.ready() {
 		return ezfyTrainMayorMilitaryDef != 0
