@@ -278,15 +278,16 @@ var ezfyEzfyCfgTroop = []model.EzfyCfgTroop{
 	{ID: 20, Name: "防空炮", Type: 4, Health: 280, AtkSea: 38, AtkGround: 30, AtkAir: 70, AtkDef: 0, Defence: 65, Speed: 0, AttackRange: 2850, Carry: 0, Pop: 5, FoodKeep: 0, OilKeep: 0, Food: 1100, Steel: 3400, Oil: 2200, Rare: 6800, TrainTime: 195, Require: "围墙（6级）枪械改良(8级)永备工事（5级）", Icon: "20.png", RepairRate: 7},
 	// ★ 2026-10-22 新增「海军轰炸机」（空军·对海特化，用户需求）：
 	//   数值取自原版兵种表（参考材料/开发文档/兵种.png 第 12 行），
-	//   注意该表「对城墙」列其实就是**对防**(AtkDef) → 40。
+	//   注意该表「对城墙」列其实就是**对防**(AtkDef)。
 	//   ★ 用户后续调整（2026-10-22）：对海 75 → **110**；训练时间 1分30秒 → 1分40秒 → **240秒(4分钟)**。
+	//   ★ 2026-10-31 用户调整：对防 40 → **20**、防御 21 → **15**、攻速 **880**（Speed 1500 管移动/行军）。
 	//   阵营名必须写**全名**（型号 + 通用名），与「B-17 空中堡垒轰炸机」同一口径，
 	//   否则前端 troopName() 直接显示 NameAlly/NameAxis，会只剩型号看起来像缺字：
 	//     同盟国 = TBF 复仇者海军轰炸机（美国格鲁曼 TBF 舰载鱼雷轰炸机）
 	//     轴心国 = Fw 200 秃鹰海军轰炸机（德国福克-沃尔夫 Fw 200「秃鹰」，大西洋反舰轰炸机）
 	//   ★ 只能用新 ID 21：1~20 是老兵种固定 ID，玩家已训部队按 ID 落库，不能挤占；
 	//     展示顺序由 ezfyTroopSortKey 插到 轰炸机(11) 与 特种兵(12) 之间。
-	{ID: 21, NameAxis: "Fw 200 秃鹰海军轰炸机", NameAlly: "TBF 复仇者海军轰炸机", Name: "海军轰炸机", Type: 3, Health: 130, AtkSea: 110, AtkGround: 25, AtkAir: 15, AtkDef: 40, Defence: 21, Speed: 1500, AttackRange: 100, Carry: 50, Pop: 10, FoodKeep: 8, OilKeep: 100, Food: 300, Steel: 1200, Oil: 1600, Rare: 600, TrainTime: 240, Require: "军工厂(8级)停机坪(8级)枪械改良(8级)增程弹药(6级)", Icon: "21.png", RepairRate: 8},
+	{ID: 21, NameAxis: "Fw 200 秃鹰海军轰炸机", NameAlly: "TBF 复仇者海军轰炸机", Name: "海军轰炸机", Type: 3, Health: 130, AtkSea: 110, AtkGround: 25, AtkAir: 15, AtkDef: 20, Defence: 15, Speed: 1500, AtkSpeed: 880, AttackRange: 100, Carry: 50, Pop: 10, FoodKeep: 8, OilKeep: 100, Food: 300, Steel: 1200, Oil: 1600, Rare: 600, TrainTime: 240, Require: "军工厂(8级)停机坪(8级)枪械改良(8级)增程弹药(6级)", Icon: "21.png", RepairRate: 8},
 }
 
 // ★ 2026-10-31 科技名整体改为「二战时期通用技术名词」（规避原版名称的版权风险）：

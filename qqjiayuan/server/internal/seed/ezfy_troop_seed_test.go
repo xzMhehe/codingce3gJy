@@ -15,8 +15,9 @@ import (
 //
 // 这里锁住几件容易改错的事：
 //   - id 必须是 21（1~20 是老兵种固定 id，玩家已训部队按 troop_id 落库，不能挤占）；
-//   - 「对城墙」那一列就是对防 → AtkDef=40（用户特别提醒过）；
-//   - 训练时间 100 秒（1分40秒）；
+//   - 「对城墙」那一列就是对防 → 2026-10-31 用户调整后 AtkDef=20；
+//   - 防御 15、基础攻速 880（Speed 1500 仍管移动/行军）；
+//   - 训练时间 240 秒（4分钟）；
 //   - 阵营名必须带「海军轰炸机」后缀，否则前端 troopName() 只显示型号，看起来像缺字。
 func TestEzfyNavalBomberTroop(t *testing.T) {
 	var got *model.EzfyCfgTroop
@@ -62,13 +63,14 @@ func TestEzfyNavalBomberTroop(t *testing.T) {
 		want int
 	}{
 		{"生命", got.Health, 130},
-		{"防御", got.Defence, 21},
+		{"防御", got.Defence, 15},
 		{"对地", got.AtkGround, 25},
 		{"对空", got.AtkAir, 15},
 		{"对海", got.AtkSea, 110},
-		{"对城墙(对防)", got.AtkDef, 40},
+		{"对城墙(对防)", got.AtkDef, 20},
 		{"射程", got.AttackRange, 100},
 		{"速度", got.Speed, 1500},
+		{"攻速", got.AtkSpeed, 880},
 		{"负重", got.Carry, 50},
 		{"油耗", got.OilKeep, 100},
 		{"人口", got.Pop, 10},

@@ -27,11 +27,12 @@ const ezfyNavalBomberTroopID = 21
 //
 // ★ 2026-10-22 用户二次调整（对海 75→110 / 训练时间 90→100 秒 / 阵营名补全为「型号+海军轰炸机」，
 // 轴心国从日本换成德国 Fw 200 秃鹰）→ ver 1；
-// 用户三次调整（训练时间 100→240 秒）→ ver 2。
+// 用户三次调整（训练时间 100→240 秒）→ ver 2；
+// 2026-10-31 用户四次调整（对防 40→20 / 防御 21→15 / 攻速 880）→ ver 3。
 //
 // 已经部署过的库（id=21 已在表里）靠 batchKeep(DoNothing) 补不进去，所以用 settings 存版本号：
 // 库里的版本 < 本常量才对齐一次，之后管理员在「兵种配置」里再怎么调，重启都不会被顶回来。
-const ezfyNavalBomberAlignVer = 2
+const ezfyNavalBomberAlignVer = 3
 
 // ezfyNavalBomberAlignKey settings 里存对齐版本号的 key。
 const ezfyNavalBomberAlignKey = "ezfy_naval_bomber_align_ver"
@@ -70,9 +71,9 @@ func ensureEzfyTroopByID(db *gorm.DB, id int) {
 	log.Printf("ezfy 补兵种配置 id=%d 跳过：内置清单里没有这一项", id)
 }
 
-// alignEzfyNavalBomber 把「海军轰炸机」的 4 列对齐到最新口径（settings 存版本号，每版只跑一次）。
+// alignEzfyNavalBomber 把「海军轰炸机」的 7 列对齐到最新口径（settings 存版本号，每版只跑一次）。
 //
-// 覆盖的列：对海 / 训练时间 / 同盟国名 / 轴心国名。
+// 覆盖的列：对海 / 训练时间 / 同盟国名 / 轴心国名 / 对防 / 防御 / 攻速。
 // 幂等：settings 里的版本 >= ezfyNavalBomberAlignVer 就跳过；settings 表不存在时也跳过
 // （新库由 batchKeep 直接插新值）。
 func alignEzfyNavalBomber(db *gorm.DB) {
@@ -98,6 +99,9 @@ func alignEzfyNavalBomber(db *gorm.DB) {
 	res := db.Model(&model.EzfyCfgTroop{}).Where("id = ?", ezfyNavalBomberTroopID).
 		Updates(map[string]interface{}{
 			"atk_sea":    want.AtkSea,
+			"atk_def":    want.AtkDef,
+			"defence":    want.Defence,
+			"atk_speed":  want.AtkSpeed,
 			"train_time": want.TrainTime,
 			"name_ally":  want.NameAlly,
 			"name_axis":  want.NameAxis,
@@ -110,6 +114,7 @@ func alignEzfyNavalBomber(db *gorm.DB) {
 	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?) "+
 		"ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
 		ezfyNavalBomberAlignKey, ezfyNavalBomberAlignVer)
-	log.Printf("ezfy 海军轰炸机已对齐到 v%d: 对海%d 训练%d秒 %s / %s",
-		ezfyNavalBomberAlignVer, want.AtkSea, want.TrainTime, want.NameAlly, want.NameAxis)
+	log.Printf("ezfy 海军轰炸机已对齐到 v%d: 对海%d 对防%d 防御%d 攻速%d 训练%d秒 %s / %s",
+		ezfyNavalBomberAlignVer, want.AtkSea, want.AtkDef, want.Defence, want.AtkSpeed,
+		want.TrainTime, want.NameAlly, want.NameAxis)
 }
