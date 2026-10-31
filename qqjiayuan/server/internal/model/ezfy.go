@@ -593,6 +593,18 @@ type EzfyCfgLimit struct {
 	//   ★ 0 是**合法值**（= 不限）→ 读取端不能用「<=0 回落默认」那套，见 ezfyActDailyLimit。
 	ActDailyLimit int `gorm:"default:50;comment:每城每日活动目标攻击上限(0=不限)" json:"act_daily_limit"`
 
+	// ★★ 2026-10-31 战报入库开关（管理端「二战系统配置」按类型分开，**默认全部入库**）：
+	//   1 = 入库；0 = 不入库（不写 ezfy_report → 玩家军情里看不到、也不占未读角标）。
+	//   对应 report_type：1侦查 2战斗 3征服 4被征服
+	//   5后勤(采集/运输/派遣/增援/建城/赎城/返航/城市状态) 6系统(交易/军官升星/将领升级/叛离/计谋)
+	//   ★ 0 是**合法值**（= 不入库）→ 读取端不能用「<=0 回落默认」那套，见 ezfyReportSaveEnabled。
+	ReportSaveScout   int `gorm:"default:1;comment:侦查类战报入库(1=入库 0=不入库)" json:"report_save_scout"`
+	ReportSaveBattle  int `gorm:"default:1;comment:战斗类战报入库(1=入库 0=不入库)" json:"report_save_battle"`
+	ReportSaveConquer int `gorm:"default:1;comment:征服类战报入库(1=入库 0=不入库)" json:"report_save_conquer"`
+	ReportSaveBeaten  int `gorm:"default:1;comment:被征服类战报入库(1=入库 0=不入库)" json:"report_save_beaten"`
+	ReportSaveLogi    int `gorm:"default:1;comment:后勤类战报入库(1=入库 0=不入库)" json:"report_save_logi"`
+	ReportSaveSystem  int `gorm:"default:1;comment:系统类战报入库(1=入库 0=不入库)" json:"report_save_system"`
+
 	// ★ 2026-10-12 用户规则「迁城道具加个冷却时间，针对迁过城的城市冷却 24 小时，二战系统配置可配置迁城冷却」：
 	//   迁城成功后该城要等多少小时才能再迁（默认 24），冷却记在 `ezfy_city.move_cool_until`。
 	//   ★ 0 是**合法值**（= 关闭迁城冷却）→ 读取端不能用 ezfyLimitOr（它把 0 当「未配置」回落默认），

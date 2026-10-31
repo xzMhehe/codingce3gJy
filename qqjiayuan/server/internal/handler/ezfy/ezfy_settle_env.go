@@ -285,7 +285,13 @@ func (h *EzfyHandler) envAddEquip(e *ezfySettleEnv, city *model.EzfyCity, cfg *m
 }
 
 // envReport 攒一条待落库的战报。
+//
+// ★★ 2026-10-31 战报入库开关：与 addReport 同一判定（ezfyReportSaveEnabled），
+// 关掉的类型在**攒批阶段**就丢掉，连内存都不占。
 func (h *EzfyHandler) envReport(e *ezfySettleEnv, uid uint, reportType int, title, content string, detailAndOrder ...interface{}) {
+	if !ezfyReportSaveEnabled(reportType) {
+		return
+	}
 	r := h.newReport(uid, reportType, title, content, detailAndOrder...)
 	if e == nil {
 		h.DB.Create(&r)

@@ -35,6 +35,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		WildItemCooldownSec: ezfyWildItemCooldownSecDef,
 		// ★ 2026-10-30 每城每日活动目标攻打上限（默认 50；**0 合法 = 不限**，故不参与 <=0 兜底）
 		ActDailyLimit: ezfyActDailyLimitDef,
+		// ★★ 2026-10-31 战报入库开关：**默认全部入库**（0 合法 = 不入库，故不参与 <=0 兜底）
+		ReportSaveScout: 1, ReportSaveBattle: 1, ReportSaveConquer: 1,
+		ReportSaveBeaten: 1, ReportSaveLogi: 1, ReportSaveSystem: 1,
 		// ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭冷却**，同样不参与 <=0 兜底）
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
@@ -390,6 +393,13 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ActItemCooldownSec     *int `json:"act_item_cooldown_sec"`
 		// ★ 2026-10-30 每城每日活动目标攻打上限（默认 50；**0 合法 = 不限**，只拦负数/越界）
 		ActDailyLimit *int `json:"act_daily_limit"`
+		// ★★ 2026-10-31 战报入库开关（1=入库 0=不入库，**默认都入库**；只接受 0/1）
+		ReportSaveScout   *int `json:"report_save_scout"`
+		ReportSaveBattle  *int `json:"report_save_battle"`
+		ReportSaveConquer *int `json:"report_save_conquer"`
+		ReportSaveBeaten  *int `json:"report_save_beaten"`
+		ReportSaveLogi    *int `json:"report_save_logi"`
+		ReportSaveSystem  *int `json:"report_save_system"`
 		// ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭冷却**，只拦负数/越界）
 		MoveCoolH          *int `json:"move_cool_h"`
 		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
@@ -533,6 +543,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ActItemCooldownSec:     ezfyActItemCooldownSecDef,
 		// ★ 2026-10-30 每城每日活动目标攻打上限（默认 50；**0 合法 = 不限**，故不参与 <=0 兜底）
 		ActDailyLimit: ezfyActDailyLimitDef,
+		// ★★ 2026-10-31 战报入库开关：**默认全部入库**（0 合法 = 不入库，故不参与 <=0 兜底）
+		ReportSaveScout: 1, ReportSaveBattle: 1, ReportSaveConquer: 1,
+		ReportSaveBeaten: 1, ReportSaveLogi: 1, ReportSaveSystem: 1,
 		// ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭冷却**，同样不参与 <=0 兜底）
 		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-26：召集消耗粮食 / 召集人口百分比（缺行时默认 10 万 / 10%）
@@ -755,6 +768,28 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.ActDailyLimit = *in.ActDailyLimit
+	}
+	// ★★ 2026-10-31 战报入库开关：只接受 0/1（0 = 该类型不入库），缺省不动。
+	//   ⚠️ 不做 <=0 兜底 —— 0 就是「关」。
+	for _, f := range []struct {
+		in  *int
+		dst *int
+	}{
+		{in.ReportSaveScout, &lim.ReportSaveScout},
+		{in.ReportSaveBattle, &lim.ReportSaveBattle},
+		{in.ReportSaveConquer, &lim.ReportSaveConquer},
+		{in.ReportSaveBeaten, &lim.ReportSaveBeaten},
+		{in.ReportSaveLogi, &lim.ReportSaveLogi},
+		{in.ReportSaveSystem, &lim.ReportSaveSystem},
+	} {
+		if f.in == nil {
+			continue
+		}
+		if *f.in != 0 && *f.in != 1 {
+			resp.ParamError(c, "战报入库开关只能是 0(不入库) 或 1(入库)")
+			return
+		}
+		*f.dst = *f.in
 	}
 	// ★ 2026-10-12 迁城冷却小时数：可配置，默认 24。**0 合法 = 关闭迁城冷却**（所以只拦负数）；
 	//   上限 720 防呆（30 天）。⚠️ 不做 <=0 兜底 —— 0 是管理员「关掉冷却」的合法表达。
@@ -1601,6 +1636,15 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN act_daily_limit int DEFAULT " + strconv.Itoa(ezfyActDailyLimitDef))
 	}
 	h.DB.Exec("UPDATE ezfy_cfg_limit SET act_daily_limit = " + strconv.Itoa(ezfyActDailyLimitDef) + " WHERE act_daily_limit IS NULL")
+	// ★★ 2026-10-31 战报入库开关（默认 1 = 入库）：⚠️ 0 合法（= 不入库）→ 只补列 + 只回填 NULL，
+	//   绝不能把管理员关掉的 0 改回 1。
+	for _, col := range []string{"report_save_scout", "report_save_battle", "report_save_conquer",
+		"report_save_beaten", "report_save_logi", "report_save_system"} {
+		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", col) {
+			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT 1")
+		}
+		h.DB.Exec("UPDATE ezfy_cfg_limit SET " + col + " = 1 WHERE " + col + " IS NULL")
+	}
 	// ★ 2026-10-21 造兵市长军事加成 / 装备套装军事计入（默认 1）：⚠️ 0 合法（= 关），
 	//   只补列 + 只回填 NULL，不能把管理员关掉的 0 改回 1。
 	for _, c := range []struct {
@@ -1727,6 +1771,13 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"act_item_cooldown_sec":     lim.ActItemCooldownSec,
 		// ★ 2026-10-30 活动目标每日攻打上限（**0 合法 = 不限**，必须显式写否则 0 会被 GORM 吞掉）
 		"act_daily_limit": lim.ActDailyLimit,
+		// ★★ 2026-10-31 战报入库开关（**0 合法 = 不入库**，必须显式写否则 0 会被 GORM 吞掉）
+		"report_save_scout":   lim.ReportSaveScout,
+		"report_save_battle":  lim.ReportSaveBattle,
+		"report_save_conquer": lim.ReportSaveConquer,
+		"report_save_beaten":  lim.ReportSaveBeaten,
+		"report_save_logi":    lim.ReportSaveLogi,
+		"report_save_system":  lim.ReportSaveSystem,
 		// ★ 2026-10-12 迁城冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）
 		"move_cool_h": lim.MoveCoolH,
 		// ★ 2026-10-14 风云榜统计开关（**0 合法 = 关闭统计**，必须显式写否则 0 会被 GORM 吞掉）

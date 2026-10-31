@@ -1833,10 +1833,12 @@ export default {
       return this.equipAllFiltered.slice((p - 1) * this.equipAllPageSize, p * this.equipAllPageSize)
     },
     // ★ 2026-10-15 名将图鉴分页（与装备图鉴同款，纯前端切片，无任何提示）
-    generalTotalPages () { return Math.max(1, Math.ceil((this.generalData.generals || []).length / this.generalPageSize)) },
+    // ★ 2026-10-31 只展示自己拥有的名将（owned=true），未拥有的不进列表/不占分页
+    generalOwned () { return (this.generalData.generals || []).filter(g => g && g.owned) },
+    generalTotalPages () { return Math.max(1, Math.ceil(this.generalOwned.length / this.generalPageSize)) },
     generalPaged () {
       const p = Math.min(Math.max(1, this.generalPage), this.generalTotalPages)
-      return (this.generalData.generals || []).slice((p - 1) * this.generalPageSize, p * this.generalPageSize)
+      return this.generalOwned.slice((p - 1) * this.generalPageSize, p * this.generalPageSize)
     },
     // ★ 2026-09-29 军官详情「装备背包 / 已穿戴装备」同一个装备叠加展示（名称 × N），
     //   有空余部位就能继续穿戴（对应部位没被占用），没空余就不能穿戴。

@@ -7206,6 +7206,12 @@ func ezfyHealPctLine(repaired int64, losses []ezfyUnitGroup) string {
 // ★ 2026-10-13 性能：拆成「构造(newReport) + 落库(addReport)」两半，
 // 批量结算（一键收获）可以把整批战报攒起来一次 CreateInBatches，省 N 次跨库往返。
 func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) uint {
+	// ★★ 2026-10-31 战报入库开关（管理端「二战系统配置」按类型分开，默认都入库）：
+	//   关掉的类型**直接不入库**并返回 0 —— 结算逻辑照常（资源/声望/经验都不受影响），
+	//   只是玩家军情里看不到这类战报、也不占未读角标。调用方把返回值当「可空战报 id」用。
+	if !ezfyReportSaveEnabled(reportType) {
+		return 0
+	}
 	// ★ 2026-10-13 修复：原来写成 `h.DB.Create(h.newReport(...))` —— **传的是值不是指针**，
 	//   GORM 在 ConvertToCreateValues 里对主键 SetInt 会 panic
 	//   `reflect: reflect.Value.SetInt using unaddressable value`，

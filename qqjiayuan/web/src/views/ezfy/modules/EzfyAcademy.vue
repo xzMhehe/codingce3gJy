@@ -495,7 +495,7 @@
 
       <!-- 名将图鉴（★ 2026-10-15 分页展示，默认每页 10，翻页静默无提示） -->
       <div class="panel" v-else-if="ezfy.acadeTab === 'generals'">
-        <div class="old-line">名将图鉴(共{{ ezfy.generalData.generals.length }}名)</div>
+        <div class="old-line">名将图鉴(共{{ ezfy.generalOwned.length }}名)</div>
         <table class="ezfy-plain-table">
           <!-- ★ 2026-10-05 去掉等级/星级列；★ 2026-10-23 加「组合技」列（系统专属战法） -->
           <tr><th>名称</th><th>军/后/学</th><th>组合技</th><th>状态</th></tr>
@@ -513,7 +513,8 @@
             </td>
           </tr>
         </table>
-        <div class="ezfy-pager" v-if="ezfy.generalData.generals.length > ezfy.generalPageSize">
+        <div class="old-line gray" v-if="!ezfy.generalOwned.length">(暂无名将)</div>
+        <div class="ezfy-pager" v-if="ezfy.generalOwned.length > ezfy.generalPageSize">
           <a href="javascript:;" :class="{ disabled: ezfy.generalPage <= 1 }" @click="ezfy.generalGo(-1)">[上一页]</a>
           <span class="gray">{{ Math.min(ezfy.generalPage, ezfy.generalTotalPages) }}/{{ ezfy.generalTotalPages }}</span>
           <a href="javascript:;" :class="{ disabled: ezfy.generalPage >= ezfy.generalTotalPages }" @click="ezfy.generalGo(1)">[下一页]</a>

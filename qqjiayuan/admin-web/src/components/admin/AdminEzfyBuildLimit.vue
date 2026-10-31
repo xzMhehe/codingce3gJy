@@ -466,6 +466,17 @@
               <template slot="label">风云榜统计<el-tooltip placement="top" :content="tips.pvp_rank_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.pvp_rank_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
+            <!-- ★★ 2026-10-31 战报入库开关：按类型分开，**默认全部入库**。
+                 说明只放 i 悬浮（用户要求「不要有冗余页面提示」），页面上不写解释文案。 -->
+            <el-form-item label="战报入库">
+              <div class="report-save-row">
+                <span v-for="r in reportSaveFields" :key="r.key" class="report-save-item">
+                  <el-tooltip placement="top" :content="tips[r.key]"><i class="el-icon-info cfg-tip" /></el-tooltip>
+                  <span class="report-save-name">{{ r.label }}</span>
+                  <el-switch v-model="form[r.key]" :active-value="1" :inactive-value="0" />
+                </span>
+              </div>
+            </el-form-item>
             <div class="tab-save-bar">
               <span class="save-hint">仅保存「玩法开关」分类</span>
               <el-button type="primary" size="small" icon="el-icon-check" :loading="saving" @click="saveTab('switch')">保存本类</el-button>
@@ -654,6 +665,9 @@ export default {
         act_treasure_cooldown_sec: 7200, act_item_cooldown_sec: 7200,
         // ★ 2026-10-30 活动目标每城每日攻打上限（默认 50；**0 合法 = 不限**）
         act_daily_limit: 50,
+        // ★★ 2026-10-31 战报入库开关（1 = 入库，0 = 不入库；**默认全部入库**）
+        report_save_scout: 1, report_save_battle: 1, report_save_conquer: 1,
+        report_save_beaten: 1, report_save_logi: 1, report_save_system: 1,
         // ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭迁城冷却**）
         move_cool_h: 24,
         // ★ 2026-09-28 军校刷新周期（1=按天 2=按小时，默认按小时）
@@ -701,6 +715,15 @@ export default {
         crit_base_bonus_pct: 50, garrison_break_pct: 50, battle_round_ms: 30000,
         atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5,
       },
+      // ★★ 2026-10-31 战报入库开关的展示项（模板 v-for；说明一律走 tips 的 i 悬浮，页面不写文案）
+      reportSaveFields: [
+        { key: 'report_save_scout', label: '侦查' },
+        { key: 'report_save_battle', label: '战斗' },
+        { key: 'report_save_conquer', label: '征服' },
+        { key: 'report_save_beaten', label: '被征服' },
+        { key: 'report_save_logi', label: '后勤' },
+        { key: 'report_save_system', label: '系统' }
+      ],
       // 公式字段定义：表格列 + 弹窗输入共用（tips 复用下面同名的说明文案）
       formulaFields: [
         { key: 'battle_max_rounds', label: '战斗最大回合数', short: '最大回合', min: 1, max: 200, step: 1, tip: 'battle_max_rounds' },
@@ -736,7 +759,10 @@ export default {
           'train_mayor_equip_on', 'food_upkeep_on', 'march_oil_on',
           'convene_food_cost', 'convene_pop_pct', 'convene_cooldown_seconds',
           'convene_cap_cooldown_seconds', 'pop_recover_seconds', 'pop_extra_decay_seconds',
-          'pvp_rank_on', 'garrison_batch_scope', 'loot_broadcast_on'],
+          'pvp_rank_on', 'garrison_batch_scope', 'loot_broadcast_on',
+          // ★★ 2026-10-31 战报入库（按类型分开，默认全入库）
+          'report_save_scout', 'report_save_battle', 'report_save_conquer',
+          'report_save_beaten', 'report_save_logi', 'report_save_system'],
         star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
           'recruit_five_star_rate'],
       },
@@ -831,6 +857,14 @@ export default {
         act_item_cooldown_sec: '活动目标掉落商城道具的玩家冷却（秒），默认 7200；0 = 关闭冷却。',
         act_daily_limit: '每座城市每天可攻击活动野地、活动寇城、特殊城市的次数，默认 50；' +
           '达到上限后该城当天的活动目标按普通野地展示和结算，0 = 不限。',
+        // ★★ 2026-10-31 战报入库（按类型分开，默认全部入库）
+        report_save_scout: '侦查类战报是否入库：侦查报告、侦查失败。关闭后玩家军情里不再出现这类战报（结算不受影响）。',
+        report_save_battle: '战斗类战报是否入库：战斗报告、被掠夺报告、驻防战报、进攻受阻。关闭后玩家军情里不再出现这类战报。',
+        report_save_conquer: '征服类战报是否入库：征服报告（打下来的那座城）。关闭后玩家军情里不再出现这类战报。',
+        report_save_beaten: '被征服类战报是否入库：被征服报告、驻防城市失守。关闭后玩家军情里不再出现这类战报。',
+        report_save_logi: '后勤类战报是否入库：采集、运输、派遣、增援、建城、赎城、返航、城市状态。' +
+          '脚本刷野地会产出大量这类战报，可关闭以减少战报表膨胀。',
+        report_save_system: '系统类战报是否入库：交易成交、军官升星、将领升级、将领叛离/离职、计谋发动、迁城完成。',
         // ★ 2026-10-12 迁城冷却
         move_cool_h: '迁城后该城市再次迁城需等待的小时数，默认 24；其他城市不受影响，0 = 关闭冷却。',
         // ★ 2026-10-08 新玩家落地洲（★ 2026-10-26 新增「随机洲落」）
@@ -1010,6 +1044,13 @@ export default {
             // ★ 2026-10-30 活动目标每城每日上限：**0 合法 = 不限**，不能用 pos()（会把 0 改回 50）
             act_daily_limit: (r.data.act_daily_limit === undefined || r.data.act_daily_limit === null)
               ? 50 : Number(r.data.act_daily_limit),
+            // ★★ 2026-10-31 战报入库：**0 合法 = 不入库**，缺列（老库）才回落 1
+            report_save_scout: (r.data.report_save_scout === undefined || r.data.report_save_scout === null) ? 1 : Number(r.data.report_save_scout),
+            report_save_battle: (r.data.report_save_battle === undefined || r.data.report_save_battle === null) ? 1 : Number(r.data.report_save_battle),
+            report_save_conquer: (r.data.report_save_conquer === undefined || r.data.report_save_conquer === null) ? 1 : Number(r.data.report_save_conquer),
+            report_save_beaten: (r.data.report_save_beaten === undefined || r.data.report_save_beaten === null) ? 1 : Number(r.data.report_save_beaten),
+            report_save_logi: (r.data.report_save_logi === undefined || r.data.report_save_logi === null) ? 1 : Number(r.data.report_save_logi),
+            report_save_system: (r.data.report_save_system === undefined || r.data.report_save_system === null) ? 1 : Number(r.data.report_save_system),
             // ★ 2026-10-12 迁城冷却：**0 合法 = 关闭迁城冷却**，同样不能用 pos()（会把 0 改回 24）
             move_cool_h: (r.data.move_cool_h === undefined || r.data.move_cool_h === null)
               ? 24 : Number(r.data.move_cool_h),
@@ -1205,4 +1246,8 @@ export default {
   padding: 0 12px;
   font-size: 13px;
 }
+/* ★★ 2026-10-31 战报入库：6 个开关一行内换行排布（说明只在 i 悬浮里，不占版面） */
+.report-save-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.report-save-item { display: inline-flex; align-items: center; gap: 2px; }
+.report-save-name { font-size: 13px; color: #606266; }
 </style>
