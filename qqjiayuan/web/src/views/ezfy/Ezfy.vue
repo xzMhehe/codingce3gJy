@@ -979,6 +979,8 @@ export default {
       askH: 0,
       // 统帅页自助（游戏ID/家园号码、改昵称、改阵营）
       selfInfo: {}, renameEditing: false, renameInput: '',
+      // ★ 2026-10-31 番号（统帅信息 1 个字，默认「新」）：内联修改，与昵称同款交互
+      bannerEditing: false, bannerInput: '',
       playerInfo: null,        // 他人统帅信息(复刻 infoOther)
       playerInfoBack: 'chat',  // 他人统帅页 [返回] 回到哪一页
       corpsMailContent: '',    // 军团邮件群发内容
@@ -2856,6 +2858,7 @@ export default {
         if (r.code === 0) {
           this.selfInfo = r.data
           this.renameInput = r.data.nickname || ''
+          this.bannerInput = r.data.banner || '新'
         }
       }).catch(() => {})
     },
@@ -2868,6 +2871,24 @@ export default {
     startRename () {
       this.renameInput = this.selfInfo.nickname || this.profile.nickname || ''
       this.renameEditing = true
+    },
+    // ★ 2026-10-31 番号：与昵称同款的内联修改；只能 1 个字、免费（不消耗改名卡）
+    startBannerEdit () {
+      this.bannerInput = this.selfInfo.banner || '新'
+      this.bannerEditing = true
+    },
+    doBannerUpdate () {
+      const b = String(this.bannerInput || '').trim()
+      if ([...b].length !== 1) { this.notify('番号只能是 1 个字'); return }
+      if (this.hasEmoji(b)) { this.notify('番号不能包含表情符号'); return }
+      api.post('/games/ezfy/profile/banner', { banner: b }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.msg)
+          this.bannerEditing = false
+          this.loadSelfInfo()
+          this.load()
+        } else this.notify(r.msg)
+      })
     },
     // ★ 2026-10-11 昵称不能含 emoji（与后端 ezfyHasEmoji 同口径；前端先给即时提示，不用等接口）
     //   覆盖 Unicode 表情区块：1F000–1FAFF / 2600–27BF / 2B00–2BFF / FE00–FE0F / 200D / 20E3
@@ -6339,7 +6360,9 @@ export default {
       //   具体城市名/城主点进目标详情页再看（鼠标悬停的 title 里也有全称，见 cellTip）。
       // ★ 2026-10-01 越界格（地图外不存在的地方）统一显示「空地」
       if (this.isMapOOB(cell)) return '空地'
-      if (cell.area_type === 3) return '城市'
+      // ★ 2026-10-31 用户要求：地图格第一行不再统一写「城市」，改成城主的「番号」（默认 新）。
+      //   样式/第二行坐标都不变；具体城市名/城主仍在悬浮 title（cellTip）里。
+      if (cell.area_type === 3) return cell.banner || '新'
       // 活动目标: 复刻 mapView.html 的「活动野地N级 / 活动寇N级 / 特殊城市N级」
       if (cell.act_type === 1) return '活动(' + cell.act_level + ')'
       if (cell.act_type === 2) return '活动寇(' + cell.act_level + ')'

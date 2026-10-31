@@ -765,6 +765,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					// 统帅页自助：改昵称（首次免费/改名卡）、改阵营（首次免费/阵营转换道具）
 					ezfyG.GET("/profile/self", ezfyH.ProfileSelfInfo)
 					ezfyG.POST("/profile/rename", ezfyH.ProfileRename)
+					// ★ 2026-10-31 番号（统帅信息 1 个字，默认「新」，各区独立）
+					ezfyG.POST("/profile/banner", ezfyH.ProfileBanner)
 					ezfyG.POST("/profile/camp", ezfyH.ProfileChangeCamp)
 					// ★ 2026-10-10 首页布局切换（老布局/新布局，统帅页单选）
 					ezfyG.POST("/profile/layout", ezfyH.ProfileSetLayout)

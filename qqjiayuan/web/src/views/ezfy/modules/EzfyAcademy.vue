@@ -29,6 +29,16 @@
              （当前阵营口径与 doChangeCamp 一致：selfInfo 优先、profile 兜底） -->
         <a v-if="(ezfy.selfInfo.camp || ezfy.profile.camp) !== 1" href="javascript:;" @click="ezfy.doChangeCamp(1)">[转同盟国]</a>
         <a v-if="(ezfy.selfInfo.camp || ezfy.profile.camp) !== 2" href="javascript:;" @click="ezfy.doChangeCamp(2)">[转轴心国]</a><br/>
+        番号：{{ ezfy.selfInfo.banner || '新' }}
+        <template v-if="!ezfy.bannerEditing">
+          <a href="javascript:;" @click="ezfy.startBannerEdit">[修改]</a>
+        </template>
+        <template v-else>
+          <input v-model="ezfy.bannerInput" maxlength="1" placeholder="1 个字" style="width:50px"/>
+          <button @click="ezfy.doBannerUpdate">确定</button>
+          <a href="javascript:;" @click="ezfy.bannerEditing = false">[取消]</a>
+        </template>
+        <br/>
         声望：{{ ezfy.profile.prestige }}<br/>
         军衔：{{ ezfy.rankName }}({{ ezfy.rankPost }})<span style="margin-left:4px"><span v-html="ezfy.rankIcon(ezfy.myRankId)"></span></span><br/>
         军团：{{ (ezfy.myCorps && ezfy.myCorps.name) || '无' }}<br/>
@@ -93,6 +103,7 @@
         </div>
         <div class="old-line">
           阵营：{{ ezfy.playerInfo.camp_name }}<br/>
+          番号：{{ ezfy.playerInfo.banner || '新' }}<br/>
           声望：{{ ezfy.playerInfo.prestige }}<br/>
           军衔：{{ ezfy.playerInfo.rank_name }}({{ ezfy.playerInfo.rank_post }})<span style="margin-left:4px"><span v-html="ezfy.rankIcon(ezfy.rankIdByName(ezfy.playerInfo.rank_name))"></span></span><br/>
           军团：{{ ezfy.playerInfo.corps_name || '无' }}<br/>

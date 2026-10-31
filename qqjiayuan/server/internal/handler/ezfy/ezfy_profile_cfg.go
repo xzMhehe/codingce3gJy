@@ -83,6 +83,7 @@ func (h *EzfyHandler) ProfileSelfInfo(c *gin.Context) {
 		"game_uid":  p.GameUID,
 		"home_num":  u.Username,
 		"nickname":  ezfyNickOf(p, &u),
+		"banner":    ezfyBannerOf(&p),
 		"camp":      p.Camp,
 		"camp_name": ezfyCampName(p.Camp),
 
@@ -121,6 +122,29 @@ func ezfyNickOf(p model.EzfyProfile, u *model.User) string {
 		return p.Nickname
 	}
 	return u.Nickname
+}
+
+// ezfyDefaultBanner 番号默认值：一个字「新」。
+const ezfyDefaultBanner = "新"
+
+// ezfyBannerOf 取玩家番号（空/老数据 → 默认「新」）。
+// 番号存在各区的 ezfy_profile.banner → 1/2 区天然各自独立。
+func ezfyBannerOf(p *model.EzfyProfile) string {
+	if p == nil {
+		return ezfyDefaultBanner
+	}
+	if b := strings.TrimSpace(p.Banner); b != "" {
+		return b
+	}
+	return ezfyDefaultBanner
+}
+
+// ezfyBannerValid 番号只能是 1 个字，且不能是 emoji（与昵称同口径）。
+func ezfyBannerValid(b string) bool {
+	if len([]rune(b)) != 1 {
+		return false
+	}
+	return !ezfyHasEmoji(b)
 }
 
 // ezfyHasEmoji 名字里是否含 emoji（表情符号）。
@@ -212,6 +236,42 @@ func (h *EzfyHandler) ProfileRename(c *gin.Context) {
 		msg += "（首次免费）"
 	}
 	resp.OK(c, gin.H{"msg": msg, "nickname": name})
+}
+
+// ProfileBanner POST /games/ezfy/profile/banner {banner}
+//
+// ★★ 2026-10-31 新增「番号」：统帅信息里显示 1 个字，默认「新」。
+// 修改方式与昵称相同（统帅页内联 [修改]），但**免费、不消耗改名卡**；
+// 存在各区自己的 ezfy_profile.banner 里 → 1/2 区互不影响。
+func (h *EzfyHandler) ProfileBanner(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		Banner string `json:"banner"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	banner := strings.TrimSpace(req.Banner)
+	if banner == "" {
+		resp.ParamError(c, "请填写新的番号")
+		return
+	}
+	if !ezfyBannerValid(banner) {
+		resp.ParamError(c, "番号只能是 1 个字，且不能包含表情符号")
+		return
+	}
+	p := h.ensureProfile(uid)
+	if banner == ezfyBannerOf(&p) {
+		resp.ParamError(c, "新番号与当前番号相同")
+		return
+	}
+	if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
+		Update("banner", banner).Error; err != nil {
+		resp.ParamError(c, "番号修改失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "番号已改为「" + banner + "」", "banner": banner})
 }
 
 // ProfileChangeCamp POST /games/ezfy/profile/camp {camp}

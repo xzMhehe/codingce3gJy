@@ -343,7 +343,7 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 	//   此前 Prestige 固定 0 → 管理端显示「军衔中尉、声望 30」不一致；现在军衔与声望对应。
 	botRank := ezfyRankAt(9)
 	if err := h.DB.Create(&model.EzfyProfile{
-		UserID: uid, GameUID: int64(uid), Nickname: nick,
+		UserID: uid, GameUID: int64(uid), Nickname: nick, Banner: "新",
 		Prestige: botRank.NeedPrestige, Camp: camp, Rank: botRank.ID, IsBot: 1,
 	}).Error; err != nil {
 		return rollback(fmt.Errorf("建二战档案失败: %w", err))

@@ -1061,6 +1061,9 @@ type EzfyProfile struct {
 	ID       uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
 	UserID   uint   `gorm:"uniqueIndex;comment:用户ID" json:"user_id"`
 	Nickname string `gorm:"type:varchar(20);comment:昵称" json:"nickname"`
+	// ★★ 2026-10-31 番号：统帅信息里显示的 1 个字，默认「新」。
+	//   存在各区的 ezfy_profile 里 → 1/2 区天然各自独立，不跟家园 users 共用。
+	Banner   string `gorm:"type:varchar(1);not null;default:'新';comment:番号(一个字，默认新)" json:"banner"`
 	Prestige int    `gorm:"default:0;comment:军功声望" json:"prestige"`  // 军功声望
 	Camp     int    `gorm:"default:1;comment:1同盟国 2轴心国" json:"camp"` // 1同盟国 2轴心国
 

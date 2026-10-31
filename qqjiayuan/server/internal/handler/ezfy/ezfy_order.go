@@ -123,6 +123,8 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 	//   这里 profile.nickname 优先、空才回落 users.nickname —— 与 ezfyNickOf 同口径，
 	//   否则玩家在游戏里改过名后，地图/详情上看到的是旧家园名。
 	userNames := map[uint]string{}
+	// ★ 2026-10-31 地图格显示「番号」：城主 → 番号（各区自己的 ezfy_profile.banner）。
+	userBanners := map[uint]string{}
 	userIDs := []uint{}
 	for _, c := range myCities {
 		userIDs = append(userIDs, c.UserID)
@@ -133,11 +135,15 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		for _, u := range users {
 			userNames[u.ID] = u.Nickname
 		}
-		// 游戏昵称覆盖家园昵称：ezfy_profile.nickname 有值的玩家用游戏内的名字
+		// 游戏昵称覆盖家园昵称：ezfy_profile.nickname 有值的玩家用游戏内的名字。
+		// ★ 同一查顺带取 banner（番号），地图格第一行显示番号而不是统一「城市」。
 		var ps []model.EzfyProfile
-		h.DB.Select("user_id, nickname").Where("user_id IN ? AND nickname <> ''", userIDs).Find(&ps)
+		h.DB.Select("user_id, nickname, banner").Where("user_id IN ?", userIDs).Find(&ps)
 		for _, p := range ps {
-			userNames[p.UserID] = p.Nickname
+			if p.Nickname != "" {
+				userNames[p.UserID] = p.Nickname
+			}
+			userBanners[p.UserID] = ezfyBannerOf(&p)
 		}
 	}
 
@@ -236,6 +242,12 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				cell["city_id"] = c.ID
 				cell["user_id"] = c.UserID
 				cell["name"] = c.Name
+				// ★ 2026-10-31 地图格第一行用城主「番号」（默认 新），第二行仍是坐标。
+				banner := userBanners[c.UserID]
+				if banner == "" {
+					banner = ezfyDefaultBanner
+				}
+				cell["banner"] = banner
 				cell["city_level"] = c.CityLevel
 				cell["owner"] = userNames[c.UserID]
 				cell["mine"] = c.UserID == uid

@@ -210,7 +210,7 @@ func (h *EzfyHandler) ensureProfile(uid uint) model.EzfyProfile {
 	}
 	// ★ 游戏ID 首次 = 家园ID，之后永不随家园ID变化
 	// ★ 2026-09-28 新玩家军衔从 1 级（列兵）起步，晋升需声望+宝物（见 ezfy_rank_treasure.go）
-	p = model.EzfyProfile{UserID: uid, GameUID: int64(uid), Nickname: nickname, Prestige: 0, Camp: 1, Rank: 1}
+	p = model.EzfyProfile{UserID: uid, GameUID: int64(uid), Nickname: nickname, Banner: "新", Prestige: 0, Camp: 1, Rank: 1}
 	h.DB.Create(&p)
 	return p
 }
