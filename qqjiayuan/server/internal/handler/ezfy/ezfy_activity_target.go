@@ -907,7 +907,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		}
 		for _, s := range generalSkillList(defGeneral) {
 			if eff := ezfySkillEffectTextAt(s, lv); eff != "" {
-				parts = append(parts, s+"(Lv."+ezfyRomanLevel(lv)+" "+eff+")")
+				parts = append(parts, s+"("+ezfyRomanLevel(lv)+" "+eff+")")
 			}
 		}
 		defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level)

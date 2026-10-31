@@ -73,6 +73,24 @@ func TestEzfyRomanLevel(t *testing.T) {
 	}
 }
 
+// TestOfficerBattleDescSkillLevelNoLvPrefix 战报/指挥室军官行：
+//
+//	技能等级只留罗马数字，不再带「Lv.」修饰；军官自身等级仍是 Lv.150。
+func TestOfficerBattleDescSkillLevelNoLvPrefix(t *testing.T) {
+	h := &EzfyHandler{}
+	o := &model.EzfyOfficer{Name: "测试军官", Level: 150, Skill: `["尖兵猛攻"]`}
+	desc := h.officerBattleDesc(o, 0, "攻击加成", 0, "防御加成")
+	if !strings.Contains(desc, "尖兵猛攻(V ") {
+		t.Fatalf("军官技能行应为「尖兵猛攻(V 效果)」，得到 %q", desc)
+	}
+	if strings.Contains(desc, "尖兵猛攻(Lv.") {
+		t.Fatalf("军官技能行不应再带 Lv. 修饰，得到 %q", desc)
+	}
+	if !strings.Contains(desc, "测试军官 Lv.150") {
+		t.Fatalf("军官自身等级应保持阿拉伯数字，得到 %q", desc)
+	}
+}
+
 // TestSkillBattleBonusScaled 攻击类技能加成必须乘倍率。
 //
 // ★ 2026-10-08 起：通用段只剩「尖兵猛攻 30*scale」；火炮压制(10)/四指阵列·狼群围猎(15)

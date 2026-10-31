@@ -266,13 +266,13 @@ func ezfyComboTxt(c *ezfyComboSkill) string {
 	// ★★ 2026-10-31 战法类型进文案（被动不写发动率）
 	switch c.TriggerType {
 	case ezfyComboTriggerPassive:
-		return fmt.Sprintf("%s Lv.%s（被动 %s）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c))
+		return fmt.Sprintf("%s %s（被动 %s）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c))
 	case ezfyComboTriggerCommand:
-		return fmt.Sprintf("%s Lv.%s（指挥 %s，战前 %d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c), c.ProcPct)
+		return fmt.Sprintf("%s %s（指挥 %s，战前 %d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c), c.ProcPct)
 	case ezfyComboTriggerPursuit:
-		return fmt.Sprintf("%s Lv.%s（追击 %s，%d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c), c.ProcPct)
+		return fmt.Sprintf("%s %s（追击 %s，%d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboValueTxt(c), c.ProcPct)
 	}
-	return fmt.Sprintf("%s Lv.%s（%s %s，发动率%d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboKindName(c.Kind), ezfyComboValueTxt(c), c.ProcPct)
+	return fmt.Sprintf("%s %s（%s %s，发动率%d%%）", c.Name, ezfyRomanLevel(c.Level), ezfyComboKindName(c.Kind), ezfyComboValueTxt(c), c.ProcPct)
 }
 
 // ezfyComboValueTxt 效果值的可读文案（按类型区分单位）
@@ -339,17 +339,18 @@ func ezfyComboEffectTxt(c *ezfyComboSkill) string {
 
 // ezfyComboShortTxt 短效果文案（准备回合「军官行」内联用，格式对齐军官技能）
 //
-//	例：尖兵猛攻(Lv.6 攻击力+180%) 装甲突击(Lv.10 攻击力+180%，发动40%)
+//	例：尖兵猛攻(VI 攻击力+180%) 装甲突击(X 攻击力+180%，发动40%)
 func ezfyComboShortTxt(c *ezfyComboSkill) string {
 	if c == nil {
 		return ""
 	}
-	// ★★ 2026-10-31 统一成「名称(Lv.N 效果，概率%)」，不再塞「被动/指挥/追击」这类说明文字
+	// ★★ 2026-10-31 统一成「名称(N 效果，概率%)」，不再塞「被动/指挥/追击」这类说明文字
 	//   （用户要求回合相关描述简约）。被动必定发动 → 不写概率。
+	//   ★ 同日用户要求：指挥模块 / 战报回合里也去掉「Lv.」修饰，只留罗马数字等级。
 	if c.TriggerType == ezfyComboTriggerPassive {
-		return fmt.Sprintf("%s(Lv.%s %s)", c.Name, ezfyRomanLevel(c.Level), ezfyComboShortEffect(c))
+		return fmt.Sprintf("%s(%s %s)", c.Name, ezfyRomanLevel(c.Level), ezfyComboShortEffect(c))
 	}
-	return fmt.Sprintf("%s(Lv.%s %s，%d%%)", c.Name, ezfyRomanLevel(c.Level), ezfyComboShortEffect(c), c.ProcPct)
+	return fmt.Sprintf("%s(%s %s，%d%%)", c.Name, ezfyRomanLevel(c.Level), ezfyComboShortEffect(c), c.ProcPct)
 }
 
 // ezfyComboShortEffect 只有效果本身，不带技能名（军官行 / 播报共用）
@@ -842,8 +843,8 @@ func comboShortTxts(rts []*ezfyComboRuntime) []string {
 // 「战场初始相距6000」之后），既像补充说明、又和军官技能割裂。改成**并进军官行**，
 // 格式对齐军官技能：
 //
-//	【攻方军官】斯大林 Lv.350 攻击加成+477% 防御加成+253% 尖兵猛攻(Lv.6 攻击力+180%) …
-//	              └→ 追加：装甲突击(Lv.10 攻击力+180%，发动40%) 全线总攻(Lv.8 攻击力+120%，发动30%)
+//	【攻方军官】斯大林 Lv.350 攻击加成+477% 防御加成+253% 尖兵猛攻(VI 攻击力+180%) …
+//	              └→ 追加：装甲突击(X 攻击力+180%，发动40%) 全线总攻(VIII 攻击力+120%，发动30%)
 //
 // ★ 2026-10-24 名将可学多个组合技：多个技能文案用空格接在军官行后面。
 // 没有军官行（AI 守将 / 老战场）时退回单独一行，插在「准备回合:」之后。

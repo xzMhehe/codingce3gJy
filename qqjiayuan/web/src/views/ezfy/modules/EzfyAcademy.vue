@@ -577,7 +577,7 @@
                ★ 2026-10-24 多技能：combo_skills 是数组，一个名将可学多个 -->
           <div class="old-line" v-for="cs in ezfy.officerDetail.officer.combo_skills || []" :key="'oc' + cs.id">
             组合技：<b class="green">{{ cs.name }}</b>
-            <span class="gray">Lv.{{ ezfy.romanSkillLv(cs.level) }}
+            <span class="gray">{{ ezfy.romanSkillLv(cs.level) }}
               · 发动率 {{ cs.proc_pct }}%
               · {{ cs.value_text }}</span>
           </div>
@@ -699,7 +699,7 @@
              ★★ 2026-10-31 槽位固定（后端按 slot 下发）+ 点技能名展开效果、再点收起：
                遗忘只清空该格，后面的技能不会窜位；离开军官详情自动收起（watch.cur）。 -->
         <div class="old-line" v-for="(s, i) in ezfy.officerSkillSlots" :key="'ds' + i">
-          技能{{ i + 1 }}：<template v-if="s"><a href="javascript:;" @click="ezfy.toggleOfficerSkill(i + 1)">{{ s.name }}</a><span v-if="s.level" class="green"> Lv.{{ ezfy.romanSkillLv(s.level) }}</span></template><span v-else class="gray">未学习</span><a href="javascript:;" @click="ezfy.doLearnRandom">[学习]</a><a v-if="s" href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
+          技能{{ i + 1 }}：<template v-if="s"><a href="javascript:;" @click="ezfy.toggleOfficerSkill(i + 1)">{{ s.name }}</a><span v-if="s.level" class="green"> {{ ezfy.romanSkillLv(s.level) }}</span></template><span v-else class="gray">未学习</span><a href="javascript:;" @click="ezfy.doLearnRandom">[学习]</a><a v-if="s" href="javascript:;" @click="ezfy.doForget(s.name)">[遗忘]</a>
           <div v-if="s && ezfy.officerSkillOpen === i + 1" class="gray sk-des">效果：{{ s.effect }}<template v-if="s.des">　{{ s.des }}</template></div>
         </div>
         <div class="old-line">
@@ -715,7 +715,7 @@
           <div class="old-line red" v-for="cs in ezfy.officerDetail.officer.combo_skills" :key="'ocs' + cs.id">
             特殊技能：<a href="javascript:;" @click="ezfy.toggleOfficerCombo(cs.id)">[{{ cs.name }}]</a>：{{ cs.effect_text || cs.value_text }}
             <div v-if="ezfy.officerComboOpen === cs.id" class="gray sk-des">
-              Lv.{{ ezfy.romanSkillLv(cs.level) }}　发动率 {{ cs.proc_pct }}%　{{ cs.value_text }}<template v-if="cs.des">　{{ cs.des }}</template>
+              {{ ezfy.romanSkillLv(cs.level) }}　发动率 {{ cs.proc_pct }}%　{{ cs.value_text }}<template v-if="cs.des">　{{ cs.des }}</template>
             </div>
           </div>
         </template>

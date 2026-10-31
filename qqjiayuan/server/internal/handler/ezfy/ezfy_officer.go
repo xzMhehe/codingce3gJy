@@ -2169,7 +2169,7 @@ func officerReportDesc(o *model.EzfyOfficer) string {
 
 // officerBattleDesc 军官战斗作用描述（战报展示用）
 //
-// ★ 2026-10-06 技能随等级升级：技能行带 Lv.N 与当前等级效果（绝地逆袭按前N回合）。
+// ★ 2026-10-06 技能随等级升级：技能行带等级（罗马数字，不再带 Lv. 前缀）与当前等级效果（绝地逆袭按前N回合）。
 //
 // ★★ 2026-10-08 军官行**同时**列出「攻击加成」与「防御加成」（用户反馈「有军官的攻守双方
 //
@@ -2195,7 +2195,7 @@ func (h *EzfyHandler) officerBattleDesc(o *model.EzfyOfficer, atkBase int, atkLa
 	lv := h.officerSkillLevel(o)
 	for _, s := range officerSkills(o) {
 		if eff := ezfySkillEffectTextAt(s, lv); eff != "" {
-			parts = append(parts, s+"(Lv."+ezfyRomanLevel(lv)+" "+eff+")")
+			parts = append(parts, s+"("+ezfyRomanLevel(lv)+" "+eff+")")
 		}
 	}
 	if len(parts) > 0 {

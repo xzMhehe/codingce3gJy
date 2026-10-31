@@ -4143,7 +4143,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					}
 					for _, s := range generalSkillList(defGeneral) {
 						if eff := ezfySkillEffectTextAt(s, officerLv); eff != "" {
-							descParts = append(descParts, s+"(Lv."+ezfyRomanLevel(officerLv)+" "+eff+")")
+							descParts = append(descParts, s+"("+ezfyRomanLevel(officerLv)+" "+eff+")")
 						}
 					}
 					defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level)
