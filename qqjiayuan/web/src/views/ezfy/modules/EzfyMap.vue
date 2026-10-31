@@ -272,10 +272,7 @@
             <!-- ★ 2026-10-30 「除派遣外，出征必须带军官」→ ★ 2026-10-31 运输(5) 也**可带可不带**：
                  必带 = 侦查/掠夺/征服/采集/增援/驻守采集；运输(5)/派遣(8) 选填（带上就随军调往目标城）。
                  ★ 文案要简约：三者互斥只显示一条，长说明（去军校招募）放 title 悬浮，不占版面。 -->
-            <span v-if="!ezfy.onDutyOfficers.length" class="red" title="暂无可带队军官，可前往军校招募">(无可用军官)</span>
-            <span v-else-if="ezfy.mustLeadOfficer" class="red">(必选)</span>
-            <span v-else-if="ezfy.orderType === 8" class="gray">(可选，随军调往目标城)</span>
-            <span v-else class="gray">(可选)</span>
+            <span v-if="!ezfy.onDutyOfficers.length" class="red" title="暂无可带队军官，可前往军校招募">(无)</span>
           </div>
 
           <!-- ② 集结令 -->
