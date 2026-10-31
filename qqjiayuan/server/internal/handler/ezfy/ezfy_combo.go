@@ -666,9 +666,14 @@ func ezfyComboHealSide(units []*ezfyFightUnit, pct int) int64 {
 //
 // 目标沿用本次主攻击的目标；若它已被打光，改打射程内最近的敌人。
 // 只做单体追加（不做「势不可挡」式溢出级联），避免一次连击把对面全清。
+//
+// ★★ 2026-10-31 用户口径：连击相当于**两次攻击**，第二次攻击要**单独计算暴击**
+// （主攻击那次在 Step 里已经各自掷过骰，这里必须再掷一次，不能共用主攻击的结果）。
+// critChance / critDmg 由调用方传**攻击方自己的装备暴击属性**；追击是战法伤害，传 0 不暴击。
 func (st *ezfyBattleState) comboFollowUp(unit, target *ezfyFightUnit, enemies []*ezfyFightUnit,
 	rangeD, atkFlat, atkBonus, defBonus, defBreakPct int, side, enemySide string,
-	nameOf func(*ezfyFightUnit) string, skillName string, dmgPct int, label string, strictTarget bool) {
+	nameOf func(*ezfyFightUnit) string, skillName string, dmgPct int, label string, strictTarget bool,
+	critChance, critDmg int) {
 	if label == "" {
 		label = "连击"
 	}
@@ -709,11 +714,26 @@ func (st *ezfyBattleState) comboFollowUp(unit, target *ezfyFightUnit, enemies []
 	if damage < 1 {
 		damage = 1
 	}
+	// ★★ 2026-10-31 连击的第二次攻击**单独掷暴击**（与主攻击、与追击都互不共用）。
+	crit, critBonus := ezfyRollCrit(critChance, critDmg)
+	if crit {
+		damage = damage * int64(100+critBonus) / 100
+		st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动【暴击】，本次%s伤害+%d%%",
+			side, nameOf(unit), label, critBonus))
+	}
+	critTxt := ""
+	if crit {
+		critTxt = fmt.Sprintf("【暴击+%d%%】", critBonus)
+	}
 	chp := cur.hp
 	if chp < 1 {
 		chp = 1
 	}
 	killed := damage / int64(chp)
+	// 与主攻击同口径：暴击的零头向上取整，否则 1.5 倍伤害会被向下取整抹掉。
+	if crit && damage%int64(chp) != 0 {
+		killed++
+	}
 	if killed < 1 {
 		killed = 1
 	}
@@ -723,8 +743,9 @@ func (st *ezfyBattleState) comboFollowUp(unit, target *ezfyFightUnit, enemies []
 	cur.count -= killed
 	// ★★ 2026-10-31 陈述式（去感叹号）：
 	//   `【攻方】轰炸机发动组合技【梯次冲锋】连击，守方轰炸机损失7个`
-	st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】%s，%s%s损失%d个",
-		side, nameOf(unit), skillName, label, enemySide, nameOf(cur), killed))
+	//   暴击时行内带【暴击+N%】，与主攻击的标记口径一致。
+	st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动组合技【%s】%s%s，%s%s损失%d个",
+		side, nameOf(unit), skillName, label, critTxt, enemySide, nameOf(cur), killed))
 }
 
 // ezfyComboDes 把池子里的说明模板套上当前等级的效果值。

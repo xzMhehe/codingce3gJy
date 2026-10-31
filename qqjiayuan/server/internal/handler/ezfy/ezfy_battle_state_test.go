@@ -121,6 +121,39 @@ func TestBattleRetreatMovesBackward(t *testing.T) {
 	}
 }
 
+// TestBattleRetreatLogUsesActualDistance —— 后退描述必须写**实际位移**，不是兵种速度。
+//
+// 2026-10-31 玩家反馈：航母速度 1360、后退上限 10000，
+// 前 7 回合各退 1360（共 9520），第 8 回合只剩 480，但战报仍写「后撤1360」；
+// 退到底之后还继续写 1360。正确描述应是第 8 回合「后撤480」、之后「后撤0」。
+func TestBattleRetreatLogUsesActualDistance(t *testing.T) {
+	oldMax := ezfyCfg.limit.BattleRetreatMax
+	ezfyCfg.limit.BattleRetreatMax = 10000
+	defer func() { ezfyCfg.limit.BattleRetreatMax = oldMax }()
+
+	st := ezfyTestState()
+	st.Attackers[0].cfg.Name = "航母"
+	st.Attackers[0].cfg.Speed = 1360
+
+	// 连续 9 个回合都下后退：7×1360 + 480 + 0
+	for i := 0; i < 9; i++ {
+		st.Step(ezfyCmd1(ezfyCmdRetreat), ezfyCmd1(ezfyCmdHold))
+	}
+	if st.Attackers[0].pos != -10000 {
+		t.Fatalf("连续后退应夹在 -10000，实际 %d", st.Attackers[0].pos)
+	}
+	log := strings.Join(st.Actions, "\n")
+	if got := strings.Count(log, "后撤1360,"); got != 7 {
+		t.Fatalf("前 7 回合应各写「后撤1360」（共 7 条），实际 %d 条：\n%s", got, log)
+	}
+	if got := strings.Count(log, "后撤480,"); got != 1 {
+		t.Fatalf("第 8 回合只剩 480，应写「后撤480」（1 条），实际 %d 条：\n%s", got, log)
+	}
+	if got := strings.Count(log, "后撤0,"); got != 1 {
+		t.Fatalf("退到底后应写「后撤0」（1 条），实际 %d 条：\n%s", got, log)
+	}
+}
+
 // TestBattleRoundCapIsForty —— 复刻《战斗机制》§1：最多 40 回合
 func TestBattleRoundCapIsForty(t *testing.T) {
 	if ezfyBattleMaxRoundsCfg() != 40 {

@@ -148,6 +148,27 @@ func ezfyCritBaseBonusPctCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.CritBaseBonusPct, ezfyCritBaseBonusPctDef)
 }
 
+// ezfyRollCrit 独立掷一次暴击，返回「是否暴击 / 本次生效的暴击伤害加成%」。
+//
+// ★★ 2026-10-31 用户口径：**连击相当于两次攻击，每次攻击都要单独计算暴击**，
+// 不能共用同一次判定。所以主攻击、连击追加的那次普攻、反击各自调用本函数，
+// 每次都重新掷骰（几率封顶 100%；暴击伤害 <= 0 时按基础倍率兜底）。
+func ezfyRollCrit(chance, critDmg int) (bool, int) {
+	if chance <= 0 {
+		return false, 0
+	}
+	if chance > 100 {
+		chance = 100
+	}
+	if rand.Intn(100) >= chance {
+		return false, 0
+	}
+	if critDmg <= 0 {
+		critDmg = ezfyCritBaseBonusPctCfg()
+	}
+	return true, critDmg
+}
+
 // 盟军驻军战「溃败撤退」阈值：守方剩余兵力跌破初始兵力的阈值即判定战败，
 // 战斗提前结束，剩余部队自动返航回出发城市（不再死战到全灭）。
 // —— 让「驻军战败 → 剩余部队回到自己城市」有兵可回（引擎里「战败」原本=全灭）。
@@ -1550,24 +1571,33 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					move = 0
 				}
 			}
-			if move != 0 {
-				move *= dir
-				if isAtk {
-					unit.pos += move
-				} else {
-					unit.pos -= move
-				}
-				// ★ 2026-09-23 后退最多 10000，不能无限制后退。
-				//   攻方起点 0 → 最低 -10000；守方起点 6000 → 最高 16000。超出夹回。
-				if isAtk {
-					if unit.pos < -ezfyBattleRetreatMaxCfg() {
-						unit.pos = -ezfyBattleRetreatMaxCfg()
+			// ★★ 2026-10-31 用户反馈「后退到底后描述仍按兵种速度写」：
+			//   移动量会被「后退最多 10000」夹住，日志必须写**实际位移**，不能写理论速度。
+			//   · 第 8 回合只够退 480 → 写「后撤480」（不是 1360）；
+			//   · 已经退到底 → 写「后撤0」（指令已执行，但无路可退）；
+			//   ★ 即使 move=0（速度 0 之类）且是后退，也要写一行 0，避免玩家以为指令失灵。
+			if move != 0 || dir < 0 {
+				oldPos := unit.pos
+				if move != 0 {
+					move *= dir
+					if isAtk {
+						unit.pos += move
+					} else {
+						unit.pos -= move
 					}
-				} else {
-					if unit.pos > st.startDistOf()+ezfyBattleRetreatMaxCfg() {
-						unit.pos = st.startDistOf() + ezfyBattleRetreatMaxCfg()
+					// ★ 2026-09-23 后退最多 10000，不能无限制后退。
+					//   攻方起点 0 → 最低 -10000；守方起点 6000 → 最高 16000。超出夹回。
+					if isAtk {
+						if unit.pos < -ezfyBattleRetreatMaxCfg() {
+							unit.pos = -ezfyBattleRetreatMaxCfg()
+						}
+					} else {
+						if unit.pos > st.startDistOf()+ezfyBattleRetreatMaxCfg() {
+							unit.pos = st.startDistOf() + ezfyBattleRetreatMaxCfg()
+						}
 					}
 				}
+				actualMove := unit.pos - oldPos // 夹到边界后的真实位移（带正负号）
 				dist = ezfyAbs(target.pos - unit.pos)
 				// 移动后重算最近距离（后方开火切换目标用）
 				nearestDist = int(^uint(0) >> 1)
@@ -1580,9 +1610,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if dir < 0 {
 					verb = "后撤"
 				}
-				st.Actions = append(st.Actions, fmt.Sprintf("%s%s%s%d, 与%s%s相距%d",
-					side, stName(unit), verb, ezfyAbs(move), enemySide, stName(target), dist))
-				moved = true
+				// 前进被「贴身」截成 0 时不写移动行，交给下面的「已贴身」提示；
+				// 后退到底（actualMove=0）仍写「后撤0」，让玩家知道已经到边界。
+				if actualMove != 0 || dir < 0 {
+					st.Actions = append(st.Actions, fmt.Sprintf("%s%s%s%d, 与%s%s相距%d",
+						side, stName(unit), verb, ezfyAbs(actualMove), enemySide, stName(target), dist))
+					moved = true
+				}
 			}
 		}
 		if !moved && dist > rangeD {
@@ -1717,21 +1751,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			//      看起来就是「暴击只打了 1 个」。
 			//   现在：几率封顶 100%；暴击伤害加成 <= 0 时按基础倍率兜底，
 			//   保证「只要出了暴击，就一定要比不暴击打得更疼」。
-			crit := false
-			critBonus := 0
-			if equip.Crit > 0 {
-				chance := equip.Crit
-				if chance > 100 {
-					chance = 100
-				}
-				if rand.Intn(100) < chance {
-					crit = true
-					critBonus = equip.CritDmg
-					if critBonus <= 0 {
-						critBonus = ezfyCritBaseBonusPctCfg()
-					}
-					damage = damage * int64(100+critBonus) / 100
-				}
+			crit, critBonus := ezfyRollCrit(equip.Crit, equip.CritDmg)
+			if crit {
+				damage = damage * int64(100+critBonus) / 100
 			}
 			// ★★ 2026-10-09 暴击发动播报（「有些装备爆击不是 100%，发动爆击也要有提示，
 			//   就和军官发动技能似的描述下」）：装备/套装的暴击几率是概率值，只有 roll 中了才播报
@@ -1902,14 +1924,18 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					return
 				}
 				if pc := comboPursuitRoll(ps); pc != nil {
+					// 追击是「战法伤害」，不参与装备暴击 → 传 0/0（与连击的第二次普攻区分开）。
 					st.comboFollowUp(unit, target, enemies, rangeD, atkFlat, unitAtkBonus, unitDefBonus,
-						defBreakPct, side, enemySide, stName, pc.Name, pc.Value, "追击", true)
+						defBreakPct, side, enemySide, stName, pc.Name, pc.Value, "追击", true, 0, 0)
 				}
 			}
 			pursue() // 主普攻命中后
 			if cb, ok := comboDoubleBest(comboSide); ok {
+				// ★★ 2026-10-31 连击 = 两次攻击：第二次普攻用**攻击方自己的装备暴击属性**
+				//   单独再掷一次暴击（不共用上面主攻击那一次的结果）。
 				st.comboFollowUp(unit, target, enemies, rangeD, atkFlat, unitAtkBonus, unitDefBonus,
-					defBreakPct, side, enemySide, stName, cb.Name, cb.Value, "连击", false)
+					defBreakPct, side, enemySide, stName, cb.Name, cb.Value, "连击", false,
+					equip.Crit, equip.CritDmg)
 				pursue() // 连击那一次普攻命中后，也能带出追击
 			}
 			// ★ 2026-10-24 城墙是「像单位一样的耐久目标、只能被打」：**没有顺带拆墙**。
@@ -1982,20 +2008,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if !isAtk {
 					cbEquip = st.AtkEquip // 攻方发动反击 → 用攻方装备
 				}
-				cbCrit, cbCritBonus := false, 0
-				if cbEquip.Crit > 0 {
-					chance := cbEquip.Crit
-					if chance > 100 {
-						chance = 100
-					}
-					if rand.Intn(100) < chance {
-						cbCrit = true
-						cbCritBonus = cbEquip.CritDmg
-						if cbCritBonus <= 0 {
-							cbCritBonus = ezfyCritBaseBonusPctCfg()
-						}
-						dmg = dmg * int64(100+cbCritBonus) / 100
-					}
+				cbCrit, cbCritBonus := ezfyRollCrit(cbEquip.Crit, cbEquip.CritDmg)
+				if cbCrit {
+					dmg = dmg * int64(100+cbCritBonus) / 100
 				}
 				// ★★ 2026-10-08 修复「反击消灭的兵比普通攻击还多」（用户反馈「为什么反击伤害还高」）：
 				//
