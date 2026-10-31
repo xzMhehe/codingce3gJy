@@ -233,10 +233,18 @@
           <el-col :span="8"><el-form-item label="对防"><el-input-number v-model.number="cfgForm.atk_def" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="防御"><el-input-number v-model.number="cfgForm.defence" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="速度"><el-input-number v-model.number="cfgForm.speed" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="攻速"><el-input-number v-model.number="cfgForm.atk_speed" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="8">
+            <el-form-item>
+              <template slot="label">攻速
+                <el-tooltip placement="top" content="攻速 = 同回合出手先后；填 0 时跟随「速度」。速度仍管每回合移动/行军。">
+                  <i class="el-icon-info cfg-tip" />
+                </el-tooltip>
+              </template>
+              <el-input-number v-model.number="cfgForm.atk_speed" :min="0" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
           <el-col :span="8"><el-form-item label="射程"><el-input-number v-model.number="cfgForm.attack_range" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
         </el-row>
-        <div class="td-sub" style="margin:-6px 0 12px 10px">攻速 = 同回合出手先后；填 0 时跟随「速度」。速度仍管每回合移动/行军。</div>
         <el-row :gutter="10">
           <el-col :span="8"><el-form-item label="载量"><el-input-number v-model.number="cfgForm.carry" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="人口"><el-input-number v-model.number="cfgForm.pop" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>

@@ -2472,10 +2472,16 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		out := []*ezfyFightUnit{}
 		for _, s := range list {
 			// 兵种属性直接取快照（不查配置表），保证中途改配置也不影响本场。
-			// ★ 2026-10-31 老快照没有 atk_speed → 回退成 speed（行为与改动前一致）。
+			// ★ 2026-10-31 老快照（加 atk_speed 之前创建）没有该字段 → 优先读**当前配置**的
+			//   atk_speed（0→speed）。这样新加的攻速配置对在途老战场也能生效；
+			//   新快照已带 atk_speed，仍按开战时的值冻结。
 			atkSpeed := s.AtkSpeed
 			if atkSpeed <= 0 {
-				atkSpeed = s.Speed
+				if t := ezfyCfg.troop(s.TroopId); t != nil && t.AtkSpeed > 0 {
+					atkSpeed = t.AtkSpeed
+				} else {
+					atkSpeed = s.Speed
+				}
 			}
 			cfg := &ezfyTroopStats{
 				ID: s.TroopId, Name: s.Name, Type: s.Type, Health: s.Health,

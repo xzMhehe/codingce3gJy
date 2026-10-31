@@ -112,6 +112,44 @@ func TestAtkSpeedDecidesTurnOrder(t *testing.T) {
 	}
 }
 
+// TestBaseAtkSpeedDecidesOrder 兵种基础攻速（atk_speed）本身就要决定先手，不靠军官加成。
+//
+// 构造：攻方海军轰炸机 Speed=1500 / AtkSpeed=880，守方轰炸机 Speed=1000 / AtkSpeed=2000。
+// 按「速度」攻方 1500 > 1000 应先手；按「攻速」守方 2000 > 880 应先手 —— 断言守方先手。
+func TestBaseAtkSpeedDecidesOrder(t *testing.T) {
+	saved := ezfyCfg.troops
+	defer func() { ezfyCfg.troops = saved }()
+	ezfyCfg.troops = map[int]model.EzfyCfgTroop{
+		21: {ID: 21, Name: "海军轰炸机", Type: 3, Health: 130, Speed: 1500, AtkSpeed: 880, AttackRange: 99999},
+		11: {ID: 11, Name: "轰炸机", Type: 3, Health: 135, Speed: 1000, AtkSpeed: 2000, AttackRange: 99999},
+	}
+	st := ezfyNewBattleState(
+		[]ezfyUnitGroup{{TroopId: 21, Count: 100}},
+		[]ezfyUnitGroup{{TroopId: 11, Count: 100}},
+		0, 0, 0, 0, 0,
+		0, 0,
+		ezfyBattleBonus{}, ezfyBattleBonus{},
+		ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
+		"", "", 0, 0, 0, 0,
+		nil, nil, nil, nil, nil,
+		0, nil,
+		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
+		0, 0, 1, 2,
+		ezfyTypeBonus{}, ezfyTypeBonus{})
+	st.Step(nil, nil)
+	first := ""
+	for _, ln := range st.Actions {
+		if strings.HasPrefix(ln, "【攻方】") || strings.HasPrefix(ln, "【守方】") {
+			first = ln
+			break
+		}
+	}
+	if !strings.HasPrefix(first, "【守方】") {
+		t.Fatalf("守方轰炸机攻速 2000 > 海轰 880，应守方先手；实际：%s\n%s",
+			first, strings.Join(st.Actions, "\n"))
+	}
+}
+
 // TestAtkSpeedNotInSpeedBuckets 攻速不得混进「速度」档（否则又变成加移动/行军速度）。
 func TestAtkSpeedNotInSpeedBuckets(t *testing.T) {
 	h := &EzfyHandler{}
@@ -173,12 +211,25 @@ func TestTroopAtkSpeedSnapshot(t *testing.T) {
 		t.Fatalf("快照重建后攻速应为 700，实际 %d", got)
 	}
 
-	// 老快照（没有 atk_speed 字段）→ 0，重建时回退成 speed（行为与改动前一致）。
+	// 老快照（加 atk_speed 之前创建，没有该字段）→ 优先读当前配置的 atk_speed，
+	// 这样在途老战场也能吃到管理端新调的攻速。
+	savedTroops := ezfyCfg.troops
+	defer func() { ezfyCfg.troops = savedTroops }()
+	ezfyCfg.troops = map[int]model.EzfyCfgTroop{
+		1: {ID: 1, Name: "步兵", Type: 2, Speed: 800, AtkSpeed: 880},
+	}
 	snap.Attackers[0].AtkSpeed = 0
 	snap.Attackers[0].Speed = 800
 	old := ezfyBattleStateFromSnapshot(snap)
-	if got := old.effAtkSpeed(old.Attackers[0], true); got != 800 {
-		t.Fatalf("老快照应回退 speed=800，实际 %d", got)
+	if got := old.effAtkSpeed(old.Attackers[0], true); got != 880 {
+		t.Fatalf("老快照应优先用当前配置 atk_speed=880，实际 %d", got)
+	}
+
+	// 当前配置 atk_speed 也是 0（跟随速度）→ 回退快照里的 speed。
+	ezfyCfg.troops[1] = model.EzfyCfgTroop{ID: 1, Name: "步兵", Type: 2, Speed: 800, AtkSpeed: 0}
+	old2 := ezfyBattleStateFromSnapshot(snap)
+	if got := old2.effAtkSpeed(old2.Attackers[0], true); got != 800 {
+		t.Fatalf("当前配置 atk_speed=0 时应回退快照 speed=800，实际 %d", got)
 	}
 }
 
