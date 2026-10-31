@@ -12,12 +12,12 @@ import (
 // ============ 普通军官技能口径护栏（2026-10-31 用户 5 条修正） ============
 //
 // 用户口径：
-//  1. 弧形防御：每 3 回合提升防御力，持续 1 回合（不是常驻）
-//  2. 火炮控制：每 3 回合提升**陆军装甲部队**（装甲车4/轻坦5/重坦6/突击炮7/火箭8）攻击，
+//  1. 弧形壁垒：每 3 回合提升防御力，持续 1 回合（不是常驻）
+//  2. 火炮压制：每 3 回合提升**陆军装甲部队**（装甲车4/轻坦5/重坦6/突击炮7/火箭8）攻击，
 //     持续 1 回合；「攻击力」= 本回合 对地/对空/对海/对防 各 +等级数值
-//  3. 坦克突袭：只生效 轻型坦克(5)、重型坦克(6)
-//  4. 狼群战术：海军**攻击力**+15%/级（百分比，不是「对海攻击数值」；不分目标）
-//  5. 弹幕支援：只对**城防单位**的**攻击范围**加成（不是防御、不是全兵种）
+//  3. 坦克冲锋：只生效 轻型坦克(5)、重型坦克(6)
+//  4. 狼群围猎：海军**攻击力**+15%/级（百分比，不是「对海攻击数值」；不分目标）
+//  5. 弹幕覆盖：只对**城防单位**的**攻击范围**加成（不是防御、不是全兵种）
 
 // testSkillOfficer 构造一个带指定技能的军官（Level 90 → 技能 3 级 = 倍率 3）
 func testSkillOfficer(skills ...string) *model.EzfyOfficer {
@@ -35,7 +35,7 @@ func testSkillOfficer(skills ...string) *model.EzfyOfficer {
 // TestOfficerSkillTimedProc 第 1、4、7 … 回合发动，其余回合不发动。
 func TestOfficerSkillTimedProc(t *testing.T) {
 	h := &EzfyHandler{}
-	o := testSkillOfficer("弧形防御", "火炮控制")
+	o := testSkillOfficer("弧形壁垒", "火炮压制")
 	list := h.officerTimedSkills(o)
 	if len(list) != 2 {
 		t.Fatalf("应返回 2 个间隔技能，得到 %d", len(list))
@@ -57,81 +57,85 @@ func TestOfficerSkillTimedProc(t *testing.T) {
 	}
 }
 
-// TestOfficerTypeBonusScope 火炮控制只给装甲部队攻击属性；坦克突袭只给轻坦/重坦速度；
-// 狼群战术给海军攻击力%（不分目标）；弹幕支援只给城防射程。
+// TestOfficerTypeBonusScope 火炮压制只给装甲部队攻击属性；坦克冲锋只给轻坦/重坦速度；
+// 狼群围猎给海军攻击力%（不分目标）；弹幕覆盖只给城防射程。
 func TestOfficerTypeBonusScope(t *testing.T) {
 	h := &EzfyHandler{}
-	o := testSkillOfficer("火炮控制", "坦克突袭", "狼群战术", "弹幕支援", "四指编队")
+	o := testSkillOfficer("火炮压制", "坦克冲锋", "狼群围猎", "弹幕覆盖", "四指阵列")
 	tb := h.officerTypeBonus(o, ezfyTypeBonus{})
 	const scale = 3
 
-	// ① 火炮控制：装甲车4 / 轻坦5 / 重坦6 / 突击炮7 / 火箭8 = 10×3
+	// ① 火炮压制：装甲车4 / 轻坦5 / 重坦6 / 突击炮7 / 火箭8 = 10×3
 	for _, id := range []int{4, 5, 6, 7, 8} {
 		if got := tb.atkFlatTroopOf(id); got != 10*scale {
-			t.Fatalf("火炮控制 兵种%d 攻击属性应为 %d，得到 %d", id, 10*scale, got)
+			t.Fatalf("火炮压制 兵种%d 攻击属性应为 %d，得到 %d", id, 10*scale, got)
 		}
 	}
 	// 非装甲陆军（步兵1/摩托化骑兵2/卡车3/特种兵12）不吃
 	for _, id := range []int{1, 2, 3, 12} {
 		if got := tb.atkFlatTroopOf(id); got != 0 {
-			t.Fatalf("火炮控制 不应作用于兵种%d，得到 +%d", id, got)
+			t.Fatalf("火炮压制 不应作用于兵种%d，得到 +%d", id, got)
 		}
 	}
 	// 也不再按「陆军 type」整档下发（原来 AtkFlat[2] 全军陆军都吃）
 	if got := tb.atkFlatOf(ezfyTroopTypeArmy); got != 0 {
-		t.Fatalf("火炮控制 不应再按陆军 type 下发，得到 %d", got)
+		t.Fatalf("火炮压制 不应再按陆军 type 下发，得到 %d", got)
 	}
 
-	// ② 坦克突袭：只轻坦5 / 重坦6
-	if tb.speedTroopOf(5) != 10*scale || tb.speedTroopOf(6) != 10*scale {
-		t.Fatalf("坦克突袭应只作用于轻坦/重坦，得到 %d/%d", tb.speedTroopOf(5), tb.speedTroopOf(6))
+	// ② 坦克冲锋：只轻坦5 / 重坦6，且★★ 2026-10-31 起改为**攻速**（不再加移动/行军速度）
+	if tb.atkSpeedTroopOf(5) != 10*scale || tb.atkSpeedTroopOf(6) != 10*scale {
+		t.Fatalf("坦克冲锋应只作用于轻坦/重坦攻速，得到 %d/%d", tb.atkSpeedTroopOf(5), tb.atkSpeedTroopOf(6))
 	}
 	for _, id := range []int{1, 2, 3, 4, 7, 8} {
-		if got := tb.speedTroopOf(id); got != 0 {
-			t.Fatalf("坦克突袭 不应作用于兵种%d，得到 +%d", id, got)
+		if got := tb.atkSpeedTroopOf(id); got != 0 {
+			t.Fatalf("坦克冲锋 不应作用于兵种%d，得到 +%d", id, got)
 		}
 	}
-	if got := tb.speedOf(ezfyTroopTypeArmy); got != 0 {
-		t.Fatalf("坦克突袭 不应再按陆军 type 下发，得到 %d", got)
+	if got := tb.atkSpeedOf(ezfyTroopTypeArmy); got != 0 {
+		t.Fatalf("坦克冲锋 不应按陆军 type 下发，得到 %d", got)
+	}
+	// 攻速不得再进「速度」档（否则又变成加移动/行军速度）
+	if got := tb.speedTroopOf(5); got != 0 {
+		t.Fatalf("坦克冲锋已改攻速，不该再给轻坦加移动速度，得到 +%d", got)
 	}
 
-	// ③ 狼群战术：海军攻击力% +15×3（不分目标）
+	// ③ 狼群围猎：海军攻击力% +15×3（不分目标）
 	if got := tb.atkOf(ezfyTroopTypeNavy); got != 15*scale {
-		t.Fatalf("狼群战术 海军攻击力应为 +%d%%，得到 +%d%%", 15*scale, got)
+		t.Fatalf("狼群围猎 海军攻击力应为 +%d%%，得到 +%d%%", 15*scale, got)
 	}
 	if got := tb.atkVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy); got != 0 {
-		t.Fatalf("狼群战术 不应再走「对海」目标档，得到 +%d%%", got)
+		t.Fatalf("狼群围猎 不应再走「对海」目标档，得到 +%d%%", got)
 	}
 
-	// ④ 弹幕支援：城防射程 10×3，其它兵种 0
+	// ④ 弹幕覆盖：城防射程 10×3，其它兵种 0
 	if got := tb.rangeOf(ezfyTroopTypeCity); got != 10*scale {
-		t.Fatalf("弹幕支援 城防射程应为 +%d%%，得到 +%d%%", 10*scale, got)
+		t.Fatalf("弹幕覆盖 城防射程应为 +%d%%，得到 +%d%%", 10*scale, got)
 	}
 	for _, ty := range []int{ezfyTroopTypeNavy, ezfyTroopTypeArmy, ezfyTroopTypeAir} {
 		if got := tb.rangeOf(ty); got != 0 {
-			t.Fatalf("弹幕支援 不应作用于兵种type%d 射程，得到 +%d%%", ty, got)
+			t.Fatalf("弹幕覆盖 不应作用于兵种type%d 射程，得到 +%d%%", ty, got)
 		}
 	}
 }
 
-// TestOfficerGuardBonusNoBarrage 弹幕支援不再算进「防御加成」（它是射程技能）。
+// TestOfficerGuardBonusNoBarrage 弹幕覆盖不再算进「防御加成」（它是射程技能）。
 func TestOfficerGuardBonusNoBarrage(t *testing.T) {
 	h := &EzfyHandler{}
 	// 用技能明细段判定（officerGuardBonus 会读库算学识，单测不连库）
-	for _, it := range h.officerGuardSkillsBreak(testSkillOfficer("弹幕支援")) {
-		if it.Name == "弹幕支援" {
-			t.Fatalf("弹幕支援 不应再进防御加成明细")
+	for _, it := range h.officerGuardSkillsBreak(testSkillOfficer("弹幕覆盖")) {
+		if it.Name == "弹幕覆盖" {
+			t.Fatalf("弹幕覆盖 不应再进防御加成明细")
 		}
 	}
 	got := 0
-	for _, it := range h.officerGuardSkillsBreak(testSkillOfficer("弧形防御", "弹幕支援")) {
-		if it.Name == "弹幕支援" {
-			t.Fatalf("弹幕支援 不应再进防御加成明细")
+	for _, it := range h.officerGuardSkillsBreak(testSkillOfficer("弧形壁垒", "弹幕覆盖")) {
+		if it.Name == "弹幕覆盖" {
+			t.Fatalf("弹幕覆盖 不应再进防御加成明细")
 		}
 		got += it.Value
 	}
 	if got != 30*3 {
-		t.Fatalf("防御技能段应只有弧形防御 +%d%%，得到 +%d%%", 30*3, got)
+		t.Fatalf("防御技能段应只有弧形壁垒 +%d%%，得到 +%d%%", 30*3, got)
 	}
 }
 
@@ -215,10 +219,10 @@ func ezfyTestAtkLineByRound(actions []string) map[int]string {
 	return out
 }
 
-// TestArcDefenseOnlyOnProcRounds 弧形防御只在第 1 回合（发动回合）减伤。
+// TestArcDefenseOnlyOnProcRounds 弧形壁垒只在第 1 回合（发动回合）减伤。
 func TestArcDefenseOnlyOnProcRounds(t *testing.T) {
 	h := &EzfyHandler{}
-	o := testSkillOfficer("弧形防御")
+	o := testSkillOfficer("弧形壁垒")
 	defBonus := 30 * h.officerSkillScale(o) // 军官技能段（学识那截单测不连库，与口径无关）
 	timed := h.officerTimedSkills(o)
 	dmg := ezfyTestAtkDamageByRound(ezfyTestRunRounds(t, ezfyTypeBonus{}, ezfyTypeBonus{}, nil, timed, defBonus))
@@ -230,20 +234,20 @@ func TestArcDefenseOnlyOnProcRounds(t *testing.T) {
 	}
 	// 扣减函数口径：未发动回合整段扣掉，发动回合不扣
 	if off := ezfyTimedDefOff(timed, 2); off != defBonus {
-		t.Fatalf("第2回合应扣掉弧形防御 +%d%%，得到 +%d%%", defBonus, off)
+		t.Fatalf("第2回合应扣掉弧形壁垒 +%d%%，得到 +%d%%", defBonus, off)
 	}
 	if off := ezfyTimedDefOff(timed, 1); off != 0 {
 		t.Fatalf("第1回合（发动）不应扣减，得到 +%d%%", off)
 	}
 }
 
-// TestArtilleryControlOnlyOnProcRounds 火炮控制只在发动回合给装甲部队加攻击属性。
+// TestArtilleryControlOnlyOnProcRounds 火炮压制只在发动回合给装甲部队加攻击属性。
 //
 // 攻击属性是**绝对值**（+10/级），在千级攻击力下不足以改变整数除法后的伤害，
 // 所以直接断言战报里的「兵种攻击+N」标记：发动回合有、未发动回合没有。
 func TestArtilleryControlOnlyOnProcRounds(t *testing.T) {
 	h := &EzfyHandler{}
-	o := testSkillOfficer("火炮控制")
+	o := testSkillOfficer("火炮压制")
 	tb := h.officerTypeBonus(o, ezfyTypeBonus{})
 	timed := h.officerTimedSkills(o)
 	lines := ezfyTestAtkLineByRound(ezfyTestRunRounds(t, tb, ezfyTypeBonus{}, timed, nil, 0))
@@ -265,7 +269,7 @@ func TestArtilleryControlOnlyOnProcRounds(t *testing.T) {
 	}
 }
 
-// TestBarrageRangeOnlyCity 弹幕支援只加城防单位的射程：普通兵种射程不变。
+// TestBarrageRangeOnlyCity 弹幕覆盖只加城防单位的射程：普通兵种射程不变。
 func TestBarrageRangeOnlyCity(t *testing.T) {
 	saved := ezfyCfg.troops
 	defer func() { ezfyCfg.troops = saved }()
@@ -286,19 +290,19 @@ func TestBarrageRangeOnlyCity(t *testing.T) {
 	}
 }
 
-// TestWolfPackNavyAttackPct 狼群战术是「海军攻击力%」——打陆军目标也生效（不是只对海）。
+// TestWolfPackNavyAttackPct 狼群围猎是「海军攻击力%」——打陆军目标也生效（不是只对海）。
 func TestWolfPackNavyAttackPct(t *testing.T) {
 	h := &EzfyHandler{}
-	tb := h.officerTypeBonus(testSkillOfficer("狼群战术"), ezfyTypeBonus{})
+	tb := h.officerTypeBonus(testSkillOfficer("狼群围猎"), ezfyTypeBonus{})
 	armyTarget := &ezfyTroopStats{Type: ezfyTroopTypeArmy}
 	if got := tb.attackBonusFor(ezfyTroopTypeNavy, armyTarget); got != 15*3 {
-		t.Fatalf("狼群战术 海军打陆军也应 +%d%%，得到 +%d%%", 15*3, got)
+		t.Fatalf("狼群围猎 海军打陆军也应 +%d%%，得到 +%d%%", 15*3, got)
 	}
 	airTarget := &ezfyTroopStats{Type: ezfyTroopTypeAir}
 	if got := tb.attackBonusFor(ezfyTroopTypeNavy, airTarget); got != 15*3 {
-		t.Fatalf("狼群战术 海军打空军也应 +%d%%，得到 +%d%%", 15*3, got)
+		t.Fatalf("狼群围猎 海军打空军也应 +%d%%，得到 +%d%%", 15*3, got)
 	}
 	if got := tb.attackBonusFor(ezfyTroopTypeArmy, armyTarget); got != 0 {
-		t.Fatalf("狼群战术 不应作用于陆军，得到 +%d%%", got)
+		t.Fatalf("狼群围猎 不应作用于陆军，得到 +%d%%", got)
 	}
 }

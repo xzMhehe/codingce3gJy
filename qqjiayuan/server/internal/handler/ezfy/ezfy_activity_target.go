@@ -146,17 +146,17 @@ func generalSkillLevel(g *model.EzfyCfgGeneral) int {
 }
 func generalSkillScale(g *model.EzfyCfgGeneral) int { return generalSkillLevel(g) }
 func generalCounterRounds(g *model.EzfyCfgGeneral) int {
-	if g != nil && generalHasSkill(g, "绝地反击") {
+	if g != nil && generalHasSkill(g, "绝地逆袭") {
 		return generalSkillLevel(g)
 	}
 	return 0
 }
 
-// generalSkillDefBonus 军官池守将「防御类技能的攻击加成拆解段」（弧形防御 30，随技能等级 ×N）。
+// generalSkillDefBonus 军官池守将「防御类技能的攻击加成拆解段」（弧形壁垒 30，随技能等级 ×N）。
 // 活动守军无城墙/无科技 → 守方攻击加成整体来自守将（defBonus），
 // 这里取下其中的技能段，供战报拆解单独展示「军官技能+N%」。
 //
-// ★ 2026-10-31 弹幕支援移出：它按文案是「城防攻击范围+10%」，不是防御加成
+// ★ 2026-10-31 弹幕覆盖移出：它按文案是「城防攻击范围+10%」，不是防御加成
 //   （原来错算 +10% 防御且全兵种生效，用户反馈「兵种也生效了」）。
 func generalSkillDefBonus(g *model.EzfyCfgGeneral) int {
 	if g == nil {
@@ -166,14 +166,14 @@ func generalSkillDefBonus(g *model.EzfyCfgGeneral) int {
 	bonus := 0
 	for _, s := range generalSkillList(g) {
 		switch s {
-		case "弧形防御":
+		case "弧形壁垒":
 			bonus += 30 * scale
 		}
 	}
 	return bonus
 }
 
-// generalSkillDefBreak 军官池守将「防御类技能」的**逐项**明细（战报展示「军官技能·弧形防御+N%」）。
+// generalSkillDefBreak 军官池守将「防御类技能」的**逐项**明细（战报展示「军官技能·弧形壁垒+N%」）。
 // 与 generalSkillDefBonus 同一口径，明细之和 = 技能总加成。
 func generalSkillDefBreak(g *model.EzfyCfgGeneral) []ezfyBonusItem {
 	if g == nil {
@@ -183,7 +183,7 @@ func generalSkillDefBreak(g *model.EzfyCfgGeneral) []ezfyBonusItem {
 	out := []ezfyBonusItem{}
 	for _, s := range generalSkillList(g) {
 		switch s {
-		case "弧形防御":
+		case "弧形壁垒":
 			out = append(out, ezfyBonusItem{Name: s, Value: 30 * scale})
 		}
 	}
@@ -193,7 +193,7 @@ func generalSkillDefBreak(g *model.EzfyCfgGeneral) []ezfyBonusItem {
 // generalTypeBonus 军官池守将的**兵种专属**技能加成（与 officerTypeBonus 同一口径）。
 //
 // ★ 2026-10-31 新增：活动守军/野地守将原来没有兵种专属通道 ——
-// 坦克突袭（只轻坦/重坦速度）、狼群战术（海军攻击力%）、弹幕支援（城防射程%）
+// 坦克冲锋（只轻坦/重坦**攻速**）、狼群围猎（海军攻击力%）、弹幕覆盖（城防射程%）
 // 在守将身上全被丢掉。现在按与玩家军官完全相同的规则下发。
 func generalTypeBonus(g *model.EzfyCfgGeneral, b ezfyTypeBonus) ezfyTypeBonus {
 	if b.Atk == nil {
@@ -214,6 +214,12 @@ func generalTypeBonus(g *model.EzfyCfgGeneral, b ezfyTypeBonus) ezfyTypeBonus {
 	if b.SpeedTroop == nil {
 		b.SpeedTroop = map[int]int{}
 	}
+	if b.AtkSpeed == nil {
+		b.AtkSpeed = map[int]int{}
+	}
+	if b.AtkSpeedTroop == nil {
+		b.AtkSpeedTroop = map[int]int{}
+	}
 	if b.Range == nil {
 		b.Range = map[int]int{}
 	}
@@ -223,23 +229,23 @@ func generalTypeBonus(g *model.EzfyCfgGeneral, b ezfyTypeBonus) ezfyTypeBonus {
 	scale := generalSkillScale(g)
 	for _, s := range generalSkillList(g) {
 		switch s {
-		case "火炮控制":
+		case "火炮压制":
 			for _, id := range ezfyArmorTroopIds {
 				b.AtkFlatTroop[id] += 10 * scale
 			}
-		case "四指编队":
+		case "四指阵列":
 			b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)
-		case "狼群战术":
+		case "狼群围猎":
 			b.Atk[ezfyTroopTypeNavy] += 15 * scale
-		case "坦克突袭":
+		case "坦克冲锋": // ★ 2026-10-31 改为**攻速**（只轻坦/重坦），与玩家军官同口径
 			for _, id := range ezfyTankRushTroopIds {
-				b.SpeedTroop[id] += 10 * scale
+				b.AtkSpeedTroop[id] += 10 * scale
 			}
-		case "闪电袭击":
-			b.Speed[ezfyTroopTypeAir] += 10 * scale
-		case "越岛战术":
-			b.Speed[ezfyTroopTypeNavy] += 10 * scale
-		case "弹幕支援":
+		case "闪电疾攻": // ★ 2026-10-31 改为**空军攻速**
+			b.AtkSpeed[ezfyTroopTypeAir] += 10 * scale
+		case "越岛登陆": // ★ 2026-10-31 改为**海军攻速**
+			b.AtkSpeed[ezfyTroopTypeNavy] += 10 * scale
+		case "弹幕覆盖":
 			b.Range[ezfyTroopTypeCity] += 10 * scale
 		}
 	}
@@ -251,15 +257,15 @@ func generalTypeBonus(g *model.EzfyCfgGeneral, b ezfyTypeBonus) ezfyTypeBonus {
 // ★ 2026-09-29 修复：活动野地原来「守方加成恒为 0」，导致配了守将也看不出守方厉害
 //
 //	（战斗加成里 守方 防御+0% 速度+0%）。现在按守将有效学识给防御。
-//	无科技/城墙/装备：防御 = (有效学识+1)/2 + 弧形防御+30（每3回合发动1回合）。
+//	无科技/城墙/装备：防御 = (有效学识+1)/2 + 弧形壁垒+30（每3回合发动1回合）。
 //
-// ★ 2026-10-06 守将技能随等级自动升级：弧形防御 ×技能倍率（属性部分 ezfyAttrToBonus 不加倍）。
+// ★ 2026-10-06 守将技能随等级自动升级：弧形壁垒 ×技能倍率（属性部分 ezfyAttrToBonus 不加倍）。
 //
 // ★★ 2026-10-31 两处口径修正（用户要求）：
 //
-//	① 弹幕支援不再算防御 —— 它是「城防攻击范围+10%」，改走 generalTypeBonus 的射程档；
-//	② 速度技能（坦克突袭/闪电袭击/越岛战术）不再返回「全兵种 +10」标量，
-//	   改由 generalTypeBonus 按兵种下发（坦克突袭只轻坦/重坦）→ 第二个返回值恒为 0，
+//	① 弹幕覆盖不再算防御 —— 它是「城防攻击范围+10%」，改走 generalTypeBonus 的射程档；
+//	② 速度技能（坦克冲锋/闪电疾攻/越岛登陆）不再返回「全兵种 +10」标量，
+//	   改由 generalTypeBonus 按兵种下发（坦克冲锋只轻坦/重坦）→ 第二个返回值恒为 0，
 //	   保留签名只为不动调用点（真正速度走 defType）。
 //
 // 返回 (防御加成, 速度加成)。
@@ -271,7 +277,7 @@ func ezfyActWildDefBonus(g *model.EzfyCfgGeneral) (int, int) {
 	def := 0
 	for _, s := range generalSkillList(g) {
 		switch s {
-		case "弧形防御":
+		case "弧形壁垒":
 			def += 30 * scale
 		}
 	}
@@ -840,7 +846,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		ezfyTechItem("喷气推进", ezfyTechEffectValueAt(19, atkTech[19])),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
-	// ★ 2026-10-07 攻方「防御加成」（出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def，
+	// ★ 2026-10-07 攻方「防御加成」（出征军官属性+防御技能(弧形壁垒/弹幕覆盖)+装备 Def，
 	//   与普通出征同口径；活动守军无装备 → 守方无此段）
 	atkEquip := h.officerBattleEquipBonus(leadOfficer)
 	atkDefBonus := 0
@@ -906,7 +912,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	}
 	var br ezfyBattleResult
 	// ★ 2026-10-06 守方「防御加成」逐项明细（活动守军无城墙/无科技 → 只有守将属性+技能，
-	//   被打行展示「防御加成+N%(军官·名+X% 军官技能·弧形防御+Y% …)」，与 defBonus 构成同口径）
+	//   被打行展示「防御加成+N%(军官·名+X% 军官技能·弧形壁垒+Y% …)」，与 defBonus 构成同口径）
 	defDefBreak := []ezfyBonusItem{}
 	if defGeneral != nil {
 		defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官·" + defGeneral.Name, Value: ezfyAttrToBonus(defGeneral.Learning)})
@@ -948,12 +954,12 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			generalCounterRounds(defGeneral),
 			h.ensureProfile(uid).Camp, defCamp,
 			// ★ 2026-10-08 兵种专属加成（攻方喷气推进=空军速度+军官兵种技能）
-			// ★★ 2026-10-31 守方（活动守将）也要下发兵种专属技能：狼群战术=海军攻击力% /
-			//   弹幕支援=城防射程% / 坦克突袭·闪电袭击·越岛战术=对应兵种速度。
+			// ★★ 2026-10-31 守方（活动守将）也要下发兵种专属技能：狼群围猎=海军攻击力% /
+			//   弹幕覆盖=城防射程% / 坦克冲锋·闪电疾攻·越岛登陆=对应兵种速度。
 			//   原来这里传空表 → 守将的兵种技能全被丢掉，且 ezfyActWildDefBonus 已不再
 			//   返回「全兵种速度」标量（改按兵种下发）→ 不接这一档守将速度会变 0（回归）。
 			atkType, generalTypeBonus(defGeneral, ezfyTypeBonus{}))
-		// ★★ 2026-10-31 普通军官「每3回合发动1回合」技能（弧形防御 / 火炮控制）：
+		// ★★ 2026-10-31 普通军官「每3回合发动1回合」技能（弧形壁垒 / 火炮压制）：
 		//   与普通出征同口径 —— 快照存满额，引擎按回合扣减（见 ezfy_skill_timed.go）。
 		st.AtkTimed = h.officerTimedSkills(leadOfficer)
 		st.DefTimed = generalTimedSkills(defGeneral)
@@ -1065,10 +1071,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	detail += troopChangeText(defBefore, defAfter)
 	detail += "[双方兵力]"
 
-	// 攻方战损入伤兵营：兵种修复率% + 战地医疗科技（管理端「效果数值」，未配置按 2%/级）+ 机械改造 5%/级
-	// ★ 2026-10-15 机械改造回收率由 10%/级 → **5%/级**（名将满级最高 30%）
+	// 攻方战损入伤兵营：兵种修复率% + 战地医疗科技（管理端「效果数值」，未配置按 2%/级）+ 机械改装 5%/级
+	// ★ 2026-10-15 机械改装回收率由 10%/级 → **5%/级**（名将满级最高 30%）
 	healTech := ezfyTechEffectValueAt(21, atkTech[21])
-	if h.officerHasSkill(leadOfficer, "机械改造") {
+	if h.officerHasSkill(leadOfficer, "机械改装") {
 		healTech += 5 * h.officerSkillScale(leadOfficer)
 	}
 	var repairedTotal int64

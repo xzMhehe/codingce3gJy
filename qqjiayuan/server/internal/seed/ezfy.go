@@ -63,9 +63,20 @@ func seedEzfy(db *gorm.DB) {
 	// ★ 2026-10-22 新增兵种「海军轰炸机」一次性对齐（对海/训练时间/阵营全名）：
 	//   batchKeep 是 DoNothing，已部署过的库补不进去，靠 settings 打标只对齐一次。
 	alignEzfyNavalBomber(db)
+	// ★★ 2026-10-31 城墙去掉「远程射程+NN%」文案（老库 batchKeep 改不到，一次性对齐）
+	ezfyWallRangeTextDrop(db)
+	// ★★ 2026-10-31 军官技能改名（前两字保留、后两字迭代）：技能名是**判定字面量 + 落库数据**，
+	//   只改代码会让老玩家已学技能静默失效 → 必须同一次启动把存量数据一起替换。
+	//   ⚠️ 顺序在文案迁移之前：后面两条都按 ID 改文案，与名字无关，但先改名更直观。
+	ezfySkillRename(db)
 	// ★★ 2026-10-31 军官技能文案润色一次性对齐（技能 tab / 军官详情都读这张表）：
 	//   batchKeep 是 insert-only，已部署的库改不到 → 同样用 settings 打标只跑一次。
 	ezfySkillDescPolish(db)
+	// ★★ 2026-10-31 坦克冲锋/闪电疾攻/越岛登陆 由「速度」改「攻速」：文案再次对齐
+	//   （上一版润色已打标，必须用新 key 才落得到老库）。实现见 ezfyTypeBonus.AtkSpeed。
+	ezfySkillAtkSpeedFix(db)
+	// ★★ 2026-10-31 黄金洞察(11) 效果由「战利品」改为「侦察/情报等级」：文案再一次对齐。
+	ezfySkillGoldenInsightFix(db)
 
 	// —— 科技：主表每次对齐；等级表**保护 effect_value**（见 seedEzfyTechLevels） ——
 	//
@@ -86,6 +97,8 @@ func seedEzfy(db *gorm.DB) {
 	// ★ 2026-10-31 机械增压(10)/喷气推进(19) 满级改 50%：等级表的 effect/effect_value
 	//   被 seedEzfyTechLevels 刻意保护（管理端独家维护），改种子文案落不到老库 → 单独一次性迁移。
 	ezfyTechSpeed50Fix(db)
+	// ★★ 2026-10-31 标准化装卸(13) 满级改 50%（阶梯每级 +5%）：同一个保护机制 → 单独一次性迁移。
+	ezfyTechLoad50Fix(db)
 	// ★ 野地类型管理端可编辑（守军 + 守军军官 officer_id），必须只补缺不覆盖，
 	//   否则每次重启会把管理端/守将补缺的 officer_id 冲回 0（2026-09-24 野地军官需求）。
 	batchKeep(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")

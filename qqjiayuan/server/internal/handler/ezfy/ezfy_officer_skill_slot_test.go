@@ -27,7 +27,7 @@ func readWebFile(rel string) (string, error) {
 
 // TestSkillSlotsForgetKeepsPosition 遗忘中间那一格后，第 3 个技能仍在第 3 行。
 func TestSkillSlotsForgetKeepsPosition(t *testing.T) {
-	o := &model.EzfyOfficer{Skill: `["尖兵突击","弧形防御","绝地反击"]`}
+	o := &model.EzfyOfficer{Skill: `["尖兵猛攻","弧形壁垒","绝地逆袭"]`}
 	raw := officerSkillSlotsRaw(o)
 	if len(raw) != 3 {
 		t.Fatalf("原始槽位应为 3 个，得到 %d", len(raw))
@@ -39,21 +39,21 @@ func TestSkillSlotsForgetKeepsPosition(t *testing.T) {
 
 	// ① 逻辑侧：只剩两个技能，且顺序保持
 	got := officerSkills(o)
-	if len(got) != 2 || got[0] != "尖兵突击" || got[1] != "绝地反击" {
-		t.Fatalf("officerSkills 应为 [尖兵突击 绝地反击]，得到 %v", got)
+	if len(got) != 2 || got[0] != "尖兵猛攻" || got[1] != "绝地逆袭" {
+		t.Fatalf("officerSkills 应为 [尖兵猛攻 绝地逆袭]，得到 %v", got)
 	}
-	// ② 展示侧：槽位不窜位 —— 第 2 格空、第 3 格仍是绝地反击
+	// ② 展示侧：槽位不窜位 —— 第 2 格空、第 3 格仍是绝地逆袭
 	slots := officerSkillSlotsRaw(o)
-	if len(slots) != 3 || slots[0] != "尖兵突击" || slots[1] != "" || slots[2] != "绝地反击" {
-		t.Fatalf("遗忘后槽位应保持 [尖兵突击, 空, 绝地反击]，得到 %v", slots)
+	if len(slots) != 3 || slots[0] != "尖兵猛攻" || slots[1] != "" || slots[2] != "绝地逆袭" {
+		t.Fatalf("遗忘后槽位应保持 [尖兵猛攻, 空, 绝地逆袭]，得到 %v", slots)
 	}
 }
 
 // TestSkillSlotsAppendFillsFirstEmpty 学习填第一个空槽，不把技能挤到末尾。
 func TestSkillSlotsAppendFillsFirstEmpty(t *testing.T) {
-	slots := []string{"尖兵突击", "", "绝地反击"}
-	got := ezfySkillSlotsAppend(slots, "弧形防御")
-	if len(got) != 3 || got[1] != "弧形防御" {
+	slots := []string{"尖兵猛攻", "", "绝地逆袭"}
+	got := ezfySkillSlotsAppend(slots, "弧形壁垒")
+	if len(got) != 3 || got[1] != "弧形壁垒" {
 		t.Fatalf("新技能应填进第 2 个空槽，得到 %v", got)
 	}
 	// 已满 3 个 → 不覆盖任何已学技能
@@ -69,8 +69,8 @@ func TestSkillSlotsAppendFillsFirstEmpty(t *testing.T) {
 
 // TestOfficerSkillsSkipsEmptySlots 空槽不参与任何战斗/属性计算。
 func TestOfficerSkillsSkipsEmptySlots(t *testing.T) {
-	o := &model.EzfyOfficer{Skill: `["","弧形防御",""]`}
-	if got := officerSkills(o); len(got) != 1 || got[0] != "弧形防御" {
+	o := &model.EzfyOfficer{Skill: `["","弧形壁垒",""]`}
+	if got := officerSkills(o); len(got) != 1 || got[0] != "弧形壁垒" {
 		t.Fatalf("只应返回已学会的技能，得到 %v", got)
 	}
 	if got := officerSkills(&model.EzfyOfficer{Skill: ""}); len(got) != 0 {
@@ -84,7 +84,7 @@ func TestOfficerSkillsSkipsEmptySlots(t *testing.T) {
 // TestOfficerSkillViewBySlot 详情接口按**槽位**下发（前端据此渲染技能1/2/3）。
 func TestOfficerSkillViewBySlot(t *testing.T) {
 	// 后端拼装逻辑：slot = 下标+1，空槽 name=""，只给已学技能补 effect/des
-	o := &model.EzfyOfficer{Skill: `["尖兵突击","","绝地反击"]`}
+	o := &model.EzfyOfficer{Skill: `["尖兵猛攻","","绝地逆袭"]`}
 	raw := officerSkillSlotsRaw(o)
 	n := ezfyOfficerMaxSkill
 	if len(raw) > n {
@@ -98,19 +98,19 @@ func TestOfficerSkillViewBySlot(t *testing.T) {
 		}
 		names = append(names, name)
 	}
-	if len(names) != 3 || names[0] != "尖兵突击" || names[1] != "" || names[2] != "绝地反击" {
-		t.Fatalf("详情槽位应为 [尖兵突击, 空, 绝地反击]，得到 %v", names)
+	if len(names) != 3 || names[0] != "尖兵猛攻" || names[1] != "" || names[2] != "绝地逆袭" {
+		t.Fatalf("详情槽位应为 [尖兵猛攻, 空, 绝地逆袭]，得到 %v", names)
 	}
 	// 效果文案随等级（3 级 = ×3）
-	if got := ezfySkillEffectTextAt("尖兵突击", 3); got != "攻击力+90%" {
-		t.Fatalf("尖兵突击 Lv.3 = %q", got)
+	if got := ezfySkillEffectTextAt("尖兵猛攻", 3); got != "攻击力+90%" {
+		t.Fatalf("尖兵猛攻 Lv.3 = %q", got)
 	}
-	// ★ 2026-10-31 口径修正后的效果文案
+	// ★ 2026-10-31 口径修正后的效果文案（同日二次修订：坦克冲锋改「攻速」）
 	cases := map[string]string{
-		"火炮控制": "装甲部队攻击+30",
-		"坦克突袭": "坦克速度+30%",
-		"狼群战术": "海军攻击力+45%",
-		"弹幕支援": "城防攻击范围+30%",
+		"火炮压制": "装甲部队攻击+30",
+		"坦克冲锋": "坦克攻速+30%",
+		"狼群围猎": "海军攻击力+45%",
+		"弹幕覆盖": "城防攻击范围+30%",
 	}
 	for skill, want := range cases {
 		if got := ezfySkillEffectTextAt(skill, 3); got != want {

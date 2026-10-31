@@ -54,25 +54,25 @@ func TestLearnSkillIsRandom(t *testing.T) {
 // TestRandomSkillToLearnPicksUnlearned —— 行为测试：随机到的技能一定「没学过」，且真的随机
 //
 // 直接塞一个假的技能池（不动数据库），连续抽 200 次：
-//   - 已学「尖兵突击」永远不能被抽到（否则会重复学、白扣技能书）
+//   - 已学「尖兵猛攻」永远不能被抽到（否则会重复学、白扣技能书）
 //   - 池里 4 个未学技能都要有机会被抽到（不是恒取第一个）
 func TestRandomSkillToLearnPicksUnlearned(t *testing.T) {
 	old := ezfyCfg
 	defer func() { ezfyCfg = old }()
 	ezfyCfg.skills = map[int]model.EzfyCfgSkill{
-		1: {ID: 1, Name: "尖兵突击"},
-		2: {ID: 2, Name: "弧形防御"},
-		3: {ID: 3, Name: "绝地反击"},
+		1: {ID: 1, Name: "尖兵猛攻"},
+		2: {ID: 2, Name: "弧形壁垒"},
+		3: {ID: 3, Name: "绝地逆袭"},
 		4: {ID: 4, Name: "钢铁洪流"},
 		5: {ID: 5, Name: "夜战突袭"},
 	}
 	seen := map[string]int{}
 	for i := 0; i < 200; i++ {
-		sk := ezfyRandomSkillToLearn([]string{"尖兵突击"})
+		sk := ezfyRandomSkillToLearn([]string{"尖兵猛攻"})
 		if sk == nil {
 			t.Fatal("还有未学技能时不该返回 nil")
 		}
-		if sk.Name == "尖兵突击" {
+		if sk.Name == "尖兵猛攻" {
 			t.Fatal("随机到了已学技能：会重复学、白扣 1 本技能书")
 		}
 		seen[sk.Name]++
@@ -82,7 +82,7 @@ func TestRandomSkillToLearnPicksUnlearned(t *testing.T) {
 	}
 
 	// 学满 3 个后仍能抽（上限由调用方卡），但把整个池学完必须返回 nil（防死循环/空指针）
-	all := []string{"尖兵突击", "弧形防御", "绝地反击", "钢铁洪流", "夜战突袭"}
+	all := []string{"尖兵猛攻", "弧形壁垒", "绝地逆袭", "钢铁洪流", "夜战突袭"}
 	if sk := ezfyRandomSkillToLearn(all); sk != nil {
 		t.Fatalf("技能池学完时应返回 nil，实际返回 %q", sk.Name)
 	}

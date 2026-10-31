@@ -26,8 +26,8 @@ func TestBattleHeadOrder(t *testing.T) {
 		"斯大林 Lv.350 攻击加成+325% 守军防御+100%",
 		515, 505, // atkOfficerBonus, defOfficerBonus（= 属性 + 技能，见军官行）
 		150, 180, // atkOfficerSkill, defOfficerSkill
-		[]ezfyBonusItem{{Name: "尖兵突击", Value: 150}},
-		[]ezfyBonusItem{{Name: "尖兵突击", Value: 180}},
+		[]ezfyBonusItem{{Name: "尖兵猛攻", Value: 150}},
+		[]ezfyBonusItem{{Name: "尖兵猛攻", Value: 180}},
 		[]ezfyBonusItem{{Name: "枪械改良", Value: 30}, {Name: "重型机床", Value: 20}},
 		[]ezfyBonusItem{{Name: "均质装甲", Value: 30}, {Name: "永备工事", Value: 20}},
 		[]ezfyBonusItem{{Name: "城墙", Value: 45}},

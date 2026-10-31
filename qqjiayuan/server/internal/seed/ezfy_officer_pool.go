@@ -300,7 +300,7 @@ var ezfyEquipSetSeeds = []ezfyEquipSetSeed{
 		Effect: "9件：三绝+3级", Des: "军团战奖励 / 钻石购买"},
 	{ID: 15, Name: "亡魂套装(Revenant)", Parts: 9, Slots: ezfySetSlots9, Level: 140, Tier: 4,
 		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 310, SetLe: 130, Diamond: 180,
-		Effect: "9件：弧形防御+2，反击+3", Des: "刷野活动 / 钻石购买"},
+		Effect: "9件：弧形壁垒+2，反击+3", Des: "刷野活动 / 钻石购买"},
 	{ID: 16, Name: "遗失传说套装(The Lost Legend)", Parts: 9, Slots: ezfySetSlots9, Level: 150, Tier: 4,
 		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 360, SetLo: 190, SetLe: 190, Diamond: 200,
 		Effect: "9件：+95%基础军事，攻击+2984，防御+2980", Des: "顶级套装，钻石购买"},

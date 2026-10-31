@@ -11,7 +11,7 @@ import (
 // ============ 军官技能随等级自动升级（2026-10-06） ============
 //
 // 规则(v2)：军官每满 30 级技能等级 +1（30级=1级…150级=5级、180级=6级）；
-// 加成类统乘倍率；绝地反击 N 级 = 前 N 回合。普通军官最高 5 级、名将最高 6 级。
+// 加成类统乘倍率；绝地逆袭 N 级 = 前 N 回合。普通军官最高 5 级、名将最高 6 级。
 // 等级动态推导、不落库，学得晚自然按当前等级定级。
 
 // TestEzfySkillLevelOf 技能等级边界（2026-10-06 v2：每 30 级 +1 级，普通军官 cap5 / 名将 cap6）。
@@ -57,7 +57,7 @@ func TestEzfySkillLevelOf(t *testing.T) {
 
 // TestSkillBattleBonusScaled 攻击类技能加成必须乘倍率。
 //
-// ★ 2026-10-08 起：通用段只剩「尖兵突击 30*scale」；火炮控制(10)/四指编队·狼群战术(15)
+// ★ 2026-10-08 起：通用段只剩「尖兵猛攻 30*scale」；火炮压制(10)/四指阵列·狼群围猎(15)
 // 已移到 officerTypeBonus 按兵种/按目标下发（倍率同样要乘，见 TestTypeSpecificBonusWired）。
 func TestSkillBattleBonusScaled(t *testing.T) {
 	src := rawFile(t, "ezfy_officer.go")
@@ -68,9 +68,9 @@ func TestSkillBattleBonusScaled(t *testing.T) {
 	}
 }
 
-// TestGuardBonusScaled 防御类技能加成必须乘倍率（弧形防御），属性部分 officerGuardAttrBonus 不加倍。
+// TestGuardBonusScaled 防御类技能加成必须乘倍率（弧形壁垒），属性部分 officerGuardAttrBonus 不加倍。
 //
-// ★ 2026-10-31 弹幕支援移出：它按配置文案是「城防攻击范围+10%」，属**射程**技能，
+// ★ 2026-10-31 弹幕覆盖移出：它按配置文案是「城防攻击范围+10%」，属**射程**技能，
 // 不再算进防御加成（改由 officerTypeBonus 挂到城防射程，见 TestTypeSpecificBonusWired）。
 func TestGuardBonusScaled(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) officerGuardBonus(")
@@ -80,31 +80,42 @@ func TestGuardBonusScaled(t *testing.T) {
 	if !strings.Contains(body, "officerGuardAttrBonus") {
 		t.Fatalf("officerGuardBonus 未保留属性部分（officerGuardAttrBonus）：\n%s", body)
 	}
-	if strings.Contains(body, `case "弹幕支援"`) {
-		t.Fatalf("弹幕支援是射程技能，不该再进防御加成：\n%s", body)
+	if strings.Contains(body, `case "弹幕覆盖"`) {
+		t.Fatalf("弹幕覆盖是射程技能，不该再进防御加成：\n%s", body)
 	}
 }
 
 // TestSpeedSkillBonusScaled 速度类技能加成必须乘倍率，且**按兵种**下发。
 //
 // ★ 2026-10-09 行军速度也改为按兵种生效（`ezfy_order.go` 的 `ezfyMarchSpeed`）：
-// 原来「不分兵种一律 +10%/级」的 `officerSpeedSkillBonus` 已删除（越岛战术带队纯陆军不再
+// 原来「不分兵种一律 +10%/级」的 `officerSpeedSkillBonus` 已删除（越岛登陆带队纯陆军不再
 // 凭空加速），速度技能统一由 `officerTypeBonus` 按兵种下发（陆/空/海，10% × 技能等级）。
 //
-// ★ 2026-10-31 坦克突袭再收窄：**只**轻型坦克(5)/重型坦克(6) → 走 SpeedTroop（兵种 ID）。
+// ★ 2026-10-31 坦克冲锋再收窄：**只**轻型坦克(5)/重型坦克(6) → 走 SpeedTroop（兵种 ID）。
+//
+// ★★ 2026-10-31 二次修订：坦克冲锋/闪电疾攻/越岛登陆 由「速度」改「**攻速**」——
+// 走 AtkSpeed/AtkSpeedTroop（只影响出手先后），**不再**写 Speed/SpeedTroop（移动/行军速度）。
 func TestSpeedSkillBonusScaled(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) officerTypeBonus(")
 	for _, want := range []string{
-		"b.SpeedTroop[id] += 10 * scale",           // 坦克突袭 → 只轻坦/重坦（ezfyTankRushTroopIds）
-		"b.Speed[ezfyTroopTypeAir] += 10 * scale",  // 闪电袭击 → 空军
-		"b.Speed[ezfyTroopTypeNavy] += 10 * scale", // 越岛战术 → 海军
+		"b.AtkSpeedTroop[id] += 10 * scale",           // 坦克冲锋 → 只轻坦/重坦（ezfyTankRushTroopIds）
+		"b.AtkSpeed[ezfyTroopTypeAir] += 10 * scale",  // 闪电疾攻 → 空军攻速
+		"b.AtkSpeed[ezfyTroopTypeNavy] += 10 * scale", // 越岛登陆 → 海军攻速
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("速度类技能未按兵种 × 倍率下发（缺 %s）：\n%s", want, body)
+			t.Fatalf("攻速类技能未按兵种 × 倍率下发（缺 %s）：\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, "b.Speed[ezfyTroopTypeArmy] += 10 * scale") {
-		t.Fatalf("坦克突袭不该再给整个陆军加速（只轻坦/重坦）：\n%s", body)
+	// 这三项技能不能再回到「速度」档（否则又变成加移动/行军速度）
+	for _, bad := range []string{
+		"b.Speed[ezfyTroopTypeAir] += 10 * scale",
+		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",
+		"b.Speed[ezfyTroopTypeArmy] += 10 * scale",
+		"b.SpeedTroop[id] += 10 * scale",
+	} {
+		if strings.Contains(body, bad) {
+			t.Fatalf("速度技能已改攻速，不该再写 %s：\n%s", bad, body)
+		}
 	}
 	// 行军速度必须走按兵种的 ezfyMarchSpeed（机械增压通用 + 喷气推进/军官技能按兵种）
 	march := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyMarchSpeed(")
@@ -113,7 +124,7 @@ func TestSpeedSkillBonusScaled(t *testing.T) {
 		"tb.Speed[ezfyTroopTypeAir] += v",        // 喷气推进：只空军
 		"h.officerTypeBonus(lead, tb)",           // 军官速度技能：按兵种
 		"tb.speedOf(cfg.Type)",                   // 按兵种取专属加成
-		"tb.speedTroopOf(cfg.ID)",                // 坦克突袭：按兵种 ID（只轻坦/重坦）
+		"tb.speedTroopOf(cfg.ID)",                // 坦克冲锋：按兵种 ID（只轻坦/重坦）
 	} {
 		if !strings.Contains(march, want) {
 			t.Fatalf("行军速度未按兵种接入科技/军官速度加成（缺 %s）：\n%s", want, march)
@@ -121,49 +132,51 @@ func TestSpeedSkillBonusScaled(t *testing.T) {
 	}
 }
 
-// TestLootHealScaled 黄金眼掠夺 / 机械改造恢复 全部乘倍率（ezfy_order.go ≥3 处、activity_target.go ≥1 处）。
+// TestLootHealScaled 机械改装（回收率 5%/级、出征油耗 -10%/级）必须乘技能倍率。
+//
+// ★★ 2026-10-31 黄金洞察（原黄金眼）已由「战利品/掠夺率」改为「侦察/情报等级」，
+// 不再有 `officerSkillScale` 的掠夺倍率点 —— 这里只盯机械改装（ezfy_order.go ≥2 处、
+// activity_target.go ≥1 处，另加油耗减免 10%/级）。
 func TestLootHealScaled(t *testing.T) {
 	order := rawFile(t, "ezfy_order.go")
-	if got := strings.Count(order, "h.officerSkillScale(leadOfficer)"); got < 3 {
-		t.Fatalf("ezfy_order.go 里黄金眼/机械改造乘倍率点只有 %d 处，期望 ≥3", got)
-	}
-	// ★ 2026-10-15 机械改造回收率由 10%/级 → **5%/级**（名将满级最高 30%）：攻方战后恢复 + 守方伤兵回收都锁 5 系数
+	// ★ 2026-10-15 机械改装回收率由 10%/级 → **5%/级**（名将满级最高 30%）：攻方战后恢复 + 守方伤兵回收都锁 5 系数
 	if got := strings.Count(order, "+= 5 * h.officerSkillScale("); got < 2 {
-		t.Fatalf("ezfy_order.go 里机械改造回收率 5%%/级 点只有 %d 处，期望 ≥2", got)
+		t.Fatalf("ezfy_order.go 里机械改装回收率 5%%/级 点只有 %d 处，期望 ≥2", got)
+	}
+	// 出征油耗减免 10%/级（同一个技能的另一半效果）
+	if !strings.Contains(order, "return 10 * h.officerSkillScale(o)") {
+		t.Fatalf("ezfy_order.go 里机械改装出征油耗减免没按技能等级放大")
 	}
 	act := rawFile(t, "ezfy_activity_target.go")
-	if got := strings.Count(act, "h.officerSkillScale(leadOfficer)"); got < 1 {
-		t.Fatalf("ezfy_activity_target.go 里机械改造乘倍率点只有 %d 处，期望 ≥1", got)
-	}
 	if got := strings.Count(act, "+= 5 * h.officerSkillScale("); got < 1 {
-		t.Fatalf("ezfy_activity_target.go 里机械改造回收率 5%%/级 点只有 %d 处，期望 ≥1", got)
+		t.Fatalf("ezfy_activity_target.go 里机械改装回收率 5%%/级 点只有 %d 处，期望 ≥1", got)
 	}
 }
 
-// TestActWildDefScaled 活动野地守将加成乘倍率（弧形防御），属性部分不加倍。
+// TestActWildDefScaled 活动野地守将加成乘倍率（弧形壁垒），属性部分不加倍。
 //
-// ★ 2026-10-31 口径修正：弹幕支援（射程）/速度技能都不再走这个函数 ——
-// 它们由 generalTypeBonus 按兵种下发（坦克突袭只轻坦/重坦），所以这里只剩「防御」。
+// ★ 2026-10-31 口径修正：弹幕覆盖（射程）/速度技能都不再走这个函数 ——
+// 它们由 generalTypeBonus 按兵种下发（坦克冲锋只轻坦/重坦），所以这里只剩「防御」。
 func TestActWildDefScaled(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_activity_target.go", "func ezfyActWildDefBonus(")
 	if !strings.Contains(body, "generalSkillScale(g)") {
 		t.Fatalf("ezfyActWildDefBonus 未按守将等级取倍率：\n%s", body)
 	}
 	if !strings.Contains(body, "30 * scale") {
-		t.Fatalf("ezfyActWildDefBonus 的弧形防御未乘倍率：\n%s", body)
+		t.Fatalf("ezfyActWildDefBonus 的弧形壁垒未乘倍率：\n%s", body)
 	}
 	if !strings.Contains(body, "ezfyAttrToBonus(g.Learning)") {
 		t.Fatalf("ezfyActWildDefBonus 未保留守将属性部分（ezfyAttrToBonus）：\n%s", body)
 	}
-	if strings.Contains(body, `case "弹幕支援"`) {
-		t.Fatalf("弹幕支援是射程技能，不该再进守军防御加成：\n%s", body)
+	if strings.Contains(body, `case "弹幕覆盖"`) {
+		t.Fatalf("弹幕覆盖是射程技能，不该再进守军防御加成：\n%s", body)
 	}
 	// 守将的兵种专属技能（含速度/射程）必须走 generalTypeBonus 且乘倍率
 	gt := ezfyFuncBody(t, "ezfy_activity_target.go", "func generalTypeBonus(")
 	for _, want := range []string{
 		"generalSkillScale(g)",
-		"b.SpeedTroop[id] += 10 * scale",           // 坦克突袭 → 只轻坦/重坦
-		"b.Range[ezfyTroopTypeCity] += 10 * scale", // 弹幕支援 → 城防射程
+		"b.AtkSpeedTroop[id] += 10 * scale",        // 坦克冲锋 → 只轻坦/重坦（攻速）
+		"b.Range[ezfyTroopTypeCity] += 10 * scale", // 弹幕覆盖 → 城防射程
 	} {
 		if !strings.Contains(gt, want) {
 			t.Fatalf("generalTypeBonus 未按兵种下发守将技能（缺 %s）：\n%s", want, gt)
@@ -171,11 +184,11 @@ func TestActWildDefScaled(t *testing.T) {
 	}
 }
 
-// TestCounterTriggerRounds 绝地反击按「前N回合」触发（st.Round <= counterRounds），不再是第1回合。
+// TestCounterTriggerRounds 绝地逆袭按「前N回合」触发（st.Round <= counterRounds），不再是第1回合。
 func TestCounterTriggerRounds(t *testing.T) {
 	src := rawFile(t, "ezfy_battle.go")
 	if !strings.Contains(src, "st.Round <= counterRounds") {
-		t.Fatalf("绝地反击触发未按回合数判断（缺 st.Round <= counterRounds）")
+		t.Fatalf("绝地逆袭触发未按回合数判断（缺 st.Round <= counterRounds）")
 	}
 	if strings.Contains(src, "st.Round == 1") {
 		t.Fatalf("仍有「第1回合」写法 st.Round == 1，未升级为前N回合")
@@ -198,7 +211,7 @@ func TestCounterSnapshotRounds(t *testing.T) {
 
 // TestSkillEffectTextAtShowsFinalValue 技能效果文案直接显示放大后的最终数值。
 //
-// 用户反馈（2026-10-06）：「尖兵突击(Lv.3 攻击力+30% (效果×3)) 别这么展示，
+// 用户反馈（2026-10-06）：「尖兵猛攻(Lv.3 攻击力+30% (效果×3)) 别这么展示，
 // 效果×3 太 low」—— 要求直接按等级算出最终数值展示（如 攻击力+90%）。
 func TestSkillEffectTextAtShowsFinalValue(t *testing.T) {
 	cases := []struct {
@@ -206,14 +219,14 @@ func TestSkillEffectTextAtShowsFinalValue(t *testing.T) {
 		lv    int
 		want  string
 	}{
-		{"尖兵突击", 1, "攻击力+30%"},
-		{"尖兵突击", 3, "攻击力+90%"},
-		{"弧形防御", 2, "防御力+60%"},
-		{"四指编队", 3, "空军对空攻击+45%"},
-		{"弹幕支援", 3, "城防攻击范围+30%"},
-		{"机械改造", 2, "回收率+10%, 出征油耗-20%"},
-		{"黄金眼", 3, "侦查等级+3"},
-		{"绝地反击", 2, "前2回合反击"},
+		{"尖兵猛攻", 1, "攻击力+30%"},
+		{"尖兵猛攻", 3, "攻击力+90%"},
+		{"弧形壁垒", 2, "防御力+60%"},
+		{"四指阵列", 3, "空军对空攻击+45%"},
+		{"弹幕覆盖", 3, "城防攻击范围+30%"},
+		{"机械改装", 2, "回收率+10%, 出征油耗-20%"},
+		{"黄金洞察", 3, "侦察/情报等级+3"},
+		{"绝地逆袭", 2, "前2回合反击"},
 	}
 	for _, c := range cases {
 		if got := ezfySkillEffectTextAt(c.skill, c.lv); got != c.want {
@@ -244,16 +257,16 @@ func TestBonusBreakdownDetail(t *testing.T) {
 		{
 			// 逐项展开：技能/科技各拆成具体名字
 			"逐项", 252, 150, 352, 0, "冥王",
-			[]ezfyBonusItem{{Name: "尖兵突击", Value: 90}, {Name: "火炮控制", Value: 60}},
+			[]ezfyBonusItem{{Name: "尖兵猛攻", Value: 90}, {Name: "火炮压制", Value: 60}},
 			[]ezfyBonusItem{{Name: "枪械改良", Value: 40}, {Name: "增程弹药", Value: 54}},
-			"(军官·冥王+102% 军官技能·尖兵突击+90% 军官技能·火炮控制+60% 科技·枪械改良+40% 科技·增程弹药+54%)",
+			"(军官·冥王+102% 军官技能·尖兵猛攻+90% 军官技能·火炮压制+60% 科技·枪械改良+40% 科技·增程弹药+54%)",
 		},
 		{
 			// 科技有值但全 0（明细里 value=0 不展示）
 			"技能明细零项", 252, 150, 352, 0, "冥王",
-			[]ezfyBonusItem{{Name: "尖兵突击", Value: 150}},
+			[]ezfyBonusItem{{Name: "尖兵猛攻", Value: 150}},
 			[]ezfyBonusItem{{Name: "增程弹药", Value: 0}},
-			"(军官·冥王+102% 军官技能·尖兵突击+150%)",
+			"(军官·冥王+102% 军官技能·尖兵猛攻+150%)",
 		},
 		{
 			// 老快照回退：nil 明细 → 合并展示「军官技能+N% / 科技+N%」
@@ -292,19 +305,19 @@ func TestDefBonusTxt(t *testing.T) {
 				{Name: "城墙", Value: 50},
 				{Name: "科技·均质装甲", Value: 30},
 				{Name: "军官·冥王", Value: 20},
-				{Name: "军官技能·弧形防御", Value: 60},
+				{Name: "军官技能·弧形壁垒", Value: 60},
 				{Name: "装备套装", Value: 20},
 			},
-			"守方防御加成+180%(城墙+50% 科技·均质装甲+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备套装+20%)",
+			"守方防御加成+180%(城墙+50% 科技·均质装甲+30% 军官·冥王+20% 军官技能·弧形壁垒+60% 装备套装+20%)",
 		},
 		{
 			"攻方军官防御",
 			"攻方防御加成",
 			[]ezfyBonusItem{
 				{Name: "军官·Stalin（斯大林）", Value: 105},
-				{Name: "军官技能·弧形防御", Value: 60},
+				{Name: "军官技能·弧形壁垒", Value: 60},
 			},
-			"攻方防御加成+165%(军官·Stalin（斯大林）+105% 军官技能·弧形防御+60%)",
+			"攻方防御加成+165%(军官·Stalin（斯大林）+105% 军官技能·弧形壁垒+60%)",
 		},
 		{
 			"明细0项跳过",
@@ -325,9 +338,9 @@ func TestDefBonusTxt(t *testing.T) {
 // TestDefBonusInjected 被打行注入「防御加成」段（双向）：
 //
 //	· 攻方打守方 → 展示守方防御加成(defBonusTxt)
-//	· 守方打攻方（含守方绝地反击还击）→ 展示攻方防御加成(atkDefBonusTxt)
+//	· 守方打攻方（含守方绝地逆袭还击）→ 展示攻方防御加成(atkDefBonusTxt)
 //
-// 2026-10-07 起攻方军官防御技能(弧形防御/弹幕支援)+装备 Def 生效：unitDefBonus 不再恒 0。
+// 2026-10-07 起攻方军官防御技能(弧形壁垒/弹幕覆盖)+装备 Def 生效：unitDefBonus 不再恒 0。
 //
 // ★ 2026-10-09 修「装备防御被算两遍」：`st.AtkDefBonus` / `defBonus` 里**已经含**装备 Def，
 // 原来又各加了一次 → 战报显示 425% 实际按 486% 减伤。现在直接取这两个值（口径与展示一致）。
@@ -336,15 +349,15 @@ func TestDefBonusInjected(t *testing.T) {
 	//   而本测试用 `\n` 拼多行片段 → 原来在 CRLF 工作区**永远匹配不上**（假红）。
 	src := strings.ReplaceAll(rawFile(t, "ezfy_battle.go"), "\r\n", "\n")
 	for _, want := range []string{
-		// ★ 2026-10-31 明细按回合过滤：弧形防御/火炮控制未发动回合不展示（否则「显示加了却没生效」）
+		// ★ 2026-10-31 明细按回合过滤：弧形壁垒/火炮压制未发动回合不展示（否则「显示加了却没生效」）
 		`defBonusTxt := ezfyDefBonusTxt("守方防御加成", ezfyTimedBreakFilter(st.DefDefBreak, st.DefTimed, st.Round))`,
 		`atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", ezfyTimedBreakFilter(st.AtkDefBreak, st.AtkTimed, st.Round))`,
 		`return fmt.Sprintf("%s+%d%%(%s)", label, total, strings.Join(parts, " "))`,
-		// 守方打攻方 → 攻方防御减伤（已含装备 Def）；★ 2026-10-31 弧形防御只发动回合生效
+		// 守方打攻方 → 攻方防御减伤（已含装备 Def）；★ 2026-10-31 弧形壁垒只发动回合生效
 		"unitDefBonus = atkDefBonusAll + st.AtkType.defOf(target.cfg.Type)\n",
 		// 攻方打守方 → 守方防御减伤（已含装备 Def）；★ 2026-10-24 城墙只对城防兵种生效
 		"unitDefBonus = defDefBonusAll + st.DefType.defOf(target.cfg.Type) + st.wallBonusFor(target)\n",
-		// 两处「按回合扣掉弧形防御」的入口
+		// 两处「按回合扣掉弧形壁垒」的入口
 		"atkDefBonusAll := st.AtkDefBonus - atkTimedDefOff",
 		"defDefBonusAll := defBonus - defTimedDefOff",
 		`json:"atk_def_bonus"`,
@@ -515,8 +528,8 @@ func TestTypeDefBonusOf(t *testing.T) {
 // ★★ 2026-10-08 用户确认：「玩家科技、军官技能有的是全部兵种，有的是指定兵种，不能一起加」。
 //
 //	带兵种的科技：喷气推进(19)「空军速度+3%/级」；
-//	带兵种的军官技能：火炮控制(陆军装甲攻击) / 四指编队(空军对空攻击) / 狼群战术(海军对海攻击) /
-//	坦克突袭(陆军速度) / 闪电袭击(空军速度) / 越岛战术(海军速度)。
+//	带兵种的军官技能：火炮压制(陆军装甲攻击) / 四指阵列(空军对空攻击) / 狼群围猎(海军对海攻击) /
+//	坦克冲锋(陆军速度) / 闪电疾攻(空军速度) / 越岛登陆(海军速度)。
 //	它们必须走 ezfyTypeBonus（Atk/Speed 按 troop type 索引），且**不得**出现在通用加成里。
 func TestTypeSpecificBonusWired(t *testing.T) {
 	ord := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
@@ -542,43 +555,47 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 		}
 	}
 	// ③ 军官的六个兵种技能必须按兵种下发（2026-10-31 用户确认的口径）：
-	//   火炮控制 → **陆军装甲部队**（装甲车4/轻坦5/重坦6/突击炮7/火箭8）攻击属性 +10/级；
-	//   四指编队 → 空军打空军；狼群战术 → 海军**攻击力%**（不分目标）；
-	//   坦克突袭 → **只**轻坦5/重坦6 速度；闪电袭击/越岛战术 → 空/海速度；
-	//   弹幕支援 → **只**城防单位的射程。
+	//   火炮压制 → **陆军装甲部队**（装甲车4/轻坦5/重坦6/突击炮7/火箭8）攻击属性 +10/级；
+	//   四指阵列 → 空军打空军；狼群围猎 → 海军**攻击力%**（不分目标）；
+	//   坦克冲锋 → **只**轻坦5/重坦6 **攻速**；闪电疾攻/越岛登陆 → 空/海**攻速**；
+	//   弹幕覆盖 → **只**城防单位的射程。
 	for _, want := range []string{
-		"b.AtkFlatTroop[id] += 10 * scale",                          // 火炮控制 → 装甲部队（按兵种 ID）
-		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)", // 四指编队 → 空军打空军
-		"b.Atk[ezfyTroopTypeNavy] += 15 * scale",                    // 狼群战术 → 海军攻击力%
-		"b.SpeedTroop[id] += 10 * scale",                            // 坦克突袭 → 只轻坦/重坦
-		"b.Speed[ezfyTroopTypeAir] += 10 * scale",                   // 闪电袭击 → 空军
-		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",                  // 越岛战术 → 海军
-		"b.Range[ezfyTroopTypeCity] += 10 * scale",                  // 弹幕支援 → 只城防射程
+		"b.AtkFlatTroop[id] += 10 * scale",                          // 火炮压制 → 装甲部队（按兵种 ID）
+		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)", // 四指阵列 → 空军打空军
+		"b.Atk[ezfyTroopTypeNavy] += 15 * scale",                    // 狼群围猎 → 海军攻击力%
+		"b.AtkSpeedTroop[id] += 10 * scale",                         // 坦克冲锋 → 只轻坦/重坦攻速
+		"b.AtkSpeed[ezfyTroopTypeAir] += 10 * scale",                // 闪电疾攻 → 空军攻速
+		"b.AtkSpeed[ezfyTroopTypeNavy] += 10 * scale",               // 越岛登陆 → 海军攻速
+		"b.Range[ezfyTroopTypeCity] += 10 * scale",                  // 弹幕覆盖 → 只城防射程
 	} {
 		if !strings.Contains(off, want) {
 			t.Fatalf("军官兵种技能未按兵种下发：%s", want)
 		}
 	}
-	// 旧口径必须消失：火炮控制不再整档给陆军、狼群战术不再只对海、坦克突袭不再整档给陆军
+	// 旧口径必须消失：火炮压制不再整档给陆军、狼群围猎不再只对海、坦克冲锋不再整档给陆军，
+	// 且三个速度技能已改攻速 → 不得再写 Speed/SpeedTroop。
 	for _, bad := range []string{
 		"b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale",
 		"b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)",
 		"b.Speed[ezfyTroopTypeArmy] += 10 * scale",
+		"b.Speed[ezfyTroopTypeAir] += 10 * scale",
+		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",
+		"b.SpeedTroop[id] += 10 * scale",
 	} {
 		if strings.Contains(off, bad) {
 			t.Fatalf("军官兵种技能仍是旧口径：%s", bad)
 		}
 	}
-	// ④ 通用技能加成里不得再出现兵种技能（尖兵突击是全体兵种，保留）
-	if !strings.Contains(off, `if s == "尖兵突击" {`) {
-		t.Fatal("通用技能加成应只保留「尖兵突击」（全体兵种）")
+	// ④ 通用技能加成里不得再出现兵种技能（尖兵猛攻是全体兵种，保留）
+	if !strings.Contains(off, `if s == "尖兵猛攻" {`) {
+		t.Fatal("通用技能加成应只保留「尖兵猛攻」（全体兵种）")
 	}
 	if i := strings.Index(off, "func (h *EzfyHandler) officerSkillBattleBonus"); i >= 0 {
 		seg := off[i:]
 		if j := strings.Index(seg, "// officerSkillsBreak"); j > 0 {
 			seg = seg[:j]
 		}
-		for _, bad := range []string{"火炮控制", "四指编队", "狼群战术"} {
+		for _, bad := range []string{"火炮压制", "四指阵列", "狼群围猎"} {
 			if strings.Contains(seg, bad) {
 				t.Fatalf("通用技能加成里不该再出现兵种技能：%s", bad)
 			}
@@ -592,11 +609,11 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 		"unitAtkBonus = st.DefAtkBonus + tb",
 		"atkSpeedBonus + st.AtkType.speedOf(unit.cfg.Type)",
 		"defSpeedBonus + st.DefType.speedOf(unit.cfg.Type)",
-		"st.AtkType.speedTroopOf(unit.cfg.ID)",   // 坦克突袭按兵种 ID
+		"st.AtkType.speedTroopOf(unit.cfg.ID)",   // 坦克冲锋按兵种 ID
 		"st.DefType.speedTroopOf(unit.cfg.ID)",   // 同上（守方）
-		"st.AtkType.rangeOf(unit.cfg.Type)",      // 弹幕支援只给城防射程
+		"st.AtkType.rangeOf(unit.cfg.Type)",      // 弹幕覆盖只给城防射程
 		"st.DefType.rangeOf(unit.cfg.Type)",      // 同上（守方）
-		"st.AtkType.atkFlatTroopOf(unit.cfg.ID)", // 火炮控制按兵种 ID
+		"st.AtkType.atkFlatTroopOf(unit.cfg.ID)", // 火炮压制按兵种 ID
 		"st.DefType.atkFlatTroopOf(unit.cfg.ID)", // 同上（守方）
 	} {
 		if !strings.Contains(bat, want) {
@@ -607,7 +624,7 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 
 // TestTypeBonusInAttackAndCounter 兵种专属加成必须在**普通攻击与反击**里都生效，且日志要标出「兵种专属+N%」。
 //
-// ★★ 2026-10-08 用户反馈「狼群战术(Lv.6 海军对海攻击+90%) 没有对海军/对海攻击加成」：
+// ★★ 2026-10-08 用户反馈「狼群围猎(Lv.6 海军对海攻击+90%) 没有对海军/对海攻击加成」：
 //
 //	① 反击的 cbAtk 原来只取通用加成 → 按兵种的技能在反击时**完全不生效**（数值就错）；
 //	② 普通攻击里数值算对了，但拆解（bonusBreak 只拆通用段）看不到 → 玩家相加对不上总数，以为没生效。
@@ -697,7 +714,7 @@ func TestCarryResAllOrderTypes(t *testing.T) {
 	}
 }
 
-// TestWildDefSkillBonus 野地/寇城守将防御类技能（弧形防御/弹幕支援）计入守军防御加成并逐项拆解。
+// TestWildDefSkillBonus 野地/寇城守将防御类技能（弧形壁垒/弹幕覆盖）计入守军防御加成并逐项拆解。
 func TestWildDefSkillBonus(t *testing.T) {
 	order := rawFile(t, "ezfy_order.go")
 	if !strings.Contains(order, "defBonus += generalSkillDefBonus(defGeneral)") {

@@ -6,11 +6,11 @@ import "fmt"
 //
 // 配置表（ezfy_cfg_skill）的文案本来就是「每3回合提升XX，持续1回合」，
 // 但代码一直把它当成**常驻加成**（开战即生效、整场不减），
-// 玩家实测「弧形防御 / 火炮控制 一直在生效」，与文案不符。用户 2026-10-31 要求按文案改。
+// 玩家实测「弧形壁垒 / 火炮压制 一直在生效」，与文案不符。用户 2026-10-31 要求按文案改。
 //
 // 口径（用户确认）：
-//   · 弧形防御：每 3 回合提升防御力，持续 1 回合（第 1、4、7 … 回合发动）
-//   · 火炮控制：每 3 回合提升**陆军装甲部队**攻击，持续 1 回合
+//   · 弧形壁垒：每 3 回合提升防御力，持续 1 回合（第 1、4、7 … 回合发动）
+//   · 火炮压制：每 3 回合提升**陆军装甲部队**攻击，持续 1 回合
 //               「攻击力」= 本回合 对地/对空/对海/对防 各 +等级数值（10×技能等级）
 //               装甲部队 = 装甲车(4)/轻型坦克(5)/重型坦克(6)/突击炮(7)/火箭(8)
 //
@@ -20,10 +20,10 @@ import "fmt"
 //   ② 不需要改出征/活动两条链路里几十处加成计算；
 //   ③ 战报里「发动/未发动」一目了然（每回合开头有播报行）。
 
-// 陆军装甲部队（火炮控制作用范围）
+// 陆军装甲部队（火炮压制作用范围）
 var ezfyArmorTroopIds = []int{4, 5, 6, 7, 8}
 
-// 坦克突袭作用范围（用户 2026-10-31：只生效轻型坦克、重型坦克）
+// 坦克冲锋作用范围（用户 2026-10-31：只生效轻型坦克、重型坦克）
 var ezfyTankRushTroopIds = []int{5, 6}
 
 // ezfyTimedSkill 一个「每 Interval 回合发动、持续 Duration 回合」的技能运行时。
@@ -38,8 +38,8 @@ type ezfyTimedSkill struct {
 	Left     int    `json:"left"`     // 剩余生效回合（>0 = 本回合生效）
 
 	// 效果：只填本技能用到的那一项
-	Def        int         `json:"def,omitempty"`         // 防御加成%（弧形防御）
-	AtkFlat    map[int]int `json:"atk_flat,omitempty"`    // 兵种 ID → 攻击属性加成（火炮控制）
+	Def        int         `json:"def,omitempty"`         // 防御加成%（弧形壁垒）
+	AtkFlat    map[int]int `json:"atk_flat,omitempty"`    // 兵种 ID → 攻击属性加成（火炮压制）
 	Range      map[int]int `json:"range,omitempty"`       // 兵种 type → 射程%（保留扩展位）
 	SpeedTroop map[int]int `json:"speed_troop,omitempty"` // 兵种 ID → 速度%（保留扩展位）
 }
@@ -48,7 +48,7 @@ type ezfyTimedSkill struct {
 const ezfyTimedSkillInterval = 3
 
 // procOn 第 round 回合是否**是发动回合**：第 1、1+N、1+2N … 回合
-// （战斗开始第一回合就能吃到，和「绝地反击第1回合」的节奏一致）
+// （战斗开始第一回合就能吃到，和「绝地逆袭第1回合」的节奏一致）
 func (s *ezfyTimedSkill) procOn(round int) bool {
 	if s == nil || round < 1 {
 		return false
@@ -152,7 +152,7 @@ func ezfyTimedSpeedTroopOff(list []*ezfyTimedSkill, round int) map[int]int {
 
 // ezfyTimedBreakFilter 明细过滤：把**本回合没发动**的技能对应的明细项去掉。
 //
-// 战报的「防御加成+N%(军官技能·弧形防御+150%)」用的是静态明细（快照里恒含技能），
+// 战报的「防御加成+N%(军官技能·弧形壁垒+150%)」用的是静态明细（快照里恒含技能），
 // 非发动回合如果照原样展示，玩家会以为这回合也吃了 150% —— 所以按回合过滤。
 func ezfyTimedBreakFilter(items []ezfyBonusItem, list []*ezfyTimedSkill, round int) []ezfyBonusItem {
 	if len(list) == 0 || len(items) == 0 {
@@ -181,7 +181,7 @@ func ezfyTimedBreakFilter(items []ezfyBonusItem, list []*ezfyTimedSkill, round i
 
 // timedAnno 技能发动播报：只在**发动回合**写一行，未发动不刷屏。
 //
-// 形如：`【攻方】Stalin发动【弧形防御】！军心大振，全体防御力+150%`
+// 形如：`【攻方】Stalin发动【弧形壁垒】！军心大振，全体防御力+150%`
 func (st *ezfyBattleState) timedAnno(atkOn, defOn []*ezfyTimedSkill) {
 	anno := func(on []*ezfyTimedSkill, side, offDesc string, off int) {
 		for i, s := range on {

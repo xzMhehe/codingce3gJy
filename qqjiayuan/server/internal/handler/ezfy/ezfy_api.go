@@ -1049,10 +1049,11 @@ var ezfyTechEffectPrefix = map[int]string{
 //
 // ★ 2026-10-31 机械增压(10)/喷气推进(19) 每级 2%/3% → **5%/级，满级 50%**
 // （用户需求：这两项速度科技满级效果统一到 50%）。
-// 这两个值是「库中 effect_value 为空时的兜底」——管理端改「效果数值」仍然优先。
+// ★★ 2026-10-31 标准化装卸(13) 每级 2% → **5%/级，满级 50%**（同上，用户需求）。
+// 这些值是「库中 effect_value 为空时的兜底」——管理端改「效果数值」仍然优先。
 var ezfyTechEffectPer = map[int]int{
 	1: 10, 2: 10, 3: 10, 4: 10, 5: 2, 6: 3, 7: 3, 8: 3, 9: 2, 10: 5,
-	11: -2, 12: 1, 13: 2, 14: 2, 15: 10, 16: 2, 17: 2, 18: -2, 19: 5,
+	11: -2, 12: 1, 13: 5, 14: 2, 15: 10, 16: 2, 17: 2, 18: -2, 19: 5,
 	20: 2, 21: 2,
 }
 
@@ -4067,6 +4068,19 @@ func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
 		}
 	}
 	reconAccount := h.techMapOf(uid)[ezfyReconTechID] // 账号级等级（本城有科研中心才生效）
+	// ★★ 2026-10-31 黄金洞察（原黄金眼）：**市长在任**时按技能等级提高本城情报等级。
+	//   与 ezfyIntelLevel 同口径；这里一次性把这批城市的市长取出来（1 条 SQL，不逐行打库）。
+	mayorRecon := map[int64]int{}
+	if len(ids) > 0 {
+		var mayors []model.EzfyOfficer
+		h.DB.Select("city_id, level, skill, general_id").
+			Where("city_id IN ? AND position = ? AND is_captive = 0", ids, ezfyPositionMayor).Find(&mayors)
+		for i := range mayors {
+			if lv := h.ezfyReconSkillLevel(&mayors[i]); lv > 0 {
+				mayorRecon[int64(mayors[i].CityId)] = lv
+			}
+		}
+	}
 	for _, v := range views {
 		cid, _ := v["city_id"].(int64)
 		if cid == 0 {
@@ -4088,7 +4102,7 @@ func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
 		}
 		intel := 0
 		if radar > 0 { // 与 ezfyIntelLevel 完全同口径：没雷达站 = 0
-			intel = radar + recon
+			intel = radar + recon + mayorRecon[cid] // ★ 2026-10-31 市长黄金洞察加成
 			if intel > ezfyIntelMaxLevel {
 				intel = ezfyIntelMaxLevel
 			}

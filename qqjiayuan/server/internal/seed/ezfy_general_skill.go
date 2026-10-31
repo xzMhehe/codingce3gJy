@@ -19,7 +19,7 @@ import (
 //   - **按等级成长**：组合技等级由**军官等级**分档（默认每 35 级 +1，350 级 = 10 级），
 //     效果值 = BaseValue + (等级-1)×GrowPerLevel；
 //   - **概率发动**：每回合开始按 ProcPct 掷一次，命中后持续 Rounds 回合（1 = 只本回合）；
-//   - **数值克制**：满级对齐「普通军官技能满级」的量级（尖兵突击/弧形防御 Lv.6 = 180%），
+//   - **数值克制**：满级对齐「普通军官技能满级」的量级（尖兵猛攻/弧形壁垒 Lv.6 = 180%），
 //     但组合技是**概率发动 + 只持续 1 回合**，期望值只有标称值的 30~40%，
 //     不会像常驻技能那样每回合都吃满。
 //
@@ -51,7 +51,7 @@ var ezfyGeneralSkillSeeds = []model.EzfyCfgGeneralSkill{
 		Des: "连击（发动后本回合每次攻击追加一次，追加伤害为原来的 %d%%）"},
 	// —— 反击回合（★ 次数型：上限仍 5 级，10 级就是 +10 回合，太变态）——
 	{ID: 9, Name: "血战到底", Kind: 9, BaseValue: 1, GrowPerLevel: 1, MaxLevel: 5, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 9,
-		Des: "反击回合+%d（发动后本场战斗的反击回合数增加，与「绝地反击」叠加）"},
+		Des: "反击回合+%d（发动后本场战斗的反击回合数增加，与「绝地逆袭」叠加）"},
 	// —— 持续型（2 回合 → 数值压一档，满级 120%）——
 	{ID: 10, Name: "万钧之势", Kind: 1, BaseValue: 12, GrowPerLevel: 12, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 2, Quality: 4, SortNo: 10,
 		Des: "攻击力+%d%%（发动后持续 2 回合，覆盖面更久）"},

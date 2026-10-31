@@ -17,7 +17,7 @@ func TestPvPDefenderWounded(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
 	for _, want := range []string{
 		"defHealTech = ezfyTechEffectValueAt(21, defTech[21])", // 守方科技·战地医疗（管理端效果数值）
-		`h.officerHasSkill(cityGuard, "机械改造")`,                 // 城守军官技能
+		`h.officerHasSkill(cityGuard, "机械改装")`,                 // 城守军官技能
 		"h.addWounded(target.ID, g.TroopId, 0, wounded)",       // 守方伤兵入营（type=0 伤兵）
 		// 战报里两方的回收比例各算一份（「谁看展示谁的」）
 		"healLineAtk := ezfyHealPctLine(repairedTotal, br.AttackerLosses)",

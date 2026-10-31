@@ -8260,7 +8260,7 @@ export default {
       })
     },
     // ★ 2026-10-25 学技能改为「随机学一个」：不再传 skill_id（后端从技能池随机挑未学的），
-    //   成功后用后端返回的文案告诉玩家随机到了哪个技能（如「学会技能【尖兵突击】Lv.6」）。
+    //   成功后用后端返回的文案告诉玩家随机到了哪个技能（如「学会技能【尖兵猛攻】Lv.6」）。
     doLearnRandom () {
       const id = this.officerDetail.officer.id
       api.post('/games/ezfy/officers/' + id + '/skill', { op: 'learn' }).then(r => {

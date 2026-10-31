@@ -55,7 +55,7 @@ func TestEzfyWildDefCombatBonusTech(t *testing.T) {
 //  1. 用归属城 techMap 与主将计算 ezfyWildDefCombatBonus；
 //  2. 把 defBonus/defAtkBonus/defTechBreak/defDefBreak/defEquip/defType 等全部赋值；
 //  3. 指挥室/战报里的【守方军官】使用主将的完整加成描述；
-//  4. 绝地反击/套装/技能也使用主将，而不是继续传 nil 或只传城守。
+//  4. 绝地逆袭/套装/技能也使用主将，而不是继续传 nil 或只传城守。
 func TestEzfyWildDefBonusWiring(t *testing.T) {
 	order := rawFile(t, "ezfy_order.go")
 	for _, want := range []string{

@@ -143,10 +143,15 @@ func (h *EzfyHandler) ezfyCarryCap(order *model.EzfyOrder) int64 {
 //
 // ★★ 2026-09-28 修复「标准化装卸没实际作用」：
 //
-//	科技 13「标准化装卸 部队负重+2%」原来只写在 ezfy_cfg_tech.effect 里，
+//	科技 13「标准化装卸 部队负重」原来只写在 ezfy_cfg_tech.effect 里，
 //	**后端从来没有读过这个 tech_id** → 玩家把它研到 10 级，负重一点不涨。
 //	现在在这里统一加成（这是「负重上限」的唯一收敛点，采集/运输/出征全走它）：
-//	    负重上限 = Σ(carry × 数量) × (100 + 标准化装卸等级 × 2) / 100
+//	    负重上限 = Σ(carry × 数量) × (100 + 标准化装卸当前等级的效果数值) / 100
+//
+// ★★ 2026-10-31 用户需求：满级 20% → **50%**（阶梯每级 +5%）。
+//
+//	每级数值改由 ezfyTechEffectValueAt(13, 等级) 读取（配置优先、缺省按 ezfyTechEffectPer[13]），
+//	不再写死 `lv * 2` —— 否则管理端改了「效果数值」会出现「文案变了、负重没变」。
 //
 // ⚠️ cityId 用来反查玩家（科技等级存用户级 ezfy_user_tech，见 techMap）。
 //
@@ -173,7 +178,9 @@ func (h *EzfyHandler) ezfyCarryCapOf(groups []ezfyUnitGroup, cityId uint, techs 
 			lv = h.techMap(cityId)[ezfyLoadTechID]
 		}
 		if lv > 0 {
-			base = base * int64(100+lv*ezfyLoadTechPct) / 100
+			if pct := ezfyTechEffectValueAt(ezfyLoadTechID, lv); pct > 0 {
+				base = base * int64(100+pct) / 100
+			}
 		}
 	}
 	return base

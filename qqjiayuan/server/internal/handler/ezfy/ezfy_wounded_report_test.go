@@ -38,7 +38,7 @@ func TestWoundedReportLine(t *testing.T) {
 
 // TestBattleStatsTailUsesLootPctLabel 战报尾部的字段必须叫「掠夺比例」而不是「回收比例」。
 //
-// ★ 2026-10-09：「回收率」在这个游戏里是**伤兵回收率**（机械改造：回收率+10%），
+// ★ 2026-10-09：「回收率」在这个游戏里是**伤兵回收率**（机械改装：回收率+10%），
 // 而战报尾部这个字段是**掠夺比例**（战利品占目标资源的比例，平局就是 0%）——
 // 撞词会让玩家以为「伤兵回收 0%」。
 //
@@ -106,7 +106,7 @@ func TestDefSrcTxt(t *testing.T) {
 		{Name: "城墙", Value: 45},
 		{Name: "科技·均质装甲", Value: 30},
 		{Name: "军官·冥王", Value: 20},
-		{Name: "军官技能·弧形防御", Value: 60},
+		{Name: "军官技能·弧形壁垒", Value: 60},
 		{Name: "装备套装", Value: 15},
 	})
 	if want := "(城墙+45 军官+80 科技+30 装备套装+15)"; got != want {

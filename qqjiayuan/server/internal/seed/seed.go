@@ -3549,6 +3549,37 @@ func ezfyOneTimeLimitFix(db *gorm.DB, key, sql string) {
 	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
 }
 
+// ezfyWallRangeTextDrop 一次性去掉城墙等级文案里的「远程射程+NN%」。
+//
+// ★★ 2026-10-31 用户规则：「城墙去除远程射程+45%，城防兵种的射程加成也不要了」。
+//
+//	战斗引擎里的城墙射程加成已删除（见 ezfy_battle.go 主循环 / 反击射程），
+//	城墙只剩「耐久 + 守城防御（只对城防兵种）」。
+//	但 ezfy_cfg_building_level 是 batchKeep（insert-only），改 ezfy_cfg_gen.go 的
+//	Effect 落不到已部署的库 → 玩家建造页仍显示「守军防御+45%,远程射程+45%,...」。
+//	所以这里按等级把对应那一截删掉：文案形如「守军防御+45%,远程射程+45%,城防空间…」，
+//	等级 N 的射程值恰为 N×5 → 连前导逗号一起 REPLACE。
+//
+// 幂等：settings 有标记直接返回；表不存在直接跳过（新库由种子直接写新文案）。
+func ezfyWallRangeTextDrop(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_building_level") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	const key = "ezfy_wall_range_text_drop"
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", key).Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	if err := db.Exec("UPDATE ezfy_cfg_building_level " +
+		"SET effect = REPLACE(effect, CONCAT(',远程射程+', `level` * 5, '%'), '') " +
+		"WHERE building_id = 7 AND effect LIKE '%,远程射程+%'").Error; err != nil {
+		log.Printf("ezfy 城墙文案去射程失败（下次启动会重试）: %v", err)
+		return
+	}
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
+}
+
 // ezfySysSellDailyLimitDefault0 一次性把「系统回收每日上限」从旧默认 100 万改成 0（= 不限）。
 //
 // ★ 2026-10-26 用户规则：「系统回收每日上限 默认 0」。

@@ -534,7 +534,7 @@ func (h *EzfyHandler) botBattleCmds() {
 					nearest = d
 				}
 			}
-			// 本单位实际射程（含科技加成 + ★ 2026-10-31 弹幕支援「城防射程%」按兵种取）
+			// 本单位实际射程（含科技加成 + ★ 2026-10-31 弹幕覆盖「城防射程%」按兵种取）
 			typeRange := st.AtkType.rangeOf(u.cfg.Type)
 			if side == "def" {
 				typeRange = st.DefType.rangeOf(u.cfg.Type)

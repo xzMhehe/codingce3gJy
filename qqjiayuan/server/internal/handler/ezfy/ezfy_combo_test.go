@@ -260,7 +260,7 @@ func TestComboHeadMergedIntoOfficer(t *testing.T) {
 	st := &ezfyBattleState{
 		Head: []string{
 			"准备回合:",
-			"【攻方军官】斯大林 Lv.350 攻击加成+477% 尖兵突击(Lv.6 攻击力+180%)",
+			"【攻方军官】斯大林 Lv.350 攻击加成+477% 尖兵猛攻(Lv.6 攻击力+180%)",
 			"【守方军官】杰里米·贝克 Lv.1 攻击加成+18%",
 			"战场初始相距6000, 攻守双方相向推进",
 		},

@@ -9,7 +9,7 @@ import (
 	"qqjiayuan/server/internal/model"
 )
 
-// TestCounterKillUsesEffectiveHp 「绝地反击」与普通攻击必须用**同一个有效生命**换算消灭数。
+// TestCounterKillUsesEffectiveHp 「绝地逆袭」与普通攻击必须用**同一个有效生命**换算消灭数。
 //
 // ★★ 2026-10-08 用户反馈「为什么反击造成的伤害/战果比正常攻击还高」：
 //
@@ -43,7 +43,7 @@ func TestCounterKillUsesEffectiveHp(t *testing.T) {
 		nil, nil, nil, nil, nil,
 		355, nil,
 		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
-		5, 6, 1, 2, // 双方都有「绝地反击」：攻方前 5 回合 / 守方前 6 回合
+		5, 6, 1, 2, // 双方都有「绝地逆袭」：攻方前 5 回合 / 守方前 6 回合
 		ezfyTypeBonus{}, ezfyTypeBonus{}))
 	for i := 0; i < 3 && !st.Done; i++ {
 		st.Step(nil, nil)
@@ -84,16 +84,16 @@ func TestCounterKillUsesEffectiveHp(t *testing.T) {
 	}
 	t.Logf("校验通过：打攻方 %d 行（有效生命 %d）/ 打守方 %d 行（有效生命 %d）",
 		hitAtkLine, atkHp, hitDefLine, defHp)
-	// 反击行必须存在（否则这条用例没覆盖到「绝地反击」）
+	// 反击行必须存在（否则这条用例没覆盖到「绝地逆袭」）
 	hasCounter := false
 	for _, ln := range st.Actions {
-		if strings.Contains(ln, "绝地反击") {
+		if strings.Contains(ln, "绝地逆袭") {
 			hasCounter = true
 			break
 		}
 	}
 	if !hasCounter {
-		t.Fatal("本场没有触发「绝地反击」，用例未覆盖反击路径")
+		t.Fatal("本场没有触发「绝地逆袭」，用例未覆盖反击路径")
 	}
 }
 
@@ -123,7 +123,7 @@ func TestCounterRespectsCounterRange(t *testing.T) {
 	st.Step(nil, nil)
 
 	for _, ln := range st.Actions {
-		if strings.Contains(ln, "绝地反击") {
+		if strings.Contains(ln, "绝地逆袭") {
 			t.Fatalf("守方射程 20、双方相距 6000，不应反击：%s", ln)
 		}
 	}
