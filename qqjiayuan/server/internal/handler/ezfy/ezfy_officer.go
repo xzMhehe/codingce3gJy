@@ -2340,6 +2340,23 @@ func (h *EzfyHandler) officerGoOutByID(officerID uint, goOut bool) {
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", officerID).Update("status", 0)
 }
 
+// ezfyLoyaltyDropOnDefeat 败仗扣忠心：基础 1 点 + 按损兵占比追加，**总计封顶 6 点**。
+// dead = 本场战损兵力，total = 出征总兵力；total <= 0（数据缺失）时只扣基础 1 点。
+func ezfyLoyaltyDropOnDefeat(dead, total int64) int {
+	delta := ezfyLoyaltyOnDefeat
+	if total > 0 && dead > 0 {
+		delta += int(float64(ezfyLoyaltyOnDefeatMax-ezfyLoyaltyOnDefeat) *
+			float64(dead) / float64(total))
+	}
+	if delta > ezfyLoyaltyOnDefeatMax {
+		delta = ezfyLoyaltyOnDefeatMax
+	}
+	if delta < ezfyLoyaltyOnDefeat {
+		delta = ezfyLoyaltyOnDefeat
+	}
+	return delta
+}
+
 // officerLoseLoyalty 扣军官忠心（归零自动离职）。
 //
 // 只在**打败仗**时调用；delta 由战损程度算出：基础 1 点 + 按战损比例追加，总计最高 6 点

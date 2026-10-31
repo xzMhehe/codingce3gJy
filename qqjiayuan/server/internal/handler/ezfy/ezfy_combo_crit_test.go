@@ -62,7 +62,8 @@ func TestComboFollowUpOwnCritAmplifiesDamage(t *testing.T) {
 		st := &ezfyBattleState{Actions: []string{}}
 		unit := ezfyTestUnit("A1", "步兵", 0, 100)
 		target := ezfyTestUnit("D1", "步兵", 100, 200)
-		st.comboFollowUp(unit, target, []*ezfyFightUnit{target}, 500, 0, 0, 0, 0,
+		st.comboFollowUp(unit, target, []*ezfyFightUnit{target}, 500, 0,
+			func(*ezfyFightUnit) int { return 0 }, func(*ezfyFightUnit) int { return 0 }, 0,
 			"【攻方】", "【守方】", func(u *ezfyFightUnit) string { return u.cfg.Name },
 			"波次突击", 100, "连击", false, critChance, 50)
 		return strings.Join(st.Actions, "\n"), target.initialCount - target.count
@@ -89,7 +90,8 @@ func TestComboCritUsesSameFallback(t *testing.T) {
 	st := &ezfyBattleState{Actions: []string{}}
 	unit := ezfyTestUnit("A1", "步兵", 0, 100)
 	target := ezfyTestUnit("D1", "步兵", 100, 200)
-	st.comboFollowUp(unit, target, []*ezfyFightUnit{target}, 500, 0, 0, 0, 0,
+	st.comboFollowUp(unit, target, []*ezfyFightUnit{target}, 500, 0,
+		func(*ezfyFightUnit) int { return 0 }, func(*ezfyFightUnit) int { return 0 }, 0,
 		"【攻方】", "【守方】", func(u *ezfyFightUnit) string { return u.cfg.Name },
 		"波次突击", 100, "连击", false, 100, 0)
 	log := strings.Join(st.Actions, "\n")

@@ -667,10 +667,11 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 func TestTypeBonusInAttackAndCounter(t *testing.T) {
 	bat := strings.ReplaceAll(rawFile(t, "ezfy_battle.go"), "\r\n", "\n")
 	for _, want := range []string{
-		// 普通攻击：数值含专属 + 行尾标注
+		// 普通攻击：数值含专属 + 日志把专属百分比并进总加成括号
 		"unitAtkBonus = atkBonus + tb",
 		"unitAtkBonus = st.DefAtkBonus + tb",
-		`typeAtkTxt = fmt.Sprintf(" 兵种专属+%d%%", tb)`,
+		"typeAtkPctVal = tb",
+		"ezfyAppendBonusBreak(bonusBreak, typeAtkPctTxt)",
 		// 反击：数值含反击方专属（含"对目标"加成）+ 行尾标注
 		"cbType = st.DefType.attackBonusFor(target.cfg.Type, unit.cfg)",
 		"cbType = st.AtkType.attackBonusFor(target.cfg.Type, unit.cfg)",
@@ -679,7 +680,9 @@ func TestTypeBonusInAttackAndCounter(t *testing.T) {
 		// 兵种攻击属性加成（绝对值）在攻击/反击里都要加上
 		"ezfyCalcDamage(baseAtk+atkFlat,",
 		"ezfyCalcDamage(ezfyPickAttack(target.cfg, unit.cfg)+cbFlat,",
-		`cbTypeTxt = fmt.Sprintf(" 兵种专属+%d%%", cbType)`,
+		`cbTypePctTxt = fmt.Sprintf("兵种专属+%d%%", cbType)`,
+		// ★ 2026-10-31 反击与普攻同口径：百分比并入总加成括号（不再写到括号外看起来像重复加）
+		"ezfyAppendBonusBreak(counterBreak, cbTypePctTxt)",
 	} {
 		if !strings.Contains(bat, want) {
 			t.Fatalf("兵种专属加成未接入（攻击/反击/日志标注）：%s", want)

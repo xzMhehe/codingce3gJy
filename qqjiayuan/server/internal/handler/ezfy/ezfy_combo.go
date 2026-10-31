@@ -671,8 +671,12 @@ func ezfyComboHealSide(units []*ezfyFightUnit, pct int) int64 {
 // ★★ 2026-10-31 用户口径：连击相当于**两次攻击**，第二次攻击要**单独计算暴击**
 // （主攻击那次在 Step 里已经各自掷过骰，这里必须再掷一次，不能共用主攻击的结果）。
 // critChance / critDmg 由调用方传**攻击方自己的装备暴击属性**；追击是战法伤害，传 0 不暴击。
+//
+// ★★ 2026-10-31 狼群围猎修复：atkBonusAt/defBonusAt 传**按目标取值**的闭包，
+// 不能像原来那样传主目标算好的固定数值 —— 连击把原目标打死后换目标时，
+// 「海军对海+75%」之类按目标类型生效的加成必须按**新目标**重新计算（否则打陆军也带 75%）。
 func (st *ezfyBattleState) comboFollowUp(unit, target *ezfyFightUnit, enemies []*ezfyFightUnit,
-	rangeD, atkFlat, atkBonus, defBonus, defBreakPct int, side, enemySide string,
+	rangeD, atkFlat int, atkBonusAt, defBonusAt func(*ezfyFightUnit) int, defBreakPct int, side, enemySide string,
 	nameOf func(*ezfyFightUnit) string, skillName string, dmgPct int, label string, strictTarget bool,
 	critChance, critDmg int) {
 	if label == "" {
@@ -709,6 +713,14 @@ func (st *ezfyBattleState) comboFollowUp(unit, target *ezfyFightUnit, enemies []
 		if def < 1 {
 			def = 1
 		}
+	}
+	// ★★ 2026-10-31 按**实际出手目标**取兵种专属攻/防加成（狼群围猎/四指阵列按目标类型生效）。
+	atkBonus, defBonus := 0, 0
+	if atkBonusAt != nil {
+		atkBonus = atkBonusAt(cur)
+	}
+	if defBonusAt != nil {
+		defBonus = defBonusAt(cur)
 	}
 	damage := ezfyCalcDamage(ezfyPickAttack(unit.cfg, cur.cfg)+atkFlat, def, unit.count, atkBonus, defBonus)
 	damage = damage * int64(dmgPct) / 100
