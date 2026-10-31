@@ -14,7 +14,7 @@ func TestReportAlertCondPassiveOnly(t *testing.T) {
 	cond := ezfyReportAlertCond()
 	// 必须包含：军情警讯(cat1) 全部 + 战斗报告里的被袭类
 	for _, s := range []string{
-		"军情警报", "被侦查报告", "城市归还", "将领叛离", "野地丢失",
+		"军情", "被侦查报告", "城市归还", "将领叛离", "野地丢失",
 		"被掠夺报告", "被征服报告", "城破报告",
 	} {
 		if !strings.Contains(cond, s) {
@@ -67,10 +67,10 @@ func TestAlertReportTitleHasCoord(t *testing.T) {
 		`"被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")"`,
 		// 被征服报告：被攻击城市坐标
 		`"被征服报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")"`,
-		// 军情警报「敌军来袭」：来源城市坐标
-		`title += fmt.Sprintf(" 来自 %s(%d,%d)", city.Name, city.X, city.Y)`,
-		// 军情警报「敌军已抵达」：来源城市坐标
-		`"军情警报: 敌军已抵达 来自 %s(%d,%d)"`,
+		// 军情「敌军来袭」：来源城市坐标
+		`title += fmt.Sprintf(" %s(%d,%d)", city.Name, city.X, city.Y)`,
+		// 军情「敌军抵达」：来源城市坐标
+		`"军情: 敌军抵达 %s(%d,%d)"`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("军情警讯标题缺坐标（重名城无法区分）：期望片段\n  %s\n未在 ezfy_order.go 中找到", want)

@@ -255,7 +255,7 @@ func ezfyComboValueTxt(c *ezfyComboSkill) string {
 //
 // ★ 2026-10-25 用户要求格式统一成「加号 + 属性名 + 数值」：
 //
-//	特殊技能：[铁血军魂]：+攻击力180%
+//	特殊技能：[装甲突击]：+攻击力180%
 //
 // （原来是 `+180%` 再单起一行灰色括号说明「攻击力+180%（发动后…）」，信息重复又占行。）
 // 与 ezfyComboShortEffect 的区别只在前缀/单位位置，别混用：
@@ -290,7 +290,7 @@ func ezfyComboEffectTxt(c *ezfyComboSkill) string {
 
 // ezfyComboShortTxt 短效果文案（准备回合「军官行」内联用，格式对齐军官技能）
 //
-//	例：尖兵猛攻(Lv.6 攻击力+180%) 铁血军魂(Lv.10 攻击力+180%，发动40%)
+//	例：尖兵猛攻(Lv.6 攻击力+180%) 装甲突击(Lv.10 攻击力+180%，发动40%)
 func ezfyComboShortTxt(c *ezfyComboSkill) string {
 	if c == nil {
 		return ""
@@ -443,7 +443,7 @@ func comboOfKind(active []*ezfyComboSkill, kind int) int {
 
 // comboBreakTxt 来源拆解文本：指定类型的生效技能逐项列出（空格分隔）。
 //
-//	例：组合技·铁血军魂+180% 组合技·万钧之势+120%
+//	例：组合技·装甲突击+180% 组合技·全线总攻+120%
 func comboBreakTxt(active []*ezfyComboSkill, kind int, prefix string) string {
 	out := ""
 	for _, c := range active {
@@ -674,7 +674,7 @@ func comboShortTxts(rts []*ezfyComboRuntime) []string {
 // 格式对齐军官技能：
 //
 //	【攻方军官】斯大林 Lv.350 攻击加成+477% 防御加成+253% 尖兵猛攻(Lv.6 攻击力+180%) …
-//	              └→ 追加：铁血军魂(Lv.10 攻击力+180%，发动40%) 万钧之势(Lv.8 攻击力+120%，发动30%)
+//	              └→ 追加：装甲突击(Lv.10 攻击力+180%，发动40%) 全线总攻(Lv.8 攻击力+120%，发动30%)
 //
 // ★ 2026-10-24 名将可学多个组合技：多个技能文案用空格接在军官行后面。
 // 没有军官行（AI 守将 / 老战场）时退回单独一行，插在「准备回合:」之后。

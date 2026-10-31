@@ -1921,10 +1921,15 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 					intelSrc += fmt.Sprintf(" + 市长黄金洞察%d级", mv)
 				}
 				warn += fmt.Sprintf("(情报等级%d = %s)", radar, intelSrc)
-				title := "军情警报: 敌军来袭!"
+				// ★ 2026-10-31 用户「军情警讯列表简化」：
+				//   `军情警报: 敌军来袭! 来自 X(x,y)` → `军情: 敌军来袭 X(x,y)`
+				//   （去掉「警报/!/来自」冗余，前缀统一成「军情: 」，列表更短更好扫）。
+				//   ★ 前缀必须仍能被 `HasPrefix(title,"军情")` 命中（分类/标签/角标都靠它），
+				//   老数据「军情警报: …」同样命中，不需要回填。
+				title := "军情: 敌军来袭"
 				if originLine != "" {
 					// 列表只显示标题 → 把来源也带上，不点进去就能看到
-					title += fmt.Sprintf(" 来自 %s(%d,%d)", city.Name, city.X, city.Y)
+					title += fmt.Sprintf(" %s(%d,%d)", city.Name, city.X, city.Y)
 				}
 				h.addReport(target.UserID, 6, title, warn, "", 0, target.ID)
 			}
@@ -4779,7 +4784,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			//   消息，不受雷达站限制，所以来源一定给全 —— 保证玩家至少在这一步知道谁打了他。
 			if order.TargetType == 3 && target != nil && target.UserID > 0 && target.UserID != uid {
 				h.addReport(target.UserID, 6,
-					fmt.Sprintf("军情警报: 敌军已抵达 来自 %s(%d,%d)", city.Name, city.X, city.Y),
+					fmt.Sprintf("军情: 敌军抵达 %s(%d,%d)", city.Name, city.X, city.Y),
 					fmt.Sprintf("敌方部队已抵达我方城市「%s」(%d,%d) 附近，双方即将交战！\n来袭方城市：%s(%d,%d)\n请到「军情 → 军队动态」进入[指挥]部署守军。",
 						target.Name, order.TargetX, order.TargetY, city.Name, city.X, city.Y),
 					"", 0, target.ID)
@@ -4791,7 +4796,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				ownerUID := wildDefOrders[0].UserID
 				if ownerUID > 0 && ownerUID != uid {
 					h.addReport(ownerUID, 6,
-						fmt.Sprintf("军情警报: 敌军已抵达 来自 %s(%d,%d)", city.Name, city.X, city.Y),
+						fmt.Sprintf("军情: 敌军抵达 %s(%d,%d)", city.Name, city.X, city.Y),
 						fmt.Sprintf("敌方部队已抵达我方附属野地「%s」(%d,%d) 附近，双方即将交战！\n来袭方城市：%s(%d,%d)\n请到「军情 → 军队动态」进入[指挥]部署守军。",
 							targetName, order.TargetX, order.TargetY, city.Name, city.X, city.Y),
 						"", order.ID, wildDefOrders[0].CityId)

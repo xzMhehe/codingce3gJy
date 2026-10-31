@@ -101,7 +101,7 @@ func TestWildlandPvp(t *testing.T) {
 		!strings.Contains(order, "AND w.y = ezfy_order.target_y AND w.city_id IN ?") {
 		t.Fatal("fetchIncoming 未按坐标纳入「正在打我方附属野地」的到达订单（守方轮询推不动战场）")
 	}
-	if !strings.Contains(order, "军情警报: 敌军已抵达 来自 %s(%d,%d)") ||
+	if !strings.Contains(order, "军情: 敌军抵达 %s(%d,%d)") ||
 		!strings.Contains(order, "if hasPlayerDefender && (order.TargetType == 1 || order.TargetType == 2) {") {
 		t.Fatal("附属野地有守军时未给守方发「敌军已抵达」军情警报")
 	}

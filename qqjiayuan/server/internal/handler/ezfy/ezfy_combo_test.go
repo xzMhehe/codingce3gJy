@@ -177,12 +177,12 @@ func TestComboProcAndBonuses(t *testing.T) {
 		return st
 	}
 	// ① 100% 发动 → 第 1 回合就生效并播报
-	st := build(&ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 100, Rounds: 1})
+	st := build(&ezfyComboSkill{ID: 1, Name: "装甲突击", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 100, Rounds: 1})
 	st.Step(nil, nil)
 	if st.AtkCombos[0].Left != 0 { // 本回合生效，回合末递减回 0
 		t.Fatalf("1 回合技能应在回合末递减回 0, 实际 %d", st.AtkCombos[0].Left)
 	}
-	if !strings.Contains(strings.Join(st.Actions, "\n"), "【铁血军魂】") {
+	if !strings.Contains(strings.Join(st.Actions, "\n"), "【装甲突击】") {
 		t.Fatalf("100%% 发动率却没播报：%v", st.Actions)
 	}
 	// ★ 2026-10-23 用户反馈：发动播报必须排在「第N回合:」之后、部队行动之前，
@@ -190,7 +190,7 @@ func TestComboProcAndBonuses(t *testing.T) {
 	if len(st.Actions) < 2 || st.Actions[0] != "第1回合:" {
 		t.Fatalf("回合标题必须是本回合第一行：%v", st.Actions)
 	}
-	if !strings.Contains(st.Actions[1], "发动组合技【铁血军魂】") {
+	if !strings.Contains(st.Actions[1], "发动组合技【装甲突击】") {
 		t.Fatalf("组合技播报应紧跟回合标题：%v", st.Actions[:2])
 	}
 	if !strings.Contains(st.Actions[1], "全体攻击力+180%") {
@@ -198,20 +198,20 @@ func TestComboProcAndBonuses(t *testing.T) {
 	}
 
 	// ② 0% 发动 → 永不播报
-	st2 := build(&ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 5, Value: 16, ProcPct: 0, Rounds: 1})
+	st2 := build(&ezfyComboSkill{ID: 1, Name: "装甲突击", Kind: ezfyComboAtk, Level: 5, Value: 16, ProcPct: 0, Rounds: 1})
 	for i := 0; i < 3; i++ {
 		st2.Step(nil, nil)
 	}
-	if strings.Contains(strings.Join(st2.Actions, "\n"), "【铁血军魂】") {
+	if strings.Contains(strings.Join(st2.Actions, "\n"), "【装甲突击】") {
 		t.Fatal("0% 发动率不该发动")
 	}
 
 	// ②b 准备回合要写「组合技」说明（玩家开打前就知道带了什么）
 	//    ★ 2026-10-23 改成「并进军官行」；没有军官行时退回单独一行、插在准备回合: 之后
-	st4 := build(&ezfyComboSkill{ID: 6, Name: "摧锋破甲", Kind: ezfyComboBreak, Level: 10, Value: 80, ProcPct: 35, Rounds: 1})
+	st4 := build(&ezfyComboSkill{ID: 6, Name: "穿甲火力", Kind: ezfyComboBreak, Level: 10, Value: 80, ProcPct: 35, Rounds: 1})
 	st4.appendComboHead()
 	head4 := strings.Join(st4.Head, "\n")
-	if !strings.Contains(head4, "摧锋破甲(Lv.10 破防80%，发动35%)") {
+	if !strings.Contains(head4, "穿甲火力(Lv.10 破防80%，发动35%)") {
 		t.Fatalf("准备回合缺组合技说明：%v", st4.Head)
 	}
 	if strings.HasPrefix(head4, "【攻方组合技】") { // 必须落在「准备回合:」之后
@@ -219,7 +219,7 @@ func TestComboProcAndBonuses(t *testing.T) {
 	}
 
 	// ③ 持续 2 回合：第 1 回合发动后，第 2 回合仍生效
-	st3 := build(&ezfyComboSkill{ID: 10, Name: "万钧之势", Kind: ezfyComboAtk, Level: 5, Value: 14, ProcPct: 100, Rounds: 2})
+	st3 := build(&ezfyComboSkill{ID: 10, Name: "全线总攻", Kind: ezfyComboAtk, Level: 5, Value: 14, ProcPct: 100, Rounds: 2})
 	st3.Step(nil, nil)
 	if st3.AtkCombos[0].Left != 1 {
 		t.Fatalf("2 回合技能第 1 回合末应剩 1 回合, 实际 %d", st3.AtkCombos[0].Left)
@@ -264,17 +264,17 @@ func TestComboHeadMergedIntoOfficer(t *testing.T) {
 			"【守方军官】杰里米·贝克 Lv.1 攻击加成+18%",
 			"战场初始相距6000, 攻守双方相向推进",
 		},
-		AtkCombos: comboRuntimes([]*ezfyComboSkill{{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 40, Rounds: 1}}),
-		DefCombos: comboRuntimes([]*ezfyComboSkill{{ID: 2, Name: "不动如山", Kind: ezfyComboDef, Level: 3, Value: 54, ProcPct: 35, Rounds: 1}}),
+		AtkCombos: comboRuntimes([]*ezfyComboSkill{{ID: 1, Name: "装甲突击", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 40, Rounds: 1}}),
+		DefCombos: comboRuntimes([]*ezfyComboSkill{{ID: 2, Name: "纵深防御", Kind: ezfyComboDef, Level: 3, Value: 54, ProcPct: 35, Rounds: 1}}),
 	}
 	st.appendComboHead()
 	if len(st.Head) != 4 {
 		t.Fatalf("应并进已有行、不新增行：%v", st.Head)
 	}
-	if !strings.HasSuffix(st.Head[1], "铁血军魂(Lv.10 攻击力+180%，发动40%)") {
+	if !strings.HasSuffix(st.Head[1], "装甲突击(Lv.10 攻击力+180%，发动40%)") {
 		t.Fatalf("攻方军官行没带上组合技：%s", st.Head[1])
 	}
-	if !strings.HasSuffix(st.Head[2], "不动如山(Lv.3 防御力+54%，发动35%)") {
+	if !strings.HasSuffix(st.Head[2], "纵深防御(Lv.3 防御力+54%，发动35%)") {
 		t.Fatalf("守方军官行没带上组合技：%s", st.Head[2])
 	}
 	if !strings.HasPrefix(st.Head[3], "战场初始相距") {
@@ -284,7 +284,7 @@ func TestComboHeadMergedIntoOfficer(t *testing.T) {
 
 // TestComboEffectText 详情页「特殊技能：」一行的文案格式（2026-10-25 用户要求）。
 //
-//	特殊技能：[铁血军魂]：+攻击力180%
+//	特殊技能：[装甲突击]：+攻击力180%
 //
 // 要点：加号在最前、属性名在数值前、百分号在最后；9 种效果类型都不能掉回裸 `+180%`
 // （否则玩家看不出加的是什么），次数型的反击用「回合」不用 `%`。
@@ -311,7 +311,7 @@ func TestComboEffectText(t *testing.T) {
 		}
 	}
 	// 详情接口必须下发 effect_text（前端用 cs.effect_text 渲染这一行）
-	b := ezfyComboBrief(&ezfyComboSkill{ID: 1, Name: "铁血军魂", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 40, Rounds: 1})
+	b := ezfyComboBrief(&ezfyComboSkill{ID: 1, Name: "装甲突击", Kind: ezfyComboAtk, Level: 10, Value: 180, ProcPct: 40, Rounds: 1})
 	if b == nil {
 		t.Fatal("ezfyComboBrief 返回 nil")
 	}

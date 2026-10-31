@@ -3817,10 +3817,12 @@ export default {
       }).catch(() => { this.countsLoading = false })
     },
     // ★ 2026-09-24 军情警讯列表加 [防守报告]/[预警] 标签（其余类型无标签）
+    // ★ 2026-10-31 预警标题前缀简化为「军情: …」（原「军情警报: …」）→ 这里按「军情」判，
+    //   新老数据都能打上 [预警] 标签。
     intelTag (r) {
       const t = (r && r.title) || ''
       if (t.indexOf('守卫报告') === 0) return '防守报告'
-      if (t.indexOf('军情警报') === 0) return '预警'
+      if (t.indexOf('军情') === 0) return '预警'
       return ''
     },
     // 守卫报告标题去掉冗余的「守卫报告: 」前缀，保留 城市名(坐标)

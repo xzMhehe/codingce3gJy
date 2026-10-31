@@ -26,34 +26,34 @@ import (
 // ★ 2026-10-23 二次调整：等级上限 5 → 10、步长 70 → 35。
 // ★ 2026-10-23 三次调整（用户反馈「16% 太少了」）：数值放大到普通技能量级 ——
 //
-//	攻击/防御/射程/速度/连击 满级 180%（每级 +18），万钧之势 2 回合所以 120%（+12），
+//	攻击/防御/射程/速度/连击 满级 180%（每级 +18），全线总攻 2 回合所以 120%（+12），
 //	减伤/破防受「100% 封顶」限制取 80%，治疗 60%，反击回合仍是 +5（次数型）。
 var ezfyGeneralSkillSeeds = []model.EzfyCfgGeneralSkill{
 	// —— 增益类（本回合按概率发动，直接进战斗加成）——
-	{ID: 1, Name: "铁血军魂", Kind: 1, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 1, Quality: 2, SortNo: 1,
+	{ID: 1, Name: "装甲突击", Kind: 1, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 1, Quality: 2, SortNo: 1,
 		Des: "攻击力+%d%%"},
-	{ID: 2, Name: "不动如山", Kind: 2, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 3, SortNo: 2,
+	{ID: 2, Name: "纵深防御", Kind: 2, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 3, SortNo: 2,
 		Des: "防御力+%d%%"},
-	{ID: 3, Name: "长弓远略", Kind: 3, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 2, SortNo: 3,
+	{ID: 3, Name: "火力延伸", Kind: 3, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 2, SortNo: 3,
 		Des: "射程+%d%%"},
-	{ID: 4, Name: "疾风迅雷", Kind: 4, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 2, SortNo: 4,
+	{ID: 4, Name: "快速集群", Kind: 4, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 2, SortNo: 4,
 		Des: "速度+%d%%"},
 	// —— 减伤 / 破防（★ 都受 100% 封顶限制，取 80%）——
-	{ID: 5, Name: "铜墙铁壁", Kind: 5, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 1, Quality: 3, SortNo: 5,
+	{ID: 5, Name: "筑垒地域", Kind: 5, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 1, Quality: 3, SortNo: 5,
 		Des: "受到伤害-%d%%"},
-	{ID: 6, Name: "摧锋破甲", Kind: 6, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 6,
+	{ID: 6, Name: "穿甲火力", Kind: 6, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 6,
 		Des: "破防%d%%（发动后本回合攻击无视目标 %d%% 防御）"},
 	// —— 治疗 ——
-	{ID: 7, Name: "战地回春", Kind: 7, BaseValue: 6, GrowPerLevel: 6, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 7,
+	{ID: 7, Name: "野战医院", Kind: 7, BaseValue: 6, GrowPerLevel: 6, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 7,
 		Des: "回合治疗%d%%（发动回合结束时恢复本回合已损兵力的 %d%%）"},
 	// —— 连击（追加一击的伤害为原来的 %d%%）——
-	{ID: 8, Name: "连环突击", Kind: 8, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 4, SortNo: 8,
+	{ID: 8, Name: "波次突击", Kind: 8, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 4, SortNo: 8,
 		Des: "连击（发动后本回合每次攻击追加一次，追加伤害为原来的 %d%%）"},
 	// —— 反击回合（★ 次数型：上限仍 5 级，10 级就是 +10 回合，太变态）——
-	{ID: 9, Name: "血战到底", Kind: 9, BaseValue: 1, GrowPerLevel: 1, MaxLevel: 5, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 9,
+	{ID: 9, Name: "死守反击", Kind: 9, BaseValue: 1, GrowPerLevel: 1, MaxLevel: 5, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 3, SortNo: 9,
 		Des: "反击回合+%d（发动后本场战斗的反击回合数增加，与「绝地逆袭」叠加）"},
 	// —— 持续型（2 回合 → 数值压一档，满级 120%）——
-	{ID: 10, Name: "万钧之势", Kind: 1, BaseValue: 12, GrowPerLevel: 12, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 2, Quality: 4, SortNo: 10,
+	{ID: 10, Name: "全线总攻", Kind: 1, BaseValue: 12, GrowPerLevel: 12, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 2, Quality: 4, SortNo: 10,
 		Des: "攻击力+%d%%（发动后持续 2 回合，覆盖面更久）"},
 }
 
@@ -87,16 +87,16 @@ var ezfyGeneralSkillLegacy = map[int][]ezfyComboLegacyFP{
 // 一个能立刻玩的默认值，避免功能上线后一片空白。
 // key = ezfy_cfg_general.id（kind=2 名将），value = 组合技池 ID。
 var ezfyDefaultComboOfGeneral = map[int]int{
-	1:  1,  // Stalin(斯大林)    → 铁血军魂
-	18: 6,  // 朱可夫            → 摧锋破甲
-	9:  8,  // 巴顿              → 连环突击
-	29: 3,  // 尼米兹            → 长弓远略
-	22: 2,  // 蒙哥马利          → 不动如山
-	11: 4,  // 隆美尔            → 疾风迅雷
-	21: 5,  // 麦克阿瑟          → 铜墙铁壁
-	12: 9,  // 崔可夫            → 血战到底
-	15: 7,  // 马歇尔            → 战地回春
-	25: 10, // 古德里安          → 万钧之势
+	1:  1,  // Stalin(斯大林)    → 装甲突击
+	18: 6,  // 朱可夫            → 穿甲火力
+	9:  8,  // 巴顿              → 波次突击
+	29: 3,  // 尼米兹            → 火力延伸
+	22: 2,  // 蒙哥马利          → 纵深防御
+	11: 4,  // 隆美尔            → 快速集群
+	21: 5,  // 麦克阿瑟          → 筑垒地域
+	12: 9,  // 崔可夫            → 死守反击
+	15: 7,  // 马歇尔            → 野战医院
+	25: 10, // 古德里安          → 全线总攻
 }
 
 // EnsureEzfyGeneralSkills 幂等补建组合技能池（全量 seed 与 skip 分支共用）。
@@ -128,6 +128,9 @@ func EnsureEzfyGeneralSkills(db *gorm.DB) {
 		}
 	}
 	upgradeLegacyEzfyGeneralSkills(db)
+	// ★★ 2026-10-31 组合技改名（率土风 → 二战风）：表是「按 ID 只补缺、不覆盖」，
+	//   改种子名字落不到老库 → 用 settings 打标一次性改名（只改仍是出厂名的行）。
+	renameEzfyGeneralSkills(db)
 	// 名将默认搭配：只在「一个都没配」时灌（幂等闸门）
 	// ★ 2026-10-24 多技能：combo_skill_ids（JSON 数组）也计入「已配过」闸门
 	var assigned int64
@@ -187,4 +190,58 @@ func upgradeLegacyEzfyGeneralSkills(db *gorm.DB) {
 			}
 		}
 	}
+}
+
+// renameEzfyGeneralSkills 把 10 条名将组合技从「率土风」改成「二战/战争风」名字（只跑一次）。
+//
+// ★★ 2026-10-31 用户需求：「名将组合技能 名字都不像是二战的技能，优化下，要战争类型的名字，
+// 之前是模仿率土」。
+//
+// 旧名 → 新名（效果与 ID 不变，只有名字）：
+//
+//	1 铁血军魂→装甲突击（攻击）   2 不动如山→纵深防御（防御）   3 长弓远略→火力延伸（射程）
+//	4 疾风迅雷→快速集群（速度）   5 铜墙铁壁→筑垒地域（减伤）   6 摧锋破甲→穿甲火力（破防）
+//	7 战地回春→野战医院（治疗）   8 连环突击→波次突击（连击）   9 血战到底→死守反击（反击回合）
+//	10 万钧之势→全线总攻（攻击·2 回合）
+//
+// ⚠️ 只改**仍然是出厂旧名**的行（`WHERE id=? AND name=?`）：
+// 管理端自己改过名字的行一律不碰，避免把人工配置冲掉。名将搭配存的是 ID（combo_skill_ids），
+// 改名不影响任何已配好的组合。
+func renameEzfyGeneralSkills(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_general_skill") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	const key = "ezfy_general_skill_rename_20261031"
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", key).Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	renames := []struct {
+		id       int
+		from, to string
+	}{
+		{1, "铁血军魂", "装甲突击"},
+		{2, "不动如山", "纵深防御"},
+		{3, "长弓远略", "火力延伸"},
+		{4, "疾风迅雷", "快速集群"},
+		{5, "铜墙铁壁", "筑垒地域"},
+		{6, "摧锋破甲", "穿甲火力"},
+		{7, "战地回春", "野战医院"},
+		{8, "连环突击", "波次突击"},
+		{9, "血战到底", "死守反击"},
+		{10, "万钧之势", "全线总攻"},
+	}
+	done := 0
+	for _, it := range renames {
+		res := db.Exec("UPDATE ezfy_cfg_general_skill SET name = ? WHERE id = ? AND name = ?",
+			it.to, it.id, it.from)
+		if res.Error != nil {
+			log.Printf("ezfy 组合技改名失败 id=%d %s→%s: %v（下次启动重试）", it.id, it.from, it.to, res.Error)
+			return
+		}
+		done += int(res.RowsAffected)
+	}
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", key, "1")
+	log.Printf("ezfy 名将组合技改名：%d 条已换成二战风名字", done)
 }

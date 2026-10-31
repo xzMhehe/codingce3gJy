@@ -923,7 +923,7 @@
         <el-row :gutter="12">
           <el-col :span="16">
             <el-form-item label="技能名称" required>
-              <el-input v-model="cf.name" maxlength="50" placeholder="例如：铁血军魂" />
+              <el-input v-model="cf.name" maxlength="50" placeholder="例如：装甲突击" />
             </el-form-item>
           </el-col>
           <el-col :span="8">

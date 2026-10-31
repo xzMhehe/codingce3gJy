@@ -3680,7 +3680,10 @@ func (h *EzfyHandler) ezfyNoticeHomeCount() int {
 //	军情警讯只留预警类（雷达/被侦查）。
 func ezfyReportCategory(title string) int {
 	switch {
-	case strings.HasPrefix(title, "军情警报"),
+	// ★ 2026-10-31 用户「军情警讯列表简化」：标题前缀 `军情警报: ` → `军情: `。
+	//   这里按更宽的前缀 `军情` 判定 —— 新标题（军情: …）与老数据（军情警报: …）都能命中，
+	//   所以**不需要回填历史战报**。★ 全项目没有其它以「军情」开头的标题（勿新增，否则会串类）。
+	case strings.HasPrefix(title, "军情"),
 		strings.HasPrefix(title, "被侦查报告"), // 雷达站≥1 才收得到
 		strings.HasPrefix(title, "城市归还"),
 		strings.HasPrefix(title, "将领叛离"), // 被攻打后忠诚归零叛离, 属于军情警讯
@@ -3723,7 +3726,7 @@ func EzfyReportTypeName(reportType int, title string) string {
 		return "被征服"
 	case strings.HasPrefix(title, "被侦查报告"):
 		return "被侦查"
-	case strings.HasPrefix(title, "军情警报"):
+	case strings.HasPrefix(title, "军情"):
 		return "预警"
 	case strings.HasPrefix(title, "侦查报告"):
 		return "侦查"
@@ -4643,7 +4646,8 @@ func ezfyReportCategoryCond(category int) string {
 		// ★ 2026-10-23 加入「计谋: …」——被别人发动计谋（先发制人/秘密策反）也是被动挨打类，
 		//   必须进军情警讯 tab 并点亮顶部「军情」感叹号，否则玩家根本不知道自己中了计。
 		//   ★ 自己发动的记「计谋发动: …」（无冒号紧跟），不会命中这个前缀。
-		return "(title LIKE '军情警报%' OR title LIKE '被侦查报告%' OR title LIKE '城市归还%' OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' OR title LIKE '计谋:%')"
+		// ★ 2026-10-31 标题前缀 `军情警报:` 简化为 `军情:`；这里用 `军情%` 同时覆盖新老数据。
+		return "(title LIKE '军情%' OR title LIKE '被侦查报告%' OR title LIKE '城市归还%' OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' OR title LIKE '计谋:%')"
 	case 2:
 		return "(title LIKE '侦查报告%' OR title LIKE '侦查失败%' OR title LIKE '掠夺报告%' OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%' OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%')"
 	}
