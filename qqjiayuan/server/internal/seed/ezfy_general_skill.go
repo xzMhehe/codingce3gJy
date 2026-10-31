@@ -31,16 +31,16 @@ import (
 var ezfyGeneralSkillSeeds = []model.EzfyCfgGeneralSkill{
 	// —— 增益类（本回合按概率发动，直接进战斗加成）——
 	{ID: 1, Name: "铁血军魂", Kind: 1, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 1, Quality: 2, SortNo: 1,
-		Des: "攻击力+%d%%（发动后本回合全体部队攻击提升）"},
+		Des: "攻击力+%d%%"},
 	{ID: 2, Name: "不动如山", Kind: 2, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 3, SortNo: 2,
-		Des: "防御力+%d%%（发动后本回合全体部队防御提升）"},
+		Des: "防御力+%d%%"},
 	{ID: 3, Name: "长弓远略", Kind: 3, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 30, Rounds: 1, Quality: 2, SortNo: 3,
-		Des: "射程+%d%%（发动后本回合全体部队射程提升）"},
+		Des: "射程+%d%%"},
 	{ID: 4, Name: "疾风迅雷", Kind: 4, BaseValue: 18, GrowPerLevel: 18, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 2, SortNo: 4,
-		Des: "速度+%d%%（发动后本回合全体部队移动速度提升）"},
+		Des: "速度+%d%%"},
 	// —— 减伤 / 破防（★ 都受 100% 封顶限制，取 80%）——
 	{ID: 5, Name: "铜墙铁壁", Kind: 5, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 40, Rounds: 1, Quality: 3, SortNo: 5,
-		Des: "受到伤害-%d%%（发动后本回合受到的伤害降低）"},
+		Des: "受到伤害-%d%%"},
 	{ID: 6, Name: "摧锋破甲", Kind: 6, BaseValue: 8, GrowPerLevel: 8, MaxLevel: 10, LevelPerStep: 35, ProcPct: 35, Rounds: 1, Quality: 4, SortNo: 6,
 		Des: "破防%d%%（发动后本回合攻击无视目标 %d%% 防御）"},
 	// —— 治疗 ——
