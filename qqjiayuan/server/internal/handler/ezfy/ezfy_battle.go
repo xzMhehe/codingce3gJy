@@ -1271,7 +1271,8 @@ func (st *ezfyBattleState) hitWall(unit *ezfyFightUnit, atkBonus int) int64 {
 		"【攻方】%s攻击城墙(对防), 城墙耐久-%d (剩余%d/%d)",
 		name, wallDmg, st.WallHp, st.WallHpMax))
 	if st.WallHp <= 0 {
-		st.Actions = append(st.Actions, "城墙耐久耗尽，守城防御加成失效")
+		// ★ 2026-10-31 用户口径：「守城防御」有歧义 → 统一叫「城防防御」（与战报头部一致）
+		st.Actions = append(st.Actions, "城墙耐久耗尽，城防防御加成失效")
 	}
 	return wallDmg
 }

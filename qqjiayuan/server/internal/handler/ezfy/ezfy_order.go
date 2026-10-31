@@ -4694,8 +4694,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				st.WallHpMax = maxHp
 				st.WallDefBonusMax = ezfyWallDefBonusMax(lv)
 				// ★★ 2026-10-31 用户规则：城墙**不再提供远程射程加成**（战报头部也去掉该项），
-				//   城墙只剩「耐久 + 守城防御」两条，防御仍只对城防兵种生效（见 wallBonusFor）。
-				st.Head = append(st.Head, fmt.Sprintf("【城墙】耐久 %d/%d，守城防御+%d%%",
+				//   城墙只剩「耐久 + 城防防御」两条，防御仍只对城防兵种生效（见 wallBonusFor）。
+				// ★★ 2026-10-31 用户口径：「守城防御」有歧义（听起来像给全城加防）→ 战报改称「**城防防御**」。
+				st.Head = append(st.Head, fmt.Sprintf("【城墙】耐久 %d/%d，城防防御+%d%%",
 					hp, maxHp, ezfyWallDefBonusMax(lv)))
 				// ★ 2026-10-24 守方无兵但有城墙：不能 0 回合直接判胜，仍需打完城墙耐久
 				//   （前提：攻方有兵；否则没人拆墙）。墙破 → 攻方胜；回合耗尽未破 → 平局（守方视为守住）。
