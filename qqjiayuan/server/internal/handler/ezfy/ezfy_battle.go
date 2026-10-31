@@ -264,6 +264,19 @@ type ezfyTypeBonus struct {
 	//	所以掩体防御(科技16)不再进全军通用防御，而是挂在城防(4) 上（见 ezfy_order.go 的 defType）。
 	//	key = 兵种 type，value = 防御加成%（目前唯一来源：掩体防御 → 城防）。
 	Def map[int]int
+	// ★★ 2026-10-31 按**具体兵种 ID**（不是 type）生效的加成 —— 配置里点名了兵种的技能要用这一档。
+	//
+	//	火炮控制「陆军装甲部队攻击+10/级」→ 装甲车(4)/轻型坦克(5)/重型坦克(6)/突击炮(7)/火箭(8)
+	//	坦克突袭「陆军速度+10%/级」    → **只**轻型坦克(5)/重型坦克(6)（用户 2026-10-31 口径）
+	//
+	//	⚠️ 不能用 Atk 那一档（key 是 type，1~4）来放兵种 ID —— 两套 ID 空间重叠会串号。
+	AtkFlatTroop map[int]int // 兵种 ID → 攻击属性加成（绝对值）
+	SpeedTroop   map[int]int // 兵种 ID → 速度加成%
+	// ★★ 2026-10-31 按**兵种 type** 生效的**射程**加成%。
+	//
+	//	弹幕支援「城防攻击范围+10%/级」→ 只对城防单位(4)生效（用户反馈「现在兵种也生效了」）。
+	//	原来它被错算进「防御加成」，而且不分兵种；现在挂到射程上、按 type 取。
+	Range map[int]int
 }
 
 // atkOf / speedOf 取某兵种的专属加成（表为 nil / 未配置 → 0，老快照安全）
@@ -323,6 +336,30 @@ func (t ezfyTypeBonus) atkFlatOf(atkType int) int {
 		return 0
 	}
 	return t.AtkFlat[atkType]
+}
+
+// atkFlatTroopOf 取**具体兵种 ID** 的攻击属性加成（绝对值，表为 nil → 0）
+func (t ezfyTypeBonus) atkFlatTroopOf(troopID int) int {
+	if t.AtkFlatTroop == nil {
+		return 0
+	}
+	return t.AtkFlatTroop[troopID]
+}
+
+// speedTroopOf 取**具体兵种 ID** 的速度加成%（表为 nil → 0）
+func (t ezfyTypeBonus) speedTroopOf(troopID int) int {
+	if t.SpeedTroop == nil {
+		return 0
+	}
+	return t.SpeedTroop[troopID]
+}
+
+// rangeOf 取某兵种 type 的射程加成%（表为 nil → 0；弹幕支援 → 城防）
+func (t ezfyTypeBonus) rangeOf(troopType int) int {
+	if t.Range == nil {
+		return 0
+	}
+	return t.Range[troopType]
 }
 
 // addVsType 往 AtkVsType 里累加（内层 map 懒建）
@@ -502,6 +539,13 @@ type ezfyBattleState struct {
 	//   Runtime.Left = 剩余生效回合；Runtime.Used = 「反击回合+」是否已加过（一次性）。
 	AtkCombos []*ezfyComboRuntime
 	DefCombos []*ezfyComboRuntime
+
+	// ★★ 2026-10-31 普通军官「每N回合发动」技能（弧形防御 / 火炮控制）：
+	//   快照里的加成是**发动回合的满额值**，非发动回合由 Step 扣掉
+	//   （见 ezfy_skill_timed.go 的 ezfyTimedDefOff / ezfyTimedAtkFlatOff）。
+	//   老快照没有这两个字段 → nil → 不扣减，行为与之前完全一致。
+	AtkTimed []*ezfyTimedSkill
+	DefTimed []*ezfyTimedSkill
 
 	// ★ 2026-09-23 指挥室/回合日志里攻守双方的兵种名都显示「阵营兵种名」。
 	// 攻方=出征方阵营；守方只有玩家城才有值，野地/AI/寇城为 0（通用名）。
@@ -1116,6 +1160,17 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	atkAct := activeCombos(st.AtkCombos)
 	defAct := activeCombos(st.DefCombos)
 
+	// ★★ 2026-10-31 普通军官「每N回合发动」技能（弧形防御/火炮控制）：
+	//   先刷新每个技能的剩余回合，再算出**本回合没发动**要扣掉的部分。
+	//   快照里存的是发动回合的满额值 → 不发动就扣掉，等价于「只在发动回合生效」。
+	atkTimedOn := ezfyTimedRoll(st.AtkTimed, st.Round)
+	defTimedOn := ezfyTimedRoll(st.DefTimed, st.Round)
+	st.timedAnno(atkTimedOn, defTimedOn)
+	atkTimedDefOff := ezfyTimedDefOff(st.AtkTimed, st.Round)
+	defTimedDefOff := ezfyTimedDefOff(st.DefTimed, st.Round)
+	atkTimedFlatOff := ezfyTimedAtkFlatOff(st.AtkTimed, st.Round)
+	defTimedFlatOff := ezfyTimedAtkFlatOff(st.DefTimed, st.Round)
+
 	// ★ 2026-10-05 ：战报里的兵种名**统一展示基础兵种名**（不带阵营前缀）。
 	//   本函数生成的日志就是战报「战斗过程」正文，故不再按攻守阵营取名。
 	stName := func(u *ezfyFightUnit) string {
@@ -1129,6 +1184,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	// ★ 2026-10-23 名将组合技能：攻击/防御/速度加成本回合生效时并入（与科技/装备同一口径）
 	atkBonus := st.AtkBonus + st.AtkEquip.Dmg + comboOfKind(atkAct, ezfyComboAtk)
 	defBonus := st.DefBonus + st.DefEquip.Def + comboOfKind(defAct, ezfyComboDef)
+	// ★★ 2026-10-31 「间隔发动」技能的防御加成只在本回合发动时生效：
+	//   快照里的 AtkDefBonus / DefBonus 含弧形防御满额 → 非发动回合扣掉。
+	atkDefBonusAll := st.AtkDefBonus - atkTimedDefOff
+	defDefBonusAll := defBonus - defTimedDefOff
 	atkSpeedBonus := st.AtkSpeedBonus + st.AtkEquip.Move + comboOfKind(atkAct, ezfyComboSpeed)
 	defSpeedBonus := st.DefSpeedBonus + st.DefEquip.Move + comboOfKind(defAct, ezfyComboSpeed)
 	// ★ 射程同理（弹道学那套之外，组合技可以再给一截）
@@ -1151,10 +1210,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	// ★ 2026-10-06 守方「防御加成」来源拆解：城防爪到谁被打就展示在谁的行动行
 	//   （城墙+科技+城守属性+城守技能+装备 → 伤害变少的来源）。攻方没有防御加成 → 只在守方被攻击的行上展示；
 	//   老快照无明细 → 不展示防御段。
-	defBonusTxt := ezfyDefBonusTxt("守方防御加成", st.DefDefBreak)
+	// ★★ 2026-10-31 「间隔发动」技能（弧形防御）只在发动回合计入明细，
+	//   否则非发动回合也会显示「军官技能·弧形防御+150%」，与伤害对不上。
+	defBonusTxt := ezfyDefBonusTxt("守方防御加成", ezfyTimedBreakFilter(st.DefDefBreak, st.DefTimed, st.Round))
 	// ★ 2026-10-07 攻方「防御加成」来源拆解：攻方被打（守方行动、守方绝地反击还击）时展示，
 	//   来源 = 攻方军官属性+防御技能(弧形防御/弹幕支援)+装备 Def。攻方无明细 → 不展示防御段（回退老行为）。
-	atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)
+	atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", ezfyTimedBreakFilter(st.AtkDefBreak, st.AtkTimed, st.Round))
 	// ★ 2026-10-24 加成明细开关：关闭后所有「(来源逐项)」明细置空，行动日志只留加成总百分比
 	//   （明细原始数据仍在快照 JSON 里，事后可核，见 ezfyShowBattleBonusDetailCfg）。
 	if !ezfyShowBattleBonusDetailCfg() {
@@ -1222,11 +1283,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 
 		// ★ 2026-10-06 射程 = 兵种基础射程 × (1 + 射程科技加成%)（）
 		// ★ 2026-10-24 城墙「远程射程」只对城防兵种生效（wallBonusFor，非城防单位 +0）。
+		// ★ 2026-10-31 弹幕支援「城防攻击范围+10%/级」只对**城防单位**生效（Type.Range[4]），
+		//   普通兵种取到 0 —— 修复玩家反馈的「弹幕支援连普通兵种也加射程」。
 		rangeD := unit.cfg.AttackRange
 		if isAtk {
-			rangeD = unit.cfg.AttackRange * (100 + atkRangeBonusAll) / 100
+			rangeD = unit.cfg.AttackRange * (100 + atkRangeBonusAll + st.AtkType.rangeOf(unit.cfg.Type)) / 100
 		} else {
-			rangeD = unit.cfg.AttackRange * (100 + defRangeBonusAll + st.wallBonusFor(unit)) / 100
+			rangeD = unit.cfg.AttackRange * (100 + defRangeBonusAll + st.wallBonusFor(unit) + st.DefType.rangeOf(unit.cfg.Type)) / 100
 		}
 		dist := ezfyAbs(target.pos - unit.pos)
 
@@ -1235,11 +1298,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		// ★★ 2026-10-08 速度加成 = 通用加成 + **该兵种专属**加成：
 		//   喷气引擎「空军速度+3%」只对空军生效，坦克突袭/闪电袭击/越岛战术分别只加陆/空/海
 		//   （原来一律进 atkSpeedBonus → 全军受益，用户反馈「空军速度只加空军」）。
-		speedBonus := defSpeedBonus + st.DefType.speedOf(unit.cfg.Type)
+		// ★★ 2026-10-31 坦克突袭按**兵种 ID** 生效（只轻坦/重坦）→ 追加 SpeedTroop 一档。
+		speedBonus := defSpeedBonus + st.DefType.speedOf(unit.cfg.Type) + st.DefType.speedTroopOf(unit.cfg.ID)
 		cmds := defCmds
 		if isAtk {
 			moveMap = st.AtkMoves
-			speedBonus = atkSpeedBonus + st.AtkType.speedOf(unit.cfg.Type)
+			speedBonus = atkSpeedBonus + st.AtkType.speedOf(unit.cfg.Type) + st.AtkType.speedTroopOf(unit.cfg.ID)
 			cmds = atkCmds
 		}
 		// ★ 按兵种取指令（缺省 = 空串 → 回落司令部兵种配置）
@@ -1365,13 +1429,15 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			atkFlat := 0
 			equip := st.DefEquip
 			if isAtk {
-				// 攻击加成 = 通用 + 该兵种专属（按文案严格：四指编队=空军打空军、狼群战术=海军打海军）
+				// 攻击加成 = 通用 + 该兵种专属（按文案严格：四指编队=空军打空军、狼群战术=海军攻击力%）
 				tb := st.AtkType.attackBonusFor(unit.cfg.Type, target.cfg)
 				unitAtkBonus = atkBonus + tb
 				if tb > 0 {
 					typeAtkTxt = fmt.Sprintf(" 兵种专属+%d%%", tb)
 				}
-				if atkFlat = st.AtkType.atkFlatOf(unit.cfg.Type); atkFlat > 0 {
+				// ★★ 2026-10-31 火炮控制按**具体兵种 ID** 下发（装甲车/轻坦/重坦/突击炮/火箭），
+				//   且只在「每3回合发动1回合」的发动回合生效（非发动回合扣掉）。
+				if atkFlat = st.AtkType.atkFlatOf(unit.cfg.Type) + st.AtkType.atkFlatTroopOf(unit.cfg.ID) - atkTimedFlatOff[unit.cfg.ID]; atkFlat > 0 {
 					typeAtkTxt += fmt.Sprintf(" 兵种攻击+%d", atkFlat)
 				}
 				if !ezfyShowBattleBonusDetailCfg() {
@@ -1387,7 +1453,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				//   普通部队(陆/海/空)恒为 0，只有城防单位(4) 吃这一截。
 				// ★ 2026-10-24 城墙：征服战里按剩余耐久比例提供 0~等级×5% 的守城防御，
 				//   同样**只对城防兵种生效**（wallBonusFor）；掠夺战 WallEnabled=false → 不生效。
-				unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type) + st.wallBonusFor(target)
+				unitDefBonus = defDefBonusAll + st.DefType.defOf(target.cfg.Type) + st.wallBonusFor(target)
 				equip = st.AtkEquip
 			} else {
 				// ★ 2026-10-06 守方行动时也要吃科技+军官技能的攻击加成
@@ -1398,7 +1464,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if tb > 0 {
 					typeAtkTxt = fmt.Sprintf(" 兵种专属+%d%%", tb)
 				}
-				if atkFlat = st.DefType.atkFlatOf(unit.cfg.Type); atkFlat > 0 {
+				// ★★ 2026-10-31 守方同口径：火炮控制按兵种 ID，且只在发动回合生效。
+				if atkFlat = st.DefType.atkFlatOf(unit.cfg.Type) + st.DefType.atkFlatTroopOf(unit.cfg.ID) - defTimedFlatOff[unit.cfg.ID]; atkFlat > 0 {
 					typeAtkTxt += fmt.Sprintf(" 兵种攻击+%d", atkFlat)
 				}
 				if !ezfyShowBattleBonusDetailCfg() {
@@ -1409,7 +1476,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				// ★★ 2026-10-09 修复「装备防御被算两遍」：`st.AtkDefBonus` 在建 atkDefBonus 时
 				//   **已经含** atkEquip.Def（见 ezfy_order.go / ezfy_activity_target.go），
 				//   这里再 + st.AtkEquip.Def 会重复；直接取 st.AtkDefBonus（= AtkDefBreak 之和）。
-				unitDefBonus = st.AtkDefBonus + st.AtkType.defOf(target.cfg.Type)
+				unitDefBonus = atkDefBonusAll + st.AtkType.defOf(target.cfg.Type)
 			}
 			bonusBreak := atkBonusBreak
 			if !isAtk {
@@ -1627,9 +1694,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		targetRangeD := target.cfg.AttackRange
 		if isAtk {
 			// ★ 2026-10-24 城墙「远程射程」只对城防兵种生效（wallBonusFor）
-			targetRangeD = target.cfg.AttackRange * (100 + defRangeBonusAll + st.wallBonusFor(target)) / 100
+			// ★ 2026-10-31 弹幕支援：守方城防单位的射程加成（DefType.Range[4]）
+			targetRangeD = target.cfg.AttackRange * (100 + defRangeBonusAll + st.wallBonusFor(target) + st.DefType.rangeOf(target.cfg.Type)) / 100
 		} else {
-			targetRangeD = target.cfg.AttackRange * (100 + atkRangeBonusAll) / 100
+			targetRangeD = target.cfg.AttackRange * (100 + atkRangeBonusAll + st.AtkType.rangeOf(target.cfg.Type)) / 100
 		}
 		if dist <= rangeD && dist <= targetRangeD && target.alive() {
 			counterRounds := st.AtkCounterRounds // target 是攻方时用攻方回合数
@@ -1646,23 +1714,25 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				//   在反击时**完全不生效**（用户反馈「没有对海军/对海攻击加成」）。
 				cbType := 0
 				cbFlat := 0 // 反击方的兵种攻击属性加成（绝对值）
-				if isAtk {  // 攻方在打 → 被打的是守方 → 守方发动反击（被还击方=攻方）
+				if isAtk { // 攻方在打 → 被打的是守方 → 守方发动反击（被还击方=攻方）
 					// 反击方(target) 打 被还击方(unit)：专属加成按「反击方兵种 → unit 兵种」取
 					cbType = st.DefType.attackBonusFor(target.cfg.Type, unit.cfg)
 					cbAtk = st.DefAtkBonus + cbType
-					cbFlat = st.DefType.atkFlatOf(target.cfg.Type)
+					// ★ 2026-10-31 火炮控制按兵种 ID + 只发动回合生效
+					cbFlat = st.DefType.atkFlatOf(target.cfg.Type) + st.DefType.atkFlatTroopOf(target.cfg.ID) - defTimedFlatOff[target.cfg.ID]
 					// ★ 2026-10-07 攻方被守方反击 → 攻方防御加成减伤（原来恒 0）
 					//   ★ 2026-10-09 同上修双算：st.AtkDefBonus 已含 atkEquip.Def
 					//   ★★ 2026-10-09 被还击方（unit）的兵种专属防御也照加（掩体防御只对城防生效）
-					cbDef = st.AtkDefBonus + st.AtkType.defOf(unit.cfg.Type)
+					//   ★ 2026-10-31 弧形防御只发动回合生效（atkDefBonusAll 已扣减）
+					cbDef = atkDefBonusAll + st.AtkType.defOf(unit.cfg.Type)
 				} else { // 守方在打 → 被打的是攻方 → 攻方发动反击（被还击方=守方）
 					cbType = st.AtkType.attackBonusFor(target.cfg.Type, unit.cfg)
 					cbAtk = atkBonus + cbType
-					cbFlat = st.AtkType.atkFlatOf(target.cfg.Type)
+					cbFlat = st.AtkType.atkFlatOf(target.cfg.Type) + st.AtkType.atkFlatTroopOf(target.cfg.ID) - atkTimedFlatOff[target.cfg.ID]
 					// ★ 2026-10-07 守方被攻方反击 → 守方防御加成（基础+装备）减伤
 					//   ★ 2026-10-09 同上修双算：defBonus 已含 defEquip.Def
 					//   ★★ 2026-10-09 被还击方（unit）的兵种专属防御也照加（城防单位吃掩体防御）
-					cbDef = defBonus + st.DefType.defOf(unit.cfg.Type)
+					cbDef = defDefBonusAll + st.DefType.defOf(unit.cfg.Type)
 				}
 				cbTypeTxt := ""
 				if cbType > 0 {
@@ -1779,6 +1849,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 
 	// ★ 2026-10-23 名将组合技能：回合结束结算（回合治疗 + 生效回合数递减）
 	st.comboEndRound()
+	// ★ 2026-10-31 普通军官「间隔发动」技能：回合结束递减剩余生效回合
+	ezfyTimedEndRound(st.AtkTimed)
+	ezfyTimedEndRound(st.DefTimed)
 
 	// ★ 2026-10-24 守军全灭但城墙未破 → 进入围城阶段：攻方向城墙推进、进射程才拆墙。
 	if !st.Done && len(ezfyAliveList(st.Defenders)) == 0 {
@@ -1858,6 +1931,9 @@ type ezfyBattleExtra struct {
 	// ★ 2026-10-08 兵种专属加成（配置里带兵种的那些科技/技能，如「空军速度+3%」只加空军）
 	AtkType ezfyTypeBonus
 	DefType ezfyTypeBonus
+	// ★ 2026-10-31 普通军官「每N回合发动」技能（弧形防御/火炮控制）
+	AtkTimed []*ezfyTimedSkill
+	DefTimed []*ezfyTimedSkill
 }
 
 // ezfySimulate 执行战斗（兼容包装：一次跑完）
@@ -1887,6 +1963,7 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 		x.AtkDefBonus, x.AtkDefBreak,
 		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0,
 		x.AtkType, x.DefType)
+	st.AtkTimed, st.DefTimed = x.AtkTimed, x.DefTimed
 	for !st.Done {
 		// nil = 沿用司令部的兵种战斗配置，与原实现行为一致
 		st.Step(nil, nil)
@@ -1919,6 +1996,7 @@ func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
 		x.AtkDefBonus, x.AtkDefBreak,
 		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0,
 		x.AtkType, x.DefType)
+	st.AtkTimed, st.DefTimed = x.AtkTimed, x.DefTimed
 	if defBreakPct > 0 {
 		for _, d := range defenderUnits {
 			if d.Count > 0 {
@@ -2005,6 +2083,10 @@ type ezfyBattleSnapshot struct {
 	//   ★ 2026-10-24 多技能：存运行时数组（每个技能的生效回合/是否已用随快照持久化）
 	AtkCombos []*ezfyComboRuntime `json:"atk_combos,omitempty"`
 	DefCombos []*ezfyComboRuntime `json:"def_combos,omitempty"`
+	// ★ 2026-10-31 普通军官「每N回合发动」技能（弧形防御/火炮控制）运行时
+	//   （老快照没有 → nil → 不扣减，行为与之前一致）
+	AtkTimed []*ezfyTimedSkill `json:"atk_timed,omitempty"`
+	DefTimed []*ezfyTimedSkill `json:"def_timed,omitempty"`
 
 	AtkCamp int `json:"atk_camp"`
 	DefCamp int `json:"def_camp"`
@@ -2072,6 +2154,7 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		// ★ 2026-10-23 名将组合技能：生效中/已搭配都要存，指挥室暂停再打不能丢
 		//   ★ 2026-10-24 多技能：直接存运行时数组（Left=剩余生效回合，Used=反击是否已加）
 		AtkCombos: st.AtkCombos, DefCombos: st.DefCombos,
+		AtkTimed: st.AtkTimed, DefTimed: st.DefTimed,
 		AtkCamp: st.AtkCamp, DefCamp: st.DefCamp,
 		AtkType: st.AtkType, DefType: st.DefType,
 
@@ -2113,6 +2196,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		// ★ 2026-10-23 名将组合技能（老快照为 nil → 没有组合技，行为与之前一致）
 		//   ★ 2026-10-24 多技能：直接取运行时数组（Left/Used 随快照恢复，暂停再打不丢状态）
 		AtkCombos: snap.AtkCombos, DefCombos: snap.DefCombos,
+		AtkTimed: snap.AtkTimed, DefTimed: snap.DefTimed,
 		AtkCounterRounds: atkRounds, DefCounterRounds: defRounds,
 		AtkCamp: snap.AtkCamp, DefCamp: snap.DefCamp,
 		AtkType: snap.AtkType, DefType: snap.DefType,

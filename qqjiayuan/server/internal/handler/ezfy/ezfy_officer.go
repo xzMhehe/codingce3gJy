@@ -1853,15 +1853,19 @@ func (h *EzfyHandler) officerCounterRounds(o *model.EzfyOfficer) int {
 //
 // ★★ 2026-10-08 用户确认「按文案严格」—— 配置里的「X 对 Y 攻击」是**按目标**生效的：
 //
-//	火炮控制「陆军装甲攻击+10/级」   → **陆军兵种的攻击属性 +10/级**（绝对值；对地/对海/对空都加）
-//	                                   （用户 2026-10-08 确认：「就改成 陆军 攻击 加 10 属性吧」）
+//	火炮控制「陆军装甲攻击+10/级」   → **陆军装甲部队**（装甲车/轻坦/重坦/突击炮/火箭）的攻击属性 +10/级
+//	                                   ★ 2026-10-31 用户修订：只给**装甲部队**（原来错给了整个陆军），
+//	                                     且按文案「每3回合提升，持续1回合」→ 改由 officerTimedSkills 下发
 //	四指编队「空军对空攻击+15%/级」  → 空军 打 **空军**目标 +15%/级
-//	狼群战术「海军对海攻击+15%/级」  → 海军 打 **海军**目标 +15%/级
-//	坦克突袭「陆军速度+10%/级」      → 陆军速度（不分目标）
+//	狼群战术「海军对海攻击+15%/级」  → ★ 2026-10-31 用户修订：**海军攻击力** +15%/级（百分比）
+//	                                   （用户原话「注意是攻击力提高而不是对海攻击数值提高」；
+//	                                     原来只在「海军打海军」时生效，玩家打陆基守军永远看不到效果）
+//	坦克突袭「陆军速度+10%/级」      → ★ 2026-10-31 用户修订：**只**轻型坦克(5)/重型坦克(6)
 //	闪电袭击「空军速度+10%/级」      → 空军速度
 //	越岛战术「海军速度+10%/级」      → 海军速度
+//	弹幕支援「城防攻击范围+10%/级」  → ★ 2026-10-31 用户修订：只对**城防单位**的**射程**生效
+//	                                   （原来错算成「防御加成」且全兵种生效，玩家反馈「兵种也生效了」）
 //
-// ★ 原实现一律按「该兵种通用攻击加成」处理（海军打谁都 +90%），与文案不符。
 // ★ 传入的 ezfyTypeBonus 里各表为 nil 时函数内部自行建表。
 func (h *EzfyHandler) officerTypeBonus(o *model.EzfyOfficer, b ezfyTypeBonus) ezfyTypeBonus {
 	if b.Atk == nil {
@@ -1876,27 +1880,100 @@ func (h *EzfyHandler) officerTypeBonus(o *model.EzfyOfficer, b ezfyTypeBonus) ez
 	if b.AtkFlat == nil {
 		b.AtkFlat = map[int]int{}
 	}
+	if b.AtkFlatTroop == nil {
+		b.AtkFlatTroop = map[int]int{}
+	}
+	if b.SpeedTroop == nil {
+		b.SpeedTroop = map[int]int{}
+	}
+	if b.Range == nil {
+		b.Range = map[int]int{}
+	}
 	if o == nil {
 		return b
 	}
 	scale := h.officerSkillScale(o)
 	for _, s := range officerSkills(o) {
 		switch s {
-		case "火炮控制": // 陆军 攻击属性（对地/对海/对空）+10/级（**绝对值**，不是百分比）
-			b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale
+		case "火炮控制": // 陆军装甲部队 攻击属性（对地/对海/对空/对防）+10/级（**绝对值**）
+			for _, id := range ezfyArmorTroopIds {
+				b.AtkFlatTroop[id] += 10 * scale
+			}
 		case "四指编队": // 空军 打 空军
 			b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)
-		case "狼群战术": // 海军 打 海军
-			b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)
-		case "坦克突袭":
-			b.Speed[ezfyTroopTypeArmy] += 10 * scale
+		case "狼群战术": // 海军 攻击力%（不分目标）
+			b.Atk[ezfyTroopTypeNavy] += 15 * scale
+		case "坦克突袭": // 只 轻型坦克 / 重型坦克
+			for _, id := range ezfyTankRushTroopIds {
+				b.SpeedTroop[id] += 10 * scale
+			}
 		case "闪电袭击":
 			b.Speed[ezfyTroopTypeAir] += 10 * scale
 		case "越岛战术":
 			b.Speed[ezfyTroopTypeNavy] += 10 * scale
+		case "弹幕支援": // 只对城防单位的**射程**生效
+			b.Range[ezfyTroopTypeCity] += 10 * scale
 		}
 	}
 	return b
+}
+
+// officerTimedSkills 军官「每 N 回合发动、持续 M 回合」的技能（战场运行时用）。
+//
+// ★★ 2026-10-31 按配置文案落地（用户要求）：
+//
+//	弧形防御 → 每 3 回合提升防御力，持续 1 回合（+30%×技能等级）
+//	火炮控制 → 每 3 回合提升陆军装甲部队攻击，持续 1 回合（+10×技能等级，对地/对空/对海/对防）
+//
+// 引擎侧：战场快照里这两项仍是**满额**（= 发动回合的加成），
+// 非发动回合由 ezfyTimedDefOff / ezfyTimedAtkFlatOff 扣掉（见 ezfy_skill_timed.go）。
+func (h *EzfyHandler) officerTimedSkills(o *model.EzfyOfficer) []*ezfyTimedSkill {
+	if o == nil {
+		return nil
+	}
+	scale := h.officerSkillScale(o)
+	lv := h.officerSkillLevel(o)
+	out := []*ezfyTimedSkill{}
+	for _, s := range officerSkills(o) {
+		switch s {
+		case "弧形防御":
+			out = append(out, &ezfyTimedSkill{Name: s, Level: lv, Interval: ezfyTimedSkillInterval, Duration: 1,
+				Def: 30 * scale})
+		case "火炮控制":
+			m := map[int]int{}
+			for _, id := range ezfyArmorTroopIds {
+				m[id] = 10 * scale
+			}
+			out = append(out, &ezfyTimedSkill{Name: s, Level: lv, Interval: ezfyTimedSkillInterval, Duration: 1,
+				AtkFlat: m})
+		}
+	}
+	return out
+}
+
+// generalTimedSkills 军官池守将版本的「间隔发动」技能（活动野地/寇城守将用）。
+func generalTimedSkills(g *model.EzfyCfgGeneral) []*ezfyTimedSkill {
+	if g == nil {
+		return nil
+	}
+	scale := generalSkillScale(g)
+	lv := generalSkillLevel(g)
+	out := []*ezfyTimedSkill{}
+	for _, s := range generalSkillList(g) {
+		switch s {
+		case "弧形防御":
+			out = append(out, &ezfyTimedSkill{Name: s, Level: lv, Interval: ezfyTimedSkillInterval, Duration: 1,
+				Def: 30 * scale})
+		case "火炮控制":
+			m := map[int]int{}
+			for _, id := range ezfyArmorTroopIds {
+				m[id] = 10 * scale
+			}
+			out = append(out, &ezfyTimedSkill{Name: s, Level: lv, Interval: ezfyTimedSkillInterval, Duration: 1,
+				AtkFlat: m})
+		}
+	}
+	return out
 }
 
 // officerSkillBattleBonus 军官技能带来的**通用**攻击加成（复刻原版 getOfficerBattleBonus 的技能段）。
@@ -1968,16 +2045,21 @@ func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 	for _, s := range officerSkills(o) {
 		switch s {
 		case "弧形防御":
+			// ★ 2026-10-31 这里是**发动回合的满额值**：引擎在非发动回合会扣掉
+			//   （弧形防御=每3回合发动1回合，见 officerTimedSkills）。
 			bonus += 30 * scale
-		case "弹幕支援":
-			bonus += 10 * scale
 		}
+		// ★★ 2026-10-31 弹幕支援**不再算防御加成** —— 按文案它是「城防攻击范围+10%」，
+		//   原来错算成 +10% 防御且全兵种生效（用户反馈「兵种也生效了」）。
+		//   现在由 officerTypeBonus 挂到「城防单位的射程」上（ezfyTypeBonus.Range[4]）。
 	}
 	return bonus
 }
 
-// officerGuardSkillsBreak 城守「防御类技能」的**逐项**明细（弧形防御 30 / 弹幕支援 10，随等级 ×N）。
+// officerGuardSkillsBreak 城守「防御类技能」的**逐项**明细（弧形防御 30，随等级 ×N）。
 // 战报「防御加成」拆解展示用（与 officerGuardBonus 的技能段同一口径）。
+//
+// ★ 2026-10-31 弹幕支援移出（它是射程技能，不是防御技能）。
 func (h *EzfyHandler) officerGuardSkillsBreak(o *model.EzfyOfficer) []ezfyBonusItem {
 	if o == nil {
 		return nil
@@ -1988,8 +2070,6 @@ func (h *EzfyHandler) officerGuardSkillsBreak(o *model.EzfyOfficer) []ezfyBonusI
 		switch s {
 		case "弧形防御":
 			out = append(out, ezfyBonusItem{Name: s, Value: 30 * scale})
-		case "弹幕支援":
-			out = append(out, ezfyBonusItem{Name: s, Value: 10 * scale})
 		}
 	}
 	return out

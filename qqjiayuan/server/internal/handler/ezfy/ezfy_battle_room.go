@@ -534,10 +534,14 @@ func (h *EzfyHandler) botBattleCmds() {
 					nearest = d
 				}
 			}
-			// 本单位实际射程（含科技加成）
+			// 本单位实际射程（含科技加成 + ★ 2026-10-31 弹幕支援「城防射程%」按兵种取）
+			typeRange := st.AtkType.rangeOf(u.cfg.Type)
+			if side == "def" {
+				typeRange = st.DefType.rangeOf(u.cfg.Type)
+			}
 			rangeD := u.cfg.AttackRange
-			if rangeBonus != 0 {
-				rangeD = u.cfg.AttackRange * (100 + rangeBonus) / 100
+			if rangeBonus != 0 || typeRange != 0 {
+				rangeD = u.cfg.AttackRange * (100 + rangeBonus + typeRange) / 100
 			}
 			cmd := ezfyCmdAdvance
 			if nearest <= rangeD {

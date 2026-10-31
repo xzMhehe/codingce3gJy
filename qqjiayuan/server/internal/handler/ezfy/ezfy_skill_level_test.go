@@ -68,14 +68,20 @@ func TestSkillBattleBonusScaled(t *testing.T) {
 	}
 }
 
-// TestGuardBonusScaled 防御类技能加成必须乘倍率（弧形防御/弹幕支援），属性部分 officerGuardAttrBonus 不加倍。
+// TestGuardBonusScaled 防御类技能加成必须乘倍率（弧形防御），属性部分 officerGuardAttrBonus 不加倍。
+//
+// ★ 2026-10-31 弹幕支援移出：它按配置文案是「城防攻击范围+10%」，属**射程**技能，
+// 不再算进防御加成（改由 officerTypeBonus 挂到城防射程，见 TestTypeSpecificBonusWired）。
 func TestGuardBonusScaled(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) officerGuardBonus(")
-	if !strings.Contains(body, "30 * scale") || !strings.Contains(body, "10 * scale") {
+	if !strings.Contains(body, "30 * scale") {
 		t.Fatalf("officerGuardBonus 的技能部分未乘倍率：\n%s", body)
 	}
 	if !strings.Contains(body, "officerGuardAttrBonus") {
 		t.Fatalf("officerGuardBonus 未保留属性部分（officerGuardAttrBonus）：\n%s", body)
+	}
+	if strings.Contains(body, `case "弹幕支援"`) {
+		t.Fatalf("弹幕支援是射程技能，不该再进防御加成：\n%s", body)
 	}
 }
 
@@ -84,16 +90,21 @@ func TestGuardBonusScaled(t *testing.T) {
 // ★ 2026-10-09 行军速度也改为按兵种生效（`ezfy_order.go` 的 `ezfyMarchSpeed`）：
 // 原来「不分兵种一律 +10%/级」的 `officerSpeedSkillBonus` 已删除（越岛战术带队纯陆军不再
 // 凭空加速），速度技能统一由 `officerTypeBonus` 按兵种下发（陆/空/海，10% × 技能等级）。
+//
+// ★ 2026-10-31 坦克突袭再收窄：**只**轻型坦克(5)/重型坦克(6) → 走 SpeedTroop（兵种 ID）。
 func TestSpeedSkillBonusScaled(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) officerTypeBonus(")
 	for _, want := range []string{
-		"b.Speed[ezfyTroopTypeArmy] += 10 * scale", // 坦克突袭 → 陆军
+		"b.SpeedTroop[id] += 10 * scale",           // 坦克突袭 → 只轻坦/重坦（ezfyTankRushTroopIds）
 		"b.Speed[ezfyTroopTypeAir] += 10 * scale",  // 闪电袭击 → 空军
 		"b.Speed[ezfyTroopTypeNavy] += 10 * scale", // 越岛战术 → 海军
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("速度类技能未按兵种 × 倍率下发（缺 %s）：\n%s", want, body)
 		}
+	}
+	if strings.Contains(body, "b.Speed[ezfyTroopTypeArmy] += 10 * scale") {
+		t.Fatalf("坦克突袭不该再给整个陆军加速（只轻坦/重坦）：\n%s", body)
 	}
 	// 行军速度必须走按兵种的 ezfyMarchSpeed（燃烧引擎通用 + 喷气引擎/军官技能按兵种）
 	march := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyMarchSpeed(")
@@ -102,6 +113,7 @@ func TestSpeedSkillBonusScaled(t *testing.T) {
 		"tb.Speed[ezfyTroopTypeAir] += v", // 喷气引擎：只空军
 		"h.officerTypeBonus(lead, tb)",    // 军官速度技能：按兵种
 		"tb.speedOf(cfg.Type)",            // 按兵种取专属加成
+		"tb.speedTroopOf(cfg.ID)",         // 坦克突袭：按兵种 ID（只轻坦/重坦）
 	} {
 		if !strings.Contains(march, want) {
 			t.Fatalf("行军速度未按兵种接入科技/军官速度加成（缺 %s）：\n%s", want, march)
@@ -128,17 +140,34 @@ func TestLootHealScaled(t *testing.T) {
 	}
 }
 
-// TestActWildDefScaled 活动野地守将加成乘倍率（弧形防御/弹幕支援/速度），属性部分不加倍。
+// TestActWildDefScaled 活动野地守将加成乘倍率（弧形防御），属性部分不加倍。
+//
+// ★ 2026-10-31 口径修正：弹幕支援（射程）/速度技能都不再走这个函数 ——
+// 它们由 generalTypeBonus 按兵种下发（坦克突袭只轻坦/重坦），所以这里只剩「防御」。
 func TestActWildDefScaled(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_activity_target.go", "func ezfyActWildDefBonus(")
 	if !strings.Contains(body, "generalSkillScale(g)") {
 		t.Fatalf("ezfyActWildDefBonus 未按守将等级取倍率：\n%s", body)
 	}
-	if !strings.Contains(body, "10 * scale") {
-		t.Fatalf("ezfyActWildDefBonus 的速度/弹幕支援未乘倍率：\n%s", body)
+	if !strings.Contains(body, "30 * scale") {
+		t.Fatalf("ezfyActWildDefBonus 的弧形防御未乘倍率：\n%s", body)
 	}
 	if !strings.Contains(body, "ezfyAttrToBonus(g.Learning)") {
 		t.Fatalf("ezfyActWildDefBonus 未保留守将属性部分（ezfyAttrToBonus）：\n%s", body)
+	}
+	if strings.Contains(body, `case "弹幕支援"`) {
+		t.Fatalf("弹幕支援是射程技能，不该再进守军防御加成：\n%s", body)
+	}
+	// 守将的兵种专属技能（含速度/射程）必须走 generalTypeBonus 且乘倍率
+	gt := ezfyFuncBody(t, "ezfy_activity_target.go", "func generalTypeBonus(")
+	for _, want := range []string{
+		"generalSkillScale(g)",
+		"b.SpeedTroop[id] += 10 * scale",           // 坦克突袭 → 只轻坦/重坦
+		"b.Range[ezfyTroopTypeCity] += 10 * scale", // 弹幕支援 → 城防射程
+	} {
+		if !strings.Contains(gt, want) {
+			t.Fatalf("generalTypeBonus 未按兵种下发守将技能（缺 %s）：\n%s", want, gt)
+		}
 	}
 }
 
@@ -307,13 +336,17 @@ func TestDefBonusInjected(t *testing.T) {
 	//   而本测试用 `\n` 拼多行片段 → 原来在 CRLF 工作区**永远匹配不上**（假红）。
 	src := strings.ReplaceAll(rawFile(t, "ezfy_battle.go"), "\r\n", "\n")
 	for _, want := range []string{
-		`defBonusTxt := ezfyDefBonusTxt("守方防御加成", st.DefDefBreak)`,
-		`atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)`,
+		// ★ 2026-10-31 明细按回合过滤：弧形防御/火炮控制未发动回合不展示（否则「显示加了却没生效」）
+		`defBonusTxt := ezfyDefBonusTxt("守方防御加成", ezfyTimedBreakFilter(st.DefDefBreak, st.DefTimed, st.Round))`,
+		`atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", ezfyTimedBreakFilter(st.AtkDefBreak, st.AtkTimed, st.Round))`,
 		`return fmt.Sprintf("%s+%d%%(%s)", label, total, strings.Join(parts, " "))`,
-		// 守方打攻方 → 攻方防御减伤（已含装备 Def）；★ 2026-10-09 再加被还击方的兵种专属防御
-		"unitDefBonus = st.AtkDefBonus + st.AtkType.defOf(target.cfg.Type)\n",
-		// 攻方打守方 → 守方防御减伤（已含装备 Def）；★ 2026-10-09 同上；★ 2026-10-24 城墙加成只对城防兵种生效
-		"unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type) + st.wallBonusFor(target)\n",
+		// 守方打攻方 → 攻方防御减伤（已含装备 Def）；★ 2026-10-31 弧形防御只发动回合生效
+		"unitDefBonus = atkDefBonusAll + st.AtkType.defOf(target.cfg.Type)\n",
+		// 攻方打守方 → 守方防御减伤（已含装备 Def）；★ 2026-10-24 城墙只对城防兵种生效
+		"unitDefBonus = defDefBonusAll + st.DefType.defOf(target.cfg.Type) + st.wallBonusFor(target)\n",
+		// 两处「按回合扣掉弧形防御」的入口
+		"atkDefBonusAll := st.AtkDefBonus - atkTimedDefOff",
+		"defDefBonusAll := defBonus - defTimedDefOff",
 		`json:"atk_def_bonus"`,
 	} {
 		if !strings.Contains(src, want) {
@@ -507,19 +540,32 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 			t.Fatalf("通用速度不该含喷气引擎(19)（那是空军专属）：%s", bad)
 		}
 	}
-	// ③ 军官的六个兵种技能必须按兵种下发（2026-10-08 用户确认的口径）：
-	//   火炮控制 → 陆军**攻击属性 +10/级（绝对值）**；四指编队 → 空军打空军；狼群战术 → 海军打海军；
-	//   坦克突袭/闪电袭击/越岛战术 → 陆/空/海速度。
+	// ③ 军官的六个兵种技能必须按兵种下发（2026-10-31 用户确认的口径）：
+	//   火炮控制 → **陆军装甲部队**（装甲车4/轻坦5/重坦6/突击炮7/火箭8）攻击属性 +10/级；
+	//   四指编队 → 空军打空军；狼群战术 → 海军**攻击力%**（不分目标）；
+	//   坦克突袭 → **只**轻坦5/重坦6 速度；闪电袭击/越岛战术 → 空/海速度；
+	//   弹幕支援 → **只**城防单位的射程。
 	for _, want := range []string{
-		"b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale",                  // 火炮控制 → 陆军攻击属性
-		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)",   // 四指编队 → 空军打空军
-		"b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)", // 狼群战术 → 海军打海军
-		"b.Speed[ezfyTroopTypeArmy] += 10 * scale",                    // 坦克突袭 → 陆军
-		"b.Speed[ezfyTroopTypeAir] += 10 * scale",                     // 闪电袭击 → 空军
-		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",                    // 越岛战术 → 海军
+		"b.AtkFlatTroop[id] += 10 * scale",                          // 火炮控制 → 装甲部队（按兵种 ID）
+		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)", // 四指编队 → 空军打空军
+		"b.Atk[ezfyTroopTypeNavy] += 15 * scale",                    // 狼群战术 → 海军攻击力%
+		"b.SpeedTroop[id] += 10 * scale",                            // 坦克突袭 → 只轻坦/重坦
+		"b.Speed[ezfyTroopTypeAir] += 10 * scale",                   // 闪电袭击 → 空军
+		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",                  // 越岛战术 → 海军
+		"b.Range[ezfyTroopTypeCity] += 10 * scale",                  // 弹幕支援 → 只城防射程
 	} {
 		if !strings.Contains(off, want) {
 			t.Fatalf("军官兵种技能未按兵种下发：%s", want)
+		}
+	}
+	// 旧口径必须消失：火炮控制不再整档给陆军、狼群战术不再只对海、坦克突袭不再整档给陆军
+	for _, bad := range []string{
+		"b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale",
+		"b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)",
+		"b.Speed[ezfyTroopTypeArmy] += 10 * scale",
+	} {
+		if strings.Contains(off, bad) {
+			t.Fatalf("军官兵种技能仍是旧口径：%s", bad)
 		}
 	}
 	// ④ 通用技能加成里不得再出现兵种技能（尖兵突击是全体兵种，保留）
@@ -537,7 +583,7 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 			}
 		}
 	}
-	// ⑤ 战斗引擎必须按兵种取值叠加（攻击 + 速度，攻守双方）
+	// ⑤ 战斗引擎必须按兵种取值叠加（攻击 + 速度 + 射程，攻守双方）
 	for _, want := range []string{
 		"tb := st.AtkType.attackBonusFor(unit.cfg.Type, target.cfg)", // 攻方行动（含"对目标"加成）
 		"tb := st.DefType.attackBonusFor(unit.cfg.Type, target.cfg)", // 守方行动
@@ -545,6 +591,12 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 		"unitAtkBonus = st.DefAtkBonus + tb",
 		"atkSpeedBonus + st.AtkType.speedOf(unit.cfg.Type)",
 		"defSpeedBonus + st.DefType.speedOf(unit.cfg.Type)",
+		"st.AtkType.speedTroopOf(unit.cfg.ID)",   // 坦克突袭按兵种 ID
+		"st.DefType.speedTroopOf(unit.cfg.ID)",   // 同上（守方）
+		"st.AtkType.rangeOf(unit.cfg.Type)",      // 弹幕支援只给城防射程
+		"st.DefType.rangeOf(unit.cfg.Type)",      // 同上（守方）
+		"st.AtkType.atkFlatTroopOf(unit.cfg.ID)", // 火炮控制按兵种 ID
+		"st.DefType.atkFlatTroopOf(unit.cfg.ID)", // 同上（守方）
 	} {
 		if !strings.Contains(bat, want) {
 			t.Fatalf("战斗引擎未按兵种叠加加成：%s", want)

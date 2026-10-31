@@ -2778,7 +2778,8 @@ func (h *EzfyHandler) ezfyMarchSpeed(troops []ezfyUnitGroup, techMap map[int]int
 		if cfg == nil || cfg.Type == ezfyTroopTypeCity || cfg.Speed <= 0 {
 			continue
 		}
-		sp := cfg.Speed * (100 + gen + tb.speedOf(cfg.Type)) / 100
+		// ★ 2026-10-31 坦克突袭按**兵种 ID**（只轻坦5/重坦6）→ 行军速度同样只给这两种加速
+		sp := cfg.Speed * (100 + gen + tb.speedOf(cfg.Type) + tb.speedTroopOf(cfg.ID)) / 100
 		if sp < 1 {
 			sp = 1
 		}
@@ -4419,6 +4420,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					AtkOfficerSkill: h.officerSkillBattleBonus(leadOfficer),
 					// ★ 2026-10-08 兵种专属加成（喷气引擎=空军速度等）
 					AtkType: atkType,
+					// ★ 2026-10-31 弧形防御/火炮控制「每3回合发动1回合」在驻军战里同样生效
+					AtkTimed: h.officerTimedSkills(leadOfficer),
 				},
 				ezfyGarrisonBreakPctCfg())
 			var gcity model.EzfyCity
@@ -4590,6 +4593,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			st.DefCombos = comboRuntimes(ezfyComboOfGeneralCfg(defGeneral, defGeneral.Level))
 		}
 		st.appendComboHead()
+		// ★★ 2026-10-31 普通军官「每3回合发动1回合」技能（弧形防御 / 火炮控制）：
+		//   快照里的加成是发动回合的满额值，引擎按回合扣减（见 ezfy_skill_timed.go）。
+		st.AtkTimed = h.officerTimedSkills(leadOfficer)
+		if target != nil {
+			st.DefTimed = h.officerTimedSkills(cityGuard)
+		} else if wildDefCommander != nil {
+			st.DefTimed = h.officerTimedSkills(wildDefCommander)
+		} else {
+			st.DefTimed = generalTimedSkills(defGeneral)
+		}
 		// ★ 2026-10-24 城墙耐久：只有「征服玩家城(3)」启用；「掠夺(2)」完全忽略城墙
 		//   （不打耐久、也不吃城墙防御/射程加成）。上限 = 围墙等级²×20000。
 		// ★ 2026-10-24 用户规则「每场都恢复满」：开战时城墙耐久**无条件补满**，
